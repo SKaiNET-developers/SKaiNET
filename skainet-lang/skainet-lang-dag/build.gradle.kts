@@ -1,5 +1,3 @@
-import org.gradle.kotlin.dsl.implementation
-import org.gradle.kotlin.dsl.project
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -24,9 +22,9 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
-    macosArm64 ()
-    linuxX64 ()
-    linuxArm64 ()
+    macosArm64()
+    linuxX64()
+    linuxArm64()
 
     jvm()
 
@@ -37,27 +35,23 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
-        binaries.executable()
     }
 
     sourceSets {
         commonMain.dependencies {
-            api(project(":skainet-lang:skainet-lang-core"))
-            api(project(":skainet-lang:skainet-lang-dag"))
-            api(project(":skainet-compile:skainet-compile-core"))
+            implementation(project(":skainet-lang:skainet-lang-core"))
+            implementation(libs.kotlinx.coroutines)
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(project(":skainet-backends:skainet-backend-cpu"))
-            implementation(project(":skainet-lang:skainet-lang-models"))
-
         }
     }
 }
 
 android {
-    namespace = "sk.ainet.compilie.dag"
+    namespace = "sk.ainet.lang.dag"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
