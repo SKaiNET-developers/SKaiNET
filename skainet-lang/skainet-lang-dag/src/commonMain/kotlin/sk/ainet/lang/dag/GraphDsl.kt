@@ -12,6 +12,8 @@ import sk.ainet.lang.tensor.ops.ReshapeOperation
 import sk.ainet.lang.tensor.ops.SoftmaxOperation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.Upsample2dOperation
+import sk.ainet.lang.types.DType
+import kotlin.reflect.KClass
 
 @DslMarker
 public annotation class DagDsl
@@ -160,6 +162,37 @@ public class DagBuilder {
     }
 
     /**
+     * Parameter helper that reuses a symbolic, allocation-free data DSL to declare shape/dtype.
+     *
+     * Example:
+     * ```
+     * val w = parameter<FP32, Float>("w") { shape(4, 4) { ones() } }
+     * ```
+     */
+    @DagDsl
+    public inline fun <reified T : DType, V> parameter(
+        name: String,
+        noinline builder: SymbolicTensorBuilder<T>.() -> TensorSpec
+    ): GraphValue {
+        val specBuilder = SymbolicTensorBuilder(T::class, name)
+        val spec = builder(specBuilder).normalized(name, T::class)
+        return parameter(name, spec)
+    }
+
+    /**
+     * Constant helper that reuses a symbolic, allocation-free data DSL to declare shape/dtype.
+     */
+    @DagDsl
+    public inline fun <reified T : DType, V> constant(
+        name: String,
+        noinline builder: SymbolicTensorBuilder<T>.() -> TensorSpec
+    ): GraphValue {
+        val specBuilder = SymbolicTensorBuilder(T::class, name)
+        val spec = builder(specBuilder).normalized(name, T::class)
+        return constant(name, spec)
+    }
+
+    /**
      * Generic operation hook that lets callers wire custom [Operation] instances.
      */
     @DagDsl
@@ -281,3 +314,10 @@ public class DagBuilder {
         return GraphProgram(nodes.toList(), programOutputs)
     }
 }
+
+@PublishedApi
+internal fun <T : DType> TensorSpec.normalized(name: String, dtype: KClass<T>): TensorSpec =
+    this.copy(
+        name = this.name.ifBlank { name },
+        dtype = this.dtype.ifBlank { dtypeName(dtype) }
+    )
