@@ -83,13 +83,16 @@ public class LlamaWeightLoader(
     }
 
     public companion object Dequant {
+        private fun typeName(value: Any?): String =
+            value?.let { it::class.simpleName ?: it::class.toString() } ?: "null"
+
         @OptIn(ExperimentalUnsignedTypes::class)
         private fun toByteArray(raw: List<Any>, tensorName: String): ByteArray {
             val first = raw.firstOrNull()
             return when (first) {
                 is Byte -> ByteArray(raw.size) { (raw[it] as Number).toByte() }
                 is UByte -> UByteArray(raw.size) { (raw[it] as Number).toByte().toUByte() }.toByteArray()
-                else -> error("Unexpected raw data type ${first?.javaClass} for tensor $tensorName")
+                else -> error("Unexpected raw data type ${typeName(first)} for tensor $tensorName")
             }
         }
 
@@ -1096,7 +1099,7 @@ public class LlamaWeightLoader(
                         val bytes: ByteArray = when (val first = raw.firstOrNull()) {
                             is Byte -> raw.filterIsInstance<Byte>().toByteArray()
                             is UByte -> raw.filterIsInstance<UByte>().toUByteArray().toByteArray()
-                            else -> error("Unexpected raw data type ${first?.javaClass} for tensor ${rt.name}")
+                            else -> error("Unexpected raw data type ${typeName(first)} for tensor ${rt.name}")
                         }
                         @Suppress("UNCHECKED_CAST")
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
