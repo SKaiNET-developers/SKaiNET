@@ -129,12 +129,34 @@ inline fun <reified T> ByteArray.readDataByType(
 
     return when (T::class) {
         UByte::class -> ubytes.map { it as T }
+        Byte::class -> subArray.map { it as T }
+        UShort::class -> ubytes.chunked(2)
+            .map { chunk ->
+                val value = if (endian == Endian.LITTLE_ENDIAN) {
+                    (chunk[0].toUInt() or (chunk[1].toUInt() shl 8)).toUShort()
+                } else {
+                    (chunk[1].toUInt() or (chunk[0].toUInt() shl 8)).toUShort()
+                }
+                value as T
+            }
+        Short::class -> ubytes.chunked(2)
+            .map { chunk ->
+                val value = if (endian == Endian.LITTLE_ENDIAN) {
+                    (chunk[0].toUInt() or (chunk[1].toUInt() shl 8)).toShort()
+                } else {
+                    (chunk[1].toUInt() or (chunk[0].toUInt() shl 8)).toShort()
+                }
+                value as T
+            }
 
         UInt::class -> ubytes.chunked(4)
             .map { chunk: List<UByte> -> chunk.toUInt(endian) as T }
 
         ULong::class -> ubytes.chunked(8)
             .map { chunk -> chunk.toULong(endian) as T }
+
+        Long::class -> ubytes.chunked(8)
+            .map { chunk -> chunk.toULong(endian).toLong() as T }
 
         Int::class -> ubytes.chunked(4)
             .map { chunk -> chunk.toInt(endian) as T }
@@ -144,6 +166,11 @@ inline fun <reified T> ByteArray.readDataByType(
                 // Get the 4 bytes as UInt bits, then convert to Float.
                 val intBits = chunk.toUInt(endian)
                 Float.fromBits(intBits.toInt()) as T
+            }
+        Double::class -> ubytes.chunked(8)
+            .map { chunk ->
+                val longBits = chunk.toULong(endian).toLong()
+                Double.fromBits(longBits) as T
             }
 
         Boolean::class -> ubytes.map { (it != 0.toUByte()) as T }
