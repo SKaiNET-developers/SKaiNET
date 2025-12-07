@@ -31,7 +31,7 @@ import sk.ainet.lang.types.FP32
  */
 public class LlamaRuntime(
     private val ctx: ExecutionContext,
-    private val weights: LlamaRuntimeWeights,
+    val weights: LlamaRuntimeWeights,
     private val ropeFreqBase: Float = 10000f,
     private val eps: Float = 1e-5f,
     private val random: Random = Random.Default
