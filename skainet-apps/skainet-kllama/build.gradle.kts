@@ -35,16 +35,19 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
+        binaries.executable()
     }
 
     sourceSets {
         commonMain.dependencies {
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-compile:skainet-compile-core"))
+            implementation(project(":skainet-backends:skainet-backend-cpu"))
             implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
             implementation(project(":skainet-io:skainet-io-core"))
             implementation(project(":skainet-io:skainet-io-gguf"))
             implementation(libs.kotlinx.io.core)
+            implementation(libs.kotlinx.coroutines)
 
         }
 
@@ -64,6 +67,9 @@ kotlin {
         }
         val androidMain by getting
         val wasmJsMain by getting
+        wasmJsMain.dependencies {
+            implementation(libs.kotlinx.browser)
+        }
 
         val commonMain by getting
 

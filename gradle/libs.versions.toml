@@ -6,6 +6,7 @@ jsonSchemaValidatorVersion = "0.5.3"
 junit = "4.13.2"
 kotlin = "2.2.21"
 kotlinxCoroutines = "1.10.2"
+kotlinBrowser = "0.5.0"
 android-minSdk = "24"
 android-compileSdk = "36"
 kotlinxSerializationJson = "1.9.0"
@@ -29,6 +30,7 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", ver
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlinx-coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.ref = "kotlinBrowser" }
 kotlinx-coroutines-core-jvm = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
