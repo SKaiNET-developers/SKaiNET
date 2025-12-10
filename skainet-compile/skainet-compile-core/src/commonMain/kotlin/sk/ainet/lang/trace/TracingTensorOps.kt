@@ -161,6 +161,15 @@ public class TracingTensorOps(
         return out
     }
 
+    override fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val out = base.logSoftmax(tensor, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = OpAttributeFactory.unary(tensor, out) + mapOf("dim" to dim, "log" to true)
+        sink.onOpExecuted(OpTrace(opType = "logSoftmax", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
         val out = base.sigmoid(tensor)
         val inputs = listOf(session.refOf(tensor))

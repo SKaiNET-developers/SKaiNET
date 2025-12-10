@@ -237,6 +237,12 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        validateSoftmaxDim(tensor.shape, dim)
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
         // Activation functions preserve shape
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)

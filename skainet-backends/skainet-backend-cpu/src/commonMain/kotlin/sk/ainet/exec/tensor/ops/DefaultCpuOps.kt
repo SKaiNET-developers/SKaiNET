@@ -986,6 +986,43 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
+    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-logsoftmax")
+    override fun <T : DType, V> logSoftmax(
+        tensor: Tensor<T, V>,
+        dim: Int
+    ): Tensor<T, V> {
+        val rank = tensor.rank
+        require(rank > 0) { "logSoftmax: tensor must have rank > 0" }
+        val nd = if (dim < 0) dim + rank else dim
+        require(nd in 0 until rank) { "logSoftmax: dim ${dim} out of range for rank ${rank}" }
+        when (tensor.dtype) {
+            sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { outIdx ->
+                    val idx = outIdx.copyOf()
+                    var maxVal = Float.NEGATIVE_INFINITY
+                    for (k in 0 until tensor.shape[nd]) {
+                        idx[nd] = k
+                        val x = tensor.data.get(*idx) as Float
+                        if (x > maxVal) maxVal = x
+                    }
+                    var sumExp = 0.0f
+                    for (k in 0 until tensor.shape[nd]) {
+                        idx[nd] = k
+                        val x = tensor.data.get(*idx) as Float
+                        sumExp += kotlin.math.exp((x - maxVal).toDouble()).toFloat()
+                    }
+                    val logSumExp = kotlin.math.ln(sumExp.toDouble()).toFloat() + maxVal
+                    val xOut = tensor.data.get(*outIdx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    (xOut - logSumExp) as V
+                }
+                return CpuTensor(outData, this, tensor.dtype)
+            }
+            else -> throw IllegalArgumentException("Unsupported dtype for logSoftmax: ${tensor.dtype}")
+        }
+    }
+
+    @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-sigmoid")
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->

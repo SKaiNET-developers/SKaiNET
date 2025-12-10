@@ -334,6 +334,12 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         return out
     }
 
+    override fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val out = base.logSoftmax(tensor, dim)
+        record(SoftmaxOperation<T, V>(mapOf("dim" to dim, "log" to true)), listOf(tensor), listOf(out))
+        return out
+    }
+
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
         val out = base.sigmoid(tensor)
         record(SigmoidOperation<T, V>(), listOf(tensor), listOf(out))
