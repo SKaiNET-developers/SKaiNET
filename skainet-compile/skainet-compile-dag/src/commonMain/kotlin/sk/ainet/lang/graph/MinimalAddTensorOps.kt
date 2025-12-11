@@ -78,6 +78,7 @@ public class MinimalAddTensorOps : TensorOps {
 
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> = delegate.relu(tensor)
     override fun <T : DType, V> softmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> = delegate.softmax(tensor, dim)
+    override fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> = delegate.logSoftmax(tensor, dim)
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> = delegate.sigmoid(tensor)
     override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> = delegate.silu(tensor)
     override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> = delegate.gelu(tensor)
