@@ -51,7 +51,7 @@ jobs:
         run: ./gradlew generateDocs --stacktrace
         
       - name: Upload generated documentation
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: operator-documentation
           path: |
@@ -61,7 +61,7 @@ jobs:
           
       - name: Upload documentation preview (PR only)
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: documentation-preview-${{ github.event.number }}
           path: |
