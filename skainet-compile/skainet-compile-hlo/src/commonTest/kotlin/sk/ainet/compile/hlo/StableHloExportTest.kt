@@ -1,8 +1,16 @@
-package sk.ainet.lang.graph.utils
+package sk.ainet.compile.hlo
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
-import sk.ainet.lang.graph.*
+import sk.ainet.lang.graph.DefaultComputeGraph
+import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.graph.GraphEdge
+import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.InputOperation
+import sk.ainet.lang.tensor.ops.AddOperation
+import sk.ainet.lang.tensor.ops.ReluOperation
+import sk.ainet.lang.types.DType
+import kotlin.collections.emptyList
 
 class StableHloExportTest {
 
@@ -13,19 +21,19 @@ class StableHloExportTest {
 
         val inputA = GraphNode(
             id = "a",
-            operation = sk.ainet.lang.tensor.ops.InputOperation<sk.ainet.lang.types.DType, Any>(),
+            operation = InputOperation<DType, Any>(),
             inputs = emptyList(),
             outputs = listOf(TensorSpec("a", listOf(1, 4), "FP32"))
         )
         val inputB = GraphNode(
             id = "b",
-            operation = sk.ainet.lang.tensor.ops.InputOperation<sk.ainet.lang.types.DType, Any>(),
+            operation = InputOperation<DType, Any>(),
             inputs = emptyList(),
             outputs = listOf(TensorSpec("b", listOf(1, 4), "FP32"))
         )
         val add = GraphNode(
             id = "add1",
-            operation = sk.ainet.lang.tensor.ops.AddOperation<sk.ainet.lang.types.DType, Any>(),
+            operation = AddOperation<DType, Any>(),
             inputs = listOf(
                 TensorSpec("a", listOf(1, 4), "FP32"),
                 TensorSpec("b", listOf(1, 4), "FP32")
@@ -34,7 +42,7 @@ class StableHloExportTest {
         )
         val relu = GraphNode(
             id = "relu1",
-            operation = sk.ainet.lang.tensor.ops.ReluOperation<sk.ainet.lang.types.DType, Any>(),
+            operation = ReluOperation<DType, Any>(),
             inputs = listOf(TensorSpec("c", listOf(1, 4), "FP32")),
             outputs = listOf(TensorSpec("d", listOf(1, 4), "FP32"))
         )

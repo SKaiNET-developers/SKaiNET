@@ -1,23 +1,55 @@
-package sk.ainet.lang.graph.utils
+package sk.ainet.compile.hlo
 
 import sk.ainet.lang.graph.ComputeGraph
-import sk.ainet.lang.graph.GraphNode
-import sk.ainet.lang.graph.TensorSpec
+import sk.ainet.lang.tensor.ops.TensorSpec
 
 /**
  * Represents a StableHLO MLIR module text output
  */
-public data class StableHloModule(val content: String)
+public data class StableHloModule(
+    val content: String,
+    val functionName: String = "main",
+    val inputSpecs: List<TensorSpec> = emptyList(),
+    val outputSpecs: List<TensorSpec> = emptyList(),
+    val metadata: Map<String, Any> = emptyMap()
+) {
+    /**
+     * Validate this module using the provided validator
+     */
+    public fun validate(validator: MlirValidator): List<String> {
+        return validator.validate(content)
+    }
+    
+    /**
+     * Optimize this module using the provided optimizer
+     */
+    public fun optimize(optimizer: StableHloOptimizer): StableHloModule {
+        return optimizer.optimize(this)
+    }
+}
 
 /**
  * Export a ComputeGraph into a minimal StableHLO MLIR module text.
  *
  * Notes:
- * - This is a lightweight exporter intended for prototyping. It currently supports a subset of ops:
- *   input, add, matmul, relu. Unsupported ops are emitted as comments.
+ * - This function now uses the new modular converter architecture for better extensibility.
+ * - It maintains backward compatibility with the original implementation.
+ * - Currently supports: input, add, matmul, relu. Unsupported ops are emitted as comments.
  * - DType mapping expects TensorSpec.dtype to be strings like "FP32", "F32", "F64", "I32".
  */
 public fun toStableHlo(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
+    // Use the new converter architecture
+    val converter = StableHloConverterFactory.createBasic()
+    return converter.convert(graph, functionName)
+}
+
+/**
+ * Legacy implementation for backward compatibility.
+ * 
+ * @deprecated Use StableHloConverter directly for better control and extensibility.
+ */
+@Deprecated("Use StableHloConverter directly", ReplaceWith("StableHloConverterFactory.createBasic().convert(graph, functionName)"))
+public fun toStableHloLegacy(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
     val topo = graph.getTopologicalOrder()
     val sb = StringBuilder()
 

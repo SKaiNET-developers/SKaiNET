@@ -37,11 +37,14 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":skainet-lang:skainet-lang-core"))
-            api(project("skainet-compile:skainet-compile-core"))
+            api(project(":skainet-compile:skainet-compile-core"))
+            api(project(":skainet-compile:skainet-compile-dag"))
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(project(":skainet-backends:skainet-backend-cpu"))
+
         }
     }
 }
