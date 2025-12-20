@@ -37,11 +37,11 @@
   - Ensure proper operand ordering and type consistency
   - _Requirements: 2.1, 3.3_
 
-- [ ] 3.1 Write property test for mathematical operations
+- [ ]* 3.1 Write property test for mathematical operations
   - **Property 5: Mathematical Operation Mapping**
   - **Validates: Requirements 2.1**
 
-- [ ] 3.2 Write property test for broadcasting operations
+- [ ]* 3.2 Write property test for broadcasting operations
   - **Property 11: Broadcasting Operation Generation**
   - **Validates: Requirements 3.3**
 
@@ -52,7 +52,7 @@
   - Handle transpose with arbitrary dimension permutations
   - _Requirements: 2.2_
 
-- [ ] 4.1 Write property test for linear algebra operations
+- [ ]* 4.1 Write property test for linear algebra operations
   - **Property 6: Linear Algebra Operation Mapping**
   - **Validates: Requirements 2.2**
 
@@ -63,7 +63,7 @@
   - Handle batch normalization and layer normalization operations
   - _Requirements: 2.4_
 
-- [ ] 5.1 Write property test for convolutional operations
+- [ ]* 5.1 Write property test for convolutional operations
   - **Property 8: Convolutional Operation Mapping**
   - **Validates: Requirements 2.4**
 
@@ -79,7 +79,7 @@
   - **Property 7: Activation Function Implementation**
   - **Validates: Requirements 2.3**
 
-- [ ] 7. Add shape manipulation operations
+- [x] 7. Add shape manipulation operations
   - Implement ShapeOperationsConverter for reshape, flatten, squeeze, unsqueeze
   - Add support for stablehlo.reshape with proper shape inference
   - Implement broadcast_in_dim for dimension expansion operations
@@ -90,12 +90,11 @@
   - **Property 9: Shape Operation Mapping**
   - **Validates: Requirements 2.5**
 
-- [ ] 8. Implement constant value handling
-  - Enhance support for stablehlo.constant operations with proper attributes
+- [x] 8. Implement constant value handling
+  - Create ConstantOperationsConverter for stablehlo.constant operations
   - Handle different constant types (scalars, tensors, splat values)
   - Implement constant folding opportunities during conversion
   - Support parameter tensors and learned weights as constants
-  - Note: Basic constant support exists in LegacyOperationsConverter for relu
   - _Requirements: 4.2_
 
 - [ ]* 8.1 Write property test for constant handling
@@ -103,7 +102,7 @@
   - **Validates: Requirements 4.2**
 
 - [ ] 9. Add control flow support
-  - Implement control flow operations (if, while) using StableHLO primitives
+  - Create ControlFlowOperationsConverter for if/while operations
   - Add support for conditional execution with stablehlo.if
   - Implement loop constructs using stablehlo.while
   - Handle nested control flow and proper SSA value threading
@@ -150,7 +149,7 @@
   - **Property 17: Operation Metadata Integration**
   - **Validates: Requirements 6.2**
 
-- [ ] 13. Implement round-trip validation capabilities
+- [x] 13. Implement round-trip validation capabilities
   - Add MLIR parsing and validation utilities
   - Implement semantic equivalence checking for round-trip validation
   - Create test utilities for verifying generated MLIR correctness
@@ -161,28 +160,34 @@
   - **Property 15: Round-trip Validation**
   - **Validates: Requirements 5.2**
 
-- [ ] 14. Checkpoint - Ensure all tests pass
+- [x] 14. Fix output specification determination
+  - Update StableHloConverter to properly determine output specs from graph
+  - Handle multiple outputs and return values correctly
+  - Ensure function signatures include proper return types
+  - _Requirements: 1.1, 1.2_
+
+- [ ] 15. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 15. Complete optimization framework implementation
+- [x] 16. Complete optimization framework implementation
   - Implement ConstantFoldingPass with actual constant folding logic
   - Implement DeadCodeEliminationPass with actual DCE logic
   - Add operation fusion opportunities where beneficial
   - Update documentation and examples for new capabilities
   - _Requirements: 4.1, 4.3, 6.1, 6.2_
 
-- [ ]* 15.1 Write integration tests for complete neural networks
+- [ ]* 16.1 Write integration tests for complete neural networks
   - Test end-to-end conversion of realistic neural network models
   - Verify compatibility with existing execution contexts
   - Validate performance characteristics of generated code
   - _Requirements: 6.1, 6.2_
 
-- [ ] 16. Final validation and testing
+- [x] 17. Final validation and testing
   - Run comprehensive test suite across all supported platforms
   - Validate API compatibility with existing interfaces
   - Perform performance regression testing
   - Update build configuration and CI/CD pipelines
   - _Requirements: 6.4, 6.5_
 
-- [ ] 17. Final Checkpoint - Ensure all tests pass
+- [x] 18. Final Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

@@ -1,10 +1,12 @@
 package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ActivationOperationsConverter
+import sk.ainet.compile.hlo.converters.ConstantOperationsConverter
 import sk.ainet.compile.hlo.converters.LegacyOperationsConverter
 import sk.ainet.compile.hlo.converters.LinalgOperationsConverter
 import sk.ainet.compile.hlo.converters.MathOperationsConverter
 import sk.ainet.compile.hlo.converters.NeuralNetOperationsConverter
+import sk.ainet.compile.hlo.converters.ShapeOperationsConverter
 
 /**
  * Factory for creating StableHLO converters with default configurations.
@@ -34,6 +36,12 @@ public object StableHloConverterFactory {
         // Register activation operations converter
         registry.register(ActivationOperationsConverter())
         
+        // Register shape operations converter
+        registry.register(ShapeOperationsConverter())
+        
+        // Register constant operations converter
+        registry.register(ConstantOperationsConverter())
+        
         return StableHloConverter(registry, typeMapper, validator)
     }
     
@@ -60,6 +68,12 @@ public object StableHloConverterFactory {
         // Register activation operations converter
         registry.register(ActivationOperationsConverter())
         
+        // Register shape operations converter
+        registry.register(ShapeOperationsConverter())
+        
+        // Register constant operations converter
+        registry.register(ConstantOperationsConverter())
+        
         return StableHloConverter(registry, typeMapper, validator)
     }
     
@@ -75,6 +89,8 @@ public object StableHloConverterFactory {
         registry.register(LinalgOperationsConverter())
         registry.register(NeuralNetOperationsConverter())
         registry.register(ActivationOperationsConverter())
+        registry.register(ShapeOperationsConverter())
+        registry.register(ConstantOperationsConverter())
         
         return StableHloConverter(registry, typeMapper, null)
     }

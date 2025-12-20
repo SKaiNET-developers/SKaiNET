@@ -93,7 +93,7 @@ class ComputeGraphInterfaceCompatibilityPropertyTest {
         
         // Test that the converter can process the graph without interface violations
         try {
-            val module = converter.convert(graph, "test_function_${System.currentTimeMillis()}")
+            val module = converter.convert(graph, "test_function_${kotlin.random.Random.nextInt()}")
             
             // The conversion should produce a valid StableHloModule
             assertNotNull(module, "Conversion should produce a non-null StableHloModule")

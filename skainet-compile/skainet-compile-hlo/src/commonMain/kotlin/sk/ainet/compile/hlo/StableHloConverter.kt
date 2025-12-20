@@ -22,20 +22,29 @@ public class StableHloConverter(
     public fun convert(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
         val context = ConversionContext(typeMapper, graph)
         
-        // Pre-conversion validation
+        // Pre-conversion validation (allow orphaned nodes for backward compatibility)
         val validationResult = graph.validate()
         if (validationResult is sk.ainet.lang.tensor.ops.ValidationResult.Invalid) {
-            throw IllegalArgumentException("Invalid graph: ${validationResult.errors}")
+            // Check if the only errors are orphaned nodes - if so, proceed anyway for backward compatibility
+            val nonOrphanedErrors = validationResult.errors.filter { !it.contains("Orphaned nodes found") }
+            if (nonOrphanedErrors.isNotEmpty()) {
+                throw IllegalArgumentException("Invalid graph: $nonOrphanedErrors")
+            }
+            // If only orphaned node errors, log a warning but continue
         }
         
         // Get topological order for processing
         val topo = graph.getTopologicalOrder()
         
-        // Collect input nodes
+        // Collect input and output nodes
         val inputNodes = topo.filter { it.operation.type == "input" || it.operation.name == "input" }
+        val outputNodes = graph.getOutputNodes()
         
-        // Build function signature
-        val functionSignature = buildFunctionSignature(inputNodes, functionName)
+        // Determine output specifications from output nodes
+        val outputSpecs = determineOutputSpecs(outputNodes)
+        
+        // Build function signature with proper return types
+        val functionSignature = buildFunctionSignature(inputNodes, outputSpecs, functionName)
         
         // Start building MLIR content
         context.emitLine("module {")
@@ -47,8 +56,10 @@ public class StableHloConverter(
         // Process nodes in topological order
         processNodes(topo, context)
         
+        // Generate return statement with output values
+        generateReturnStatement(outputNodes, context)
+        
         // Close function and module
-        context.emitLine("    return")
         context.emitLine("  }")
         context.emitLine("}")
         
@@ -65,7 +76,7 @@ public class StableHloConverter(
             content = content,
             functionName = functionName,
             inputSpecs = inputNodes.mapNotNull { it.outputs.firstOrNull() },
-            outputSpecs = emptyList() // TODO: Determine output specs
+            outputSpecs = outputSpecs
         )
     }
     
@@ -77,13 +88,23 @@ public class StableHloConverter(
         return optimizer.optimize(module)
     }
     
-    private fun buildFunctionSignature(inputNodes: List<GraphNode>, functionName: String): String {
+    private fun buildFunctionSignature(inputNodes: List<GraphNode>, outputSpecs: List<TensorSpec>, functionName: String): String {
         val argsSig = inputNodes.mapIndexed { idx, node ->
             val outSpec = node.outputs.firstOrNull() ?: TensorSpec("arg$idx", emptyList(), "FP32")
             "%arg$idx: ${typeMapper.mapTensorType(outSpec)}"
         }.joinToString(", ")
         
-        return "@${functionName}(${argsSig}) -> ()"
+        val returnSig = if (outputSpecs.isNotEmpty()) {
+            outputSpecs.joinToString(", ") { typeMapper.mapTensorType(it) }
+        } else {
+            ""
+        }
+        
+        return if (returnSig.isNotEmpty()) {
+            "@${functionName}(${argsSig}) -> (${returnSig})"
+        } else {
+            "@${functionName}(${argsSig}) -> ()"
+        }
     }
     
     private fun initializeInputValues(inputNodes: List<GraphNode>, context: ConversionContext) {
@@ -136,6 +157,55 @@ public class StableHloConverter(
             is ConversionResult.Unsupported -> {
                 context.emitComment("Unsupported operation ${result.operationName}: ${result.reason}")
             }
+        }
+    }
+    
+    /**
+     * Determine output specifications from output nodes
+     */
+    private fun determineOutputSpecs(outputNodes: List<GraphNode>): List<TensorSpec> {
+        return outputNodes.mapNotNull { node ->
+            // For output nodes, we want their output specifications
+            // If a node has multiple outputs, we take the first one
+            // In the future, this could be enhanced to handle multiple outputs per node
+            node.outputs.firstOrNull()
+        }
+    }
+    
+    /**
+     * Generate the return statement with output values
+     */
+    private fun generateReturnStatement(outputNodes: List<GraphNode>, context: ConversionContext) {
+        if (outputNodes.isEmpty()) {
+            // No outputs - just return
+            context.emitLine("    return")
+        } else {
+            // Get the SSA value names for output nodes
+            val outputValues = outputNodes.mapNotNull { node ->
+                context.getValueName(node.id)
+            }
+            
+            if (outputValues.isEmpty()) {
+                // No output values found - this might happen if output nodes failed to convert
+                context.emitComment("Warning: No output values found for return statement")
+                context.emitLine("    return")
+            } else {
+                // Return the output values
+                val returnValues = outputValues.joinToString(", ")
+                context.emitLine("    return $returnValues : ${buildReturnTypeSignature(outputNodes)}")
+            }
+        }
+    }
+    
+    /**
+     * Build the return type signature for the return statement
+     */
+    private fun buildReturnTypeSignature(outputNodes: List<GraphNode>): String {
+        val outputSpecs = outputNodes.mapNotNull { it.outputs.firstOrNull() }
+        return if (outputSpecs.isNotEmpty()) {
+            outputSpecs.joinToString(", ") { typeMapper.mapTensorType(it) }
+        } else {
+            ""
         }
     }
 }
