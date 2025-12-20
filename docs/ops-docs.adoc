@@ -8,7 +8,7 @@ CONTEXT
 - Framework: a new machine learning framework written in Kotlin Multiplatform (KMP). Name: {FRAMEWORK_NAME}.
 - Key concept: Operators – Kotlin interfaces overridden in different contexts:
   • In model definition and shape handling, Operators provide "void" (no-op) implementations (no actual compute).
-  • Real computation is provided later by backends (e.g., CPU, Metal, CUDA, WASM) during execution.
+  • Real computation is provided by XLA compilation targeting specific hardware (CPU, GPU, TPU) during execution.
 - Philosophy: Documentation is a first-class part of product design, not an afterthought.
 - Goal: Describe a reflective documentation system that fuses machine-generated metadata (from code) with human-written scientific explanations (math, text, examples), so docs are always in sync with the codebase.
 
@@ -71,7 +71,7 @@ Your article must be written in AsciiDoc and include the following sections (use
     "frameworkVersion": "0.3.0",
     "commitSha": "abc1234",
     "generatedAt": "2025-10-22T12:00:00Z",
-    "backends": ["CPU", "Metal", "CUDA", "WASM"],
+    "backends": ["CPU", "GPU", "TPU"],
     "operators": [
       {
         "name": "TensorOps",
@@ -87,7 +87,7 @@ Your article must be written in AsciiDoc and include the following sections (use
             ],
             "returnType": "Tensor",
             "sinceVersion": "0.1.0",
-            "statusByBackend": {"CPU": "Implemented", "Metal": "InProgress", "CUDA": "NotImplemented", "WASM": "Implemented"},
+            "statusByBackend": {"CPU": "Implemented", "GPU": "Implemented", "TPU": "Implemented"},
             "notes": [{"backend": "Metal", "owner": "ops-team", "issue": "GH-1234"}]
           }
         ]
@@ -119,9 +119,8 @@ Your article must be written in AsciiDoc and include the following sections (use
   | Backend | Status | Notes
 
   | CPU   | Implemented   | 
-  | Metal | InProgress    | owner=ops-team, issue=GH-1234
-  | CUDA  | NotImplemented| 
-  | WASM  | Implemented   | 
+  | GPU   | Implemented   | 
+  | TPU   | Implemented   | 
   |===
 
   See xref:theory/matmul.adoc#definition[MatMul semantics] and xref:examples/matmul.adoc#examples[Examples].
@@ -221,7 +220,7 @@ Your article must be written in AsciiDoc and include the following sections (use
       @InProgress("Metal", owner="ops-team", issue="GH-1234")
       fun relu(x: Tensor): Tensor
 
-      @NotImplemented("CUDA")
+      @NotImplemented("Experimental")
       fun conv2d(input: Tensor, kernel: Tensor, stride: Int = 1, padding: Int = 0): Tensor
   }
   ----

@@ -6,7 +6,7 @@ SKaiNET is an open-source deep learning framework written in Kotlin Multiplatfor
 
 - **Kotlin Multiplatform**: Runs on JVM, Android, iOS, JS, WASM, and Native platforms
 - **Neural Network DSL**: Intuitive Kotlin DSL for model definition with type safety
-- **Multiple Backends**: CPU backend with SIMD optimization (GPU planned)
+- **Hardware Compilation**: StableHLO/MLIR compilation to any XLA-supported hardware (CPU, GPU, TPU)
 - **Model I/O**: Support for ONNX, GGUF, and JSON model formats
 - **Experimental KAN**: Kolmogorov-Arnold Networks implementation
 - **Data Loading**: Built-in loaders for common datasets (MNIST, etc.)

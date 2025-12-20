@@ -27,8 +27,10 @@ SKaiNET/
 - **skainet-kan**: Kolmogorov-Arnold Network implementation
 
 ### Backend Modules (`skainet-backends/`)
-- **skainet-backend-cpu**: CPU implementation with SIMD optimization
+- **skainet-backend-cpu**: Reference CPU implementation for development and testing
 - **benchmarks/jvm-cpu-jmh**: JMH performance benchmarks
+
+Note: Production deployment uses MLIR/XLA compilation rather than direct backend implementations. The CPU backend serves primarily for development, testing, and as a reference implementation.
 
 ### Compilation Modules (`skainet-compile/`)
 - **skainet-compile-core**: Core compilation infrastructure

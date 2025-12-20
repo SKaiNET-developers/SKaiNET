@@ -4,25 +4,37 @@
 
 HLO (High-Level Operations) is SKaiNET's intermediate representation for neural network computations, based on [StableHLO](https://github.com/openxla/stablehlo) - the portable high-level operation set for machine learning. HLO serves as a bridge between SKaiNET's Kotlin DSL and various execution backends, enabling optimizations and cross-platform deployment.
 
+## Why MLIR/XLA Instead of Direct Backends?
+
+SKaiNET uses the MLIR/XLA compilation approach rather than implementing separate backends for each hardware target. This design choice provides several key advantages:
+
+**Single Implementation Path**: Write operations once in Kotlin, compile to StableHLO MLIR, then let XLA handle hardware-specific optimizations. No need to maintain separate CUDA, Metal, or ROCm implementations.
+
+**Automatic Optimization**: XLA provides sophisticated optimizations like operator fusion, memory layout optimization, and hardware-specific kernel selection without manual tuning.
+
+**Future-Proof**: New hardware targets (like future GPU architectures) are automatically supported when XLA adds support, without requiring SKaiNET updates.
+
+**Ecosystem Integration**: Full compatibility with JAX, TensorFlow, and other MLIR-based frameworks enables model sharing and toolchain reuse.
+
 ### Key Benefits
 
-- **Portability**: Write once, run on CPU, GPU, TPU, and other accelerators
-- **Optimization**: Enable advanced compiler optimizations and fusion
-- **Interoperability**: Compatible with XLA, JAX, and TensorFlow ecosystems
-- **Performance**: Leverage hardware-specific optimizations through MLIR compilation
+- **Portability**: Write once, compile to any XLA-supported hardware (CPU, GPU, TPU)
+- **Optimization**: Leverage XLA's advanced compiler optimizations and operator fusion
+- **Interoperability**: Full compatibility with XLA, JAX, TensorFlow, and MLIR ecosystems
+- **Performance**: Hardware-specific optimizations without manual kernel development
+- **No Backend Lock-in**: Single compilation target supports all hardware through XLA
 
 ## Architecture Overview
 
-SKaiNET's HLO compilation pipeline transforms high-level Kotlin DSL operations into optimized, executable code:
+SKaiNET's HLO compilation pipeline transforms high-level Kotlin DSL operations into hardware-optimized executable code through the MLIR/XLA ecosystem:
 
 ```mermaid
 graph TD
     A[Kotlin DSL] --> B[Compute Graph]
     B --> C[HLO Converter]
-    C --> D[StableHLO IR]
-    D --> E[MLIR Optimizer]
-    E --> F[Backend Compiler]
-    F --> G[Executable Code]
+    C --> D[StableHLO MLIR]
+    D --> E[XLA Compiler]
+    E --> F[Hardware Executables]
     
     subgraph "SKaiNET Core"
         A
@@ -30,19 +42,22 @@ graph TD
         C
     end
     
-    subgraph "HLO Pipeline"
+    subgraph "MLIR/XLA Pipeline"
         D
         E
     end
     
-    subgraph "Target Backends"
-        F
-        G
+    subgraph "Target Hardware"
+        F --> G[CPU x86/ARM]
+        F --> H[NVIDIA GPU]
+        F --> I[AMD GPU]
+        F --> J[Google TPU]
+        F --> K[Mobile GPU]
     end
     
     style A fill:#e1f5fe
     style D fill:#f3e5f5
-    style G fill:#e8f5e8
+    style F fill:#e8f5e8
 ```
 
 ### Data Flow Architecture
@@ -186,93 +201,97 @@ func.func @rgb2grayscale(%input: tensor<?x3x?x?xf32>) -> tensor<?x1x?x?xf32> {
 }
 ```
 
-## Compilation to CUDA and Jetson Deployment
+## Hardware Target Compilation via XLA
 
-### Prerequisites
+SKaiNET uses the MLIR/XLA compilation pipeline to target different hardware platforms without requiring separate backend implementations. The StableHLO IR serves as a portable intermediate representation that XLA can compile to optimized code for various targets.
 
-1. **NVIDIA CUDA Toolkit** (11.8+): [Download here](https://developer.nvidia.com/cuda-downloads)
-2. **XLA with GPU support**: [Installation guide](https://www.tensorflow.org/xla/tutorials/compile)
-3. **Jetson SDK**: [NVIDIA Jetson Developer Kit](https://developer.nvidia.com/embedded/jetson-developer-kit)
+### Supported Hardware Targets
 
-### Step 1: Configure CUDA Backend
+- **CPU**: x86_64, ARM64 (via XLA CPU backend)
+- **GPU**: NVIDIA CUDA, AMD ROCm (via XLA GPU backend)  
+- **TPU**: Google TPUs (via XLA TPU backend)
+- **Mobile**: iOS Metal, Android GPU (via XLA mobile backends)
 
-```bash
-# Install CUDA toolkit
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
-sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
-sudo add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /"
-sudo apt-get update
-sudo apt-get -y install cuda
+### Prerequisites for GPU Compilation
 
-# Verify installation
-nvcc --version
-nvidia-smi
-```
+1. **XLA with GPU support**: [Installation guide](https://www.tensorflow.org/xla/tutorials/compile)
+2. **NVIDIA CUDA Toolkit** (for NVIDIA GPUs): [Download here](https://developer.nvidia.com/cuda-downloads)
+3. **ROCm** (for AMD GPUs): [Installation guide](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
 
-### Step 2: Build SKaiNET with CUDA Support
+### Step 1: Generate StableHLO IR
 
 ```bash
-# Clone and build SKaiNET
-git clone https://github.com/skainetproject/skainet.git
-cd skainet
+# Build SKaiNET HLO compiler
+./gradlew :skainet-compile:skainet-compile-hlo:build
 
-# Build with CUDA backend (when available)
-./gradlew :skainet-backends:skainet-backend-cuda:build
-
-# Generate HLO for your model
+# Convert your model to StableHLO MLIR
 ./gradlew :skainet-compile:skainet-compile-hlo:generateHlo \
   -Pmodel=rgb2grayscale \
-  -Ptarget=cuda
+  -Poutput=rgb2grayscale.mlir
 ```
 
-### Step 3: Compile to GPU Executable
+### Step 2: Compile with XLA for Target Hardware
 
 ```bash
-# Use XLA to compile HLO to GPU code
+# Compile to GPU executable (NVIDIA CUDA)
 xla_compile \
-  --input_format=hlo \
+  --input_format=mlir \
   --output_format=executable \
   --platform=gpu \
-  --input_file=rgb2grayscale.hlo \
-  --output_file=rgb2grayscale.gpu
+  --gpu_backend=cuda \
+  --input_file=rgb2grayscale.mlir \
+  --output_file=rgb2grayscale_cuda.so
+
+# Compile to CPU executable  
+xla_compile \
+  --input_format=mlir \
+  --output_format=executable \
+  --platform=cpu \
+  --input_file=rgb2grayscale.mlir \
+  --output_file=rgb2grayscale_cpu.so
+
+# Compile to TPU executable
+xla_compile \
+  --input_format=mlir \
+  --output_format=executable \
+  --platform=tpu \
+  --input_file=rgb2grayscale.mlir \
+  --output_file=rgb2grayscale_tpu.so
 ```
 
-### Step 4: Deploy to Jetson
+### Step 3: Runtime Execution
 
 ```bash
-# Transfer to Jetson device
-scp rgb2grayscale.gpu jetson@192.168.1.100:~/models/
-
-# On Jetson: Run the model
-ssh jetson@192.168.1.100
-cd ~/models
-./skainet-runtime --model=rgb2grayscale.gpu --input=image.jpg --output=gray.jpg
+# Execute on target hardware using XLA runtime
+xla_run \
+  --executable=rgb2grayscale_cuda.so \
+  --input=image.jpg \
+  --output=gray.jpg \
+  --device=gpu:0
 ```
 
-### Performance Optimization for Jetson
+### Jetson and Edge Device Deployment
 
-```mermaid
-graph TD
-    A[Input Image<br/>1920x1080x3] --> B[Memory Transfer<br/>Host → Device]
-    B --> C[GPU Kernel<br/>Matrix Multiplication]
-    C --> D[Result Transfer<br/>Device → Host]
-    D --> E[Output Image<br/>1920x1080x1]
-    
-    subgraph "Jetson Optimizations"
-        F[Unified Memory]
-        G[CUDA Streams]
-        H[Tensor Cores]
-        I[Mixed Precision]
-    end
-    
-    F -.-> B
-    G -.-> C
-    H -.-> C
-    I -.-> C
-    
-    style C fill:#90caf9
-    style F fill:#c8e6c9
+For NVIDIA Jetson and other edge devices, the same MLIR → XLA compilation approach applies:
+
+```bash
+# Cross-compile for ARM64 with CUDA support
+xla_compile \
+  --input_format=mlir \
+  --output_format=executable \
+  --platform=gpu \
+  --gpu_backend=cuda \
+  --target_triple=aarch64-linux-gnu \
+  --input_file=rgb2grayscale.mlir \
+  --output_file=rgb2grayscale_jetson.so
+
+# Deploy to Jetson device
+scp rgb2grayscale_jetson.so jetson@192.168.1.100:~/models/
+
+# Execute on Jetson
+ssh jetson@192.168.1.100
+cd ~/models
+xla_run --executable=rgb2grayscale_jetson.so --device=gpu:0
 ```
 
 ## Advanced Topics
