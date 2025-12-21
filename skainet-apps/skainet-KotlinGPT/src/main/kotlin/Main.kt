@@ -1,13 +1,8 @@
 package de.jugda
 
-import sk.ainet.apps.knanogpt.data.BatchProvider
-import sk.ainet.apps.knanogpt.data.ResourcesDataProvider
-import de.jugda.knanogpt.core.tensor.TrainTestSplitter
-
-
 fun main() {
     // Step 1. Import ..
-
+/*
     // Step 2. Initialisierung-Block
     //how many independent sequences will we process in parallel?
     val batchSize = 4
@@ -48,5 +43,7 @@ fun main() {
             println("when input is $context the target: $target")
         }
     }
+
+ */
 }
 
