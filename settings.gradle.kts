@@ -57,6 +57,6 @@ include("skainet-models:skainet-model-yolo")
 
 
 // ====== APPS
-//include("skainet-apps:skainet-KGPChat")
+include("skainet-apps:skainet-KotlinGPT")
 include("skainet-apps:skainet-onnx-tools")
 include("skainet-apps:skainet-onnx-detect")
