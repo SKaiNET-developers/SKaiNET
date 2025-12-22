@@ -1,9 +1,7 @@
-package de.jugda.knanogpt.core
+package sk.ainet.apps.knanogpt
 
-import knanogpt.core.CharTokenizer
 import kotlin.test.Test
 import kotlin.test.assertEquals
-
 
 class CharTokenizerTest {
 

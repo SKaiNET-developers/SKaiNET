@@ -1,7 +1,5 @@
 package sk.ainet.apps.knanogpt.data
 
-import sk.ainet.apps.knanogpt.CharTokenizer
-import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 
