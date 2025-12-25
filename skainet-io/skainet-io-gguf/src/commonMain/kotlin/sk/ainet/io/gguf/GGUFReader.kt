@@ -133,7 +133,7 @@ class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
         offs = newOffs
         val newAlign = fields["general.alignment"]
         if (newAlign != null && newAlign.types == listOf(GGUFValueType.UINT32)) {
-            alignment = newAlign.parts.last()[0] as Int
+            alignment = (newAlign.parts.last()[0] as UInt).toInt()
         }
         val padding = offs % alignment
         if (padding != 0) {

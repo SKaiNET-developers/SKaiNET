@@ -74,13 +74,12 @@ class GGUFMinimalSampleTest {
                     GGMLQuantizationType.F32 -> ctx.fromFloatArray<FP32, Float>(shape, FP32::class, (raw as List<Float>).toFloatArray())
                     GGMLQuantizationType.I32 -> ctx.fromIntArray<Int32, Int>(shape, Int32::class, (raw as List<Int>).toIntArray())
                     GGMLQuantizationType.I8 -> ctx.fromByteArray<Int8, Byte>(shape, Int8::class, (raw as List<Byte>).toByteArray())
-                    GGMLQuantizationType.F16 -> {
-                        // FP16 raw storage is not supported by reader; we mapped to FP16 class as a placeholder.
-                        // As a minimal sample, store as bytes to keep the payload without decoding.
-                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, (raw as List<UByte>).toUByteArray().toByteArray())
+                    else -> {
+                        // All other quantized/native types: keep raw bytes as Int8 tensor for this minimal sample
+                        // We use a flat shape to match the byte count if it doesn't match the element count (e.g. for F16)
+                        val byteData = (raw as List<UByte>).toUByteArray().toByteArray()
+                        ctx.fromByteArray<Int8, Byte>(Shape(byteData.size), Int8::class, byteData)
                     }
-                    // All other quantized/native types: keep raw bytes as Int8 tensor for this minimal sample
-                    else -> ctx.fromByteArray<Int8, Byte>(shape, Int8::class, (raw as List<UByte>).toUByteArray().toByteArray())
                 }
                 created[rt.name] = dslTensor
             }
