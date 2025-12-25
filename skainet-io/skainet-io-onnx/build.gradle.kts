@@ -71,7 +71,7 @@ kotlin {
 }
 
 android {
-    namespace = "sk.ai.net.io.onnx"
+    namespace = "sk.ainet.io.onnx"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
