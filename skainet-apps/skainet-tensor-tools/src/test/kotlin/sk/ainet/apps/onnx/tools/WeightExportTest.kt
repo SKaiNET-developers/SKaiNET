@@ -4,6 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import onnx.TensorProto
 import pbandk.ByteArr
+import sk.ainet.apps.tools.params.extractValuesAsDoubles
+import sk.ainet.apps.tools.params.parameterKind
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
