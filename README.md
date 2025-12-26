@@ -85,8 +85,8 @@ println(ir.pretty())
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.5.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.5.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.5.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.5.1")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -97,7 +97,7 @@ dependencies {
 - In Kotlin Notebooks for quick exploration
 - With sample projects to learn patterns
 
-See also CHANGELOG for what’s new in 0.5.0.
+See also CHANGELOG for what’s new in 0.5.1.
 
 ## Quick start
 
@@ -112,15 +112,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.5.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.5.0")
-    
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.5.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.5.1")
+
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.5.0")
-    
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.5.1")
+
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.5.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.5.0")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.5.1")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.5.1")
 }
 ```
 
@@ -130,7 +130,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.5.0</version>
+  <version>0.5.1</version>
 </dependency>
 ```
 

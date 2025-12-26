@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.1] - 2025-12-26
+
+### Added
+- Common I/O abstraction with `ModelReader` and `TensorInfo` in `skainet-io-core` for unified model loading.
+- Efficient memory handling with non-copying `slice` views in `MemoryChunk`.
+- Unified `skainet-tensor-tools` CLI combining ONNX and GGUF utilities.
+- `OnnxStatsCli` tool for analyzing ONNX model parameters and structure.
+
+### Changed
+- Migrated project to `SKaiNET-developers` organization; updated repository URLs and deployment configurations.
+- Standardized artifact naming in documentation (e.g., `SKaiNET-lang-core`).
+- Improved `GGUFReader` with better alignment parsing and tensor data handling.
+- Optimized test infrastructure: increased heap size to 8GB for large model tests and added `ReadmeSnippetsTest` for documentation verification.
+
+### Removed
+- Legacy standalone applications and tools: `skainet-KGPChat`, `skainet-mnist`, and separate ONNX/GGUF tool modules.
+
 ## [0.5.0] - 2025-12-06
 
 ### Added
