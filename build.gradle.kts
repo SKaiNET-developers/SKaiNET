@@ -29,6 +29,10 @@ subprojects {
             jvmToolchain(21)
         }
     }
+
+    tasks.withType<Test>().configureEach {
+        maxHeapSize = "8192m"
+    }
 }
 
 kover {

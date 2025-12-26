@@ -71,27 +71,15 @@ class GGUFMinimalSampleTest {
                 // Create a DSL tensor according to dtype mapping
                 val shape = Shape(rt.shape.map { it.toInt() }.toIntArray())
                 val dslTensor: Any = when (rt.tensorType) {
-                    GGMLQuantizationType.F32 -> ctx.fromFloatArray<FP32, Float>(
-                        shape,
-                        FP32::class,
-                        raw.map { (it as Number).toFloat() }.toFloatArray()
-                    )
-                    GGMLQuantizationType.I32 -> ctx.fromIntArray<Int32, Int>(
-                        shape,
-                        Int32::class,
-                        raw.map { (it as Number).toInt() }.toIntArray()
-                    )
-                    GGMLQuantizationType.I8 -> ctx.fromByteArray<Int8, Byte>(
-                        shape,
-                        Int8::class,
-                        raw.map { (it as Number).toByte() }.toByteArray()
-                    )
-                    // All other quantized/native types: keep raw bytes as Int8 tensor for this minimal sample
-                    else -> ctx.fromByteArray<Int8, Byte>(
-                        shape,
-                        Int8::class,
-                        raw.map { (it as Number).toByte() }.toByteArray()
-                    )
+                    GGMLQuantizationType.F32 -> ctx.fromFloatArray<FP32, Float>(shape, FP32::class, (raw as List<Float>).toFloatArray())
+                    GGMLQuantizationType.I32 -> ctx.fromIntArray<Int32, Int>(shape, Int32::class, (raw as List<Int>).toIntArray())
+                    GGMLQuantizationType.I8 -> ctx.fromByteArray<Int8, Byte>(shape, Int8::class, (raw as List<Byte>).toByteArray())
+                    else -> {
+                        // All other quantized/native types: keep raw bytes as Int8 tensor for this minimal sample
+                        // We use a flat shape to match the byte count if it doesn't match the element count (e.g. for F16)
+                        val byteData = (raw as List<UByte>).toUByteArray().toByteArray()
+                        ctx.fromByteArray<Int8, Byte>(Shape(byteData.size), Int8::class, byteData)
+                    }
                 }
                 created[rt.name] = dslTensor
             }

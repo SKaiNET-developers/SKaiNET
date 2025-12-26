@@ -53,6 +53,7 @@ kotlin {
             dependencies {
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-compile:skainet-compile-dag"))
+                implementation(project(":skainet-io:skainet-io-core"))
                 implementation(libs.kotlinx.io.core)
                 implementation(libs.pbandk.runtime)
             }
@@ -71,7 +72,7 @@ kotlin {
 }
 
 android {
-    namespace = "sk.ai.net.io.onnx"
+    namespace = "sk.ainet.io.onnx"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
