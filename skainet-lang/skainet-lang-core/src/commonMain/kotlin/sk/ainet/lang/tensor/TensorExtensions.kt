@@ -34,6 +34,7 @@ public fun <T : DType, V> Tensor<T, V>.sigmoid(): Tensor<T, V> = ops.sigmoid(thi
 public fun <T : DType, V> Tensor<T, V>.silu(): Tensor<T, V> = ops.silu(this)
 public fun <T : DType, V> Tensor<T, V>.gelu(): Tensor<T, V> = ops.gelu(this)
 public fun <T : DType, V> Tensor<T, V>.softmax(dim: Int = -1): Tensor<T, V> = ops.softmax(this, dim)
+public fun <T : DType, V> Tensor<T, V>.logSoftmax(dim: Int = -1): Tensor<T, V> = ops.logSoftmax(this, dim)
 public fun <T : DType, V> Tensor<T, V>.sum(dim: Int? = null): Tensor<T, V> = ops.sum(this, dim)
 public fun <T : DType, V> Tensor<T, V>.mean(dim: Int? = null): Tensor<T, V> = ops.mean(this, dim)
 public fun <T : DType, V> Tensor<T, V>.variance(dim: Int? = null): Tensor<T, V> = ops.variance(this, dim)

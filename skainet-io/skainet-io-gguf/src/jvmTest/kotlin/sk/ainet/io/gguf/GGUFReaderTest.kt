@@ -54,12 +54,13 @@ class GGUFReaderTest {
             val maxKeyLength = reader.fields.keys.maxOf { it.length }
             for ((key, field) in reader.fields) {
                 val value = if (field.types[0] == GGUFValueType.STRING && field.types.size == 1) {
-                    String(
-                        (field.parts[field.data[0]] as List<UByte>).toUByteArray().toByteArray(),
-                        Charsets.UTF_8
-                    )
+                    val idx = field.data.firstOrNull() ?: -1
+                    val part = field.parts.getOrNull(idx)
+                    val bytes = (part as? List<*>)?.mapNotNull { (it as? Number)?.toInt()?.toByte() }?.toByteArray()
+                    bytes?.let { String(it, Charsets.UTF_8) } ?: part ?: ""
                 } else {
-                    field.parts[field.data[0]]
+                    val idx = field.data.firstOrNull()?.takeIf { it >= 0 && it < field.parts.size }
+                    if (idx != null) field.parts[idx] else field.parts
                 }
 
                 println("${key.padEnd(maxKeyLength)} : $value")

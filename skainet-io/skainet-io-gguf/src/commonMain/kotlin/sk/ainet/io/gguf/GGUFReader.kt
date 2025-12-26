@@ -5,6 +5,7 @@ import kotlinx.io.readByteArray
 import sk.ainet.io.gguf.utils.Endian
 import sk.ainet.io.gguf.utils.numberOfBytes
 import sk.ainet.io.gguf.utils.readDataByType
+import kotlin.math.pow
 import kotlin.reflect.KClass
 
 /**
@@ -51,7 +52,12 @@ data class FieldParts(
 )
 
 @OptIn(ExperimentalUnsignedTypes::class)
-class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
+class GGUFReader(
+    source: Source,
+    private val loadTensorData: Boolean = true,
+    decodeF16ToFloat: Boolean = true,
+    decodeBF16ToFloat: Boolean = true
+) {
     // Public API additions
     /**
      * Lazily materialize the raw payload for the given tensor, honoring its ggml quantization.
@@ -71,6 +77,10 @@ class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
     var dataOffset: Int = 0
     val fields: LinkedHashMap<String, ReaderField> = linkedMapOf()
     var tensors: MutableList<ReaderTensor> = mutableListOf()
+    /** Toggle decoding of F16 payloads into Float values; if false, preserves UShort raw words. */
+    var decodeF16ToFloat: Boolean = decodeF16ToFloat
+    /** Toggle decoding of BF16 payloads into Float values; if false, preserves UShort raw words. */
+    var decodeBF16ToFloat: Boolean = decodeBF16ToFloat
 
     private val data: ByteArray
     private var offs = 0
@@ -115,8 +125,12 @@ class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
         nBytes: Int
     ): List<Any> {
         return when (ggmlType) {
-            // Return raw bytes for F16 to avoid platform float16 issues
-            GGMLQuantizationType.F16 -> data.readDataByType<UByte>(dataOffs, nElems * 2)
+            GGMLQuantizationType.F16 -> data.readDataByType<UShort>(dataOffs, nElems).let { halfs ->
+                if (decodeF16ToFloat) halfs.map { halfToFloat(it) } else halfs
+            }
+            GGMLQuantizationType.BF16 -> data.readDataByType<UShort>(dataOffs, nElems).let { bf16s ->
+                if (decodeBF16ToFloat) bf16s.map { bfloat16ToFloat(it) } else bf16s
+            }
             GGMLQuantizationType.F32 -> data.readDataByType<Float>(dataOffs, nElems)
             GGMLQuantizationType.F64 -> data.readDataByType<Double>(dataOffs, nElems)
             GGMLQuantizationType.I8 -> data.readDataByType<Byte>(dataOffs, nElems)
@@ -205,6 +219,17 @@ class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
             fields[field.name] = field
         }
         return if (skipSum) 0 else field.parts.sumOf { it.numberOfBytes() }
+    }
+
+    private inline fun <reified T> ReaderField.partAs(index: Int): List<T> {
+        val part = parts.getOrNull(index)
+            ?: throw IllegalArgumentException("Expected part at index $index for field '$name'")
+        return part.mapIndexed { idx, value ->
+            require(value is T) {
+                "Unexpected type in field '$name' part $index at element $idx: ${value::class}, expected ${T::class}"
+            }
+            value
+        }
     }
 
     private fun getStr(offset: Int): Pair<List<ULong>, List<UByte>> {
@@ -364,12 +389,12 @@ class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
         val tensorNames = mutableSetOf<String>() // keep track of names to prevent duplicate tensors
 
         for (field in fields) {
-            val _nameLen = field.parts[0] as List<ULong>
-            val nameData = field.parts[1] as List<UByte>
-            val _nDims = field.parts[2] as List<UInt>
-            val dims = field.parts[3] as List<ULong>
-            val rawDtype = field.parts[4] as List<UInt>
-            val offsetTensor = field.parts[5] as List<ULong>
+            val _nameLen = field.partAs<ULong>(0)
+            val nameData = field.partAs<UByte>(1)
+            val _nDims = field.partAs<UInt>(2)
+            val dims = field.partAs<ULong>(3)
+            val rawDtype = field.partAs<UInt>(4)
+            val offsetTensor = field.partAs<ULong>(5)
 
             val tensorName: String = nameData.toUByteArray().toByteArray().decodeToString()
             if (tensorNames.contains(tensorName)) {
@@ -424,5 +449,23 @@ class GGUFReader(source: Source, private val loadTensorData: Boolean = true) {
             )
         }
         this.tensors = tensors
+    }
+
+    private fun halfToFloat(bits: UShort): Float {
+        val sign = (bits.toInt() shr 15) and 0x1
+        val exp = (bits.toInt() shr 10) and 0x1F
+        val mant = bits.toInt() and 0x3FF
+
+        val value = when (exp) {
+            0 -> mant * 2.0.pow(-24.0)
+            31 -> if (mant == 0) Double.POSITIVE_INFINITY else Double.NaN
+            else -> (1 + mant / 1024.0) * 2.0.pow(exp - 15)
+        }
+        return if (sign == 1) (-value).toFloat() else value.toFloat()
+    }
+
+    private fun bfloat16ToFloat(bits: UShort): Float {
+        val shifted = bits.toInt() shl 16
+        return Float.fromBits(shifted)
     }
 }
