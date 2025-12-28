@@ -1,0 +1,148 @@
+package sk.ainet.compile.c.templates
+
+import sk.ainet.compile.c.LayerCode
+import sk.ainet.compile.c.WeightArray
+
+/**
+ * Template for generating C99-compatible source files for Arduino neural network inference.
+ * 
+ * This object generates source files that contain static const float arrays for weights/biases,
+ * the inference function implementation, and ping-pong buffer memory management.
+ */
+public object SourceTemplate {
+    
+    /**
+     * Generates a C99-compatible source file for Arduino neural network inference.
+     * 
+     * @param libraryName Name of the Arduino library (used for function names and includes)
+     * @param layers List of layer code fragments to include in the inference function
+     * @param weights List of weight and bias arrays to serialize as static const arrays
+     * @return Generated C source file content as a string
+     */
+    public fun generate(
+        libraryName: String,
+        layers: List<LayerCode>,
+        weights: List<WeightArray>
+    ): String {
+        require(libraryName.isNotBlank()) { "libraryName cannot be blank" }
+        require(layers.isNotEmpty()) { "layers cannot be empty" }
+        require(weights.isNotEmpty()) { "weights cannot be empty" }
+        
+        val functionName = "${libraryName.lowercase()}_inference"
+        val headerName = "${libraryName.lowercase()}.h"
+        
+        return buildString {
+            // Include headers
+            appendLine("#include \"$headerName\"")
+            appendLine("#include <math.h>")
+            appendLine("#include <string.h>")
+            appendLine()
+            
+            // Generate static const weight arrays
+            appendLine("/* Static Weight and Bias Arrays */")
+            weights.forEach { weightArray ->
+                generateWeightArray(weightArray)
+                appendLine()
+            }
+            
+            // Generate ping-pong buffer declarations
+            appendLine("/* Ping-Pong Buffers for Intermediate Results */")
+            val maxIntermediateSize = layers.maxOfOrNull { layer ->
+                layer.outputShape.reduce { acc, dim -> acc * dim }
+            } ?: 0
+            appendLine("static float buffer_a[$maxIntermediateSize];")
+            appendLine("static float buffer_b[$maxIntermediateSize];")
+            appendLine()
+            
+            // Generate inference function
+            appendLine("/* Inference Function Implementation */")
+            appendLine("int ${functionName}(const float* input, float* output) {")
+            appendLine("    if (input == NULL || output == NULL) {")
+            appendLine("        return -1; /* Invalid input parameters */")
+            appendLine("    }")
+            appendLine()
+            
+            // Generate layer-by-layer inference code
+            appendLine("    /* Layer-by-layer inference */")
+            generateInferenceBody(layers)
+            
+            appendLine("    return 0; /* Success */")
+            appendLine("}")
+        }
+    }
+    
+    /**
+     * Generates a static const float array declaration for weights or biases.
+     */
+    private fun StringBuilder.generateWeightArray(weightArray: WeightArray) {
+        val arrayType = if (weightArray.isWeight) "weights" else "biases"
+        appendLine("static const float ${weightArray.name}[] = {")
+        
+        // Format values with proper indentation and line breaks
+        val valuesPerLine = 8
+        val valuesList = weightArray.values.toList()
+        val chunks = valuesList.chunked(valuesPerLine)
+        chunks.forEach { chunk ->
+            val formattedValues = chunk.joinToString(", ") { value: Float ->
+                when {
+                    value.isNaN() -> "NAN"
+                    value.isInfinite() && value > 0.0f -> "INFINITY"
+                    value.isInfinite() && value < 0.0f -> "-INFINITY"
+                    else -> "${value}f"
+                }
+            }
+            appendLine("    $formattedValues${if (chunk == chunks.last()) "" else ","}")
+        }
+        
+        appendLine("};")
+        appendLine("/* Shape: ${weightArray.shape.joinToString(" x ")} */")
+    }
+    
+    /**
+     * Generates the main inference function body with ping-pong buffer management.
+     */
+    private fun StringBuilder.generateInferenceBody(layers: List<LayerCode>) {
+        var currentInput = "input"
+        var currentOutput = "buffer_a"
+        var bufferToggle = true
+        
+        layers.forEachIndexed { index, layer ->
+            appendLine("    /* Layer ${index + 1}: ${layer.layerName} (${layer.operationType}) */")
+            
+            // Determine input and output buffers
+            when (index) {
+                0 -> {
+                    // First layer: input -> buffer_a
+                    currentInput = "input"
+                    currentOutput = "buffer_a"
+                }
+                layers.size - 1 -> {
+                    // Last layer: current_buffer -> output
+                    currentInput = if (bufferToggle) "buffer_a" else "buffer_b"
+                    currentOutput = "output"
+                }
+                else -> {
+                    // Middle layers: ping-pong between buffers
+                    currentInput = if (bufferToggle) "buffer_a" else "buffer_b"
+                    currentOutput = if (bufferToggle) "buffer_b" else "buffer_a"
+                    bufferToggle = !bufferToggle
+                }
+            }
+            
+            // Generate layer-specific code with buffer management
+            val layerCode = layer.codeFragment
+                .replace("\${input}", currentInput)
+                .replace("\${output}", currentOutput)
+                .replace("\${input_size}", layer.inputShape.reduce { acc, dim -> acc * dim }.toString())
+                .replace("\${output_size}", layer.outputShape.reduce { acc, dim -> acc * dim }.toString())
+            
+            // Add proper indentation to layer code
+            layerCode.lines().forEach { line ->
+                if (line.isNotBlank()) {
+                    appendLine("    $line")
+                }
+            }
+            appendLine()
+        }
+    }
+}
