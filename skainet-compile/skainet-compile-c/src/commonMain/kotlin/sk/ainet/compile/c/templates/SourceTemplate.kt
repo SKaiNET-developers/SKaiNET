@@ -105,7 +105,13 @@ public object SourceTemplate {
                     }
                 }
             }
-            appendLine("    $formattedValues${if (chunk == chunks.last()) "" else ","}")
+            append("    $formattedValues")
+            if (chunk != chunks.last()) {
+                append(",")
+            } else {
+                // No comma after the last chunk
+            }
+            appendLine()
         }
         
         appendLine("};")

@@ -7,7 +7,7 @@ import sk.ainet.lang.graph.exec.GraphExecutionContext
 import sk.ainet.lang.trace.CompositeSink
 import sk.ainet.lang.trace.NoOpSink
 import sk.ainet.lang.trace.OpSink
-import sk.ainet.lang.trace.TracingTensorOps
+import sk.ainet.lang.tensor.ops.KspTensorOps
 import sk.ainet.lang.trace.TapeSink
 import sk.ainet.lang.nn.hooks.ForwardHooks
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
@@ -62,13 +62,16 @@ public class DefaultGraphExecutionContext(
     override val ops: TensorOps
         get() {
             // Compose sinks: base sink (could itself be a Composite) + optional TapeSink for current tape
-            val dynamicSink: OpSink = currentTape?.let {
+            val tape = currentTape
+            val dynamicSink: OpSink = tape?.let {
                 // Only attach TapeSink when we have a DefaultExecutionTape and recording is on
                 if (it.isRecording && it is DefaultExecutionTape) CompositeSink(listOf(baseSink, TapeSink(it))) else baseSink
             } ?: baseSink
 
-            // Always expose TracingTensorOps to avoid branching in hot path
-            return TracingTensorOps(baseOps, dynamicSink)
+            // Always expose KspTensorOps to avoid branching in hot path
+            // If we have a DefaultExecutionTape, use its session for stability (FR7)
+            val session = (tape as? DefaultExecutionTape)?.session ?: sk.ainet.lang.trace.TraceSession()
+            return KspTensorOps(baseOps, dynamicSink, session)
         }
 
     /** Convenience helper to record within a block and return the produced tape (and keep existing graph). */

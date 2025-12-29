@@ -32,6 +32,36 @@ public class MinimalAddTensorOps : TensorOps {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : DType, V> subtract(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        require(a.shape == b.shape) { "MinimalAddTensorOps supports only same-shaped tensors" }
+        return if (a.dtype == FP32::class) {
+            val outData = dataFactory.init<T, V>(a.shape, a.dtype) { idx ->
+                val av = a.data.get(*idx) as Float
+                val bv = b.data.get(*idx) as Float
+                (av - bv) as V
+            }
+            sk.ainet.lang.tensor.VoidOpsTensor(outData, a.dtype)
+        } else {
+            delegate.subtract(a, b)
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : DType, V> multiply(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        require(a.shape == b.shape) { "MinimalAddTensorOps supports only same-shaped tensors" }
+        return if (a.dtype == FP32::class) {
+            val outData = dataFactory.init<T, V>(a.shape, a.dtype) { idx ->
+                val av = a.data.get(*idx) as Float
+                val bv = b.data.get(*idx) as Float
+                (av * bv) as V
+            }
+            sk.ainet.lang.tensor.VoidOpsTensor(outData, a.dtype)
+        } else {
+            delegate.multiply(a, b)
+        }
+    }
+
     // Delegate all remaining operations to VoidTensorOps
     override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = delegate.addScalar(a, b)
     override fun <T : DType, V> subScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = delegate.subScalar(a, b)
@@ -39,8 +69,6 @@ public class MinimalAddTensorOps : TensorOps {
     override fun <T : DType, V> divScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = delegate.divScalar(a, b)
     override fun <T : DType, V> rsubScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> = delegate.rsubScalar(a, b)
     override fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> = delegate.rdivScalar(a, b)
-    override fun <T : DType, V> subtract(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = delegate.subtract(a, b)
-    override fun <T : DType, V> multiply(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = delegate.multiply(a, b)
     override fun <T : DType, V> divide(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = delegate.divide(a, b)
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = delegate.matmul(a, b)
     override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> = delegate.transpose(tensor)

@@ -30,6 +30,7 @@ kotlin {
                 implementation(kotlin("test-junit"))
                 implementation(libs.kotlin.compile.testing)
                 implementation(libs.kotlin.compile.testing.ksp)
+                implementation(project(":skainet-lang:skainet-lang-core"))
             }
             kotlin.srcDir("src/test/kotlin")
             resources.srcDir("src/test/resources")

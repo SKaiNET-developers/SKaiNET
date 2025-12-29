@@ -6,6 +6,7 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
 import sk.ainet.lang.trace.TraceToGraphBuilder
+import sk.ainet.lang.trace.TraceSession
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
@@ -20,6 +21,9 @@ public open class DefaultExecutionTape() : ExecutionTape {
     protected val _operations: MutableList<RecordedOperation> = mutableListOf()
     protected var _operationCounter: Long = 0L
     protected val _traces: MutableList<OpTrace> = mutableListOf()
+    
+    /** Persistent session to ensure stable TensorRefs across traces on this tape. */
+    public val session: TraceSession = TraceSession()
 
     override val isRecording: Boolean get() = _isRecording
     override val operations: List<RecordedOperation> get() = _operations.toList()

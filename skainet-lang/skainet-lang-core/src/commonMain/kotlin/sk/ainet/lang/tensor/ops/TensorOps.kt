@@ -3,8 +3,9 @@ package sk.ainet.lang.tensor.ops
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.trace.GenerateTracingWrapper
 
-
+@GenerateTracingWrapper
 public interface TensorOps {
     // Basic mathematical operations
     public fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>

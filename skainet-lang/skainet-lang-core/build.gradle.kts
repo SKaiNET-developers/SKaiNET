@@ -51,6 +51,7 @@ kotlin {
 }
 
 dependencies {
+    // KSP processor for generating tracing wrappers
     add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
     add("kspJvm", project(":skainet-lang:skainet-lang-ksp-processor"))
     add("kspAndroid", project(":skainet-lang:skainet-lang-ksp-processor"))

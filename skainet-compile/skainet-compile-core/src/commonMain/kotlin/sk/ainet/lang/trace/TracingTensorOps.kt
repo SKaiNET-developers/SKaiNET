@@ -7,9 +7,15 @@ import sk.ainet.lang.tensor.ops.UpsampleMode
 import sk.ainet.lang.types.DType
 
 /**
- * TracingTensorOps is a lightweight decorator over TensorOps that emits an OpTrace
- * for each executed op. In Phase 1, we implement tracing for a small subset (add, relu)
- * and delegate the rest directly to the base ops without tracing.
+ * TracingTensorOps - Generated tracing wrapper for TensorOps interface.
+ * 
+ * This is a temporary implementation that will be replaced by the actual KSP-generated code
+ * once the build issues are resolved. It provides the same interface and behavior as the
+ * expected generated class (KspTensorOps).
+ * 
+ * The class accepts base implementation, OpSink, and TraceSession as constructor
+ * parameters and delegates all method calls to the base implementation while emitting
+ * OpTrace events for computation graph recording.
  */
 public class TracingTensorOps(
     private val base: TensorOps,
@@ -17,35 +23,105 @@ public class TracingTensorOps(
     private val session: TraceSession = TraceSession()
 ) : TensorOps {
 
+    private fun <T : DType, V> wrap(tensor: Tensor<T, V>): Tensor<T, V> {
+        if (tensor.ops === this) return tensor
+        return object : Tensor<T, V> by tensor {
+            override val ops: TensorOps get() = this@TracingTensorOps
+            override fun toString(): String = tensor.toString()
+        }
+    }
+
     // ---- Binary ops ----
     override fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         val out = base.add(a, b)
-        // Build and emit trace
         val inputs = listOf(session.refOf(a), session.refOf(b))
         val outputs = listOf(session.refOf(out))
         val attrs = OpAttributeFactory.binary(a, b, out)
         sink.onOpExecuted(OpTrace(opType = "add", inputs = inputs, outputs = outputs, attributes = attrs))
-        return out
+        return wrap(out)
     }
 
-    override fun <T : DType, V> subtract(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = base.subtract(a, b)
+    override fun <T : DType, V> subtract(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.subtract(a, b)
+        val inputs = listOf(session.refOf(a), session.refOf(b))
+        val outputs = listOf(session.refOf(out))
+        val attrs = OpAttributeFactory.binary(a, b, out)
+        sink.onOpExecuted(OpTrace(opType = "subtract", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
+
     override fun <T : DType, V> multiply(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         val out = base.multiply(a, b)
         val inputs = listOf(session.refOf(a), session.refOf(b))
         val outputs = listOf(session.refOf(out))
         val attrs = OpAttributeFactory.binary(a, b, out)
         sink.onOpExecuted(OpTrace(opType = "multiply", inputs = inputs, outputs = outputs, attributes = attrs))
-        return out
+        return wrap(out)
     }
-    override fun <T : DType, V> divide(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = base.divide(a, b)
+
+    override fun <T : DType, V> divide(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.divide(a, b)
+        val inputs = listOf(session.refOf(a), session.refOf(b))
+        val outputs = listOf(session.refOf(out))
+        val attrs = OpAttributeFactory.binary(a, b, out)
+        sink.onOpExecuted(OpTrace(opType = "divide", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
 
     // ---- Scalar ops ----
-    override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = base.addScalar(a, b)
-    override fun <T : DType, V> subScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = base.subScalar(a, b)
-    override fun <T : DType, V> mulScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = base.mulScalar(a, b)
-    override fun <T : DType, V> divScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> = base.divScalar(a, b)
-    override fun <T : DType, V> rsubScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> = base.rsubScalar(a, b)
-    override fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> = base.rdivScalar(a, b)
+    override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val out = base.addScalar(a, b)
+        val inputs = listOf(session.refOf(a))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf("scalar" to b, "inputShape" to a.shape.dimensions.toList(), "outputShape" to out.shape.dimensions.toList())
+        sink.onOpExecuted(OpTrace(opType = "addScalar", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
+
+    override fun <T : DType, V> subScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val out = base.subScalar(a, b)
+        val inputs = listOf(session.refOf(a))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf("scalar" to b, "inputShape" to a.shape.dimensions.toList(), "outputShape" to out.shape.dimensions.toList())
+        sink.onOpExecuted(OpTrace(opType = "subScalar", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
+
+    override fun <T : DType, V> mulScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val out = base.mulScalar(a, b)
+        val inputs = listOf(session.refOf(a))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf("scalar" to b, "inputShape" to a.shape.dimensions.toList(), "outputShape" to out.shape.dimensions.toList())
+        sink.onOpExecuted(OpTrace(opType = "mulScalar", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
+
+    override fun <T : DType, V> divScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val out = base.divScalar(a, b)
+        val inputs = listOf(session.refOf(a))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf("scalar" to b, "inputShape" to a.shape.dimensions.toList(), "outputShape" to out.shape.dimensions.toList())
+        sink.onOpExecuted(OpTrace(opType = "divScalar", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
+
+    override fun <T : DType, V> rsubScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.rsubScalar(a, b)
+        val inputs = listOf(session.refOf(b))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf("scalar" to a, "inputShape" to b.shape.dimensions.toList(), "outputShape" to out.shape.dimensions.toList())
+        sink.onOpExecuted(OpTrace(opType = "rsubScalar", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
+
+    override fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.rdivScalar(a, b)
+        val inputs = listOf(session.refOf(b))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf("scalar" to a, "inputShape" to b.shape.dimensions.toList(), "outputShape" to out.shape.dimensions.toList())
+        sink.onOpExecuted(OpTrace(opType = "rdivScalar", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
 
     // ---- Linear algebra ----
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
@@ -54,9 +130,17 @@ public class TracingTensorOps(
         val outputs = listOf(session.refOf(out))
         val attrs = OpAttributeFactory.binary(a, b, out) + mapOf("op" to "matmul")
         sink.onOpExecuted(OpTrace(opType = "matmul", inputs = inputs, outputs = outputs, attributes = attrs))
-        return out
+        return wrap(out)
     }
-    override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> = base.transpose(tensor)
+
+    override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
+        val out = base.transpose(tensor)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = OpAttributeFactory.unary(tensor, out)
+        sink.onOpExecuted(OpTrace(opType = "transpose", inputs = inputs, outputs = outputs, attributes = attrs))
+        return wrap(out)
+    }
 
     // ---- Convolutional ----
     override fun <T : DType, V> conv2d(
@@ -88,15 +172,16 @@ public class TracingTensorOps(
         padding: Pair<Int, Int>
     ): Tensor<T, V> {
         val out = base.maxPool2d(input, kernelSize, stride, padding)
-        val attrs = mapOf("kernel" to kernelSize, "stride" to stride, "padding" to padding)
-        sink.onOpExecuted(
-            OpTrace(
-                opType = "maxPool2d",
-                inputs = listOf(session.refOf(input)),
-                outputs = listOf(session.refOf(out)),
-                attributes = attrs
-            )
+        val inputs = listOf(session.refOf(input))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "kernelSize" to listOf(kernelSize.first, kernelSize.second),
+            "stride" to listOf(stride.first, stride.second),
+            "padding" to listOf(padding.first, padding.second),
+            "inputShape" to input.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
         )
+        sink.onOpExecuted(OpTrace(opType = "maxPool2d", inputs = inputs, outputs = outputs, attributes = attrs))
         return out
     }
 
@@ -119,19 +204,85 @@ public class TracingTensorOps(
     }
 
     // ---- Shape ops ----
-    override fun <T : DType, V> reshape(tensor: Tensor<T, V>, newShape: Shape): Tensor<T, V> = base.reshape(tensor, newShape)
-    override fun <T : DType, V> flatten(tensor: Tensor<T, V>, startDim: Int, endDim: Int): Tensor<T, V> = base.flatten(tensor, startDim, endDim)
+    override fun <T : DType, V> reshape(tensor: Tensor<T, V>, newShape: Shape): Tensor<T, V> {
+        val out = base.reshape(tensor, newShape)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to newShape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "reshape", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
+    override fun <T : DType, V> flatten(tensor: Tensor<T, V>, startDim: Int, endDim: Int): Tensor<T, V> {
+        val out = base.flatten(tensor, startDim, endDim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "startDim" to startDim,
+            "endDim" to endDim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "flatten", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
     override fun <T : DType, V> concat(tensors: List<Tensor<T, V>>, dim: Int): Tensor<T, V> {
         val out = base.concat(tensors, dim)
         val inputs = tensors.map { session.refOf(it) }
         val outputs = listOf(session.refOf(out))
-        val attrs = mapOf("dim" to dim, "count" to tensors.size)
+        val attrs = mapOf(
+            "dim" to dim,
+            "count" to tensors.size,
+            "inputShapes" to tensors.map { it.shape.dimensions.toList() },
+            "outputShape" to out.shape.dimensions.toList()
+        )
         sink.onOpExecuted(OpTrace(opType = "concat", inputs = inputs, outputs = outputs, attributes = attrs))
         return out
     }
-    override fun <T : DType, V> split(tensor: Tensor<T, V>, splitSize: Int, dim: Int): List<Tensor<T, V>> = base.split(tensor, splitSize, dim)
-    override fun <T : DType, V> squeeze(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.squeeze(tensor, dim)
-    override fun <T : DType, V> unsqueeze(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> = base.unsqueeze(tensor, dim)
+
+    override fun <T : DType, V> split(tensor: Tensor<T, V>, splitSize: Int, dim: Int): List<Tensor<T, V>> {
+        val out = base.split(tensor, splitSize, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = out.map { session.refOf(it) }
+        val attrs = mapOf(
+            "splitSize" to splitSize,
+            "dim" to dim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShapes" to out.map { it.shape.dimensions.toList() }
+        )
+        sink.onOpExecuted(OpTrace(opType = "split", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
+    override fun <T : DType, V> squeeze(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
+        val out = base.squeeze(tensor, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "dim" to dim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "squeeze", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
+    override fun <T : DType, V> unsqueeze(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val out = base.unsqueeze(tensor, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "dim" to dim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "unsqueeze", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
 
     // ---- Activations ----
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
@@ -178,27 +329,95 @@ public class TracingTensorOps(
         sink.onOpExecuted(OpTrace(opType = "sigmoid", inputs = inputs, outputs = outputs, attributes = attrs))
         return out
     }
-    override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> = base.gelu(tensor)
+
+    override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> {
+        val out = base.gelu(tensor)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = OpAttributeFactory.unary(tensor, out)
+        sink.onOpExecuted(OpTrace(opType = "gelu", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
 
     // ---- Reductions ----
-    override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.sum(tensor, dim)
-    override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.mean(tensor, dim)
-    override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.variance(tensor, dim)
+    override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
+        val out = base.sum(tensor, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "dim" to dim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "sum", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
+    override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
+        val out = base.mean(tensor, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "dim" to dim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "mean", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
+
+    override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
+        val out = base.variance(tensor, dim)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "dim" to dim,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "variance", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
 
     // ---- Math ----
-    override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> = base.sqrt(tensor)
+    override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> {
+        val out = base.sqrt(tensor)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = OpAttributeFactory.unary(tensor, out)
+        sink.onOpExecuted(OpTrace(opType = "sqrt", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
 
     // ---- Matrix utils ----
-    override fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int): Tensor<T, V> = base.tril(tensor, k)
+    override fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int): Tensor<T, V> {
+        val out = base.tril(tensor, k)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "k" to k,
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "tril", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
 
     // ---- Type conversion ----
     override fun <TFrom : DType, TTo : DType, V> convert(
         tensor: Tensor<TFrom, V>,
         targetType: TTo
-    ): Tensor<TTo, V> = base.convert(tensor, targetType)
-
-    // Extension point notes:
-    // - To add tracing for other ops (e.g., multiply, sigmoid, matmul, conv2d),
-    //   follow the same pattern: delegate to base, then build TensorRefs via session,
-    //   derive attributes using OpAttributeFactory (or op-specific attributes), and sink.onOpExecuted(...).
+    ): Tensor<TTo, V> {
+        val out = base.convert(tensor, targetType)
+        val inputs = listOf(session.refOf(tensor))
+        val outputs = listOf(session.refOf(out))
+        val attrs = mapOf(
+            "fromType" to tensor.dtype.toString(),
+            "toType" to targetType.toString(),
+            "inputShape" to tensor.shape.dimensions.toList(),
+            "outputShape" to out.shape.dimensions.toList()
+        )
+        sink.onOpExecuted(OpTrace(opType = "convert", inputs = inputs, outputs = outputs, attributes = attrs))
+        return out
+    }
 }
