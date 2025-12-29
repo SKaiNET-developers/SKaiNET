@@ -4,10 +4,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import sk.ainet.exec.tensor.ops.DefaultCpuOps
 import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.graph.DefaultExecutionTape
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
-import sk.ainet.lang.graph.MinimalAddTensorOps
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
@@ -27,7 +27,7 @@ class TracingAcceptanceTest {
     // 7.1 Unit test: eager-only run yields correct numeric results and no traces/graph changes.
     @Test
     fun eagerOnly_addProducesCorrectResult_noRecordingArtifacts() {
-        val ctx = DefaultGraphExecutionContext.eager(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.eager(DefaultCpuOps(dataFactory))
         val ops = ctx.ops
         val a = ones(Shape(intArrayOf(1)))
         val b = ones(Shape(intArrayOf(1)))
@@ -45,7 +45,7 @@ class TracingAcceptanceTest {
     // 7.2 Unit test: tape-only captures unary and binary ops; tape non-empty.
     @Test
     fun tapeOnly_capturesAddAndRelu_tracesNonEmpty() {
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         ctx.startRecording()
         val ops = ctx.ops
         val a = ones(Shape(intArrayOf(1)))
@@ -69,7 +69,7 @@ class TracingAcceptanceTest {
     @Test
     fun graphOnly_buildsNodesAndEdges_validatePasses() {
         val graph = DefaultComputeGraph()
-        val ctx = DefaultGraphExecutionContext.graph(MinimalAddTensorOps(), graph)
+        val ctx = DefaultGraphExecutionContext.graph(DefaultCpuOps(dataFactory), graph)
         val ops = ctx.ops
         val a = ones(Shape(intArrayOf(1)))
         val b = ones(Shape(intArrayOf(1)))
@@ -90,7 +90,7 @@ class TracingAcceptanceTest {
     @Test
     fun composite_tapeAndGraph_offlineEqualsOnlineModuloIds() {
         val graph = DefaultComputeGraph()
-        val ctx = DefaultGraphExecutionContext.tapeAndGraph(MinimalAddTensorOps(), graph)
+        val ctx = DefaultGraphExecutionContext.tapeAndGraph(DefaultCpuOps(dataFactory), graph)
 
         ctx.startRecording()
         val ops = ctx.ops
@@ -117,7 +117,7 @@ class TracingAcceptanceTest {
     @Test
     fun smoke_recordBlock_addRelu_nodeTypesAndEdgeCount() {
         val graph = DefaultComputeGraph()
-        val ctx = DefaultGraphExecutionContext.tapeAndGraph(MinimalAddTensorOps(), graph)
+        val ctx = DefaultGraphExecutionContext.tapeAndGraph(DefaultCpuOps(dataFactory), graph)
 
         val (tape, _) = ctx.record {
             val ops = this.ops

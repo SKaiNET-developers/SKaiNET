@@ -4,10 +4,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import sk.ainet.exec.tensor.ops.DefaultCpuOps
 import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.graph.DefaultExecutionTape
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
-import sk.ainet.lang.graph.MinimalAddTensorOps
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
@@ -34,7 +34,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_isUsedByDefaultGraphExecutionContext() {
         // Test that DefaultGraphExecutionContext now uses TracingTensorOps instead of manual TracingTensorOps
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         ctx.startRecording()
         
         val ops = ctx.ops
@@ -48,7 +48,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_delegatesCorrectlyToBaseImplementation() {
         // Test that TracingTensorOps properly delegates to base implementation
-        val ctx = DefaultGraphExecutionContext.eager(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.eager(DefaultCpuOps(dataFactory))
         val ops = ctx.ops
         
         val a = ones(Shape(intArrayOf(2, 2)))
@@ -68,7 +68,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_emitsOpTracesCorrectly() {
         // Test that TracingTensorOps emits OpTrace events correctly
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         ctx.startRecording()
         val ops = ctx.ops
         
@@ -103,7 +103,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_handlesMultiOutputOperations() {
         // Test that TracingTensorOps correctly handles operations that return multiple tensors
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         ctx.startRecording()
         val ops = ctx.ops
         
@@ -129,7 +129,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_handlesScalarOperations() {
         // Test that TracingTensorOps correctly handles scalar operations
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         ctx.startRecording()
         val ops = ctx.ops
         
@@ -156,7 +156,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_handlesShapeOperations() {
         // Test that TracingTensorOps correctly handles shape manipulation operations
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         ctx.startRecording()
         val ops = ctx.ops
         
@@ -185,7 +185,7 @@ class KspTracingIntegrationTest {
     fun kspTracingTensorOps_compatibleWithExistingTracingInfrastructure() {
         // Test that TracingTensorOps works with existing tracing infrastructure (graphs, composite sinks)
         val graph = DefaultComputeGraph()
-        val ctx = DefaultGraphExecutionContext.tapeAndGraph(MinimalAddTensorOps(), graph)
+        val ctx = DefaultGraphExecutionContext.tapeAndGraph(DefaultCpuOps(dataFactory), graph)
         
         ctx.startRecording()
         val ops = ctx.ops
@@ -211,7 +211,7 @@ class KspTracingIntegrationTest {
     @Test
     fun kspTracingTensorOps_maintainsBackwardCompatibility() {
         // Test that switching from TracingTensorOps to TracingTensorOps maintains backward compatibility
-        val ctx = DefaultGraphExecutionContext.tape(MinimalAddTensorOps())
+        val ctx = DefaultGraphExecutionContext.tape(DefaultCpuOps(dataFactory))
         
         // This test verifies that the same API and behavior is maintained
         ctx.startRecording()
@@ -250,7 +250,7 @@ class KspTracingIntegrationTest {
     fun kspTracingTensorOps_handlesComplexWorkflow() {
         // Test a more complex workflow that exercises multiple aspects of TracingTensorOps
         val graph = DefaultComputeGraph()
-        val ctx = DefaultGraphExecutionContext.tapeAndGraph(MinimalAddTensorOps(), graph)
+        val ctx = DefaultGraphExecutionContext.tapeAndGraph(DefaultCpuOps(dataFactory), graph)
         
         val (tape, result) = ctx.record {
             val ops = this.ops

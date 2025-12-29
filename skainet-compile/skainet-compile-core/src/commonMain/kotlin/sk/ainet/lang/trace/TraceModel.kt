@@ -50,49 +50,6 @@ public class TraceSession {
     public fun <T : DType, V> resolve(ref: TensorRef): Tensor<T, V>? = refToTensor[ref.id] as? Tensor<T, V>
 }
 
-/**
- * Attribute helpers for common ops: attaches shapes and dtypes.
- * Designed to be simple and serializable, usable by both sinks and offline conversions.
- */
-public object OpAttributeFactory {
-    /** Generic: capture shapes and dtypes for an arbitrary set of inputs/outputs. */
-    public fun <T : DType, V> shapesAndDTypes(
-        inputs: List<Tensor<T, V>>, outputs: List<Tensor<T, V>>
-    ): Map<String, Any?> = mapOf(
-        "inputShapes" to inputs.map { it.shape.dimensions.toList() },
-        "outputShapes" to outputs.map { it.shape.dimensions.toList() },
-        "inputDTypes" to inputs.map { it.dtype.simpleName() },
-        "outputDTypes" to outputs.map { it.dtype.simpleName() }
-    )
-
-    /** Binary op convenience (e.g., add, mul). */
-    public fun <T : DType, V> binary(
-        a: Tensor<T, V>, b: Tensor<T, V>, out: Tensor<T, V>
-    ): Map<String, Any?> = shapesAndDTypes(listOf(a, b), listOf(out))
-
-    /** Unary op convenience (e.g., relu, sigmoid). */
-    public fun <T : DType, V> unary(
-        x: Tensor<T, V>, y: Tensor<T, V>
-    ): Map<String, Any?> = shapesAndDTypes(listOf(x), listOf(y))
-
-    /** Conv2d op attributes: shapes/dtypes + stride/padding/dilation/groups and bias flag. */
-    public fun <T : DType, V> conv2d(
-        input: Tensor<T, V>,
-        weight: Tensor<T, V>,
-        bias: Tensor<T, V>?,
-        out: Tensor<T, V>,
-        stride: Pair<Int, Int>,
-        padding: Pair<Int, Int>,
-        dilation: Pair<Int, Int>,
-        groups: Int
-    ): Map<String, Any?> = shapesAndDTypes(listOf(input, weight) + listOfNotNull(bias), listOf(out)) + mapOf(
-        "stride" to listOf(stride.first, stride.second),
-        "padding" to listOf(padding.first, padding.second),
-        "dilation" to listOf(dilation.first, dilation.second),
-        "groups" to groups,
-        "hasBias" to (bias != null)
-    )
-}
 
 // Small helper to get a simple type name consistently across platforms
 private fun <T : DType> kotlin.reflect.KClass<T>.simpleName(): String = this.simpleName ?: this.toString()
