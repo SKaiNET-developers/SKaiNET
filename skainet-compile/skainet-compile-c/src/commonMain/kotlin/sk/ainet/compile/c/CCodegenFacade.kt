@@ -71,7 +71,7 @@ public class CCodegenFacade {
      */
     public fun <T : Any> exportToArduinoLibrary(
         model: T,
-        forwardPass: () -> Unit,
+        forwardPass: (sk.ainet.context.ExecutionContext) -> Unit,
         outputPath: String,
         libraryName: String = model::class.simpleName ?: "SKaiNETModel"
     ): ArduinoLibraryResult {
@@ -83,27 +83,36 @@ public class CCodegenFacade {
         // Execution.recordingOps(baseOps) will record into the same tape.
         // Use a functional baseOps for tracing so relu/sigmoid/etc. execute and produce traces
         val ctx = DefaultGraphExecutionContext.tape(baseOps = sk.ainet.lang.tensor.ops.VoidTensorOps())
+        println("[DEBUG_LOG] Recording forward pass with tape-based context")
+        
         val (tape, _) = ctx.record {
+            val currentTape = this.currentTape
+            if (currentTape == null) {
+                error("Failed to create a recording tape for the execution context.")
+            }
+            
             // Push the current tape into the global stack for the duration of forwardPass
             val globalStack = sk.ainet.tape.Execution.tapeStack
-            val pushed = ctx.currentTape
-            if (pushed != null) {
-                globalStack.pushTape(pushed)
-            }
+            globalStack.pushTape(currentTape)
+            println("[DEBUG_LOG] Pushed tape to global stack: $currentTape")
+            
             try {
-                forwardPass()
+                forwardPass(this)
             } finally {
-                if (pushed != null) {
-                    globalStack.popTape()
-                }
+                globalStack.popTape()
+                println("[DEBUG_LOG] Popped tape from global stack")
             }
+        }
+        
+        if (tape == null) {
+            error("No tape was produced during recording")
         }
         
         // Prefer DefaultExecutionTape.toComputeGraph() which builds a real graph from traces/ops.
         val graph = when (tape) {
             is DefaultExecutionTape -> tape.toComputeGraph()
             // Fallback to the generic extension (may be a stub in some builds)
-            else -> tape?.toComputeGraph() ?: sk.ainet.lang.graph.DefaultComputeGraph()
+            else -> tape.toComputeGraph()
         }
         
         return exportGraphToArduinoLibrary(graph, outputPath, libraryName)
@@ -128,50 +137,79 @@ public class CCodegenFacade {
         require(outputPath.isNotBlank()) { "outputPath cannot be blank" }
         require(libraryName.isNotBlank()) { "libraryName cannot be blank" }
         
-        // Create and validate the C code generator
-        val codeGenerator = CCodeGenerator(graph)
-        val validation = codeGenerator.validateGraph()
-        if (validation is sk.ainet.lang.tensor.ops.ValidationResult.Invalid) {
-            throw IllegalArgumentException("Graph validation failed: ${validation.errors.joinToString("; ")}")
-        }
+        println("[INTEGRATION] Starting Arduino C code generation for library: $libraryName")
+        println("[INTEGRATION] Output path: $outputPath")
+        println("[INTEGRATION] Graph nodes: ${graph.nodes.size}")
+        
+        try {
+            // Create and validate the C code generator
+            println("[INTEGRATION] Creating CCodeGenerator and validating graph...")
+            val codeGenerator = CCodeGenerator(graph)
+            val validation = codeGenerator.validateGraph()
+            if (validation is sk.ainet.lang.tensor.ops.ValidationResult.Invalid) {
+                val errorMessage = "Graph validation failed: ${validation.errors.joinToString("; ")}"
+                println("[INTEGRATION] ERROR: $errorMessage")
+                throw IllegalArgumentException(errorMessage)
+            }
+            println("[INTEGRATION] Graph validation successful")
         
         // Generate all components needed for the Arduino library
+        println("[INTEGRATION] Generating C code components...")
         val memoryLayout = codeGenerator.calculateMemoryRequirements()
+        println("[INTEGRATION] Memory requirements calculated: ${memoryLayout.totalMemoryRequired} bytes total")
+        
         val layers = codeGenerator.generateAllLayers()
+        println("[INTEGRATION] Generated ${layers.size} layer code fragments")
+        
         val weights = codeGenerator.extractWeights()
+        println("[INTEGRATION] Extracted ${weights.size} weight arrays")
         
         // Determine input/output dimensions from the graph
+        println("[INTEGRATION] Determining input/output dimensions...")
         val inputDims = determineInputDimensions(graph)
         val outputDims = determineOutputDimensions(graph)
+        println("[INTEGRATION] Input dimensions: ${inputDims.joinToString("x")}")
+        println("[INTEGRATION] Output dimensions: ${outputDims.joinToString("x")}")
         
         // Generate C code using templates
+        println("[INTEGRATION] Generating C code using templates...")
         val headerCode = HeaderTemplate.generate(
             libraryName = libraryName,
             inputDims = inputDims,
             outputDims = outputDims,
             memoryRequirements = memoryLayout
         )
+        println("[INTEGRATION] Header code generated (${headerCode.length} characters)")
         
         val sourceCode = SourceTemplate.generate(
             libraryName = libraryName,
             layers = layers,
             weights = weights
         )
+        println("[INTEGRATION] Source code generated (${sourceCode.length} characters)")
         
         // Validate generated code for static allocation and buffer alternation
+        println("[INTEGRATION] Validating generated code...")
         val staticValidation = codeGenerator.validateGeneratedCodeStaticAllocation(sourceCode)
         if (staticValidation is sk.ainet.lang.tensor.ops.ValidationResult.Invalid) {
-            throw IllegalArgumentException("Generated code static allocation validation failed: ${staticValidation.errors.joinToString("; ")}")
+            val errorMessage = "Generated code static allocation validation failed: ${staticValidation.errors.joinToString("; ")}"
+            println("[INTEGRATION] ERROR: $errorMessage")
+            throw IllegalArgumentException(errorMessage)
         }
+        println("[INTEGRATION] Static allocation validation passed")
         
         val bufferValidation = codeGenerator.validateGeneratedCodeBufferAlternation(sourceCode)
         if (bufferValidation is sk.ainet.lang.tensor.ops.ValidationResult.Invalid) {
-            throw IllegalArgumentException("Generated code buffer alternation validation failed: ${bufferValidation.errors.joinToString("; ")}")
+            val errorMessage = "Generated code buffer alternation validation failed: ${bufferValidation.errors.joinToString("; ")}"
+            println("[INTEGRATION] ERROR: $errorMessage")
+            throw IllegalArgumentException(errorMessage)
         }
+        println("[INTEGRATION] Buffer alternation validation passed")
         
         // Package into Arduino library structure
+        println("[INTEGRATION] Packaging into Arduino library structure...")
         val packager = ArduinoLibraryPackager()
-        return packager.createLibraryStructure(
+        val result = packager.createLibraryStructure(
             outputPath = outputPath,
             libraryName = libraryName,
             sourceCode = sourceCode,
@@ -180,6 +218,31 @@ public class CCodegenFacade {
             inputDims = inputDims,
             outputDims = outputDims
         )
+        
+        // Real file writing (bridging while packager has placeholders)
+        // writeLibraryToDisk(result, sourceCode, headerCode, libraryName)
+        
+        println("[INTEGRATION] Arduino library generation completed successfully!")
+        println("[INTEGRATION] Library path: ${result.libraryPath}")
+        println("[INTEGRATION] Generated files: ${result.generatedFiles.size}")
+        println("[INTEGRATION] Supported operations: ${result.supportedOperations.joinToString(", ")}")
+        
+        return result
+        
+        } catch (e: Exception) {
+            println("[INTEGRATION] ERROR: Arduino library generation failed: ${e.message}")
+            println("[INTEGRATION] Exception type: ${e::class.simpleName}")
+            throw e
+        }
+    }
+
+    /**
+     * Writes the generated library components to the physical disk.
+     * This bridges the gap while ArduinoLibraryPackager has placeholder implementations.
+     */
+    private fun writeLibraryToDisk(result: ArduinoLibraryResult, sourceCode: String, headerCode: String, libraryName: String) {
+        // Implementation moved to CCodeGenerator or similar if needed.
+        // For now we will use a more direct approach in the facade for JVM if we can detect it.
     }
     
     /**
@@ -189,19 +252,19 @@ public class CCodegenFacade {
      * @return Array of input tensor dimensions
      */
     private fun determineInputDimensions(graph: ComputeGraph): IntArray {
-        // Find input nodes (nodes with no predecessors)
-        val inputNodes = graph.nodes.filter { node ->
-            graph.getIncomingEdges(node.id).isEmpty()
-        }
+        println("[DEBUG_LOG] determineInputDimensions for graph with ${graph.nodes.size} nodes")
+        // Find input nodes (nodes with no incoming edges)
+        val inputNodes = graph.getInputNodes()
+        println("[DEBUG_LOG] inputNodes: ${inputNodes.map { it.id }}")
         
         if (inputNodes.isEmpty()) {
-            throw IllegalArgumentException("Graph has no input nodes")
+            throw IllegalArgumentException("Graph has no input nodes. Nodes: ${graph.nodes.map { it.id }}")
         }
         
         // Use the first input node's output shape as the input dimensions
         val inputNode = inputNodes.first()
         val inputShape = inputNode.outputs.firstOrNull()?.shape
-            ?: throw IllegalArgumentException("Input node has no output shape")
+            ?: throw IllegalArgumentException("Input node ${inputNode.id} has no output shape")
         
         return inputShape.toIntArray()
     }
@@ -213,10 +276,8 @@ public class CCodegenFacade {
      * @return Array of output tensor dimensions
      */
     private fun determineOutputDimensions(graph: ComputeGraph): IntArray {
-        // Find output nodes (nodes with no successors)
-        val outputNodes = graph.nodes.filter { node ->
-            graph.getOutgoingEdges(node.id).isEmpty()
-        }
+        // Find output nodes (nodes with no outgoing edges)
+        val outputNodes = graph.getOutputNodes()
         
         if (outputNodes.isEmpty()) {
             throw IllegalArgumentException("Graph has no output nodes")

@@ -140,22 +140,17 @@ public class ArduinoLibraryPackager {
      * @param directoryPath Path to the directory to create
      */
     private fun createDirectoryIfNotExists(directoryPath: String) {
-        // Platform-specific implementation would be needed here
-        // For now, we assume the directory creation is handled externally
-        // or by the platform-specific facade implementation
+        platformCreateDirectory(directoryPath)
     }
     
     /**
      * Writes content to a file, creating parent directories if necessary.
-     * This is a placeholder implementation that would need platform-specific handling.
      * 
      * @param filePath Path to the file to write
      * @param content Content to write to the file
      */
     private fun writeFile(filePath: String, content: String) {
-        // Platform-specific implementation would be needed here
-        // For now, we assume the file writing is handled externally
-        // or by the platform-specific facade implementation
+        platformWriteFile(filePath, content)
     }
     
     /**
