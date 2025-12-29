@@ -60,22 +60,4 @@ class CCodegenFacadeTest {
         }
     }
     
-    @Test
-    fun testDetermineInputDimensionsWithEmptyGraph() {
-        val facade = CCodegenFacade()
-        val graph = DefaultComputeGraph()
-        
-        try {
-            // Use reflection to access private method for testing
-            val method = facade::class.java.getDeclaredMethod("determineInputDimensions", graph::class.java)
-            method.isAccessible = true
-            method.invoke(facade, graph)
-            
-            // Should fail with empty graph
-            assertTrue(false, "Expected exception for empty graph")
-        } catch (e: Exception) {
-            // Expected - empty graph has no input nodes
-            assertTrue(true)
-        }
-    }
 }

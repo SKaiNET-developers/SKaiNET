@@ -1,3 +1,13 @@
+public final class sk/ainet/compile/c/ArduinoCodegenIntegration {
+	public fun <init> ()V
+	public final fun generateArduinoLibrary (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+}
+
+public final class sk/ainet/compile/c/ArduinoLibraryPackager {
+	public fun <init> ()V
+	public final fun createLibraryStructure (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/compile/c/MemoryLayout;[I[I)Lsk/ainet/compile/c/ArduinoLibraryResult;
+}
+
 public final class sk/ainet/compile/c/ArduinoLibraryResult {
 	public fun <init> (Ljava/lang/String;Lsk/ainet/compile/c/MemoryLayout;Ljava/util/List;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -16,13 +26,33 @@ public final class sk/ainet/compile/c/ArduinoLibraryResult {
 }
 
 public final class sk/ainet/compile/c/CCodeGenerator {
+	public static final field Companion Lsk/ainet/compile/c/CCodeGenerator$Companion;
 	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;)V
 	public final fun calculateMemoryRequirements ()Lsk/ainet/compile/c/MemoryLayout;
 	public final fun extractWeights ()Ljava/util/List;
 	public final fun generateActivationFunction (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateActivationFunctionWithAccuracy (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
 	public final fun generateAllLayers ()Ljava/util/List;
 	public final fun generateDenseLayer (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateDenseLayerWithAccuracy (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateTransposeLayer (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun validateGeneratedCodeBufferAlternation (Ljava/lang/String;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateGeneratedCodeStaticAllocation (Ljava/lang/String;)Lsk/ainet/lang/tensor/ops/ValidationResult;
 	public final fun validateGraph ()Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateMemoryManagement ()Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateOperations ()Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public final class sk/ainet/compile/c/CCodeGenerator$Companion {
+}
+
+public final class sk/ainet/compile/c/CCodegenFacade {
+	public fun <init> ()V
+	public final fun exportGraphToArduinoLibrary (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public final fun exportToArduinoLibrary (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public final fun exportToArduinoLibrary (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public static synthetic fun exportToArduinoLibrary$default (Lsk/ainet/compile/c/CCodegenFacade;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public static synthetic fun exportToArduinoLibrary$default (Lsk/ainet/compile/c/CCodegenFacade;Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/c/ArduinoLibraryResult;
 }
 
 public final class sk/ainet/compile/c/LayerCode {
@@ -59,6 +89,11 @@ public final class sk/ainet/compile/c/MemoryLayout {
 	public final fun getTotalWeightSize ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/Platform_jvmKt {
+	public static final fun platformCreateDirectory (Ljava/lang/String;)V
+	public static final fun platformWriteFile (Ljava/lang/String;Ljava/lang/String;)V
 }
 
 public final class sk/ainet/compile/c/WeightArray {

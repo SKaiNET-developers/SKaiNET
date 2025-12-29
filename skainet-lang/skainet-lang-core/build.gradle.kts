@@ -55,6 +55,13 @@ dependencies {
     add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
     add("kspJvm", project(":skainet-lang:skainet-lang-ksp-processor"))
     add("kspAndroid", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspIosArm64", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspIosSimulatorArm64", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspMacosArm64", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspLinuxX64", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspLinuxArm64", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspJs", project(":skainet-lang:skainet-lang-ksp-processor"))
+    add("kspWasmJs", project(":skainet-lang:skainet-lang-ksp-processor"))
 }
 
 android {
