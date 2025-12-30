@@ -501,12 +501,12 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
      * @param node GraphNode representing a Dense/Linear layer
      * @return LayerCode containing generated C code fragment
      */
-    public fun generateDenseLayer(node: GraphNode): LayerCode {
+    public fun generateDenseLayer(node: GraphNode, denseIndex: Int? = null): LayerCode {
         require(node.operation.name.lowercase() in setOf("linear", "dense")) {
             "Node ${node.id} is not a Dense/Linear layer"
         }
         
-        val layerName = "dense_${layerCounter++}"
+        val layerName = if (denseIndex != null) "dense_$denseIndex" else "dense_${layerCounter++}"
         val inputSpec = node.inputs.first()
         val outputSpec = node.outputs.first()
         
@@ -641,6 +641,7 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
         
         // Reset layer counter to ensure consistent naming across multiple calls
         layerCounter = 0
+        var denseLayerIndex = 0
         
         val nodes = graph.getTopologicalOrder()
         val processedNodes = mutableSetOf<String>()
@@ -671,7 +672,7 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
                         }
                     }
                     
-                    generateDenseLayerWithAccuracy(matmulNode ?: node, addNode)
+                    generateDenseLayerWithAccuracy(matmulNode ?: node, addNode, denseLayerIndex++)
                 }
                 "relu", "sigmoid", "tanh" -> {
                     processedNodes.add(node.id)
@@ -981,13 +982,13 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
      * @param node GraphNode representing a Dense/Linear layer
      * @return LayerCode containing generated C code fragment
      */
-    public fun generateDenseLayerWithAccuracy(node: GraphNode, addNode: GraphNode? = null): LayerCode {
+    public fun generateDenseLayerWithAccuracy(node: GraphNode, addNode: GraphNode? = null, denseIndex: Int? = null): LayerCode {
         val opName = node.operation.name.lowercase()
         require(opName in setOf("linear", "dense", "matmul", "add")) {
             "Node ${node.id} is not a Dense/Linear/Matmul/Add layer"
         }
         
-        val layerName = "dense_${layerCounter++}"
+        val layerName = if (denseIndex != null) "dense_$denseIndex" else "dense_${layerCounter++}"
         val inputSpec = node.inputs.first()
         val finalNode = addNode ?: node
         val outputSpec = finalNode.outputs.first()
