@@ -8,5 +8,5 @@ public data class OpTrace(
     val opType: String,
     val inputs: List<TensorRef>,
     val outputs: List<TensorRef>,
-    val attributes: Map<String, Any?>
+    val attributes: Map<String, Any?> = emptyMap()
 )

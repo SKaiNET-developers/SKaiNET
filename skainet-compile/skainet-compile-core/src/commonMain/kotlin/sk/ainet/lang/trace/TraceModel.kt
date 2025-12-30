@@ -1,23 +1,7 @@
 package sk.ainet.lang.trace
 
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.types.DType
-
-/**
- * Stable, serializable identity for a tensor within a recording window/session.
- * The `id` must be unique per recording session; policy is owned by [TraceRecordingSession].
- */
-public data class TensorRef(public val id: String)
-
-/**
- * Minimal operation trace model as specified in exec-prd.md FR1.
- */
-public data class OpTrace(
-    val opType: String,
-    val inputs: List<TensorRef>,
-    val outputs: List<TensorRef>,
-    val attributes: Map<String, Any?> = emptyMap()
-)
+import sk.ainet.lang.types.*
 
 /**
  * A lightweight session to convert runtime tensors to stable [TensorRef] ids
@@ -28,15 +12,24 @@ public data class OpTrace(
  * - ID policy: sequential IDs (t0, t1, ...), deterministic within the session.
  */
 public class TraceRecordingSession {
-    private val tensorToRef = mutableMapOf<Any, TensorRef>()
-    private val refToTensor = mutableMapOf<String, Any>()
+    private val tensorToRef = mutableMapOf<Tensor<*, *>, TensorRef>()
+    private val refToTensor = mutableMapOf<String, Tensor<*, *>>()
     private var nextId = 0
 
     /** Return existing or create a new TensorRef for the given tensor. */
     public fun <T : DType, V> refOf(tensor: Tensor<T, V>): TensorRef {
         return tensorToRef.getOrPut(tensor) {
+            val dtypeInstance: DType = when (tensor.dtype) {
+                Int32::class -> Int32
+                FP32::class -> FP32
+                FP16::class -> FP16
+                Int8::class -> Int8
+                Int4::class -> Int4
+                Ternary::class -> Ternary
+                else -> FP32 // default fallback
+            }
             val id = "t${nextId++}"
-            val ref = TensorRef(id)
+            val ref = TensorRef(id, tensor.shape, dtypeInstance)
             refToTensor[id] = tensor
             ref
         }
