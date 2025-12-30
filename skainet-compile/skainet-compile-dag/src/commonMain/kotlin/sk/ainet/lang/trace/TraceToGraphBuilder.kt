@@ -50,7 +50,7 @@ public class TraceToGraphBuilder(
                         val weightRef = trace.inputs[1]
                         val producer = producersByTensorId[weightRef.id]
                         if (producer == null) {
-                            val tensor = session.resolve(weightRef)
+                            val tensor = session?.resolve(weightRef)
                             if (tensor != null) {
                                 val values = extractFloatArray(tensor)
                                 if (values != null) {
@@ -81,7 +81,7 @@ public class TraceToGraphBuilder(
                     if (trace.inputs.size >= 2) {
                         val biasRef = trace.inputs[1]
                         if (!producersByTensorId.containsKey(biasRef.id)) {
-                            val tensor = session.resolve(biasRef)
+                            val tensor = session?.resolve(biasRef)
                             if (tensor != null) {
                                 val values = extractFloatArray(tensor)
                                 if (values != null) {
@@ -96,7 +96,7 @@ public class TraceToGraphBuilder(
                     if (trace.inputs.isNotEmpty()) {
                         val inputRef = trace.inputs[0]
                         if (!producersByTensorId.containsKey(inputRef.id)) {
-                            val tensor = session.resolve(inputRef)
+                            val tensor = session?.resolve(inputRef)
                             if (tensor != null) {
                                 val values = extractFloatArray(tensor)
                                 if (values != null) {

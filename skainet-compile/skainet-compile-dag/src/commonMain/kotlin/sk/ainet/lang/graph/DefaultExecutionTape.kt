@@ -6,7 +6,7 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
 import sk.ainet.lang.trace.TraceToGraphBuilder
-import sk.ainet.lang.trace.TraceSession
+import sk.ainet.lang.trace.TraceRecordingSession
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
@@ -16,7 +16,7 @@ import sk.ainet.tape.TapeStack
  * Default implementation of ExecutionTape
  */
 public open class DefaultExecutionTape(
-    public var session: TraceSession = TraceSession()
+    public var session: sk.ainet.lang.trace.TraceSession = sk.ainet.lang.trace.TraceSession()
 ) : ExecutionTape {
 
     protected var _isRecording: Boolean = false

@@ -5,7 +5,7 @@ import sk.ainet.lang.types.DType
 
 /**
  * Stable, serializable identity for a tensor within a recording window/session.
- * The `id` must be unique per recording session; policy is owned by [TraceSession].
+ * The `id` must be unique per recording session; policy is owned by [TraceRecordingSession].
  */
 public data class TensorRef(public val id: String)
 
@@ -27,7 +27,7 @@ public data class OpTrace(
  * - Keys are held strongly; intended for short-lived recording windows.
  * - ID policy: sequential IDs (t0, t1, ...), deterministic within the session.
  */
-public class TraceSession {
+public class TraceRecordingSession {
     private val tensorToRef = mutableMapOf<Any, TensorRef>()
     private val refToTensor = mutableMapOf<String, Any>()
     private var nextId = 0
