@@ -10,6 +10,7 @@ import sk.ainet.lang.types.*
 public class TraceSession {
     private var nextId = 0
     private val tensorToRef = mutableMapOf<Tensor<*, *>, TensorRef>()
+    private val refToId = mutableMapOf<String, Tensor<*, *>>()
     
     /**
      * Get or create a TensorRef for the given tensor.
@@ -25,12 +26,28 @@ public class TraceSession {
                 Ternary::class -> Ternary
                 else -> FP32 // default fallback
             }
-            TensorRef(
+            val ref = TensorRef(
                 id = "t${nextId++}",
                 shape = tensor.shape,
                 dtype = dtypeInstance
             )
+            refToId[ref.id] = tensor
+            ref
         }
+    }
+
+    /**
+     * Resolve a TensorRef back to its original Tensor.
+     */
+    public fun resolve(ref: TensorRef): Tensor<*, *>? {
+        return refToId[ref.id]
+    }
+    
+    /**
+     * Resolve a tensor ID back to its original Tensor.
+     */
+    public fun resolve(id: String): Tensor<*, *>? {
+        return refToId[id]
     }
     
     /**

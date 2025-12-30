@@ -15,15 +15,14 @@ import sk.ainet.tape.TapeStack
 /**
  * Default implementation of ExecutionTape
  */
-public open class DefaultExecutionTape() : ExecutionTape {
+public open class DefaultExecutionTape(
+    public var session: TraceSession = TraceSession()
+) : ExecutionTape {
 
     protected var _isRecording: Boolean = false
     protected val _operations: MutableList<RecordedOperation> = mutableListOf()
     protected var _operationCounter: Long = 0L
     protected val _traces: MutableList<OpTrace> = mutableListOf()
-    
-    /** Persistent session to ensure stable TensorRefs across traces on this tape. */
-    public val session: TraceSession = TraceSession()
 
     override val isRecording: Boolean get() = _isRecording
     override val operations: List<RecordedOperation> get() = _operations.toList()
@@ -160,7 +159,7 @@ public open class DefaultExecutionTape() : ExecutionTape {
         // consistency with online GraphSink wiring rules (PRD FR6).
         if (_traces.isNotEmpty()) {
             val graph = DefaultComputeGraph()
-            val builder = TraceToGraphBuilder(graph)
+            val builder = TraceToGraphBuilder(graph, session)
             builder.addAll(_traces)
             return graph
         }

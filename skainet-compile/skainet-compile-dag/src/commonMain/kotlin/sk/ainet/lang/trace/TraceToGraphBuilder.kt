@@ -22,7 +22,10 @@ import sk.ainet.lang.tensor.ops.ValidationResult
  * known producer. Only real operation nodes are created, and edges are added solely between such
  * nodes when a producer is known. This matches the expectations of TracingAcceptanceTest.
  */
-public class TraceToGraphBuilder(private val graph: ComputeGraph) {
+public class TraceToGraphBuilder(
+    private val graph: ComputeGraph,
+    private val session: TraceSession? = null
+) {
 
     private var nextNodeId = 0L
 
@@ -34,7 +37,79 @@ public class TraceToGraphBuilder(private val graph: ComputeGraph) {
      * and registering the outputs as new producers.
      */
     public fun addTrace(trace: OpTrace) {
-        val op = TraceBackedOperation(trace.opType, parameters = trace.attributes.filterValues { it != null } as Map<String, Any>)
+        val parameters = trace.attributes.filterValues { it != null }.toMutableMap() as MutableMap<String, Any>
+        
+        // If we have a session, try to resolve constant inputs (weights/biases)
+        // for operations that need them during codegen.
+        if (session != null) {
+            when (trace.opType.lowercase()) {
+                "matmul" -> {
+                    // For Linear layer: input.matmul(weight.t())
+                    // The second input is the weight (potentially transposed)
+                    if (trace.inputs.size >= 2) {
+                        val weightRef = trace.inputs[1]
+                        val producer = producersByTensorId[weightRef.id]
+                        if (producer == null) {
+                            val tensor = session.resolve(weightRef)
+                            if (tensor != null) {
+                                val values = extractFloatArray(tensor)
+                                if (values != null) {
+                                    parameters["weights"] = values
+                                }
+                            }
+                        } else if (producer.node.operation.name.lowercase() == "transpose") {
+                            // If it's a transpose of something, check if THAT thing is a constant
+                            val transposedOp = producer.node.operation
+                            if (!transposedOp.parameters.containsKey("weights")) {
+                                // Try to resolve the input of the transpose
+                                val transposeNode = producer.node
+                                // We don't easily have the original Trace for the transpose node here,
+                                // but the transpose node's operation might have had its parameters populated if it was processed.
+                                // However, addTrace processes in order.
+                            }
+                            // Actually, if we just check if the transpose node HAS "weights" in its parameters
+                            val weightValues = producer.node.operation.parameters["weights"] as? FloatArray
+                            if (weightValues != null) {
+                                parameters["weights"] = weightValues
+                            }
+                        }
+                    }
+                }
+                "add" -> {
+                    // For Linear layer: ... + bias
+                    // The second input is the bias
+                    if (trace.inputs.size >= 2) {
+                        val biasRef = trace.inputs[1]
+                        if (!producersByTensorId.containsKey(biasRef.id)) {
+                            val tensor = session.resolve(biasRef)
+                            if (tensor != null) {
+                                val values = extractFloatArray(tensor)
+                                if (values != null) {
+                                    parameters["bias"] = values
+                                }
+                            }
+                        }
+                    }
+                }
+                "transpose" -> {
+                    // Transpose might be on a weight tensor
+                    if (trace.inputs.isNotEmpty()) {
+                        val inputRef = trace.inputs[0]
+                        if (!producersByTensorId.containsKey(inputRef.id)) {
+                            val tensor = session.resolve(inputRef)
+                            if (tensor != null) {
+                                val values = extractFloatArray(tensor)
+                                if (values != null) {
+                                    parameters["weights"] = values
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val op = TraceBackedOperation(trace.opType, parameters = parameters)
 
         val inputSpecs = buildInputSpecs(trace)
         val outputSpecs = buildOutputSpecs(trace)
@@ -106,6 +181,29 @@ public class TraceToGraphBuilder(private val graph: ComputeGraph) {
             val dtype = dtypes?.getOrNull(i) ?: "unknown"
             TensorSpec(name = name, shape = shape, dtype = dtype)
         }
+    }
+
+    private fun extractFloatArray(tensor: sk.ainet.lang.tensor.Tensor<*, *>): FloatArray? {
+        val data = tensor.data
+        if (data is sk.ainet.lang.tensor.data.FloatArrayTensorData) {
+            val buffer = data.buffer
+            return buffer.copyOf()
+        }
+        
+        // Fallback for other data types if possible
+        if (tensor.volume > 0) {
+            val result = FloatArray(tensor.volume)
+            // This is slow but generic. Better if we have a way to get values.
+            // But usually weights are FloatArrayTensorData in the contexts we use for export.
+            return try {
+                // We don't have a good way to iterate over all indices generically without recursion
+                // for arbitrary rank. Let's stick to FloatArrayTensorData for now as it's the most common.
+                null
+            } catch (e: Exception) {
+                null
+            }
+        }
+        return null
     }
 
     /** Minimal Operation to host trace metadata for GraphNode. */

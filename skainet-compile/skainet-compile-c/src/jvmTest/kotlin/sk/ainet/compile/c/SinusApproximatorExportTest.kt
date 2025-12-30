@@ -66,15 +66,100 @@ class SinusApproximatorExportTest {
             
             // Check for non-zero bias values
             val sourceContent = finalSourceFile.readText()
-            if (sourceContent.contains("_bias[")) {
+            println("Generated source content length: ${sourceContent.length}")
+            
+            val lines = sourceContent.lines()
+            
+            if (sourceContent.contains("_bias")) {
                 println("Source preview (bias part):")
-                val biasLines = sourceContent.lines().filter { it.contains("_bias") && it.contains("{") }
-                biasLines.forEach { println(it) }
+                val biasStartLines = lines.filter { it.contains("_bias") && it.contains("{") }
+                biasStartLines.forEach { println(it) }
                 
-                // Assert that at least one bias is non-zero if we expect trained weights
-                // For SinusApproximator, biases should definitely be non-zero after training
-                // However, if the model is just initialized, they might be zero.
-                // But SinusApproximator usually has some non-zero initial biases or we want to see them.
+                // Extract values more robustly
+                val biasValues = mutableListOf<Double>()
+                for (i in lines.indices) {
+                    if (lines[i].contains("_bias") && lines[i].contains("{")) {
+                        var j = i
+                        var content = ""
+                        while (j < lines.size && !lines[j].contains("}")) {
+                            content += lines[j]
+                            j++
+                        }
+                        if (j < lines.size) content += lines[j]
+                        
+                        val valuesStr = content.substringAfter("{").substringBefore("}")
+                        valuesStr.split(",").forEach {
+                            it.split(Regex("\\s+")).forEach { sub ->
+                                val v = sub.trim().removeSuffix("f").trim()
+                                if (v.isNotEmpty()) biasValues.add(v.toDouble())
+                            }
+                        }
+                    }
+                }
+                
+                println("Found ${biasValues.size} bias values")
+                val hasNonZeroBias = biasValues.any { it != 0.0 }
+                
+                // Detailed check for dense_0_bias
+                if (sourceContent.contains("dense_0_bias")) {
+                    val d0bias = mutableListOf<Double>()
+                    val linesList = sourceContent.lines()
+                    for (i in linesList.indices) {
+                        if (linesList[i].contains("dense_0_bias") && linesList[i].contains("{")) {
+                            var j = i
+                            var content = ""
+                            while (j < linesList.size && !linesList[j].contains("}")) {
+                                content += linesList[j]
+                                j++
+                            }
+                            if (j < linesList.size) content += linesList[j]
+                            val valuesStr = content.substringAfter("{").substringBefore("}")
+                            valuesStr.split(",").forEach {
+                                it.split(Regex("\\s+")).forEach { sub ->
+                                    val v = sub.trim().removeSuffix("f").trim()
+                                    if (v.isNotEmpty()) d0bias.add(v.toDouble())
+                                }
+                            }
+                        }
+                    }
+                    println("dense_0_bias values: $d0bias")
+                    val d0NonZero = d0bias.any { it != 0.0 }
+                    assertTrue(d0NonZero, "dense_0_bias should have non-zero values")
+                }
+                
+                assertTrue(hasNonZeroBias, "Should have at least one non-zero bias value in generated code")
+            }
+
+            if (sourceContent.contains("_weights")) {
+                println("Source preview (weights part):")
+                val weightStartLines = lines.filter { it.contains("_weights") && it.contains("{") }
+                weightStartLines.take(5).forEach { println(it) }
+                
+                // Extract values more robustly
+                val weightValues = mutableListOf<Double>()
+                for (i in lines.indices) {
+                    if (lines[i].contains("_weights") && lines[i].contains("{")) {
+                        var j = i
+                        var content = ""
+                        while (j < lines.size && !lines[j].contains("}")) {
+                            content += lines[j]
+                            j++
+                        }
+                        if (j < lines.size) content += lines[j]
+                        
+                        val valuesStr = content.substringAfter("{").substringBefore("}")
+                        valuesStr.split(",").forEach {
+                            it.split(Regex("\\s+")).forEach { sub ->
+                                val v = sub.trim().removeSuffix("f").trim()
+                                if (v.isNotEmpty()) weightValues.add(v.toDouble())
+                            }
+                        }
+                    }
+                }
+                
+                println("Found ${weightValues.size} weight values")
+                val hasNonZeroWeight = weightValues.any { it != 0.0 }
+                assertTrue(hasNonZeroWeight, "Should have at least one non-zero weight value in generated code")
             }
         } catch (e: Exception) {
             println("EXCEPTION CAUGHT: ${e.message}")

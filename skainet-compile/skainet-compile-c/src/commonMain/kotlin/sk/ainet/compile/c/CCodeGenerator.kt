@@ -643,18 +643,44 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
         layerCounter = 0
         
         val nodes = graph.getTopologicalOrder()
-        println("[DEBUG_LOG] Topological order nodes: ${nodes.size}")
-        nodes.forEach { println("[DEBUG_LOG] Node: ${it.id}, Op: ${it.operation.name}") }
-        
+        val processedNodes = mutableSetOf<String>()
         val layers = mutableListOf<LayerCode>()
         
-        for (node in nodes) {
+        for (i in nodes.indices) {
+            val node = nodes[i]
+            if (node.id in processedNodes) continue
+            
             val operationName = node.operation.name.lowercase()
             
             val layerCode = when (operationName) {
-                "linear", "dense", "matmul", "add" -> generateDenseLayerWithAccuracy(node)
-                "relu", "sigmoid", "tanh" -> generateActivationFunctionWithAccuracy(node)
-                "transpose" -> generateTransposeLayer(node)
+                "linear", "dense", "matmul", "add" -> {
+                    processedNodes.add(node.id)
+                    // Grouping logic for Dense layers
+                    var matmulNode = if (operationName == "matmul") node else null
+                    var addNode = if (operationName == "add") node else null
+                    
+                    if (matmulNode != null && i + 1 < nodes.size) {
+                        val nextNode = nodes[i + 1]
+                        if (nextNode.operation.name.lowercase() == "add") {
+                            val matmulOutput = matmulNode.outputs.firstOrNull()?.name
+                            val isConnected = nextNode.inputs.any { it.name == matmulOutput }
+                            if (isConnected) {
+                                addNode = nextNode
+                                processedNodes.add(addNode.id)
+                            }
+                        }
+                    }
+                    
+                    generateDenseLayerWithAccuracy(matmulNode ?: node, addNode)
+                }
+                "relu", "sigmoid", "tanh" -> {
+                    processedNodes.add(node.id)
+                    generateActivationFunctionWithAccuracy(node)
+                }
+                "transpose" -> {
+                    processedNodes.add(node.id)
+                    generateTransposeLayer(node)
+                }
                 else -> throw IllegalArgumentException("Unsupported operation: ${node.operation.name}")
             }
             
@@ -683,41 +709,66 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
         val weights = mutableListOf<WeightArray>()
         var layerIndex = 0
         
-        for (node in graph.getTopologicalOrder()) {
+        val nodes = graph.getTopologicalOrder()
+        val processedNodes = mutableSetOf<String>()
+        
+        for (i in nodes.indices) {
+            val node = nodes[i]
+            if (node.id in processedNodes) continue
+            
             val opName = node.operation.name.lowercase()
             if (opName in setOf("linear", "dense", "matmul", "add")) {
                 val layerName = "dense_${layerIndex++}"
+                processedNodes.add(node.id)
                 
-                // Extract dimensions from TensorSpec with validation
-                val inputNode = node.inputs.firstOrNull()
+                // Try to find if this is a matmul followed by an add
+                var matmulNode = if (opName == "matmul") node else null
+                var addNode = if (opName == "add") node else null
+                
+                if (matmulNode != null && i + 1 < nodes.size) {
+                    val nextNode = nodes[i + 1]
+                    if (nextNode.operation.name.lowercase() == "add") {
+                        // Check if matmul's output is add's input
+                        val matmulOutput = matmulNode.outputs.firstOrNull()?.name
+                        val isConnected = nextNode.inputs.any { it.name == matmulOutput }
+                        if (isConnected) {
+                            addNode = nextNode
+                            processedNodes.add(addNode.id)
+                        }
+                    }
+                }
+
+                // If we have an addNode followed by nothing but it's just a standalone add, that's fine too.
+                
+                // Extract dimensions
+                val primaryNode = matmulNode ?: addNode!!
+                val inputNode = primaryNode.inputs.firstOrNull()
                 val inputSize = inputNode?.shape?.let { shape ->
                     if (shape.size == 1) shape[0] else shape.lastOrNull()
-                } ?: 1 // Fallback for nodes without input shape
+                } ?: 1
                 
-                val outputSize = node.outputs.first().shape?.let { shape ->
+                val finalNode = addNode ?: matmulNode!!
+                val outputSize = finalNode.outputs.first().shape?.let { shape ->
                     if (shape.size == 1) shape[0] else shape.lastOrNull()
                 } ?: throw IllegalArgumentException("Cannot determine output size for Dense layer")
                 
-                // Extract weight and bias information from operation parameters
-                // Ensure exact weight preservation from trained models
-                val parameters = node.operation.parameters
-                
-                // Extract weights with exact preservation
-                val weightValues = extractWeightsWithPreservation(parameters, outputSize, inputSize, "weights", opName)
-                
-                // Validate weight array size matches expected dimensions
-                // For matmul, we might need to adjust the expected size if it doesn't match
-                val finalWeightValues = if (opName == "add") {
+                // Extract weights from matmulNode (or primaryNode if it's dense/linear)
+                val weightValues = if (matmulNode != null) {
+                    extractWeightsWithPreservation(matmulNode.operation.parameters, outputSize, inputSize, "weights", matmulNode.operation.name.lowercase())
+                } else if (opName in setOf("linear", "dense")) {
+                    extractWeightsWithPreservation(node.operation.parameters, outputSize, inputSize, "weights", opName)
+                } else {
+                    // Standalone add - no weights
                     FloatArray(outputSize * inputSize) { 0.0f }
-                } else if (opName == "matmul" && weightValues.size != outputSize * inputSize) {
-                    println("[DEBUG_LOG] Matmul weight size mismatch for $layerName: expected ${outputSize * inputSize}, got ${weightValues.size}. Using whatever we have.")
-                    weightValues 
+                }
+                
+                val finalWeightValues = if (opName == "matmul" && weightValues.size != outputSize * inputSize) {
+                     weightValues 
                 } else {
                     weightValues
                 }
 
-                // Recalculate inputSize based on actual weight size if it's a matmul with different weights
-                val actualInputSize = if (opName == "matmul" && finalWeightValues.size > 0 && outputSize > 0) {
+                val actualInputSize = if (finalWeightValues.size > 0 && outputSize > 0) {
                      finalWeightValues.size / outputSize
                 } else {
                     inputSize
@@ -726,17 +777,24 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
                 weights.add(WeightArray(
                     name = "${layerName}_weights",
                     values = finalWeightValues,
-                    shape = intArrayOf(outputSize, actualInputSize), // [outFeatures, inFeatures]
+                    shape = intArrayOf(outputSize, actualInputSize),
                     isWeight = true
                 ))
                 
-                // Extract biases with exact preservation
-                val biasValues = extractWeightsWithPreservation(parameters, outputSize, 1, "bias", opName)
+                // Extract biases from addNode (or primaryNode if it's dense/linear)
+                val biasValues = if (addNode != null) {
+                    extractWeightsWithPreservation(addNode.operation.parameters, outputSize, 1, "bias", addNode.operation.name.lowercase())
+                } else if (opName in setOf("linear", "dense")) {
+                    extractWeightsWithPreservation(node.operation.parameters, outputSize, 1, "bias", opName)
+                } else {
+                    // Standalone matmul - no bias
+                    FloatArray(outputSize) { 0.0f }
+                }
                 
                 weights.add(WeightArray(
                     name = "${layerName}_bias",
                     values = biasValues,
-                    shape = intArrayOf(outputSize), // [outFeatures]
+                    shape = intArrayOf(outputSize),
                     isWeight = false
                 ))
             }
@@ -923,14 +981,16 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
      * @param node GraphNode representing a Dense/Linear layer
      * @return LayerCode containing generated C code fragment
      */
-    public fun generateDenseLayerWithAccuracy(node: GraphNode): LayerCode {
-        require(node.operation.name.lowercase() in setOf("linear", "dense", "matmul", "add")) {
+    public fun generateDenseLayerWithAccuracy(node: GraphNode, addNode: GraphNode? = null): LayerCode {
+        val opName = node.operation.name.lowercase()
+        require(opName in setOf("linear", "dense", "matmul", "add")) {
             "Node ${node.id} is not a Dense/Linear/Matmul/Add layer"
         }
         
         val layerName = "dense_${layerCounter++}"
         val inputSpec = node.inputs.first()
-        val outputSpec = node.outputs.first()
+        val finalNode = addNode ?: node
+        val outputSpec = finalNode.outputs.first()
         
         val inputShape = inputSpec.shape ?: throw IllegalArgumentException("Input shape cannot be null for Dense layer")
         val outputShape = outputSpec.shape ?: throw IllegalArgumentException("Output shape cannot be null for Dense layer")
@@ -948,35 +1008,44 @@ public class CCodeGenerator(private val graph: ComputeGraph) {
             outputShape.lastOrNull() ?: throw IllegalArgumentException("Empty output shape for Dense layer")
         }
         
-        // Generate matrix-vector multiplication with numerical accuracy optimizations
-        // Following DefaultCpuOps matmul implementation pattern with exact consistency
-        val codeFragment = """
-            // Dense layer: ${layerName}
-            // Matrix-vector multiplication: output = input * weight^T + bias
-            // Optimized for numerical accuracy and consistency with DefaultCpuOps
-            for (int i = 0; i < ${outputSize}; i++) {
-                // Initialize with bias for exact consistency with Linear.forward()
-                float sum = ${layerName}_bias[i];
-                
-                // Accumulate matrix-vector product with consistent ordering
-                // This matches the accumulation order in DefaultCpuOps.matmul()
-                for (int j = 0; j < ${inputSize}; j++) {
-                    // Access weight[i][j] in row-major order: weight[i * inputSize + j]
-                    // Use consistent floating-point arithmetic with DefaultCpuOps
-                    sum += input_buffer[j] * ${layerName}_weights[i * ${inputSize} + j];
-                }
-                
-                // Direct output writing optimization when possible
-                output_buffer[i] = sum;
+        // Decide if we should perform matmul and/or bias addition
+        val hasWeights = opName != "add"
+        val hasBias = addNode != null || opName in setOf("linear", "dense")
+
+        val codeFragment = buildString {
+            appendLine("    // Dense layer: ${layerName}")
+            if (hasWeights && hasBias) {
+                appendLine("    // Matrix-vector multiplication: output = input * weight^T + bias")
+                appendLine("    for (int i = 0; i < ${outputSize}; i++) {")
+                appendLine("        float sum = ${layerName}_bias[i];")
+                appendLine("        for (int j = 0; j < ${inputSize}; j++) {")
+                appendLine("            sum += input_buffer[j] * ${layerName}_weights[i * ${inputSize} + j];")
+                appendLine("        }")
+                appendLine("        output_buffer[i] = sum;")
+                appendLine("    }")
+            } else if (hasWeights) {
+                appendLine("    // Matrix-vector multiplication: output = input * weight^T")
+                appendLine("    for (int i = 0; i < ${outputSize}; i++) {")
+                appendLine("        float sum = 0.0f;")
+                appendLine("        for (int j = 0; j < ${inputSize}; j++) {")
+                appendLine("            sum += input_buffer[j] * ${layerName}_weights[i * ${inputSize} + j];")
+                appendLine("        }")
+                appendLine("        output_buffer[i] = sum;")
+                appendLine("    }")
+            } else if (hasBias) {
+                appendLine("    // Bias addition only")
+                appendLine("    for (int i = 0; i < ${outputSize}; i++) {")
+                appendLine("        output_buffer[i] = input_buffer[i] + ${layerName}_bias[i];")
+                appendLine("    }")
             }
-        """.trimIndent()
+        }
         
         return LayerCode(
             layerName = layerName,
             operationType = "Dense",
             inputShape = inputShape.toIntArray(),
             outputShape = outputShape.toIntArray(),
-            codeFragment = codeFragment
+            codeFragment = codeFragment.trimIndent()
         )
     }
     
