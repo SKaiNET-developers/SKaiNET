@@ -1,0 +1,75 @@
+# Arduino C Code Generation
+
+SKaiNET provides a specialized compiler backend for exporting trained neural networks to highly optimized, standalone C99 code suitable for microcontrollers like Arduino.
+
+## Overview
+
+The Arduino C code generation process transforms a high-level Kotlin model into a memory-efficient C implementation. It prioritizes static memory allocation, minimal overhead, and numerical consistency with the original model.
+
+### Codegen Pipeline
+
+```mermaid
+graph TD
+    A[Kotlin Model] --> B[Recording Pass]
+    B --> C[Execution Tape]
+    C --> D[Compute Graph]
+    D --> E[Graph Validation]
+    E --> F[Memory Layout Calculation]
+    F --> G[C Code Emission]
+    G --> H[Arduino Library Packaging]
+    H --> I[Generated .h/.c files]
+```
+
+## Technical Deep Dive
+
+### 1. Tape-based Tracing
+Instead of static analysis of the Kotlin code, SKaiNET uses a dynamic tracing mechanism. When you call `exportToArduinoLibrary`, the framework executes a single forward pass of your model using a specialized `RecordingContext`.
+- Every operation (Dense, ReLU, etc.) is recorded onto an **Execution Tape**.
+- This approach handles Kotlin's language features (loops, conditionals) naturally, as it only records the actual operations that were executed.
+
+### 2. Compute Graph Construction
+The execution tape is converted into a directed acyclic graph (DAG) called `ComputeGraph`.
+- Nodes represent operations (Ops).
+- Edges represent data flow (Tensors).
+- During this phase, the compiler performs **Shape Inference** to ensure every tensor has a fixed, known size.
+
+### 3. Static Memory Management
+Microcontrollers typically have very limited RAM and lack robust heap management. SKaiNET uses a **Ping-Pong Buffer Strategy** to eliminate dynamic memory allocation (`malloc`/`free`) during inference.
+
+#### Ping-Pong Buffer Strategy
+The compiler calculates the maximum size required for any intermediate tensor in the graph and allocates exactly two static buffers of that size.
+
+```mermaid
+sequenceDiagram
+    participant I as Input
+    participant B1 as Buffer A
+    participant B2 as Buffer B
+    participant O as Output
+    
+    I->>B1: Layer 1 (Input -> A)
+    B1->>B2: Layer 2 (A -> B)
+    B2->>B1: Layer 3 (B -> A)
+    B1->>O: Layer 4 (A -> Output)
+```
+
+- **Buffer Reuse**: Instead of allocating space for every layer's output, buffers are reused.
+- **Direct Output Optimization**: The first layer reads from the input pointer, and the last layer writes directly to the output pointer, avoiding unnecessary copies.
+
+### 4. Code Generation (Emission)
+The `CCodeGenerator` emits C99-compatible code using templates.
+- **Weights & Biases**: Extracted from the trained Kotlin model and serialized as `static const float` arrays. This places them in Flash memory (PROGMEM) on many microcontrollers, saving precious RAM.
+- **Kernel Implementation**: Operations like `Dense` (Linear) are implemented as optimized nested loops.
+- **Header Generation**: Produces a clean API for the user:
+  ```c
+  int model_inference(const float* input, float* output);
+  ```
+
+### 5. Validation
+The generator performs post-generation validation:
+- **Static Allocation Check**: Ensures no dynamic allocation is present in the generated source.
+- **Buffer Alternation Check**: Verifies that the ping-pong strategy is correctly implemented without data races or overwrites.
+
+## Performance and Constraints
+- **Floating Point**: Currently optimized for `FP32`.
+- **Supported Ops**: `Dense`, `ReLU`, `Sigmoid`, `Tanh`, `Add`, `MatMul`.
+- **Memory**: Total memory consumption is `TotalWeights + 2 * MaxIntermediateTensor`.
