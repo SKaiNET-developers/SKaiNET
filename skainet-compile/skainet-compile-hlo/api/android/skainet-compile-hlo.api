@@ -1,0 +1,224 @@
+public final class sk/ainet/compile/hlo/ConstantFoldingPass : sk/ainet/compile/hlo/OptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/compile/hlo/StableHloModule;)Lsk/ainet/compile/hlo/StableHloModule;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/ConversionContext {
+	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;)V
+	public synthetic fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun clear ()V
+	public final fun emitComment (Ljava/lang/String;)V
+	public final fun emitLine (Ljava/lang/String;)V
+	public final fun emitOperation (Ljava/lang/String;)V
+	public final fun getContent ()Ljava/lang/String;
+	public final fun getInputNodes (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
+	public final fun getTypeMapper ()Lsk/ainet/compile/hlo/TypeMapper;
+	public final fun getValueName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun nextTempValue ()Ljava/lang/String;
+	public final fun setGraph (Lsk/ainet/lang/graph/ComputeGraph;)V
+	public final fun setValueName (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public abstract class sk/ainet/compile/hlo/ConversionResult {
+}
+
+public final class sk/ainet/compile/hlo/ConversionResult$Failure : sk/ainet/compile/hlo/ConversionResult {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/hlo/ConversionResult$Failure;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/ConversionResult$Failure;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/ConversionResult$Failure;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ljava/lang/String;
+	public final fun getFallbackComment ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/ConversionResult$Success : sk/ainet/compile/hlo/ConversionResult {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lsk/ainet/compile/hlo/ConversionResult$Success;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/ConversionResult$Success;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/compile/hlo/ConversionResult$Success;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEmittedOperations ()Ljava/util/List;
+	public final fun getOutputValueName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/ConversionResult$Unsupported : sk/ainet/compile/hlo/ConversionResult {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/hlo/ConversionResult$Unsupported;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/ConversionResult$Unsupported;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/ConversionResult$Unsupported;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOperationName ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/Dag2hloKt {
+	public static final fun toStableHlo (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun toStableHlo$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static final fun toStableHloLegacy (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun toStableHloLegacy$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+}
+
+public final class sk/ainet/compile/hlo/DeadCodeEliminationPass : sk/ainet/compile/hlo/OptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/compile/hlo/StableHloModule;)Lsk/ainet/compile/hlo/StableHloModule;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/MlirValidator {
+	public fun <init> ()V
+	public final fun validate (Ljava/lang/String;)Ljava/util/List;
+	public final fun validateModule (Ljava/lang/String;)Ljava/util/List;
+}
+
+public abstract interface class sk/ainet/compile/hlo/OptimizationPass {
+	public abstract fun apply (Lsk/ainet/compile/hlo/StableHloModule;)Lsk/ainet/compile/hlo/StableHloModule;
+	public abstract fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/RegistryStats {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lsk/ainet/compile/hlo/RegistryStats;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/RegistryStats;IIILjava/lang/Object;)Lsk/ainet/compile/hlo/RegistryStats;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConverterCount ()I
+	public final fun getOperationCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/StableHloConverter {
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;)V
+	public synthetic fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun convert (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun convert$default (Lsk/ainet/compile/hlo/StableHloConverter;Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+	public final fun convertWithOptimization (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/StableHloOptimizer;)Lsk/ainet/compile/hlo/StableHloModule;
+}
+
+public final class sk/ainet/compile/hlo/StableHloConverterFactory {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/StableHloConverterFactory;
+	public final fun createBasic ()Lsk/ainet/compile/hlo/StableHloConverter;
+	public final fun createCustom (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static synthetic fun createCustom$default (Lsk/ainet/compile/hlo/StableHloConverterFactory;Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public final fun createExtended ()Lsk/ainet/compile/hlo/StableHloConverter;
+	public final fun createFast ()Lsk/ainet/compile/hlo/StableHloConverter;
+}
+
+public final class sk/ainet/compile/hlo/StableHloModule {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/StableHloModule;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Ljava/lang/String;
+	public final fun getFunctionName ()Ljava/lang/String;
+	public final fun getInputSpecs ()Ljava/util/List;
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getOutputSpecs ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun optimize (Lsk/ainet/compile/hlo/StableHloOptimizer;)Lsk/ainet/compile/hlo/StableHloModule;
+	public fun toString ()Ljava/lang/String;
+	public final fun validate (Lsk/ainet/compile/hlo/MlirValidator;)Ljava/util/List;
+}
+
+public abstract interface class sk/ainet/compile/hlo/StableHloOperationConverter {
+	public abstract fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public abstract fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/StableHloOperationRegistry {
+	public fun <init> ()V
+	public final fun clear ()V
+	public final fun getConverter (Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloOperationConverter;
+	public final fun getStats ()Lsk/ainet/compile/hlo/RegistryStats;
+	public final fun getSupportedOperations ()Ljava/util/Set;
+	public final fun isSupported (Ljava/lang/String;)Z
+	public final fun register (Lsk/ainet/compile/hlo/StableHloOperationConverter;)V
+	public final fun unregister (Ljava/util/Set;)V
+}
+
+public final class sk/ainet/compile/hlo/StableHloOptimizer {
+	public static final field Companion Lsk/ainet/compile/hlo/StableHloOptimizer$Companion;
+	public fun <init> ()V
+	public final fun addPass (Lsk/ainet/compile/hlo/OptimizationPass;)V
+	public final fun optimize (Lsk/ainet/compile/hlo/StableHloModule;)Lsk/ainet/compile/hlo/StableHloModule;
+}
+
+public final class sk/ainet/compile/hlo/StableHloOptimizer$Companion {
+	public final fun createDefault ()Lsk/ainet/compile/hlo/StableHloOptimizer;
+}
+
+public final class sk/ainet/compile/hlo/TypeMapper {
+	public fun <init> ()V
+	public final fun areTypesCompatible (Lsk/ainet/lang/tensor/ops/TensorSpec;Lsk/ainet/lang/tensor/ops/TensorSpec;)Z
+	public final fun createDynamicTensorType (ILjava/lang/String;)Ljava/lang/String;
+	public final fun createTensorType (Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;
+	public final fun getScalarType (Ljava/lang/String;)Ljava/lang/String;
+	public final fun inferBroadcastType (Lsk/ainet/lang/tensor/ops/TensorSpec;Lsk/ainet/lang/tensor/ops/TensorSpec;)Lsk/ainet/lang/tensor/ops/TensorSpec;
+	public final fun mapDType (Ljava/lang/String;)Ljava/lang/String;
+	public final fun mapFunctionSignature (Ljava/util/List;Ljava/util/List;)Ljava/lang/String;
+	public final fun mapTensorType (Lsk/ainet/lang/tensor/ops/TensorSpec;)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/converters/ActivationOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/BasicMathConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/LegacyOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/LinalgOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/MathOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/NeuralNetOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/examples/BasicExample {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/examples/BasicExample;
+	public final fun convertToStableHlo (Lsk/ainet/lang/graph/DefaultComputeGraph;)Ljava/lang/String;
+	public final fun createSimpleGraph ()Lsk/ainet/lang/graph/DefaultComputeGraph;
+	public final fun runExample ()Ljava/lang/String;
+}
+

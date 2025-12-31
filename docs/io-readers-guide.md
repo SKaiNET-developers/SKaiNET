@@ -1,0 +1,468 @@
+# SKaiNET I/O Readers Guide
+
+This guide demonstrates how to use SKaiNET's GGUF and ONNX readers in your Kotlin Multiplatform projects.
+
+## Overview
+
+SKaiNET provides two main I/O modules for reading AI model formats:
+- **skainet-io-gguf**: For reading GGUF (GPT-Generated Unified Format) files
+- **skainet-io-onnx**: For reading ONNX (Open Neural Network Exchange) files
+
+Both modules are built on Kotlin Multiplatform and support JVM, Android, iOS, JS, WASM, and Native platforms.
+
+## Dependencies
+
+Add the following dependencies to your `build.gradle.kts`:
+
+### For GGUF Support
+
+```kotlin
+dependencies {
+    implementation("sk.ainet.core:skainet-io-gguf:0.5.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
+}
+```
+
+### For ONNX Support
+
+```kotlin
+dependencies {
+    implementation("sk.ainet.core:skainet-io-onnx:0.5.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
+    implementation("pro.streem.pbandk:pbandk-runtime:0.16.0")
+}
+```
+
+## GGUF Reader Usage
+
+### Basic GGUF Reading
+
+```kotlin
+import kotlinx.io.Source
+import kotlinx.io.asSource
+import kotlinx.io.buffered
+import sk.ainet.io.gguf.GGUFReader
+import sk.ainet.io.gguf.GGUFValueType
+import java.io.File
+
+suspend fun readGGUFModel(filePath: String) {
+    val file = File(filePath)
+    file.inputStream().use { inputStream ->
+        // Create a buffered source from the input stream
+        val source: Source = inputStream.asSource().buffered()
+        
+        // Create the GGUF reader
+        val reader = GGUFReader(source, loadTensorData = true)
+        
+        // Access model metadata
+        println("Model Metadata:")
+        reader.fields.forEach { (key, field) ->
+            val value = when {
+                field.types.size == 1 && field.types[0] == GGUFValueType.STRING -> {
+                    // Extract string value
+                    String(
+                        (field.parts[field.data[0]] as List<UByte>).toUByteArray().toByteArray(),
+                        Charsets.UTF_8
+                    )
+                }
+                else -> field.parts[field.data[0]]
+            }
+            println("  $key: $value")
+        }
+        
+        // Access tensor information
+        println("\nTensors:")
+        reader.tensors.forEach { tensor ->
+            println("  Name: ${tensor.name}")
+            println("  Shape: ${tensor.shape.joinToString("x")}")
+            println("  Type: ${tensor.tensorType}")
+            println("  Elements: ${tensor.nElements}")
+            println("  Bytes: ${tensor.nBytes}")
+            println("  ---")
+        }
+    }
+}
+```
+
+### Working with Tensor Data
+
+```kotlin
+import sk.ainet.io.gguf.GGUFReader
+import sk.ainet.io.gguf.GGMLQuantizationType
+
+fun processTensorData(reader: GGUFReader) {
+    reader.tensors.forEach { tensor ->
+        when (tensor.tensorType) {
+            GGMLQuantizationType.F32 -> {
+                // Handle Float32 tensors
+                val floatData = reader.materialize(tensor) as List<Float>
+                println("Float tensor '${tensor.name}' has ${floatData.size} elements")
+                // Process float data...
+            }
+            
+            GGMLQuantizationType.F16 -> {
+                // Handle Float16 tensors (returned as raw bytes)
+                val byteData = reader.materialize(tensor) as List<UByte>
+                println("F16 tensor '${tensor.name}' has ${byteData.size} bytes")
+                // Process raw bytes...
+            }
+            
+            GGMLQuantizationType.I32 -> {
+                // Handle Int32 tensors
+                val intData = reader.materialize(tensor) as List<Int>
+                println("Int tensor '${tensor.name}' has ${intData.size} elements")
+                // Process integer data...
+            }
+            
+            else -> {
+                // Handle quantized types (returned as raw bytes)
+                val quantizedData = reader.materialize(tensor) as List<UByte>
+                println("Quantized tensor '${tensor.name}' (${tensor.tensorType}) has ${quantizedData.size} bytes")
+                // Process quantized data...
+            }
+        }
+    }
+}
+```
+
+### Lazy Loading for Large Models
+
+```kotlin
+import sk.ainet.io.gguf.GGUFReader
+
+fun readGGUFMetadataOnly(filePath: String) {
+    File(filePath).inputStream().use { inputStream ->
+        val source = inputStream.asSource().buffered()
+        
+        // Create reader without loading tensor data
+        val reader = GGUFReader(source, loadTensorData = false)
+        
+        // Access metadata and tensor info without loading actual tensor data
+        println("Model has ${reader.tensors.size} tensors")
+        reader.tensors.forEach { tensor ->
+            println("Tensor: ${tensor.name}, Shape: ${tensor.shape}, Type: ${tensor.tensorType}")
+            // tensor.data will be empty since loadTensorData = false
+        }
+        
+        // Later, materialize specific tensors on demand
+        val specificTensor = reader.tensors.find { it.name == "embedding.weight" }
+        specificTensor?.let { tensor ->
+            val data = reader.materialize(tensor)
+            println("Loaded tensor data: ${data.size} elements")
+        }
+    }
+}
+```
+
+## ONNX Reader Usage
+
+### Basic ONNX Reading
+
+```kotlin
+import kotlinx.io.Source
+import kotlinx.io.asSource
+import sk.ainet.io.onnx.OnnxLoader
+import onnx.ModelProto
+import pbandk.decodeFromByteArray
+import java.io.File
+
+suspend fun readONNXModel(filePath: String) {
+    val file = File(filePath)
+    
+    // Create ONNX loader
+    val loader = OnnxLoader.fromModelSource {
+        file.inputStream().asSource()
+    }
+    
+    // Load the model
+    val loadedModel = loader.load()
+    val modelProto = loadedModel.proto
+    
+    // Access model information
+    println("Model Information:")
+    println("  IR Version: ${modelProto.irVersion}")
+    println("  Producer: ${modelProto.producerName}")
+    println("  Producer Version: ${modelProto.producerVersion}")
+    println("  Domain: ${modelProto.domain}")
+    println("  Model Version: ${modelProto.modelVersion}")
+    
+    // Access graph information
+    val graph = modelProto.graph
+    if (graph != null) {
+        println("\nGraph Information:")
+        println("  Name: ${graph.name}")
+        println("  Nodes: ${graph.node.size}")
+        println("  Initializers: ${graph.initializer.size}")
+        println("  Inputs: ${graph.input.size}")
+        println("  Outputs: ${graph.output.size}")
+    }
+}
+```
+
+### Working with ONNX Graph Structure
+
+```kotlin
+import onnx.ModelProto
+import onnx.NodeProto
+import onnx.TensorProto
+
+fun analyzeONNXGraph(modelProto: ModelProto) {
+    val graph = modelProto.graph ?: return
+    
+    // Analyze nodes (operations)
+    println("Operations in the model:")
+    val opCounts = mutableMapOf<String, Int>()
+    graph.node.forEach { node ->
+        val opType = node.opType
+        opCounts[opType] = opCounts.getOrDefault(opType, 0) + 1
+        
+        println("  Node: ${node.name}")
+        println("    Op Type: $opType")
+        println("    Inputs: ${node.input.joinToString(", ")}")
+        println("    Outputs: ${node.output.joinToString(", ")}")
+        
+        // Access node attributes
+        node.attribute.forEach { attr ->
+            println("    Attribute: ${attr.name} = ${getAttributeValue(attr)}")
+        }
+        println("    ---")
+    }
+    
+    println("\nOperation Summary:")
+    opCounts.forEach { (op, count) ->
+        println("  $op: $count")
+    }
+    
+    // Analyze initializers (weights/parameters)
+    println("\nModel Parameters:")
+    graph.initializer.forEach { tensor ->
+        println("  ${tensor.name}: ${getTensorShapeString(tensor)} (${tensor.dataType})")
+    }
+}
+
+fun getAttributeValue(attr: onnx.AttributeProto): String {
+    return when (attr.type) {
+        onnx.AttributeProto.AttributeType.FLOAT -> attr.f.toString()
+        onnx.AttributeProto.AttributeType.INT -> attr.i.toString()
+        onnx.AttributeProto.AttributeType.STRING -> attr.s.toStringUtf8()
+        onnx.AttributeProto.AttributeType.FLOATS -> attr.floats.toString()
+        onnx.AttributeProto.AttributeType.INTS -> attr.ints.toString()
+        else -> "Unknown type"
+    }
+}
+
+fun getTensorShapeString(tensor: TensorProto): String {
+    return tensor.dims.joinToString("x") { it.toString() }
+}
+```
+
+### Custom ONNX Loader with Error Handling
+
+```kotlin
+import kotlinx.io.Source
+import sk.ainet.io.onnx.OnnxLoader
+import sk.ainet.io.onnx.OnnxLoadedModel
+import onnx.ModelProto
+import pbandk.decodeFromByteArray
+
+class SafeOnnxLoader(private val sourceProvider: suspend () -> Source) {
+    
+    suspend fun loadWithValidation(): Result<OnnxLoadedModel<ModelProto>> {
+        return try {
+            val loader = OnnxLoader.fromSource(sourceProvider) { bytes ->
+                ModelProto.decodeFromByteArray(bytes)
+            }
+            
+            val model = loader.load()
+            
+            // Validate the loaded model
+            validateModel(model.proto)
+            
+            Result.success(model)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    private fun validateModel(model: ModelProto) {
+        require(model.graph != null) { "Model must contain a graph" }
+        require(model.graph!!.node.isNotEmpty()) { "Graph must contain at least one node" }
+        
+        // Additional validation logic...
+        val supportedOps = setOf(
+            "Conv", "Relu", "Add", "Mul", "MatMul", "Gemm", 
+            "MaxPool", "Reshape", "Transpose", "BatchNormalization"
+        )
+        
+        val unsupportedOps = model.graph!!.node
+            .map { it.opType }
+            .toSet()
+            .minus(supportedOps)
+        
+        if (unsupportedOps.isNotEmpty()) {
+            println("Warning: Unsupported operations found: $unsupportedOps")
+        }
+    }
+}
+
+// Usage
+suspend fun safeLoadOnnx(filePath: String) {
+    val loader = SafeOnnxLoader {
+        File(filePath).inputStream().asSource()
+    }
+    
+    loader.loadWithValidation()
+        .onSuccess { loadedModel ->
+            println("Successfully loaded ONNX model")
+            // Process the model...
+        }
+        .onFailure { error ->
+            println("Failed to load ONNX model: ${error.message}")
+        }
+}
+```
+
+## Platform-Specific Considerations
+
+### JVM Platform
+
+```kotlin
+// JVM-specific file reading
+import java.io.File
+import java.nio.file.Path
+
+fun readFromFile(path: Path): Source {
+    return path.toFile().inputStream().asSource().buffered()
+}
+```
+
+### Android Platform
+
+```kotlin
+// Android-specific asset reading
+import android.content.Context
+import android.content.res.AssetManager
+
+fun readFromAssets(context: Context, fileName: String): Source {
+    return context.assets.open(fileName).asSource().buffered()
+}
+```
+
+### iOS/Native Platform
+
+```kotlin
+// Native platform file reading
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
+
+fun readFromNativePath(pathString: String): Source {
+    val path = Path(pathString)
+    return SystemFileSystem.source(path).buffered()
+}
+```
+
+## Performance Tips
+
+### Memory Management
+
+```kotlin
+// For large models, consider streaming or chunked processing
+fun processLargeModel(reader: GGUFReader) {
+    // Process tensors one at a time to manage memory
+    reader.tensors.forEach { tensor ->
+        if (tensor.nBytes > 100_000_000) { // 100MB threshold
+            println("Processing large tensor: ${tensor.name}")
+            // Process in chunks or skip if not needed
+        } else {
+            val data = reader.materialize(tensor)
+            // Process smaller tensors normally
+        }
+    }
+}
+```
+
+### Lazy Loading Strategy
+
+```kotlin
+class ModelManager {
+    private var reader: GGUFReader? = null
+    private val tensorCache = mutableMapOf<String, List<Any>>()
+    
+    fun loadModel(source: Source) {
+        reader = GGUFReader(source, loadTensorData = false)
+    }
+    
+    fun getTensor(name: String): List<Any>? {
+        return tensorCache.getOrPut(name) {
+            val tensor = reader?.tensors?.find { it.name == name }
+            tensor?.let { reader?.materialize(it) } ?: emptyList()
+        }
+    }
+}
+```
+
+## Error Handling Best Practices
+
+```kotlin
+sealed class ModelLoadResult<T> {
+    data class Success<T>(val model: T) : ModelLoadResult<T>()
+    data class Error<T>(val message: String, val cause: Throwable? = null) : ModelLoadResult<T>()
+}
+
+suspend fun loadModelSafely(filePath: String): ModelLoadResult<GGUFReader> {
+    return try {
+        val file = File(filePath)
+        if (!file.exists()) {
+            return ModelLoadResult.Error("File not found: $filePath")
+        }
+        
+        file.inputStream().use { inputStream ->
+            val source = inputStream.asSource().buffered()
+            val reader = GGUFReader(source)
+            ModelLoadResult.Success(reader)
+        }
+    } catch (e: IllegalArgumentException) {
+        ModelLoadResult.Error("Invalid GGUF format: ${e.message}", e)
+    } catch (e: Exception) {
+        ModelLoadResult.Error("Failed to load model: ${e.message}", e)
+    }
+}
+```
+
+## Integration Examples
+
+### Using with Coroutines
+
+```kotlin
+import kotlinx.coroutines.*
+
+class AsyncModelLoader {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    
+    fun loadModelAsync(filePath: String): Deferred<GGUFReader> {
+        return scope.async {
+            File(filePath).inputStream().use { inputStream ->
+                val source = inputStream.asSource().buffered()
+                GGUFReader(source)
+            }
+        }
+    }
+    
+    suspend fun processModelConcurrently(reader: GGUFReader) {
+        val jobs = reader.tensors.map { tensor ->
+            scope.async {
+                val data = reader.materialize(tensor)
+                // Process tensor data
+                ProcessedTensor(tensor.name, data.size)
+            }
+        }
+        
+        val results = jobs.awaitAll()
+        println("Processed ${results.size} tensors")
+    }
+}
+
+data class ProcessedTensor(val name: String, val size: Int)
+```
+
+This guide provides comprehensive examples for using SKaiNET's I/O readers in your projects. The readers are designed to be efficient, multiplatform-compatible, and easy to integrate into existing Kotlin applications.
