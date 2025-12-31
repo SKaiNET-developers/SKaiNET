@@ -72,12 +72,25 @@ println(ds.describe())
 ### SKaiNET is Compiler
 
 - MLIR/StableHLO based lowering (modules provided in `SKaiNET-compile-*`)
-
 ```kotlin
 // Illustrative: export graph to JSON/StableHLO IR
 val ir = Compile.toStableHlo(model)
 println(ir.pretty())
 ```
+- **Arduino C Code Generation**: Export models to standalone, optimized C99 code with static memory allocation.
+
+```kotlin
+// Export model to an Arduino library
+val facade = CCodegenFacade()
+facade.exportToArduinoLibrary(
+    model = model,
+    forwardPass = { ctx -> model.forward(input, ctx) },
+    outputPath = "build/arduino",
+    libraryName = "MyModel"
+)
+```
+
+Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more details.
 
 ### SKaiNET is for Developers
 

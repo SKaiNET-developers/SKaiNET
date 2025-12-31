@@ -119,14 +119,6 @@ public final class sk/ainet/lang/trace/NoOpSink : sk/ainet/lang/trace/OpSink {
 	public fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
 }
 
-public final class sk/ainet/lang/trace/OpAttributeFactory {
-	public static final field INSTANCE Lsk/ainet/lang/trace/OpAttributeFactory;
-	public final fun binary (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Ljava/util/Map;
-	public final fun conv2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Ljava/util/Map;
-	public final fun shapesAndDTypes (Ljava/util/List;Ljava/util/List;)Ljava/util/Map;
-	public final fun unary (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Ljava/util/Map;
-}
-
 public abstract interface class sk/ainet/lang/trace/OpSink {
 	public abstract fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
 }
@@ -165,44 +157,6 @@ public final class sk/ainet/lang/trace/TraceSession {
 	public final fun refOf (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/trace/TensorRef;
 	public final fun refsOf (Ljava/util/List;)Ljava/util/List;
 	public final fun resolve (Lsk/ainet/lang/trace/TensorRef;)Lsk/ainet/lang/tensor/Tensor;
-}
-
-public final class sk/ainet/lang/trace/TracingTensorOps : sk/ainet/lang/tensor/ops/TensorOps {
-	public fun <init> (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/trace/OpSink;Lsk/ainet/lang/trace/TraceSession;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/trace/OpSink;Lsk/ainet/lang/trace/TraceSession;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun add (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun addScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
-	public fun concat (Ljava/util/List;I)Lsk/ainet/lang/tensor/Tensor;
-	public fun conv2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
-	public fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
-	public fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
-	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
-	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
-	public fun matmul (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun maxPool2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;)Lsk/ainet/lang/tensor/Tensor;
-	public fun mean (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
-	public fun mulScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
-	public fun multiply (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun rdivScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
-	public fun rsubScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun softmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
-	public fun split (Lsk/ainet/lang/tensor/Tensor;II)Ljava/util/List;
-	public fun sqrt (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun squeeze (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
-	public fun subScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
-	public fun subtract (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun sum (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
-	public fun transpose (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun tril (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
-	public fun unsqueeze (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
-	public fun upsample2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;Z)Lsk/ainet/lang/tensor/Tensor;
-	public fun variance (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/tape/Execution {

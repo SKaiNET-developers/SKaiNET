@@ -1,0 +1,133 @@
+public final class sk/ainet/compile/c/ArduinoCodegenIntegration {
+	public fun <init> ()V
+	public final fun generateArduinoLibrary (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+}
+
+public final class sk/ainet/compile/c/ArduinoLibraryPackager {
+	public fun <init> ()V
+	public final fun createLibraryStructure (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/compile/c/MemoryLayout;[I[I)Lsk/ainet/compile/c/ArduinoLibraryResult;
+}
+
+public final class sk/ainet/compile/c/ArduinoLibraryResult {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/compile/c/MemoryLayout;Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/compile/c/MemoryLayout;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/compile/c/MemoryLayout;Ljava/util/List;Ljava/util/List;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public static synthetic fun copy$default (Lsk/ainet/compile/c/ArduinoLibraryResult;Ljava/lang/String;Lsk/ainet/compile/c/MemoryLayout;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGeneratedFiles ()Ljava/util/List;
+	public final fun getLibraryPath ()Ljava/lang/String;
+	public final fun getMemoryRequirements ()Lsk/ainet/compile/c/MemoryLayout;
+	public final fun getSupportedOperations ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/CCodeGenerator {
+	public static final field Companion Lsk/ainet/compile/c/CCodeGenerator$Companion;
+	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;)V
+	public final fun calculateMemoryRequirements ()Lsk/ainet/compile/c/MemoryLayout;
+	public final fun extractWeights ()Ljava/util/List;
+	public final fun generateActivationFunction (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateActivationFunctionWithAccuracy (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateAllLayers ()Ljava/util/List;
+	public final fun generateDenseLayer (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateDenseLayerWithAccuracy (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateTransposeLayer (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun validateGeneratedCodeBufferAlternation (Ljava/lang/String;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateGeneratedCodeStaticAllocation (Ljava/lang/String;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateGraph ()Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateMemoryManagement ()Lsk/ainet/lang/tensor/ops/ValidationResult;
+	public final fun validateOperations ()Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public final class sk/ainet/compile/c/CCodeGenerator$Companion {
+}
+
+public final class sk/ainet/compile/c/CCodegenFacade {
+	public fun <init> ()V
+	public final fun exportGraphToArduinoLibrary (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public final fun exportToArduinoLibrary (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public final fun exportToArduinoLibrary (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public static synthetic fun exportToArduinoLibrary$default (Lsk/ainet/compile/c/CCodegenFacade;Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+	public static synthetic fun exportToArduinoLibrary$default (Lsk/ainet/compile/c/CCodegenFacade;Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/c/ArduinoLibraryResult;
+}
+
+public final class sk/ainet/compile/c/LayerCode {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;[I[ILjava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()[I
+	public final fun component4 ()[I
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;[I[ILjava/lang/String;)Lsk/ainet/compile/c/LayerCode;
+	public static synthetic fun copy$default (Lsk/ainet/compile/c/LayerCode;Ljava/lang/String;Ljava/lang/String;[I[ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/c/LayerCode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCodeFragment ()Ljava/lang/String;
+	public final fun getInputShape ()[I
+	public final fun getLayerName ()Ljava/lang/String;
+	public final fun getOperationType ()Ljava/lang/String;
+	public final fun getOutputShape ()[I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/MemoryLayout {
+	public fun <init> (IIILjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (IIILjava/util/List;)Lsk/ainet/compile/c/MemoryLayout;
+	public static synthetic fun copy$default (Lsk/ainet/compile/c/MemoryLayout;IIILjava/util/List;ILjava/lang/Object;)Lsk/ainet/compile/c/MemoryLayout;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBufferSizes ()Ljava/util/List;
+	public final fun getMaxIntermediateSize ()I
+	public final fun getTotalMemoryRequired ()I
+	public final fun getTotalWeightSize ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/Platform_androidKt {
+	public static final fun platformCreateDirectory (Ljava/lang/String;)V
+	public static final fun platformWriteFile (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class sk/ainet/compile/c/WeightArray {
+	public fun <init> (Ljava/lang/String;[F[IZ)V
+	public synthetic fun <init> (Ljava/lang/String;[F[IZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()[F
+	public final fun component3 ()[I
+	public final fun component4 ()Z
+	public final fun copy (Ljava/lang/String;[F[IZ)Lsk/ainet/compile/c/WeightArray;
+	public static synthetic fun copy$default (Lsk/ainet/compile/c/WeightArray;Ljava/lang/String;[F[IZILjava/lang/Object;)Lsk/ainet/compile/c/WeightArray;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getShape ()[I
+	public final fun getValues ()[F
+	public fun hashCode ()I
+	public final fun isWeight ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/templates/ExampleTemplate {
+	public static final field INSTANCE Lsk/ainet/compile/c/templates/ExampleTemplate;
+	public final fun generate (Ljava/lang/String;[I[ILjava/lang/String;)Ljava/lang/String;
+	public static synthetic fun generate$default (Lsk/ainet/compile/c/templates/ExampleTemplate;Ljava/lang/String;[I[ILjava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+	public final fun generateMinimal (Ljava/lang/String;II)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/templates/HeaderTemplate {
+	public static final field INSTANCE Lsk/ainet/compile/c/templates/HeaderTemplate;
+	public final fun generate (Ljava/lang/String;[I[ILsk/ainet/compile/c/MemoryLayout;)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/c/templates/SourceTemplate {
+	public static final field INSTANCE Lsk/ainet/compile/c/templates/SourceTemplate;
+	public final fun generate (Ljava/lang/String;Ljava/util/List;Ljava/util/List;)Ljava/lang/String;
+}
+

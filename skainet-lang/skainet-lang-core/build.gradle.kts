@@ -40,8 +40,12 @@ kotlin {
     }
 
     sourceSets {
-        commonMain.dependencies {
-            api(project(":skainet-lang:skainet-lang-ksp-annotations"))
+        commonMain {
+            // Include KSP-generated sources in commonMain so downstream modules can access them
+            kotlin.srcDir("build/generated/ksp/metadata/commonMain/kotlin")
+            dependencies {
+                api(project(":skainet-lang:skainet-lang-ksp-annotations"))
+            }
         }
 
         commonTest.dependencies {
@@ -50,10 +54,18 @@ kotlin {
     }
 }
 
+// Ensure KSP metadata task runs before any Kotlin compilation and other KSP tasks
+tasks.configureEach {
+    if (name != "kspCommonMainKotlinMetadata" &&
+        (name.startsWith("compileKotlin") || name.startsWith("ksp"))) {
+        dependsOn("kspCommonMainKotlinMetadata")
+    }
+}
+
 dependencies {
+    // KSP processor for generating tracing wrappers - only for commonMain metadata
+    // to avoid duplicate class generation across targets
     add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
-    add("kspJvm", project(":skainet-lang:skainet-lang-ksp-processor"))
-    add("kspAndroid", project(":skainet-lang:skainet-lang-ksp-processor"))
 }
 
 android {

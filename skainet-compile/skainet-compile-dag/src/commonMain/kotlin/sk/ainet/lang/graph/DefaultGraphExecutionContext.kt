@@ -4,10 +4,11 @@ import sk.ainet.context.ExecutionStats
 import sk.ainet.context.MemoryInfo
 import sk.ainet.context.Phase
 import sk.ainet.lang.graph.exec.GraphExecutionContext
+import sk.ainet.lang.tensor.ops.KspTensorOps
+import sk.ainet.lang.tensor.ops.VoidTensorOps
 import sk.ainet.lang.trace.CompositeSink
 import sk.ainet.lang.trace.NoOpSink
 import sk.ainet.lang.trace.OpSink
-import sk.ainet.lang.trace.TracingTensorOps
 import sk.ainet.lang.trace.TapeSink
 import sk.ainet.lang.nn.hooks.ForwardHooks
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
@@ -17,7 +18,7 @@ import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.TapeStack
 
 public class DefaultGraphExecutionContext(
-    override val baseOps: TensorOps = MinimalAddTensorOps(),
+    override val baseOps: TensorOps = VoidTensorOps(),
     override val phase: Phase = Phase.EVAL,
     override val tensorDataFactory: TensorDataFactory = DenseTensorDataFactory(),
     override val hooks: ForwardHooks? = null,
@@ -62,13 +63,16 @@ public class DefaultGraphExecutionContext(
     override val ops: TensorOps
         get() {
             // Compose sinks: base sink (could itself be a Composite) + optional TapeSink for current tape
-            val dynamicSink: OpSink = currentTape?.let {
+            val tape = currentTape
+            val dynamicSink: OpSink = tape?.let {
                 // Only attach TapeSink when we have a DefaultExecutionTape and recording is on
                 if (it.isRecording && it is DefaultExecutionTape) CompositeSink(listOf(baseSink, TapeSink(it))) else baseSink
             } ?: baseSink
 
-            // Always expose TracingTensorOps to avoid branching in hot path
-            return TracingTensorOps(baseOps, dynamicSink)
+            // Always expose KspTensorOps to avoid branching in hot path
+            // If we have a DefaultExecutionTape, use its session for stability (FR7)
+            val session = (tape as? DefaultExecutionTape)?.session ?: sk.ainet.lang.trace.TraceSession()
+            return KspTensorOps(baseOps, dynamicSink, session)
         }
 
     /** Convenience helper to record within a block and return the produced tape (and keep existing graph). */
@@ -85,7 +89,7 @@ public class DefaultGraphExecutionContext(
     public companion object {
         /** Eager-only: no recording. */
         public fun eager(
-            baseOps: TensorOps = MinimalAddTensorOps(),
+            baseOps: TensorOps = VoidTensorOps(),
         ): DefaultGraphExecutionContext = DefaultGraphExecutionContext(
             baseOps = baseOps,
             baseSink = NoOpSink
@@ -93,7 +97,7 @@ public class DefaultGraphExecutionContext(
 
         /** Tape-only preset: tape is created on startRecording(); traces are appended via TapeSink. */
         public fun tape(
-            baseOps: TensorOps = MinimalAddTensorOps(),
+            baseOps: TensorOps = VoidTensorOps(),
             tapeFactory: (GraphExecutionContext) -> ExecutionTape = { _ -> DefaultExecutionTape() }
         ): DefaultGraphExecutionContext = DefaultGraphExecutionContext(
             baseOps = baseOps,
@@ -103,7 +107,7 @@ public class DefaultGraphExecutionContext(
 
         /** Graph-only preset: build graph online using GraphSink. */
         public fun graph(
-            baseOps: TensorOps = MinimalAddTensorOps(),
+            baseOps: TensorOps = VoidTensorOps(),
             graph: ComputeGraph = DefaultComputeGraph()
         ): DefaultGraphExecutionContext = DefaultGraphExecutionContext(
             baseOps = baseOps,
@@ -113,7 +117,7 @@ public class DefaultGraphExecutionContext(
 
         /** Composite preset: graph online; when recording also append to tape. */
         public fun tapeAndGraph(
-            baseOps: TensorOps = MinimalAddTensorOps(),
+            baseOps: TensorOps = VoidTensorOps(),
             graph: ComputeGraph = DefaultComputeGraph(),
             tapeFactory: (GraphExecutionContext) -> ExecutionTape = { _ -> DefaultExecutionTape() }
         ): DefaultGraphExecutionContext = DefaultGraphExecutionContext(

@@ -6,6 +6,7 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
 import sk.ainet.lang.trace.TraceToGraphBuilder
+import sk.ainet.lang.trace.TraceRecordingSession
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
@@ -14,7 +15,9 @@ import sk.ainet.tape.TapeStack
 /**
  * Default implementation of ExecutionTape
  */
-public open class DefaultExecutionTape() : ExecutionTape {
+public open class DefaultExecutionTape(
+    public var session: sk.ainet.lang.trace.TraceSession = sk.ainet.lang.trace.TraceSession()
+) : ExecutionTape {
 
     protected var _isRecording: Boolean = false
     protected val _operations: MutableList<RecordedOperation> = mutableListOf()
@@ -156,7 +159,7 @@ public open class DefaultExecutionTape() : ExecutionTape {
         // consistency with online GraphSink wiring rules (PRD FR6).
         if (_traces.isNotEmpty()) {
             val graph = DefaultComputeGraph()
-            val builder = TraceToGraphBuilder(graph)
+            val builder = TraceToGraphBuilder(graph, session)
             builder.addAll(_traces)
             return graph
         }
