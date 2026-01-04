@@ -54,10 +54,10 @@ kotlin {
     }
 }
 
-// Ensure KSP metadata task runs before any Kotlin compilation and other KSP tasks
+// Ensure KSP metadata task runs before any Kotlin compilation, other KSP tasks, and sourcesJar
 tasks.configureEach {
     if (name != "kspCommonMainKotlinMetadata" &&
-        (name.startsWith("compileKotlin") || name.startsWith("ksp"))) {
+        (name.startsWith("compileKotlin") || name.startsWith("ksp") || name.contains("ourcesJar"))) {
         dependsOn("kspCommonMainKotlinMetadata")
     }
 }

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0] - 2025-12-31
+
+### Added
+- StableHLO implementation and E2E CLI app for compiling models to CUDA via IREE.
+- `ArduinoCodegen` for exporting models to standalone C99 code with static memory allocation, optimized for Arduino.
+- KSP-based generation of `TracingOps` for automated recording pipeline updates.
+- Initial implementation of `skainet-compile-hlo` for high-level optimization.
+
+### Changed
+- Improved CUDA backend strategy and IREE integration.
+- Optimized long-running property tests for C code generation.
+- Refactored `TracingTensorOps` to use execution context for code generation.
+
 ## [0.5.1] - 2025-12-26
 
 ### Added
