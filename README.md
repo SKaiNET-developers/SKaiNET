@@ -99,8 +99,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.6.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.6.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.6.3")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.6.3")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -111,7 +111,7 @@ dependencies {
 - In Kotlin Notebooks for quick exploration
 - With sample projects to learn patterns
 
-See also CHANGELOG for what’s new in 0.6.0.
+See also CHANGELOG for what’s new in 0.6.3.
 
 ## Quick start
 
@@ -126,15 +126,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.6.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.6.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.6.3")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.6.3")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.6.0")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.6.3")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.6.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.6.0")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.6.3")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.6.3")
 }
 ```
 
@@ -144,7 +144,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.6.0</version>
+  <version>0.6.3</version>
 </dependency>
 ```
 
@@ -157,7 +157,7 @@ Maven:
 
 ![Architecture diagram of SKaiNET compiler](docs//SKaiNET-compiler.svg)
 
-## 0.6.0 highlights (with tiny snippets)
+## 0.6.3 highlights (with tiny snippets)
 
 - StableHLO and CUDA support via IREE
 
