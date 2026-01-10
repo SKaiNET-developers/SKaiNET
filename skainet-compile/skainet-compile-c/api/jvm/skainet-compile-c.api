@@ -33,8 +33,10 @@ public final class sk/ainet/compile/c/CCodeGenerator {
 	public final fun generateActivationFunction (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
 	public final fun generateActivationFunctionWithAccuracy (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
 	public final fun generateAllLayers ()Ljava/util/List;
-	public final fun generateDenseLayer (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
-	public final fun generateDenseLayerWithAccuracy (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateDenseLayer (Lsk/ainet/lang/graph/GraphNode;Ljava/lang/Integer;)Lsk/ainet/compile/c/LayerCode;
+	public static synthetic fun generateDenseLayer$default (Lsk/ainet/compile/c/CCodeGenerator;Lsk/ainet/lang/graph/GraphNode;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/compile/c/LayerCode;
+	public final fun generateDenseLayerWithAccuracy (Lsk/ainet/lang/graph/GraphNode;Lsk/ainet/lang/graph/GraphNode;Ljava/lang/Integer;)Lsk/ainet/compile/c/LayerCode;
+	public static synthetic fun generateDenseLayerWithAccuracy$default (Lsk/ainet/compile/c/CCodeGenerator;Lsk/ainet/lang/graph/GraphNode;Lsk/ainet/lang/graph/GraphNode;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/compile/c/LayerCode;
 	public final fun generateTransposeLayer (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/compile/c/LayerCode;
 	public final fun validateGeneratedCodeBufferAlternation (Ljava/lang/String;)Lsk/ainet/lang/tensor/ops/ValidationResult;
 	public final fun validateGeneratedCodeStaticAllocation (Ljava/lang/String;)Lsk/ainet/lang/tensor/ops/ValidationResult;
