@@ -11,7 +11,7 @@ android-compileSdk = "36"
 kotlinxSerializationJson = "1.9.0"
 ktorClientCore = "3.3.3"
 ktorClientPlugins = "3.1.1"
-logbackClassic = "1.5.23"
+logbackClassic = "1.5.24"
 kover = "0.9.4"
 binaryCompatibilityValidator = "0.18.1"
 ksp = "2.2.21-2.0.4"
@@ -20,6 +20,7 @@ kotlin-compile-testing = "1.6.0"
 asciidoctorj = "3.0.1"
 dokka = "2.1.0"
 kotlinxCli = "0.3.6"
+kotlinxBenchmark = "0.4.13"
 kotlinxIo = "0.8.2"
 pbandk = "0.16.0"
 
@@ -36,6 +37,7 @@ kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.re
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 kotlinx-cli = { module = "org.jetbrains.kotlinx:kotlinx-cli", version.ref = "kotlinxCli" }
+kotlinx-benchmark-runtime = { module = "org.jetbrains.kotlinx:kotlinx-benchmark-runtime", version.ref = "kotlinxBenchmark" }
 
 
 ktor-client-android = { module = "io.ktor:ktor-client-android", version.ref = "ktorClientCore" }
@@ -80,3 +82,4 @@ asciidoctorPdf = { id = "org.asciidoctor.jvm.pdf", version = "4.0.5" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 
 skainet-docs = { id = "sk.ainet.documentation" }
+kotlinx-benchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinxBenchmark" }

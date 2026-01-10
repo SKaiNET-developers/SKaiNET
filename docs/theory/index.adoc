@@ -5,6 +5,10 @@ This section contains mathematical definitions and theoretical foundations for S
 [#operator-theory]
 == Operator Theory
 
+=== Architecture
+
+include::composite-ops.adoc[leveloffset=+2]
+
 === Linear Algebra Operations
 
 include::matmul.adoc[leveloffset=+2]

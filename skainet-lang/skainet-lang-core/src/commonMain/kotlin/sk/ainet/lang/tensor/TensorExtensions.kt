@@ -1,7 +1,37 @@
 package sk.ainet.lang.tensor
 
-import sk.ainet.lang.types.DType
+import sk.ainet.lang.ops.DslOp
 import sk.ainet.lang.tensor.ops.UpsampleMode
+import sk.ainet.lang.types.DType
+
+/**
+ * Calculates the cosine distance between two tensors along a given dimension.
+ * Cosine distance is defined as 1 - cosine similarity.
+ * Formula: 1 - (A dot B) / (||A|| * ||B||)
+ *
+ * @param other The other tensor to calculate the distance to.
+ * @param dim The dimension along which to calculate the cosine distance. Default is -1 (last dimension).
+ * @param eps A small value to avoid division by zero. Default is 1e-8.
+ * @return A tensor containing the cosine distance.
+ */
+@DslOp(
+    category = "Similarity",
+    description = "Calculates the cosine distance between two tensors along a given dimension (1 - cosine similarity)."
+)
+public fun <T : DType, V> Tensor<T, V>.cosineDistance(
+    other: Tensor<T, V>,
+    dim: Int = -1,
+    eps: Double = 1e-8
+): Tensor<T, V> {
+    val dotProduct = (this * other).sum(dim)
+    val normA = (this * this).sum(dim).sqrt()
+    val normB = (other * other).sum(dim).sqrt()
+
+    val denominator = (normA * normB) + eps
+    val cosineSimilarity = dotProduct / denominator
+
+    return 1.0 - cosineSimilarity
+}
 
 // Tensor extension functions that delegate to the ops component
 public fun <T : DType, V> Tensor<T, V>.t(): Tensor<T, V> = ops.transpose(this)

@@ -71,7 +71,12 @@ class OperatorDocProcessor(
             .filterIsInstance<KSDeclaration>()
             .filter { it.validate() }
 
-        val allSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols).toList()
+        val dslOpSymbols = resolver
+            .getSymbolsWithAnnotation("sk.ainet.lang.ops.DslOp")
+            .filterIsInstance<KSDeclaration>()
+            .filter { it.validate() }
+
+        val allSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols + dslOpSymbols).toList()
 
         if (allSymbols.isEmpty()) {
             logger.info("No annotated symbols found")
@@ -102,16 +107,47 @@ class OperatorDocProcessor(
         return symbols
             .groupBy { symbol ->
                 when (symbol) {
-                    is KSFunctionDeclaration -> symbol.parentDeclaration as? KSClassDeclaration
+                    is KSFunctionDeclaration -> {
+                        val parent = symbol.parentDeclaration
+                        if (parent is KSClassDeclaration) {
+                            parent
+                        } else {
+                            // If no parent class, use a virtual class based on category or package
+                            null
+                        }
+                    }
                     is KSClassDeclaration -> symbol
                     else -> null
                 }
             }
-            .mapNotNull { (classSymbol, declarations) ->
-                classSymbol?.let {
-                    createOperatorDoc(it, declarations)
+            .map { (classSymbol, declarations) ->
+                if (classSymbol != null) {
+                    createOperatorDoc(classSymbol, declarations)
+                } else {
+                    // Handle top-level functions (like DSL ops)
+                    createVirtualOperatorDoc(declarations)
                 }
             }
+    }
+
+    private fun createVirtualOperatorDoc(declarations: List<KSDeclaration>): OperatorDoc {
+        val firstFunc = declarations.filterIsInstance<KSFunctionDeclaration>().firstOrNull()
+        val packageName = firstFunc?.packageName?.asString() ?: "sk.ainet.lang.ops"
+        
+        val functions = declarations.filterIsInstance<KSFunctionDeclaration>()
+            .map { createFunctionDoc(it) }
+
+        // Use category from @DslOp if available for the operator name
+        val name = firstFunc?.annotations?.find { it.shortName.asString() == "DslOp" }
+            ?.arguments?.find { it.name?.asString() == "category" }?.value?.toString()
+            ?.takeIf { it.isNotEmpty() } ?: "Composite"
+
+        return OperatorDoc(
+            name = name,
+            packageName = packageName,
+            modality = "composite",
+            functions = functions
+        )
     }
 
     private fun createOperatorDoc(classSymbol: KSClassDeclaration, declarations: List<KSDeclaration>): OperatorDoc {
@@ -162,6 +198,15 @@ class OperatorDocProcessor(
     private fun deriveStatusByBackend(declaration: KSDeclaration): Map<String, String> {
         val statusMap = mutableMapOf<String, String>()
 
+        // Check @DslOp annotation - if present, it's implemented by definition as it's a composite op
+        declaration.annotations.find {
+            it.shortName.asString() == "DslOp"
+        }?.let {
+            statusMap["cpu"] = "implemented" // Assuming composite ops are implemented on all backends by default
+            statusMap["wasm"] = "implemented"
+            statusMap["apple"] = "implemented"
+        }
+
         // Check @InProgress annotation
         declaration.annotations.find {
             it.shortName.asString() == "InProgress"
@@ -185,6 +230,17 @@ class OperatorDocProcessor(
 
     private fun deriveNotes(declaration: KSDeclaration): List<Note> {
         val notes = mutableListOf<Note>()
+
+        // Extract description from @DslOp
+        declaration.annotations.find {
+            it.shortName.asString() == "DslOp"
+        }?.let { annotation ->
+            val description = annotation.arguments.find { it.name?.asString() == "description" }
+                ?.value?.toString() ?: ""
+            if (description.isNotEmpty()) {
+                notes.add(Note("description", "all", description))
+            }
+        }
 
         // Extract notes from @InProgress annotation
         declaration.annotations.find {

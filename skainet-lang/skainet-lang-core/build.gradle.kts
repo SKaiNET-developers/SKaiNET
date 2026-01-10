@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.ksp)
     alias(libs.plugins.dokka)
+    id("org.jetbrains.kotlinx.benchmark")
 }
 
 kotlin {
@@ -48,6 +49,10 @@ kotlin {
             }
         }
 
+        jvmMain.dependencies {
+            implementation(libs.kotlinx.benchmark.runtime)
+        }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
@@ -83,4 +88,10 @@ android {
 
 tasks.named("dokkaHtml") {
     dependsOn("kspCommonMainKotlinMetadata")
+}
+
+benchmark {
+    targets {
+        register("jvm")
+    }
 }
