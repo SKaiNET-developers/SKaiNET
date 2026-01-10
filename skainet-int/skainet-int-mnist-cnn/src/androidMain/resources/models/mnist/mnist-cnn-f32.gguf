@@ -1,0 +1,3 @@
+SKAINET_MNIST_GGUF_PLACEHOLDER_ANDROID
+This is a placeholder packaged specifically for the Android target.
+Replace with the actual mnist-cnn-f32.gguf during production packaging.
