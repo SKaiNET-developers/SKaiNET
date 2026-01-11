@@ -1,6 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENCE)
 [![Maven Central](https://img.shields.io/maven-central/v/sk.ainet.core/skainet-lang-core.svg)](https://central.sonatype.com/artifact/sk.ainet.core/skainet-lang-core)
-[![DeepWiki](https://img.shields.io/badge/DeepWiki-View%20Docs-blue?logo=readthedocs&logoColor=white)](https://deepwiki.com/sk-ai-net/SKaiNET)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-View%20Docs-blue?logo=readthedocs&logoColor=white)](https://deepwiki.com/SKaiNET-developers/SKaiNET)
 
 <img src="docs//SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
@@ -167,8 +167,8 @@ Maven:
 
 ## Samples and notebooks
 
-- Sample app: https://github.com/sk-ai-net/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
-- Kotlin Notebook: https://github.com/sk-ai-net/SKaiNET-notebook
+- Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
+- Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
 
 ## Architecture
 
