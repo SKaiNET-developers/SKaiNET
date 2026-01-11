@@ -1,17 +1,8 @@
 package sk.ainet.lang.dag
 
-import sk.ainet.lang.tensor.ops.AddOperation
-import sk.ainet.lang.tensor.ops.Conv2dOperation
-import sk.ainet.lang.tensor.ops.FlattenOperation
 import sk.ainet.lang.tensor.ops.InputOperation
-import sk.ainet.lang.tensor.ops.MatmulOperation
-import sk.ainet.lang.tensor.ops.MaxPool2dOperation
 import sk.ainet.lang.tensor.ops.Operation
-import sk.ainet.lang.tensor.ops.ReluOperation
-import sk.ainet.lang.tensor.ops.ReshapeOperation
-import sk.ainet.lang.tensor.ops.SoftmaxOperation
 import sk.ainet.lang.tensor.ops.TensorSpec
-import sk.ainet.lang.tensor.ops.Upsample2dOperation
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
 
@@ -202,104 +193,6 @@ public class DagBuilder {
         id: String = "",
         attributes: Map<String, Any?> = emptyMap()
     ): List<GraphValue> = recordNode(operation.name, operation, inputs, id, attributes)
-
-    @DagDsl
-    public fun add(a: GraphValue, b: GraphValue, id: String = ""): GraphValue =
-        op(AddOperation<sk.ainet.lang.types.DType, Any>(), listOf(a, b), id).single()
-
-    @DagDsl
-    public fun matmul(a: GraphValue, b: GraphValue, id: String = ""): GraphValue =
-        op(MatmulOperation<sk.ainet.lang.types.DType, Any>(), listOf(a, b), id).single()
-
-    @DagDsl
-    public fun relu(x: GraphValue, id: String = ""): GraphValue =
-        op(ReluOperation<sk.ainet.lang.types.DType, Any>(), listOf(x), id).single()
-
-    @DagDsl
-    public fun softmax(x: GraphValue, dim: Int = -1, id: String = ""): GraphValue =
-        op(
-            SoftmaxOperation<sk.ainet.lang.types.DType, Any>(parameters = mapOf("dim" to dim)),
-            listOf(x),
-            id
-        ).single()
-
-    @DagDsl
-    public fun conv2d(
-        input: GraphValue,
-        weight: GraphValue,
-        bias: GraphValue? = null,
-        stride: Pair<Int, Int> = 1 to 1,
-        padding: Pair<Int, Int> = 0 to 0,
-        dilation: Pair<Int, Int> = 1 to 1,
-        groups: Int = 1,
-        id: String = ""
-    ): GraphValue {
-        val params = mapOf(
-            "stride" to listOf(stride.first, stride.second),
-            "padding" to listOf(padding.first, padding.second),
-            "dilation" to listOf(dilation.first, dilation.second),
-            "groups" to groups,
-            "hasBias" to (bias != null)
-        )
-        val inputs = buildList {
-            add(input)
-            add(weight)
-            if (bias != null) add(bias)
-        }
-        return op(Conv2dOperation<sk.ainet.lang.types.DType, Any>(params), inputs, id).single()
-    }
-
-    @DagDsl
-    public fun maxPool2d(
-        input: GraphValue,
-        kernelSize: Pair<Int, Int>,
-        stride: Pair<Int, Int> = kernelSize,
-        padding: Pair<Int, Int> = 0 to 0,
-        id: String = ""
-    ): GraphValue {
-        val params = mapOf(
-            "kernel" to listOf(kernelSize.first, kernelSize.second),
-            "stride" to listOf(stride.first, stride.second),
-            "padding" to listOf(padding.first, padding.second)
-        )
-        return op(
-            MaxPool2dOperation<sk.ainet.lang.types.DType, Any>(params),
-            listOf(input),
-            id
-        ).single()
-    }
-
-    @DagDsl
-    public fun upsample2d(
-        input: GraphValue,
-        scale: Pair<Int, Int> = 2 to 2,
-        mode: String = "nearest",
-        alignCorners: Boolean = false,
-        id: String = ""
-    ): GraphValue {
-        val params = mapOf(
-            "scale" to listOf(scale.first, scale.second),
-            "mode" to mode,
-            "alignCorners" to alignCorners
-        )
-        return op(
-            Upsample2dOperation<sk.ainet.lang.types.DType, Any>(params),
-            listOf(input),
-            id
-        ).single()
-    }
-
-    @DagDsl
-    public fun reshape(input: GraphValue, newShape: List<Int>, id: String = ""): GraphValue =
-        op(
-            ReshapeOperation<sk.ainet.lang.types.DType, Any>(parameters = mapOf("newShape" to newShape)),
-            listOf(input),
-            id
-        ).single()
-
-    @DagDsl
-    public fun flatten(input: GraphValue, id: String = ""): GraphValue =
-        op(FlattenOperation<sk.ainet.lang.types.DType, Any>(), listOf(input), id).single()
 
     /**
      * Mark a value as a program output. If none are marked, the last node's outputs are used.

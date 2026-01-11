@@ -1,6 +1,6 @@
 package sk.ainet.compile.graph
 
-import sk.ainet.lang.dag.dag
+import sk.ainet.lang.dag.*
 import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.graph.dsl.toComputeGraph
 import sk.ainet.lang.tensor.ops.TensorSpec

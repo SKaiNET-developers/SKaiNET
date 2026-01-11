@@ -1,9 +1,10 @@
 package sk.ainet.compile.graph
 
-import sk.ainet.lang.dag.dag
+import sk.ainet.lang.dag.*
 import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.graph.dsl.toComputeGraph
 import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.UpsampleMode
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +29,7 @@ class YoloStyleGraphDslTest {
             val b2 = constant<FP32, Float>("b2") { shape(32) { zeros() } }
             val c2 = conv2d(c1, w2, b2, stride = 2 to 2, padding = 1 to 1)
 
-            val up = upsample2d(c2, scale = 2 to 2, mode = "nearest")
+            val up = upsample2d(c2, scale = 2 to 2, mode = UpsampleMode.Nearest)
 
             val wHead = parameter<FP32, Float>("w_head") { shape(3, 32, 1, 1) { ones() } }
             val bHead = constant<FP32, Float>("b_head") { shape(3) { zeros() } }
