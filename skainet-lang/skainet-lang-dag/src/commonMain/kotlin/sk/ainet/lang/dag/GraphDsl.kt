@@ -42,16 +42,21 @@ public data class GraphProgram(
 /**
  * Entry point for the DAG DSL.
  *
+ * Use it to define complex architectures with arbitrary wiring, multi-output graphs, and reusable modules.
+ *
  * Usage:
- * ```
+ * ```kotlin
  * val program = dag {
- *     val x = input("x", TensorSpec("x", listOf(1, 4), "FP32"))
- *     val w = parameter("w", TensorSpec("w", listOf(4, 4), "FP32"))
+ *     val x = input<FP32>("x", TensorSpec("x", listOf(1, 4), "FP32"))
+ *     val w = parameter<FP32, Float>("w") { shape(4, 4) { ones() } }
  *     val mm = matmul(x, w)
  *     val y = relu(mm)
  *     output(y)
  * }
  * ```
+ *
+ * @see dagModule for defining reusable graph components.
+ * @return A [GraphProgram] that can be compiled to a [sk.ainet.lang.graph.ComputeGraph].
  */
 public fun dag(block: DagBuilder.() -> Unit): GraphProgram {
     val builder = DagBuilder()
@@ -233,7 +238,19 @@ public fun DagBuilder.module(module: DagModule, inputs: List<GraphValue<*>>): Li
 }
 
 /**
- * Functional-style module definition.
+ * Defines a reusable graph component (module).
+ *
+ * A module takes a list of [GraphValue] as inputs and returns a list of [GraphValue] as outputs.
+ * It can be instantiated inside a [dag] block using the [module] function.
+ *
+ * Usage:
+ * ```kotlin
+ * val myBlock = dagModule { inputs ->
+ *    val x = inputs[0]
+ *    val y = relu(x)
+ *    listOf(y)
+ * }
+ * ```
  */
 public fun dagModule(block: DagBuilder.(List<GraphValue<*>>) -> List<GraphValue<*>>): DagModule = object : DagModule() {
     override fun DagBuilder.apply(inputs: List<GraphValue<*>>): List<GraphValue<*>> = block(inputs)
