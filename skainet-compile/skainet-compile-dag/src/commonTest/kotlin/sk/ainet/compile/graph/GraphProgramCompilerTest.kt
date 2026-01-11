@@ -1,11 +1,10 @@
 package sk.ainet.compile.graph
 
-import sk.ainet.lang.dag.dag
-import sk.ainet.lang.dag.matmul
-import sk.ainet.lang.dag.relu
+import sk.ainet.lang.dag.*
 import sk.ainet.lang.graph.dsl.toComputeGraph
 import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -15,8 +14,8 @@ class GraphProgramCompilerTest {
     @Test
     fun dagDsl_toComputeGraph_buildsNodesEdgesAndValidates() {
         val program = dag {
-            val x = input("x", TensorSpec("x", listOf(1, 4), "FP32"))
-            val w = parameter("w", TensorSpec("w", listOf(4, 4), "FP32"))
+            val x = input<FP32>("x", TensorSpec("x", listOf(1, 4), "FP32"))
+            val w = parameter<FP32>("w", TensorSpec("w", listOf(4, 4), "FP32"))
             val mm = matmul(x, w)
             val y = relu(mm)
             output(y)

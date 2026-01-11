@@ -15,7 +15,7 @@ class SymbolicDataDslTest {
     @Test
     fun parameterAndConstantViaSymbolicDataDslPropagateShapeDtypeAndMetadata() {
         val program = dag {
-            val x = input("x", TensorSpec("x", listOf(1, 4), "FP32"))
+            val x = input<FP32>("x", TensorSpec("x", listOf(1, 4), "FP32"))
             val w = parameter<FP32, Float>("w") { shape(4, 4) { ones() } }
             val b = constant<FP32, Float>("b") { fromArray(floatArrayOf(0f, 0f, 0f, 0f), shape = listOf(4)) }
             val y = add(matmul(x, w), b)

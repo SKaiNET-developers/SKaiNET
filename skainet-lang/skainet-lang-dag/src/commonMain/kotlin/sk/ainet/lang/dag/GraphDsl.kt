@@ -12,7 +12,7 @@ public annotation class DagDsl
 /**
  * Symbolic value flowing through the DAG DSL. Every value is produced by a node output.
  */
-public data class GraphValue(
+public data class GraphValue<out T : DType>(
     public val nodeId: String,
     public val outputIndex: Int,
     public val spec: TensorSpec
@@ -24,8 +24,8 @@ public data class GraphValue(
 public data class GraphNodeDefinition(
     public val id: String,
     public val operation: Operation,
-    public val inputs: List<GraphValue>,
-    public val outputs: List<GraphValue>,
+    public val inputs: List<GraphValue<*>>,
+    public val outputs: List<GraphValue<*>>,
     public val attributes: Map<String, Any?> = emptyMap()
 )
 
@@ -36,7 +36,7 @@ public data class GraphNodeDefinition(
  */
 public data class GraphProgram(
     public val nodes: List<GraphNodeDefinition>,
-    public val outputs: List<GraphValue>
+    public val outputs: List<GraphValue<*>>
 )
 
 /**
@@ -64,7 +64,7 @@ public fun dag(block: DagBuilder.() -> Unit): GraphProgram {
  */
 public class DagBuilder {
     private val nodes = mutableListOf<GraphNodeDefinition>()
-    private val outputs = mutableListOf<GraphValue>()
+    private val outputs = mutableListOf<GraphValue<*>>()
     private var nextId: Long = 0
 
     private fun freshNodeId(opName: String, providedId: String): String =
@@ -72,7 +72,7 @@ public class DagBuilder {
 
     private fun ensureOutputSpecs(
         operation: Operation,
-        inputs: List<GraphValue>,
+        inputs: List<GraphValue<*>>,
         nodeId: String
     ): List<TensorSpec> {
         val inputSpecs = inputs.map { it.spec }
@@ -97,14 +97,14 @@ public class DagBuilder {
     private fun recordNode(
         opName: String,
         operation: Operation,
-        inputs: List<GraphValue>,
+        inputs: List<GraphValue<*>>,
         id: String = "",
         attributes: Map<String, Any?> = emptyMap()
-    ): List<GraphValue> {
+    ): List<GraphValue<*>> {
         val nodeId = freshNodeId(opName, id)
         val outputSpecs = ensureOutputSpecs(operation, inputs, nodeId)
         val nodeOutputs = outputSpecs.mapIndexed { idx, spec ->
-            GraphValue(nodeId = nodeId, outputIndex = idx, spec = spec)
+            GraphValue<DType>(nodeId = nodeId, outputIndex = idx, spec = spec)
         }
         nodes += GraphNodeDefinition(
             id = nodeId,
@@ -120,10 +120,12 @@ public class DagBuilder {
      * Declare a graph input placeholder.
      */
     @DagDsl
-    public fun input(name: String, spec: TensorSpec = TensorSpec(name = name, shape = null, dtype = "unknown")): GraphValue {
-        val op = InputOperation<sk.ainet.lang.types.DType, Any>()
+    public fun <T : DType> input(name: String, spec: TensorSpec = TensorSpec(name = name, shape = null, dtype = "unknown")): GraphValue<T> {
+        val op = InputOperation<T, Any>()
         val recorded = recordNode("input", op, emptyList(), id = "input_$name").first()
-        val updated = recorded.copy(spec = spec.copy(name = spec.name.ifBlank { name }))
+        @Suppress("UNCHECKED_CAST")
+        val typed = (recorded as GraphValue<T>)
+        val updated = typed.copy(spec = spec.copy(name = spec.name.ifBlank { name }))
         nodes[nodes.lastIndex] = nodes.last().copy(outputs = listOf(updated))
         return updated
     }
@@ -132,10 +134,12 @@ public class DagBuilder {
      * Declare a parameter/weight placeholder.
      */
     @DagDsl
-    public fun parameter(name: String, spec: TensorSpec): GraphValue {
-        val op = InputOperation<sk.ainet.lang.types.DType, Any>(parameters = mapOf("kind" to "parameter"))
+    public fun <T : DType> parameter(name: String, spec: TensorSpec): GraphValue<T> {
+        val op = InputOperation<T, Any>(parameters = mapOf("kind" to "parameter"))
         val recorded = recordNode("param", op, emptyList(), id = "param_$name").first()
-        val updated = recorded.copy(spec = spec.copy(name = spec.name.ifBlank { name }))
+        @Suppress("UNCHECKED_CAST")
+        val typed = (recorded as GraphValue<T>)
+        val updated = typed.copy(spec = spec.copy(name = spec.name.ifBlank { name }))
         nodes[nodes.lastIndex] = nodes.last().copy(outputs = listOf(updated))
         return updated
     }
@@ -144,10 +148,12 @@ public class DagBuilder {
      * Declare a constant placeholder (treated like an input node).
      */
     @DagDsl
-    public fun constant(name: String, spec: TensorSpec): GraphValue {
-        val op = InputOperation<sk.ainet.lang.types.DType, Any>(parameters = mapOf("kind" to "const"))
+    public fun <T : DType> constant(name: String, spec: TensorSpec): GraphValue<T> {
+        val op = InputOperation<T, Any>(parameters = mapOf("kind" to "const"))
         val recorded = recordNode("const", op, emptyList(), id = "const_$name").first()
-        val updated = recorded.copy(spec = spec.copy(name = spec.name.ifBlank { name }))
+        @Suppress("UNCHECKED_CAST")
+        val typed = (recorded as GraphValue<T>)
+        val updated = typed.copy(spec = spec.copy(name = spec.name.ifBlank { name }))
         nodes[nodes.lastIndex] = nodes.last().copy(outputs = listOf(updated))
         return updated
     }
@@ -164,7 +170,7 @@ public class DagBuilder {
     public inline fun <reified T : DType, V> parameter(
         name: String,
         noinline builder: SymbolicTensorBuilder<T>.() -> TensorSpec
-    ): GraphValue {
+    ): GraphValue<T> {
         val specBuilder = SymbolicTensorBuilder(T::class, name)
         val spec = builder(specBuilder).normalized(name, T::class)
         return parameter(name, spec)
@@ -177,7 +183,7 @@ public class DagBuilder {
     public inline fun <reified T : DType, V> constant(
         name: String,
         noinline builder: SymbolicTensorBuilder<T>.() -> TensorSpec
-    ): GraphValue {
+    ): GraphValue<T> {
         val specBuilder = SymbolicTensorBuilder(T::class, name)
         val spec = builder(specBuilder).normalized(name, T::class)
         return constant(name, spec)
@@ -189,16 +195,16 @@ public class DagBuilder {
     @DagDsl
     public fun op(
         operation: Operation,
-        inputs: List<GraphValue>,
+        inputs: List<GraphValue<*>>,
         id: String = "",
         attributes: Map<String, Any?> = emptyMap()
-    ): List<GraphValue> = recordNode(operation.name, operation, inputs, id, attributes)
+    ): List<GraphValue<*>> = recordNode(operation.name, operation, inputs, id, attributes)
 
     /**
      * Mark a value as a program output. If none are marked, the last node's outputs are used.
      */
     @DagDsl
-    public fun output(vararg values: GraphValue) {
+    public fun output(vararg values: GraphValue<*>) {
         outputs += values
     }
 
@@ -206,6 +212,31 @@ public class DagBuilder {
         val programOutputs = if (outputs.isNotEmpty()) outputs.toList() else nodes.lastOrNull()?.outputs.orEmpty()
         return GraphProgram(nodes.toList(), programOutputs)
     }
+}
+
+/**
+ * A reusable sub-graph module that can be instantiated within a [DagBuilder].
+ */
+public abstract class DagModule {
+    /**
+     * Define the sub-graph logic.
+     */
+    public abstract fun DagBuilder.apply(inputs: List<GraphValue<*>>): List<GraphValue<*>>
+}
+
+/**
+ * DSL helper for using modules.
+ */
+@DagDsl
+public fun DagBuilder.module(module: DagModule, inputs: List<GraphValue<*>>): List<GraphValue<*>> {
+    return with(module) { apply(inputs) }
+}
+
+/**
+ * Functional-style module definition.
+ */
+public fun dagModule(block: DagBuilder.(List<GraphValue<*>>) -> List<GraphValue<*>>): DagModule = object : DagModule() {
+    override fun DagBuilder.apply(inputs: List<GraphValue<*>>): List<GraphValue<*>> = block(inputs)
 }
 
 @PublishedApi

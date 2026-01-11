@@ -17,7 +17,7 @@ class SimpleExpressionGraphTest {
     @Test
     fun simple_add_relu_graph_builds_and_validates() {
         val program = dag {
-            val x = input("x", TensorSpec("x", listOf(1), "FP32"))
+            val x = input<FP32>("x", TensorSpec("x", listOf(1), "FP32"))
             val bias = constant<FP32, Float>("bias") { shape(1) { zeros() } }
             val sum = add(x, bias)
             val y = relu(sum)

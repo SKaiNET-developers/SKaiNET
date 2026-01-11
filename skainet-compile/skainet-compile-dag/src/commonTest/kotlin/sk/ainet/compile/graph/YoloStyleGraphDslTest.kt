@@ -19,7 +19,7 @@ class YoloStyleGraphDslTest {
     @Test
     fun yoloish_head_graph_builds_and_validates() {
         val program = dag {
-            val input = input("input", TensorSpec("input", listOf(1, 3, 640, 640), "FP32"))
+            val input = input<FP32>("input", TensorSpec("input", listOf(1, 3, 640, 640), "FP32"))
 
             val w1 = parameter<FP32, Float>("w1") { shape(16, 3, 3, 3) { ones() } }
             val b1 = constant<FP32, Float>("b1") { shape(16) { zeros() } }
