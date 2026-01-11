@@ -1,0 +1,127 @@
+# SKaiNET Core Technology: Tensor & Data Guide
+
+This document provides technical instructions for AI agents and developers on using SKaiNET's Tensor and Data API as a modern, type-safe replacement for NDArray or Python's NumPy library.
+
+## 1. Fundamental Architecture: Tensor Composition
+
+Unlike traditional libraries where a Tensor is a monolithic object, SKaiNET adopts a **compositional architecture**. A `Tensor<T, V>` is composed of two primary components:
+
+1.  **`TensorData<T, V>`**: Handles multi-dimensional storage, memory layout, indexing, and type-safe element access.
+2.  **`TensorOps`**: Encapsulates mathematical algorithms and transformations (CPU, GPU, etc.).
+
+This separation allows for high flexibility, such as switching execution backends without changing the data representation.
+
+```kotlin
+interface Tensor<T : DType, V> {
+    val data: TensorData<T, V>
+    val ops: TensorOps
+    val dtype: KClass<T>
+    val shape: Shape
+}
+```
+
+## 2. Type-Safe Tensor Creation (DSL)
+
+SKaiNET provides a powerful Type-Safe DSL for tensor creation. It ensures that the data provided matches the specified `DType` at compile-time (or through the DSL's internal validation).
+
+### Creation with `ExecutionContext`
+
+Tensors are always created within an `ExecutionContext`, which provides the necessary `TensorOps` and `TensorDataFactory`.
+
+```kotlin
+// Basic creation
+val zeros = ctx.zeros(Shape(2, 3), FP32::class)
+val ones = ctx.ones(Shape(1, 10), Int32::class)
+val full = ctx.full(Shape(5, 5), FP32::class, 42.0f)
+```
+
+### Expressive Tensor DSL
+
+For more complex initializations, use the `tensor` DSL:
+
+```kotlin
+val myTensor = tensor(ctx, FP32::class) {
+    shape(2, 2) { 
+        from(1.0f, 2.0f, 3.0f, 4.0f) 
+    }
+}
+
+val randomTensor = tensor(ctx, FP32::class) {
+    shape(10, 10) { 
+        randn(mean = 0f, std = 1f) 
+    }
+}
+
+val customInit = tensor(ctx, Int32::class) {
+    shape(5, 5) {
+        init { indices -> indices[0] + indices[1] }
+    }
+}
+```
+
+## 3. Slicing DSL API
+
+SKaiNET offers a sophisticated Slicing DSL that allows for creating views or copies of tensor segments with high precision and readability.
+
+### `sliceView` vs `sliceCopy`
+
+- **`sliceView`**: Creates a `TensorView`, which is a window into the original data (no data copying).
+- **`sliceCopy`**: Creates a new `Tensor` with a copy of the sliced data.
+
+### Slicing DSL Syntax
+
+The `SegmentBuilder` provides several ways to define slices for each dimension:
+
+- `range(start, end)`: A range of indices.
+- `at(index)`: A single index (reduces rank).
+- `all()`: All elements in that dimension (equivalent to `:` in NumPy).
+- `step(start, end, step)`: Strided access.
+- `+all()`: Short-hand for `all()`.
+
+```kotlin
+val source = ctx.ones(Shape(10, 20, 30), FP32::class)
+
+// Slicing: [0:5, 10, :]
+val view = source.sliceView {
+    segment { range(0, 5) } // Dim 0
+    segment { at(10) }      // Dim 1
+    segment { all() }       // Dim 2
+}
+```
+
+## 4. Core Operations (`TensorOps`)
+
+All mathematical operations are dispatched through the `TensorOps` interface. SKaiNET supports:
+
+- **Element-wise Ops**: `add`, `subtract`, `multiply`, `divide` (and scalar versions).
+- **Linear Algebra**: `matmul`, `transpose`.
+- **Neural Network Ops**: `conv2d`, `maxPool2d`, `relu`, `softmax`, `sigmoid`, `gelu`.
+- **Reductions**: `sum`, `mean`, `variance`.
+- **Shape Ops**: `reshape`, `flatten`, `concat`, `squeeze`, `unsqueeze`.
+
+### Operator Overloading
+
+When a tensor is "bound" to ops (e.g., via `OpsBoundTensor`), you can use standard Kotlin operators:
+
+```kotlin
+val c = a + b  // Calls ops.add(a, b)
+val d = a * 10 // Calls ops.mulScalar(a, 10)
+```
+
+## 5. Summary Table: SKaiNET vs NumPy
+
+| Feature | NumPy | SKaiNET |
+| :--- | :--- | :--- |
+| **Primary Type** | `ndarray` | `Tensor<T, V>` |
+| **Creation** | `np.array([1, 2, 3])` | `tensor(ctx, FP32::class) { shape(3) { from(1f, 2f, 3f) } }` |
+| **Zeros** | `np.zeros((2, 2))` | `ctx.zeros(Shape(2, 2), FP32::class)` |
+| **Slicing** | `a[0:5, :]` | `a.sliceView { segment { range(0, 5) }; segment { all() } }` |
+| **Matmul** | `a @ b` or `np.matmul(a, b)` | `ctx.ops.matmul(a, b)` |
+| **Reshape** | `a.reshape(new_shape)` | `ctx.ops.reshape(a, Shape(new_shape))` |
+
+## 6. Best Practices for AI Integration
+
+1.  **Context Awareness**: Always pass the `ExecutionContext` to functions that create or manipulate tensors.
+2.  **Type Safety**: Prefer specific `DType` classes (e.g., `FP32::class`, `Int32::class`) to avoid runtime errors.
+3.  **Views over Copies**: Use `sliceView` whenever possible to minimize memory overhead and improve performance.
+4.  **Backend Agnostic**: Write logic against the `TensorOps` interface to ensure your code runs on any supported backend.
