@@ -11,7 +11,8 @@ import kotlin.reflect.KClass
  */
 public class VoidOpsTensor<T : DType, V>(
     override val data: TensorData<T, V>,
-    override val dtype: KClass<T>
+    override val dtype: KClass<T>,
+    override val gradState: GradState<T, V> = GradState()
 ) : Tensor<T, V> {
     override val ops: TensorOps
         get() = VoidTensorOps()

@@ -1,5 +1,6 @@
 package sk.ainet.lang.tensor
 
+import sk.ainet.lang.tensor.GradState
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.types.DType
@@ -89,6 +90,7 @@ public class LazyMaterializationStrategy<T : DType, V> : MaterializationStrategy
         override val dtype: KClass<T>,
         override val ops: TensorOps
     ) : Tensor<T, V> {
+        override val gradState: GradState<T, V> = originalView.gradState
 
         override val data: TensorData<T, V> = LazyMaterializedTensorData(originalView)
 

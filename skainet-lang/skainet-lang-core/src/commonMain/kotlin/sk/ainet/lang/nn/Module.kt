@@ -27,5 +27,20 @@ public abstract class Module<T : DType, V> : ModuleNode {
             is ModuleParameters<*, *> -> (this as ModuleParameters<Any?, Any?>).params as List<ModuleParameter<*, *>>
             else -> emptyList()
         }
+
+    /**
+     * Collect all trainable parameters for this module and its subtree.
+     * Trainable is defined by ModuleParameter.requiresGrad flag.
+     */
+    public open fun trainableParameters(): List<ModuleParameter<*, *>> {
+        val own = params.filter { it.requiresGrad }
+        val childParams = modules.flatMap { it.trainableParameters() }
+        return own + childParams
+    }
+
+    /** Zero-out accumulated gradients for all trainable parameters in this module subtree. */
+    public fun zeroGrad() {
+        trainableParameters().forEach { p -> p.value.zeroGrad() }
+    }
 }
 

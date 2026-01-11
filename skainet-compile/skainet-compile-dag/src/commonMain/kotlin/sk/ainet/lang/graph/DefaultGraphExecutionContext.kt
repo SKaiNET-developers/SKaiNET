@@ -62,11 +62,12 @@ public class DefaultGraphExecutionContext(
 
     override val ops: TensorOps
         get() {
-            // Compose sinks: base sink (could itself be a Composite) + optional TapeSink for current tape
             val tape = currentTape
             val dynamicSink: OpSink = tape?.let {
-                // Only attach TapeSink when we have a DefaultExecutionTape and recording is on
-                if (it.isRecording && it is DefaultExecutionTape) CompositeSink(listOf(baseSink, TapeSink(it))) else baseSink
+                // Attach TapeSink only when recording and either in TRAIN phase or this is not a gradient tape.
+                // This avoids unnecessary autograd/tape overhead during evaluation runs (FR2 guard).
+                val allowRecording = phase == Phase.TRAIN || it !is DefaultGradientTape
+                if (it.isRecording && allowRecording && it is DefaultExecutionTape) CompositeSink(listOf(baseSink, TapeSink(it))) else baseSink
             } ?: baseSink
 
             // Always expose KspTensorOps to avoid branching in hot path

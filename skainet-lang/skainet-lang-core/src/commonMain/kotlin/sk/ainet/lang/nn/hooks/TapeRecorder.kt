@@ -53,7 +53,7 @@ private fun Any.toTensorSpec(): TensorSpec? = when (this) {
         name = "",
         shape = this.shape.dimensions.toList(),
         dtype = this.dtype.simpleName ?: "Unknown",
-        requiresGrad = false,
+        requiresGrad = this.requiresGrad,
         metadata = emptyMap()
     )
     else -> null
