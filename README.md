@@ -47,10 +47,11 @@ println("shape=${t.shape} first=${t.data[0,0]}")
 
 ### SKaiNET is Language
 
-- Kotlin DSLs for Data, Neural Nets, and Pipelines
+- Kotlin DSLs for Data, Neural Nets, Graphs, and Pipelines
+
+#### Neural network DSL (Sequential)
 
 ```kotlin
-// Neural network DSL
 val model = nn {
     input(28 * 28)
     dense(out = 128)
@@ -58,6 +59,22 @@ val model = nn {
     dense(out = 10)
 }
 ```
+
+#### Graph DSL (Functional/DAG)
+
+For complex architectures with arbitrary wiring (like YOLO or ResNet), use the Graph DSL:
+
+```kotlin
+val program = dag {
+    val x = input<FP32>("input", spec)
+    val c1 = conv2d(x, w1, b1, padding = 1 to 1)
+    val c2 = conv2d(c1, w2, b2, padding = 1 to 1)
+    val sum = add(x, c2)
+    output(relu(sum))
+}
+```
+
+Read the [Graph DSL Documentation](docs/graph-dsl.md) for more details.
 
 ### SKaiNET is Tools
 

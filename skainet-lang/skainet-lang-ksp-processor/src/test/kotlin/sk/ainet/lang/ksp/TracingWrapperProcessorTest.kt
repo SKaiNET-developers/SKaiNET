@@ -42,7 +42,7 @@ class TracingWrapperProcessorTest {
         
         // Should process the annotated interface
         assertTrue(
-            annotatedResult.messages.contains("Found 1 annotated interfaces"),
+            annotatedResult.messages.contains("Found 1 tracing interfaces and 0 Graph DSL interfaces"),
             "Processor should find annotated interface. Messages: ${annotatedResult.messages}"
         )
         assertTrue(
@@ -64,7 +64,7 @@ class TracingWrapperProcessorTest {
         
         // Should NOT process the non-annotated interface
         assertTrue(
-            nonAnnotatedResult.messages.contains("No interfaces annotated with @GenerateTracingWrapper found"),
+            nonAnnotatedResult.messages.contains("No interfaces annotated with @GenerateTracingWrapper or @GenerateGraphDsl found"),
             "Processor should not find non-annotated interface. Messages: ${nonAnnotatedResult.messages}"
         )
         assertFalse(
@@ -97,7 +97,7 @@ class TracingWrapperProcessorTest {
         
         // Should process exactly 2 annotated interfaces
         assertTrue(
-            mixedResult.messages.contains("Found 2 annotated interfaces"),
+            mixedResult.messages.contains("Found 2 tracing interfaces and 0 Graph DSL interfaces"),
             "Processor should find exactly 2 annotated interfaces. Messages: ${mixedResult.messages}"
         )
         assertTrue(
@@ -333,7 +333,7 @@ class TracingWrapperProcessorTest {
         
         // Should process but warn about no methods
         assertTrue(
-            result.messages.contains("Found 1 annotated interfaces"),
+            result.messages.contains("Found 1 tracing interfaces and 0 Graph DSL interfaces"),
             "Processor should find empty annotated interface. Messages: ${result.messages}"
         )
         assertTrue(

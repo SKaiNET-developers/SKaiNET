@@ -1,5 +1,3 @@
-import org.gradle.kotlin.dsl.implementation
-import org.gradle.kotlin.dsl.project
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -10,6 +8,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
+    alias(libs.plugins.ksp)
 }
 
 kotlin {
@@ -24,9 +23,9 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
-    macosArm64 ()
-    linuxX64 ()
-    linuxArm64 ()
+    macosArm64()
+    linuxX64()
+    linuxArm64()
 
     jvm()
 
@@ -37,27 +36,38 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
-        binaries.executable()
     }
 
     sourceSets {
-        commonMain.dependencies {
-            api(project(":skainet-lang:skainet-lang-core"))
-            api(project(":skainet-lang:skainet-lang-dag"))
-            api(project(":skainet-compile:skainet-compile-core"))
+        commonMain {
+            kotlin.srcDir("build/generated/ksp/metadata/commonMain/kotlin")
+            dependencies {
+                api(project(":skainet-lang:skainet-lang-core"))
+                implementation(libs.kotlinx.coroutines)
+            }
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(project(":skainet-backends:skainet-backend-cpu"))
-            implementation(project(":skainet-lang:skainet-lang-models"))
-
         }
     }
 }
 
+// Ensure KSP metadata task runs before any Kotlin compilation, other KSP tasks, and sourcesJar
+tasks.configureEach {
+    if (name != "kspCommonMainKotlinMetadata" &&
+        (name.startsWith("compileKotlin") || name.startsWith("ksp") || name.contains("ourcesJar"))) {
+        dependsOn("kspCommonMainKotlinMetadata")
+    }
+}
+
+dependencies {
+    add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
+}
+
 android {
-    namespace = "sk.ainet.compilie.dag"
+    namespace = "sk.ainet.lang.dag"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

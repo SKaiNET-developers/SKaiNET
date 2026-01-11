@@ -95,3 +95,30 @@ public abstract class BaseOperation(
         return result
     }
 }
+
+/**
+ * A generic operation that can be used when a specialized operation class is not available.
+ */
+public class GenericOperation(
+    override val name: String,
+    override val parameters: Map<String, Any> = emptyMap(),
+    override val type: String = "generic"
+) : BaseOperation(name, type, parameters) {
+
+    override fun <T : DType, V> execute(inputs: List<Tensor<T, V>>): List<Tensor<T, V>> {
+        throw UnsupportedOperationException("GenericOperation '$name' does not support execution")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        return ValidationResult.Valid
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        // Without specialized knowledge, we can't reliably infer outputs.
+        // In practice, this should be handled by the graph builder or a more specific op.
+        return emptyList()
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation =
+        GenericOperation(name, newParameters, type)
+}

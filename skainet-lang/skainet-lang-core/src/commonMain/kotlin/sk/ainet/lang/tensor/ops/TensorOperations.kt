@@ -47,23 +47,66 @@ public class AddOperation<T : DType, V>(
         if (inputs.size != 2) {
             return ValidationResult.Invalid(listOf("Add operation requires exactly 2 inputs, got ${inputs.size}"))
         }
-        if (inputs[0].dtype != inputs[1].dtype) {
-            return ValidationResult.Invalid(listOf("Add operation requires inputs to have same dtype"))
+        val typeA = DType.findByName(inputs[0].dtype)
+        val typeB = DType.findByName(inputs[1].dtype)
+        if (typeA == null || typeB == null) {
+            return ValidationResult.Invalid(listOf("Unknown dtype: ${inputs[0].dtype} or ${inputs[1].dtype}"))
+        }
+        if (!typeA.isCompatible(typeB)) {
+            return ValidationResult.Invalid(listOf("Add operation requires compatible dtypes: ${inputs[0].dtype} and ${inputs[1].dtype}"))
+        }
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        if (shapeA != null && shapeB != null) {
+            if (!areShapesBroadcastable(shapeA, shapeB)) {
+                return ValidationResult.Invalid(listOf("Shapes are not broadcastable: $shapeA and $shapeB"))
+            }
         }
         return ValidationResult.Valid
     }
 
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size == 2) { "Add operation requires exactly 2 inputs" }
-        val outputShape = inputs[0].shape ?: inputs[1].shape
+        val typeA = DType.findByName(inputs[0].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[0].dtype}")
+        val typeB = DType.findByName(inputs[1].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[1].dtype}")
+        val resultType = typeA.promoteTo(typeB)
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        val outputShape = if (shapeA != null && shapeB != null) {
+            calculateBroadcastShape(shapeA, shapeB)
+        } else {
+            shapeA ?: shapeB
+        }
+        
         return listOf(
             TensorSpec(
                 name = "add_output",
                 shape = outputShape,
-                dtype = inputs[0].dtype,
+                dtype = resultType.name,
                 requiresGrad = inputs[0].requiresGrad || inputs[1].requiresGrad
             )
         )
+    }
+
+    private fun areShapesBroadcastable(a: List<Int>, b: List<Int>): Boolean {
+        val maxLen = maxOf(a.size, b.size)
+        for (i in 0 until maxLen) {
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            if (dimA != dimB && dimA != 1 && dimB != 1) return false
+        }
+        return true
+    }
+
+    private fun calculateBroadcastShape(a: List<Int>, b: List<Int>): List<Int> {
+        val maxLen = maxOf(a.size, b.size)
+        return List(maxLen) { i ->
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            maxOf(dimA, dimB)
+        }
     }
     
     override fun clone(newParameters: Map<String, Any>): Operation = AddOperation<T, V>(newParameters)
@@ -82,23 +125,66 @@ public class SubtractOperation<T : DType, V>(
         if (inputs.size != 2) {
             return ValidationResult.Invalid(listOf("Subtract operation requires exactly 2 inputs, got ${inputs.size}"))
         }
-        if (inputs[0].dtype != inputs[1].dtype) {
-            return ValidationResult.Invalid(listOf("Subtract operation requires inputs to have same dtype"))
+        val typeA = DType.findByName(inputs[0].dtype)
+        val typeB = DType.findByName(inputs[1].dtype)
+        if (typeA == null || typeB == null) {
+            return ValidationResult.Invalid(listOf("Unknown dtype: ${inputs[0].dtype} or ${inputs[1].dtype}"))
+        }
+        if (!typeA.isCompatible(typeB)) {
+            return ValidationResult.Invalid(listOf("Subtract operation requires compatible dtypes: ${inputs[0].dtype} and ${inputs[1].dtype}"))
+        }
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        if (shapeA != null && shapeB != null) {
+            if (!areShapesBroadcastable(shapeA, shapeB)) {
+                return ValidationResult.Invalid(listOf("Shapes are not broadcastable: $shapeA and $shapeB"))
+            }
         }
         return ValidationResult.Valid
     }
 
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size == 2) { "Subtract operation requires exactly 2 inputs" }
-        val outputShape = inputs[0].shape ?: inputs[1].shape
+        val typeA = DType.findByName(inputs[0].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[0].dtype}")
+        val typeB = DType.findByName(inputs[1].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[1].dtype}")
+        val resultType = typeA.promoteTo(typeB)
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        val outputShape = if (shapeA != null && shapeB != null) {
+            calculateBroadcastShape(shapeA, shapeB)
+        } else {
+            shapeA ?: shapeB
+        }
+        
         return listOf(
             TensorSpec(
                 name = "subtract_output",
                 shape = outputShape,
-                dtype = inputs[0].dtype,
+                dtype = resultType.name,
                 requiresGrad = inputs[0].requiresGrad || inputs[1].requiresGrad
             )
         )
+    }
+
+    private fun areShapesBroadcastable(a: List<Int>, b: List<Int>): Boolean {
+        val maxLen = maxOf(a.size, b.size)
+        for (i in 0 until maxLen) {
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            if (dimA != dimB && dimA != 1 && dimB != 1) return false
+        }
+        return true
+    }
+
+    private fun calculateBroadcastShape(a: List<Int>, b: List<Int>): List<Int> {
+        val maxLen = maxOf(a.size, b.size)
+        return List(maxLen) { i ->
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            maxOf(dimA, dimB)
+        }
     }
     
     override fun clone(newParameters: Map<String, Any>): Operation = SubtractOperation<T, V>(newParameters)
@@ -117,23 +203,66 @@ public class MultiplyOperation<T : DType, V>(
         if (inputs.size != 2) {
             return ValidationResult.Invalid(listOf("Multiply operation requires exactly 2 inputs, got ${inputs.size}"))
         }
-        if (inputs[0].dtype != inputs[1].dtype) {
-            return ValidationResult.Invalid(listOf("Multiply operation requires inputs to have same dtype"))
+        val typeA = DType.findByName(inputs[0].dtype)
+        val typeB = DType.findByName(inputs[1].dtype)
+        if (typeA == null || typeB == null) {
+            return ValidationResult.Invalid(listOf("Unknown dtype: ${inputs[0].dtype} or ${inputs[1].dtype}"))
+        }
+        if (!typeA.isCompatible(typeB)) {
+            return ValidationResult.Invalid(listOf("Multiply operation requires compatible dtypes: ${inputs[0].dtype} and ${inputs[1].dtype}"))
+        }
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        if (shapeA != null && shapeB != null) {
+            if (!areShapesBroadcastable(shapeA, shapeB)) {
+                return ValidationResult.Invalid(listOf("Shapes are not broadcastable: $shapeA and $shapeB"))
+            }
         }
         return ValidationResult.Valid
     }
     
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size == 2) { "Multiply operation requires exactly 2 inputs" }
-        val outputShape = inputs[0].shape ?: inputs[1].shape
+        val typeA = DType.findByName(inputs[0].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[0].dtype}")
+        val typeB = DType.findByName(inputs[1].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[1].dtype}")
+        val resultType = typeA.promoteTo(typeB)
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        val outputShape = if (shapeA != null && shapeB != null) {
+            calculateBroadcastShape(shapeA, shapeB)
+        } else {
+            shapeA ?: shapeB
+        }
+        
         return listOf(
             TensorSpec(
                 name = "multiply_output",
                 shape = outputShape,
-                dtype = inputs[0].dtype,
+                dtype = resultType.name,
                 requiresGrad = inputs[0].requiresGrad || inputs[1].requiresGrad
             )
         )
+    }
+
+    private fun areShapesBroadcastable(a: List<Int>, b: List<Int>): Boolean {
+        val maxLen = maxOf(a.size, b.size)
+        for (i in 0 until maxLen) {
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            if (dimA != dimB && dimA != 1 && dimB != 1) return false
+        }
+        return true
+    }
+
+    private fun calculateBroadcastShape(a: List<Int>, b: List<Int>): List<Int> {
+        val maxLen = maxOf(a.size, b.size)
+        return List(maxLen) { i ->
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            maxOf(dimA, dimB)
+        }
     }
     
     override fun clone(newParameters: Map<String, Any>): Operation = MultiplyOperation<T, V>(newParameters)
@@ -152,23 +281,66 @@ public class DivideOperation<T : DType, V>(
         if (inputs.size != 2) {
             return ValidationResult.Invalid(listOf("Divide operation requires exactly 2 inputs, got ${inputs.size}"))
         }
-        if (inputs[0].dtype != inputs[1].dtype) {
-            return ValidationResult.Invalid(listOf("Divide operation requires inputs to have same dtype"))
+        val typeA = DType.findByName(inputs[0].dtype)
+        val typeB = DType.findByName(inputs[1].dtype)
+        if (typeA == null || typeB == null) {
+            return ValidationResult.Invalid(listOf("Unknown dtype: ${inputs[0].dtype} or ${inputs[1].dtype}"))
+        }
+        if (!typeA.isCompatible(typeB)) {
+            return ValidationResult.Invalid(listOf("Divide operation requires compatible dtypes: ${inputs[0].dtype} and ${inputs[1].dtype}"))
+        }
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        if (shapeA != null && shapeB != null) {
+            if (!areShapesBroadcastable(shapeA, shapeB)) {
+                return ValidationResult.Invalid(listOf("Shapes are not broadcastable: $shapeA and $shapeB"))
+            }
         }
         return ValidationResult.Valid
     }
     
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size == 2) { "Divide operation requires exactly 2 inputs" }
-        val outputShape = inputs[0].shape ?: inputs[1].shape
+        val typeA = DType.findByName(inputs[0].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[0].dtype}")
+        val typeB = DType.findByName(inputs[1].dtype) ?: throw IllegalArgumentException("Unknown dtype: ${inputs[1].dtype}")
+        val resultType = typeA.promoteTo(typeB)
+        
+        val shapeA = inputs[0].shape
+        val shapeB = inputs[1].shape
+        val outputShape = if (shapeA != null && shapeB != null) {
+            calculateBroadcastShape(shapeA, shapeB)
+        } else {
+            shapeA ?: shapeB
+        }
+        
         return listOf(
             TensorSpec(
                 name = "divide_output",
                 shape = outputShape,
-                dtype = inputs[0].dtype,
+                dtype = resultType.name,
                 requiresGrad = inputs[0].requiresGrad || inputs[1].requiresGrad
             )
         )
+    }
+
+    private fun areShapesBroadcastable(a: List<Int>, b: List<Int>): Boolean {
+        val maxLen = maxOf(a.size, b.size)
+        for (i in 0 until maxLen) {
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            if (dimA != dimB && dimA != 1 && dimB != 1) return false
+        }
+        return true
+    }
+
+    private fun calculateBroadcastShape(a: List<Int>, b: List<Int>): List<Int> {
+        val maxLen = maxOf(a.size, b.size)
+        return List(maxLen) { i ->
+            val dimA = if (i < maxLen - a.size) 1 else a[i - (maxLen - a.size)]
+            val dimB = if (i < maxLen - b.size) 1 else b[i - (maxLen - b.size)]
+            maxOf(dimA, dimB)
+        }
     }
     
     override fun clone(newParameters: Map<String, Any>): Operation = DivideOperation<T, V>(newParameters)

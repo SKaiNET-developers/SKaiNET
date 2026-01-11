@@ -26,6 +26,7 @@ include("skainet-lang:skainet-lang-models")
 include("skainet-lang:skainet-lang-ksp-annotations")
 include("skainet-lang:skainet-lang-ksp-processor")
 include("skainet-lang:skainet-kan")
+include("skainet-lang:skainet-lang-dag")
 
 
 // ====== COMPILE

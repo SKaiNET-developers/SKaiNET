@@ -508,32 +508,51 @@ class TracingWrapperProcessor(
         }
 
         // Find interfaces annotated with @GenerateTracingWrapper
-        val annotatedSymbols = resolver
+        val tracingSymbols = resolver
             .getSymbolsWithAnnotation("sk.ainet.lang.trace.GenerateTracingWrapper")
             .filterIsInstance<KSClassDeclaration>()
             .filter { it.validate() }
             .toList()
 
-        if (annotatedSymbols.isEmpty()) {
-            logger.info("No interfaces annotated with @GenerateTracingWrapper found")
+        // Find interfaces annotated with @GenerateGraphDsl
+        val graphDslSymbols = resolver
+            .getSymbolsWithAnnotation("sk.ainet.lang.dag.GenerateGraphDsl")
+            .filterIsInstance<KSClassDeclaration>()
+            .filter { it.validate() }
+            .toList()
+
+        if (tracingSymbols.isEmpty() && graphDslSymbols.isEmpty()) {
+            logger.info("No interfaces annotated with @GenerateTracingWrapper or @GenerateGraphDsl found")
             return emptyList()
         }
 
-        logger.info("Found ${annotatedSymbols.size} annotated interfaces")
+        logger.info("Found ${tracingSymbols.size} tracing interfaces and ${graphDslSymbols.size} Graph DSL interfaces")
 
         // Process each annotated interface
         val unprocessedSymbols = mutableListOf<KSAnnotated>()
         
-        for (symbol in annotatedSymbols) {
+        for (symbol in tracingSymbols) {
             try {
                 if (validateAnnotatedSymbol(symbol)) {
                     generateTracingWrapper(symbol)
                 } else {
-                    // Add to unprocessed if validation fails
                     unprocessedSymbols.add(symbol)
                 }
             } catch (e: Exception) {
-                logger.error("Failed to process interface ${symbol.simpleName.asString()}: ${e.message}", symbol)
+                logger.error("Failed to process interface ${symbol.simpleName.asString()} for tracing: ${e.message}", symbol)
+                unprocessedSymbols.add(symbol)
+            }
+        }
+
+        for (symbol in graphDslSymbols) {
+            try {
+                if (validateAnnotatedSymbol(symbol)) {
+                    generateGraphDsl(symbol)
+                } else {
+                    unprocessedSymbols.add(symbol)
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to process interface ${symbol.simpleName.asString()} for Graph DSL: ${e.message}", symbol)
                 unprocessedSymbols.add(symbol)
             }
         }
@@ -763,6 +782,19 @@ class TracingWrapperProcessor(
         generator.generateTracingWrapper(interfaceDeclaration, methods)
         
         logger.info("Code generation complete for $generatedClassName in package $packageName")
+    }
+
+    /**
+     * Generates the Graph DSL extensions for the given interface.
+     */
+    private fun generateGraphDsl(interfaceDeclaration: KSClassDeclaration) {
+        logger.info("Generating Graph DSL for ${interfaceDeclaration.simpleName.asString()}")
+
+        val methodAnalyzer = MethodAnalyzer()
+        val methods = methodAnalyzer.analyzeInterface(interfaceDeclaration)
+
+        val generator = GraphDslGenerator(codeGenerator, logger)
+        generator.generateGraphDsl(interfaceDeclaration, methods)
     }
 }
 
