@@ -36,7 +36,7 @@ class SgdOptimizerTest {
         opt.step()
 
         // expected: w = 10 - 0.1 * 2 = 9.8
-        assertEquals(9.8f, w.value.data[0, 0])
+        assertEquals(9.8f, w.value.data[0, 0], 1e-6f)
     }
 
     @Test

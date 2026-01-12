@@ -46,7 +46,7 @@ class EagerVsRecordingOnesAddTest {
         val y = ctx.ops.add(a, b)
         assertEquals(Shape.Companion(5), y.shape)
 
-        val tape = ctx.stopRecording()
+        val tape = ctx.stopRecordingAndGet()
         assertNotNull(tape, "Recording should return a non-null tape")
 
         // Verify that at least one operation was recorded on the tape

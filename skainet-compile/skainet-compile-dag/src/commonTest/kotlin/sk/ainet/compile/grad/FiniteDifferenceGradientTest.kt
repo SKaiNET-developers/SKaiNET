@@ -166,4 +166,62 @@ class FiniteDifferenceGradientTest {
         // d(a/b)/db = -a/b^2
         assertTrue(approxEqual(gradB_div, floatArrayOf(-1/4f, -2/16f, -3/64f)))
     }
+
+    @Test
+    fun sqrt_gradient_matches_finite_difference() {
+        val trainCtx = createTrainCtx()
+
+        val a = trainCtx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, floatArrayOf(1f, 4f, 9f)).withRequiresGrad()
+        val pair = trainCtx.record { a.sqrt().sum() }
+        val tape = pair.first as DefaultGradientTape
+        val loss = pair.second
+        
+        tape.computeGradients(targets = listOf(loss), sources = listOf(a))
+        val analytic = fbuf(a.grad!!)
+
+        // Finite differences
+        val eps = 1e-3f
+        val baseA = fbuf(a)
+        val num = FloatArray(baseA.size)
+        for (i in baseA.indices) {
+            val plus = baseA.copyOf(); plus[i] += eps
+            val minus = baseA.copyOf(); minus[i] -= eps
+            val aPlus = trainCtx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, plus)
+            val aMinus = trainCtx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, minus)
+            val lPlus = fbuf(aPlus.sqrt().sum())[0]
+            val lMinus = fbuf(aMinus.sqrt().sum())[0]
+            num[i] = (lPlus - lMinus) / (2 * eps)
+        }
+
+        assertTrue(approxEqual(analytic, num, tol = 1e-2f))
+    }
+
+    @Test
+    fun sigmoid_gradient_matches_finite_difference() {
+        val trainCtx = createTrainCtx()
+
+        val a = trainCtx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, floatArrayOf(-1f, 0f, 1f)).withRequiresGrad()
+        val pair = trainCtx.record { a.sigmoid().sum() }
+        val tape = pair.first as DefaultGradientTape
+        val loss = pair.second
+        
+        tape.computeGradients(targets = listOf(loss), sources = listOf(a))
+        val analytic = fbuf(a.grad!!)
+
+        // Finite differences
+        val eps = 1e-3f
+        val baseA = fbuf(a)
+        val num = FloatArray(baseA.size)
+        for (i in baseA.indices) {
+            val plus = baseA.copyOf(); plus[i] += eps
+            val minus = baseA.copyOf(); minus[i] -= eps
+            val aPlus = trainCtx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, plus)
+            val aMinus = trainCtx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, minus)
+            val lPlus = fbuf(aPlus.sigmoid().sum())[0]
+            val lMinus = fbuf(aMinus.sigmoid().sum())[0]
+            num[i] = (lPlus - lMinus) / (2 * eps)
+        }
+
+        assertTrue(approxEqual(analytic, num, tol = 1e-2f))
+    }
 }

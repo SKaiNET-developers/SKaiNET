@@ -16,7 +16,7 @@ public interface TrainingExecutionContext : ExecutionContext {
     /**
      * Stop recording operations.
      */
-    public fun stopRecording()
+    public fun stopRecording(): Any?
 
     /**
      * Perform backward pass from [targets] to [sources].

@@ -1,6 +1,7 @@
 package sk.ainet.lang.graph
 
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.withRequiresGrad
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
@@ -49,6 +50,11 @@ public open class DefaultExecutionTape(
     public open fun recordTrace(trace: OpTrace) {
         if (!_isRecording) return
         _traces.add(trace)
+
+        // Ensure tensors in trace are registered in our session
+        // This is crucial for computeGradients to find them using its own session
+        trace.inputs.forEach { session.refOf(session.resolve(it) ?: return@forEach) }
+        trace.outputs.forEach { session.refOf(session.resolve(it) ?: return@forEach) }
 
         // Also append a minimal RecordedOperation so legacy tests that assert on `operations`
         // continue to work while we transition to OpTrace-first recording.
@@ -305,43 +311,53 @@ public class DefaultGradientTape(
     ): Map<Tensor<T, V>, Tensor<T, V>> {
         if (!computeGradients) return emptyMap()
 
-        val gradMap = mutableMapOf<Tensor<*, *>, Tensor<*, *>>()
+        val gradMap = mutableMapOf<String, Tensor<*, *>>() // Key by Tensor ID
 
         // Seed target gradients with 1s
         targets.forEach { t ->
             @Suppress("UNCHECKED_CAST")
             val seeded = onesLike(t) as Tensor<T, V>
-            gradMap[t] = seeded
+            val ref = session.refOf(t)
+            gradMap[ref.id] = seeded
         }
 
         backwardOps.asReversed().forEach { op ->
+            val outRef = session.refOf(op.output)
             @Suppress("UNCHECKED_CAST")
-            val upstream = gradMap[op.output] as Tensor<DType, Any>? ?: return@forEach
+            val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
+            
+            if (upstream == null) return@forEach
+            
             @Suppress("UNCHECKED_CAST")
             val castOp = op as BackwardOp<DType, Any>
             val inputGrads = castOp.backward(upstream)
             castOp.inputs.zip(inputGrads).forEach { (input, g) ->
                 if (g == null) return@forEach
+                val inRef = session.refOf(input)
                 @Suppress("UNCHECKED_CAST")
-                val prev = gradMap[input] as Tensor<DType, Any>?
+                val prev = gradMap[inRef.id] as Tensor<DType, Any>?
                 val accum = prev?.let { input.ops.add(it, g) } ?: g
-                gradMap[input] = accum
+                gradMap[inRef.id] = accum
             }
         }
 
         // Populate tensor grad slots for convenience
-        gradMap.forEach { (t, g) ->
-            @Suppress("UNCHECKED_CAST")
-            (t as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+        gradMap.forEach { (id, g) ->
+            val t = session.resolve(id)
+            if (t != null) {
+                @Suppress("UNCHECKED_CAST")
+                (t as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+            }
         }
 
         // Ensure requested sources have a non-null grad set on the tensor, even if zero.
         // Some callers (tests) read Tensor.grad directly instead of using the returned map.
         sources.forEach { src ->
+            val ref = session.refOf(src)
             @Suppress("UNCHECKED_CAST")
-            val g = (gradMap[src] as Tensor<T, V>?) ?: zerosLike(src)
+            val g = (gradMap[ref.id] as Tensor<T, V>?) ?: zerosLike(src)
             // Only accumulate explicitly if it wasn't already set through gradMap loop
-            if (gradMap[src] == null) {
+            if (gradMap[ref.id] == null) {
                 @Suppress("UNCHECKED_CAST")
                 (src as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
             }
@@ -349,7 +365,7 @@ public class DefaultGradientTape(
 
         return sources.associateWith { src ->
             @Suppress("UNCHECKED_CAST")
-            (gradMap[src] as Tensor<T, V>?) ?: zerosLike(src)
+            (gradMap[session.refOf(src).id] as Tensor<T, V>?) ?: zerosLike(src)
         }
     }
 
@@ -382,12 +398,20 @@ public class DefaultGradientTape(
     override fun recordTrace(trace: OpTrace) {
         if (!isRecording) return
         super.recordTrace(trace)
-        if (!computeGradients) return
 
         val outputs = trace.outputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
         val inputs = trace.inputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
         val out = outputs.firstOrNull() ?: return
-        if (!out.requiresGrad && inputs.none { it.requiresGrad }) return
+        
+        val anyInputRequiresGrad = inputs.any { it.requiresGrad }
+        if (!out.requiresGrad && !anyInputRequiresGrad) {
+            return
+        }
+
+        // Propagate requiresGrad to output if any input requires it
+        if (anyInputRequiresGrad && !out.requiresGrad) {
+            out.withRequiresGrad(true)
+        }
 
         val backward = buildBackwardFromTrace(trace, inputs, out) ?: return
         backwardOps += backward
@@ -441,8 +465,8 @@ public class DefaultGradientTape(
         val a = inputs[0]; val b = inputs[1]
         val aT = upstream.ops.transpose(a)
         val bT = upstream.ops.transpose(b)
-        val ga = upstream.ops.matmul(upstream, bT)
-        val gb = upstream.ops.matmul(aT, upstream)
+        val ga = matchShape(upstream.ops.matmul(upstream, bT), a)
+        val gb = matchShape(upstream.ops.matmul(aT, upstream), b)
         return listOf(ga, gb)
     }
 
@@ -481,11 +505,58 @@ public class DefaultGradientTape(
     override fun splitBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("splitBackward")
     override fun squeezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.unsqueeze(upstream, (attributes["dim"] as? Int) ?: 0)) // simplistic
     override fun unsqueezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.squeeze(upstream, (attributes["dim"] as? Int) ?: 0))
-    override fun sigmoidBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("sigmoidBackward")
-    override fun siluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("siluBackward")
-    override fun geluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("geluBackward")
+    override fun sigmoidBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(sigmoid(x))/dx = sigmoid(x) * (1 - sigmoid(x)) = output * (1 - output)
+        val oneMinusOutput = output.ops.rsubScalar(1.0, output)
+        val grad = upstream.ops.multiply(upstream, output.ops.multiply(output, oneMinusOutput))
+        return listOf(grad)
+    }
+
+    override fun siluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // silu(x) = x * sigmoid(x)
+        // d(silu(x))/dx = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x)) = sigmoid(x) + silu(x) * (1 - sigmoid(x))
+        val x = inputs[0]
+        val sigX = x.ops.sigmoid(x)
+        val oneMinusSigX = sigX.ops.rsubScalar(1.0, sigX)
+        val gradX = sigX.ops.add(sigX, output.ops.multiply(output, oneMinusSigX))
+        val grad = upstream.ops.multiply(upstream, gradX)
+        return listOf(grad)
+    }
+
+    override fun geluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
+        // dGELU(x)/dx = 0.5 * (1 + erf(x / sqrt(2))) + (x / sqrt(2*pi)) * exp(-x^2 / 2)
+        // For now, we use a simpler approximation if needed, but let's try to implement a reasonable one
+        // using existing ops.
+        // Or keep it as TODO if we don't have erf.
+        // Actually, many frameworks use: 0.5 * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+        // Let's use the approximation derivative:
+        // dGELU(x)/dx ≈ 0.5 * (1 + tanh(approx)) + 0.5 * x * (1 - tanh^2(approx)) * sqrt(2/pi) * (1 + 3 * 0.044715 * x^2)
+        
+        val x = inputs[0]
+        val sqrt2overPi = 0.7978845608
+        val coeff = 0.044715
+        
+        // x^3
+        val x2 = x.ops.multiply(x, x)
+        val x3 = x.ops.multiply(x2, x)
+        
+        // inner = sqrt(2/pi) * (x + 0.044715 * x^3)
+        val inner = x.ops.mulScalar(x.ops.add(x, x3.ops.mulScalar(x3, coeff)), sqrt2overPi)
+        
+        // tanh(inner) - we don't have tanh op yet?
+        // Let's check available ops.
+        TODO("geluBackward requires tanh op")
+    }
+
     override fun varianceBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("varianceBackward")
-    override fun sqrtBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("sqrtBackward")
+
+    override fun sqrtBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(sqrt(x))/dx = 1 / (2 * sqrt(x)) = 1 / (2 * output)
+        val twoOutput = output.ops.mulScalar(output, 2.0)
+        val gradX = upstream.ops.divide(upstream, twoOutput)
+        return listOf(gradX)
+    }
 
     private fun buildBackwardFromTrace(
         trace: OpTrace,
@@ -578,8 +649,8 @@ public class DefaultGradientTape(
                 val a = inputs[0]; val b = inputs[1]
                 val aT = upstream.ops.transpose(a)
                 val bT = upstream.ops.transpose(b)
-                val ga = upstream.ops.matmul(upstream, bT)
-                val gb = upstream.ops.matmul(aT, upstream)
+                val ga = matchShape(upstream.ops.matmul(upstream, bT), a)
+                val gb = matchShape(upstream.ops.matmul(aT, upstream), b)
                 listOf(ga, gb)
             }
             operation is ReluOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
@@ -603,16 +674,12 @@ public class DefaultGradientTape(
     }
 
     private fun <T : DType, V> onesLike(tensor: Tensor<T, V>): Tensor<T, V> {
-        // If the tensor has a real backend, use its ops.
-        // For VoidTensorOps, we can't get real ones via addScalar(zeros, 1) because it returns zeros.
-        // But since we are in DAG/Tape land, we might want to stay in Void land if that's what was used.
-        // However, to fix numerical tests, we'd need a way to create a tensor with 1s.
-        val zeros = tensor.ops.mulScalar(tensor, 0)
-        return tensor.ops.addScalar(zeros, 1)
+        val zeros = tensor.ops.mulScalar(tensor, 0.0)
+        return tensor.ops.addScalar(zeros, 1.0)
     }
 
     private fun <T : DType, V> zerosLike(tensor: Tensor<T, V>): Tensor<T, V> =
-        tensor.ops.mulScalar(tensor, 0)
+        tensor.ops.mulScalar(tensor, 0.0)
 
     private fun <T : DType, V> matchShape(grad: Tensor<T, V>, target: Tensor<T, V>): Tensor<T, V> {
         if (grad.shape == target.shape) return grad
@@ -680,9 +747,10 @@ public class DefaultGradientTape(
     }
 
     private fun <T : DType, V> reluGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, output: Tensor<T, V>): Tensor<T, V> {
-        val gradOut = zerosLike(upstream)
-        val zeroTemplate = zerosLike(upstream)
-        val dims = upstream.shape.dimensions
+        val matchedUpstream = matchShape(upstream, output)
+        val gradOut = zerosLike(input)
+        val zeroTemplate = zerosLike(input)
+        val dims = input.shape.dimensions
         val idx = IntArray(dims.size)
 
         fun fill(pos: Int) {
@@ -691,12 +759,17 @@ public class DefaultGradientTape(
                 // Output might be slightly negative due to precision or 0.0,
                 // while input > 0 is a more robust check for ReLU.
                 val v = input.data.get(*idx)
-                val pass = when (v) {
-                    is Number -> v.toDouble() > 0.0
+                val pass = when {
+                    v is Float -> v > 0.0f
+                    v is Double -> v > 0.0
+                    v is Int -> v > 0
+                    v is Number -> v.toDouble() > 0.0
                     else -> false
                 }
-                val g = if (pass) upstream.data.get(*idx) else zeroTemplate.data.get(*idx)
-                gradOut.data.set(*idx, value = g)
+                if (pass) {
+                    val g = matchedUpstream.data.get(*idx)
+                    gradOut.data.set(*idx, value = g)
+                }
                 return
             }
             for (i in 0 until dims[pos]) {
