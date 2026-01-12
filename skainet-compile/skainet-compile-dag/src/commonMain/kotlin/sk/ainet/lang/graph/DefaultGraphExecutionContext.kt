@@ -39,19 +39,36 @@ public class DefaultGraphExecutionContext(
     private val _tapes = DefaultTapeStack()
     override val tapeStack: TapeStack get() = _tapes
 
+    private var lastTape: ExecutionTape? = null
 
     override val currentTape: ExecutionTape? get() = _tapes.currentTape
 
-    public fun startRecording() {
+    override fun startRecording() {
         val tape = createTapeFactory(this)
         tape.startRecording()
         _tapes.pushTape(tape)
     }
 
-    public fun stopRecording(): ExecutionTape? {
+    override fun stopRecording() {
         val tape = _tapes.popTape()
         tape?.stopRecording()
-        return tape
+        lastTape = tape
+    }
+
+    /** Helper for internal use that returns the tape */
+    public fun stopRecordingAndGet(): ExecutionTape? {
+        stopRecording()
+        return lastTape
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun backward(targets: List<sk.ainet.lang.tensor.Tensor<*, *>>, sources: List<sk.ainet.lang.tensor.Tensor<*, *>>) {
+        val tape = lastTape
+        require(tape is sk.ainet.tape.GradientTape) { "No gradient tape available for backward pass. Ensure you recorded operations first." }
+        tape.computeGradients(
+            targets as List<sk.ainet.lang.tensor.Tensor<sk.ainet.lang.types.DType, Any?>>,
+            sources as List<sk.ainet.lang.tensor.Tensor<sk.ainet.lang.types.DType, Any?>>
+        )
     }
 
     override fun collectGarbage() { /* no-op */
@@ -81,7 +98,7 @@ public class DefaultGraphExecutionContext(
         startRecording()
         return try {
             val result = this.block()
-            stopRecording() to result
+            stopRecordingAndGet() to result
         } finally {
             if (isRecording) stopRecording()
         }
