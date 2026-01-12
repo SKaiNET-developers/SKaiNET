@@ -103,8 +103,9 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
      *
      * @param inputSize The number of input features/dimensions
      * @param id Optional identifier for the layer (auto-generated if empty)
+     * @param requiresGrad Whether the input requires gradients (default: false)
      */
-    public fun input(inputSize: Int, id: String = "")
+    public fun input(inputSize: Int, id: String = "", requiresGrad: Boolean = false)
 
     /**
      * Creates a flatten layer that reshapes multidimensional tensors into 1D.
@@ -366,6 +367,7 @@ public interface WandBTensorValueContext<T : DType, V> {
 public interface DENSE<T : DType, V> : NetworkDslItem, WandBTensorValueContext<T, V> {
     public var activation: (Tensor<T, V>) -> Tensor<T, V>
     public var units: Int
+    public var trainable: Boolean
 }
 
 @NetworkDsl
@@ -378,6 +380,7 @@ public interface CONV2D<T : DType, V> : NetworkDslItem, WandBTensorValueContext<
     public var dilation: Pair<Int, Int>
     public var groups: Int
     public var bias: Boolean
+    public var trainable: Boolean
 
     // Helper setters to allow concise Int-based configuration in DSL blocks
     public fun kernelSize(size: Int)
@@ -468,6 +471,7 @@ private fun <T : DType, V> createLinear(
     kClass: KClass<T>,
     myInitWeights: Tensor<T, V>? = null,
     myInitBias: Tensor<T, V>? = null,
+    trainable: Boolean = true
 ): Linear<T, V> {
     return when {
         myInitWeights != null && myInitBias != null ->
@@ -476,7 +480,8 @@ private fun <T : DType, V> createLinear(
                 outFeatures = outFeatures,
                 name = id,
                 initWeights = myInitWeights,
-                initBias = myInitBias
+                initBias = myInitBias,
+                trainable = trainable
             )
 
         myInitWeights == null && myInitBias != null -> {
@@ -489,7 +494,8 @@ private fun <T : DType, V> createLinear(
                 outFeatures = outFeatures,
                 name = id,
                 initWeights = initW,
-                initBias = myInitBias
+                initBias = myInitBias,
+                trainable = trainable
             )
         }
 
@@ -502,7 +508,8 @@ private fun <T : DType, V> createLinear(
                 outFeatures = outFeatures,
                 name = id,
                 initWeights = myInitWeights,
-                initBias = initB
+                initBias = initB,
+                trainable = trainable
             )
         }
 
@@ -517,7 +524,8 @@ private fun <T : DType, V> createLinear(
                 outFeatures = outFeatures,
                 name = id,
                 initWeights = initW,
-                initBias = initB
+                initBias = initB,
+                trainable = trainable
             )
         }
     }
@@ -536,6 +544,7 @@ public class DenseImpl<T : DType, V>(
     private var weightsValue: Tensor<T, V>? = null
     private var biasValue: Tensor<T, V>? = null
     private var _activation: (Tensor<T, V>) -> Tensor<T, V> = { tensor -> tensor }
+    override var trainable: Boolean = true
 
     // Expose the output dimension
     public val outputDimension: Int
@@ -562,7 +571,8 @@ public class DenseImpl<T : DType, V>(
             kClass = kClass,
             myInitWeights = weights,
             myInitBias = bias,
-            executionContext = executionContext
+            executionContext = executionContext,
+            trainable = trainable
         )
 
         // Build module list: always the linear layer, and optionally the activation if set inside dense{}
@@ -631,6 +641,7 @@ public class Conv2dImpl<T : DType, V>(
     override var dilation: Pair<Int, Int> = initialDilation
     override var groups: Int = initialGroups
     override var bias: Boolean = initialBias
+    override var trainable: Boolean = true
 
     // Shape context for the DSL
     override val weightsShape: Shape
@@ -663,7 +674,8 @@ public class Conv2dImpl<T : DType, V>(
             bias = bias,
             name = getDefaultName(id, "Conv2d", 0),
             initWeights = weights,
-            initBias = biasParam
+            initBias = biasParam,
+            trainable = trainable
         )
     }
 
@@ -749,9 +761,9 @@ public class StageImpl<T : DType, V>(
 
     public fun create(): Module<T, V> = MLP(*modules.toTypedArray(), name = id)
 
-    override fun input(inputSize: Int, id: String) {
+    override fun input(inputSize: Int, id: String, requiresGrad: Boolean) {
         lastDimension = inputSize
-        modules.add(Input(name = getDefaultName(id, "Input", modules.size)))
+        modules.add(Input(name = getDefaultName(id, "Input", modules.size), requiresGrad = requiresGrad))
     }
 
     override fun flatten(id: String, content: FLATTEN<T, V>.() -> Unit) {
@@ -1028,9 +1040,9 @@ public class NeuralNetworkDslImpl<T : DType, V>(
 
     public fun create(): Module<T, V> = NetworkBuilder<T, V>().add(*modules.toTypedArray()).build()
 
-    override fun input(inputSize: Int, id: String) {
+    override fun input(inputSize: Int, id: String, requiresGrad: Boolean) {
         lastDimension = inputSize
-        modules.add(Input(name = getDefaultName(id, "Input", modules.size)))
+        modules.add(Input(name = getDefaultName(id, "Input", modules.size), requiresGrad = requiresGrad))
     }
 
 

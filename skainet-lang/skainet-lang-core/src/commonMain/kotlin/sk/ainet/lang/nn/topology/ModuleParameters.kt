@@ -4,6 +4,19 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 
 
+/**
+ * Lightweight wrapper for a trainable parameter.
+ * Used for optimizer registration and tracking.
+ */
+public data class Parameter(
+    public val name: String,
+    public val moduleParameter: ModuleParameter<*, *>
+) {
+    public val id: String get() = moduleParameter.value.gradState.toString() // Or use a proper unique ID if available
+    public val value: Tensor<*, *> get() = moduleParameter.value
+    public val requiresGrad: Boolean get() = moduleParameter.requiresGrad
+}
+
 public sealed class ModuleParameter<T : DType, V>(
     public val requiresGrad: Boolean = true
 ) {

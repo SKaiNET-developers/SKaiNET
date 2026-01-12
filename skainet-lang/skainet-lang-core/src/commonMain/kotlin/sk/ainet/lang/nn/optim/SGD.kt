@@ -1,6 +1,7 @@
 package sk.ainet.lang.nn.optim
 
 import sk.ainet.lang.nn.topology.ModuleParameter
+import sk.ainet.lang.nn.topology.Parameter
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 
@@ -20,6 +21,10 @@ public class SgdOptimizer(
     )
 
     private val params: MutableList<Entry> = mutableListOf()
+    
+    override fun addParameter(param: Parameter, applyWeightDecay: Boolean) {
+        addParameter(param.moduleParameter, applyWeightDecay)
+    }
 
     override fun addParameter(param: ModuleParameter<*, *>, applyWeightDecay: Boolean) {
         params += Entry(param, applyWeightDecay, null)

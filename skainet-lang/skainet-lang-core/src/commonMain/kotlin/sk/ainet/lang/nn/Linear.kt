@@ -24,8 +24,9 @@ public class Linear<T : DType, V>(
     inFeatures: Int,
     outFeatures: Int,
     override val name: String = "Linear",
-    initWeights: Tensor<T, V>, //= Tensor.randn<T, V>(shape = intArrayOf(outFeatures, inFeatures)),
-    initBias: Tensor<T, V>, //  = Tensor.zeros<T, V>(shape = intArrayOf(outFeatures)),
+    initWeights: Tensor<T, V>,
+    initBias: Tensor<T, V>,
+    public val trainable: Boolean = true
 ) : Module<T, V>(), ModuleParameters<T, V> {
 
     init {
@@ -47,8 +48,8 @@ public class Linear<T : DType, V>(
     }
 
     override val params: List<ModuleParameter<T, V>> = listOf(
-        ModuleParameter.WeightParameter("$name.weight", initWeights),
-        ModuleParameter.BiasParameter("$name.bias", initBias)
+        ModuleParameter.WeightParameter("$name.weight", initWeights, trainable),
+        ModuleParameter.BiasParameter("$name.bias", initBias, trainable)
     )
 
 
