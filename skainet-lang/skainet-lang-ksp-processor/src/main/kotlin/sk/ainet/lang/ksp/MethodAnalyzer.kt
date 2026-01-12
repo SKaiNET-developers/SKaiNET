@@ -9,7 +9,9 @@ data class MethodInfo(
     val name: String,
     val parameters: List<ParameterInfo>,
     val returnType: ReturnTypeInfo,
-    val typeParameters: List<String>
+    val typeParameters: List<String>,
+    val isDifferentiable: Boolean = false,
+    val diffRuleName: String? = null
 )
 
 /**
@@ -80,11 +82,19 @@ class MethodAnalyzer {
         val returnType = analyzeReturnType(method.returnType?.resolve())
         val typeParameters = method.typeParameters.map { analyzeTypeParameter(it) }
 
+        val diffAnnotation = method.annotations.find {
+            it.shortName.asString() == "Diff" || it.annotationType.resolve().declaration.qualifiedName?.asString() == "sk.ainet.lang.trace.Diff"
+        }
+        val isDifferentiable = diffAnnotation != null
+        val diffRuleName = diffAnnotation?.arguments?.find { it.name?.asString() == "ruleName" }?.value as? String
+
         return MethodInfo(
             name = name,
             parameters = parameters,
             returnType = returnType,
-            typeParameters = typeParameters
+            typeParameters = typeParameters,
+            isDifferentiable = isDifferentiable,
+            diffRuleName = if (diffRuleName.isNullOrEmpty()) null else diffRuleName
         )
     }
 

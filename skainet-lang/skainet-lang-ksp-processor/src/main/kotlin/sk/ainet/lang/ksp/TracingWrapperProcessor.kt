@@ -53,6 +53,12 @@ class TracingWrapperGenerator(
                 outputStream.write(generatedCode)
             }
             
+            // Generate DifferentiableOps interface if there are differentiable methods
+            val differentiableMethods = methods.filter { it.isDifferentiable }
+            if (differentiableMethods.isNotEmpty()) {
+                generateDifferentiableOps(interfaceDeclaration, differentiableMethods)
+            }
+            
             logger.info("Successfully generated $generatedClassName.kt in package $packageName")
             
         } catch (e: CodeGenerationException) {
@@ -61,6 +67,54 @@ class TracingWrapperGenerator(
         } catch (e: Exception) {
             logger.error("Unexpected error during code generation for $interfaceName: ${e.message}", interfaceDeclaration)
             throw CodeGenerationException("Failed to generate tracing wrapper for $interfaceName", e)
+        }
+    }
+
+    /**
+     * Generates an interface that defines the contract for differentiable operations.
+     */
+    private fun generateDifferentiableOps(
+        interfaceDeclaration: KSClassDeclaration,
+        methods: List<MethodInfo>
+    ) {
+        val packageName = interfaceDeclaration.packageName.asString()
+        val interfaceName = "Differentiable${interfaceDeclaration.simpleName.asString()}"
+
+        val file = codeGenerator.createNewFile(
+            dependencies = Dependencies(false, interfaceDeclaration.containingFile!!),
+            packageName = packageName,
+            fileName = interfaceName
+        )
+
+        file.use { outputStream ->
+            val code = buildString {
+                appendLine("package $packageName")
+                appendLine()
+                appendLine("import sk.ainet.lang.tensor.Tensor")
+                appendLine("import sk.ainet.lang.types.DType")
+                appendLine("import sk.ainet.lang.trace.OpTrace")
+                appendLine()
+                appendLine("/**")
+                appendLine(" * Contract for providing adjoint (backward) rules for differentiable operations.")
+                appendLine(" * This interface is generated based on @Diff annotations in TensorOps.")
+                appendLine(" */")
+                appendLine("public interface $interfaceName<T : DType, V> {")
+                
+                methods.forEach { method ->
+                    val ruleName = method.diffRuleName ?: method.name
+                    appendLine("    /** Adjoint rule for '$ruleName' */")
+                    appendLine("    public fun ${ruleName}Backward(")
+                    appendLine("        upstream: Tensor<T, V>,")
+                    appendLine("        output: Tensor<T, V>,")
+                    appendLine("        inputs: List<Tensor<T, V>>,")
+                    appendLine("        attributes: Map<String, Any?>")
+                    appendLine("    ): List<Tensor<T, V>?>")
+                    appendLine()
+                }
+
+                appendLine("}")
+            }
+            outputStream.write(code.toByteArray())
         }
     }
     

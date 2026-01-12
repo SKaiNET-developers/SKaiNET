@@ -7,6 +7,7 @@ import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
 import sk.ainet.lang.trace.TraceToGraphBuilder
 import sk.ainet.lang.trace.TraceRecordingSession
+import sk.ainet.lang.tensor.ops.DifferentiableTensorOps
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
@@ -287,7 +288,7 @@ public class DefaultTapeStack : TapeStack {
  */
 public class DefaultGradientTape(
     override val computeGradients: Boolean = true
-) : DefaultExecutionTape(), GradientTape {
+) : DefaultExecutionTape(), GradientTape, DifferentiableTensorOps<DType, Any> {
 
     private val watchedTensors = mutableSetOf<String>() // Using string IDs for simplicity
     private data class BackwardOp<T : DType, V>(
@@ -392,96 +393,137 @@ public class DefaultGradientTape(
         backwardOps += backward
     }
 
+    override fun addBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]), matchShape(upstream, inputs[1]))
+
+    override fun subtractBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]), matchShape(upstream.ops.mulScalar(upstream, -1), inputs[1]))
+
+    override fun multiplyBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream.ops.multiply(upstream, inputs[1]), inputs[0]), matchShape(upstream.ops.multiply(upstream, inputs[0]), inputs[1]))
+
+    override fun divideBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val ga = matchShape(upstream.ops.divide(upstream, inputs[1]), inputs[0])
+        val bSquared = upstream.ops.multiply(inputs[1], inputs[1])
+        val gbRaw = upstream.ops.multiply(upstream, inputs[0]).let { tmp -> upstream.ops.divide(tmp, bSquared) }
+        val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[1])
+        return listOf(ga, gb)
+    }
+
+    override fun addScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]))
+
+    override fun subScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]))
+
+    override fun mulScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val b = (attributes["b"] as? Number) ?: 1.0
+        return listOf(matchShape(upstream.ops.mulScalar(upstream, b), inputs[0]))
+    }
+
+    override fun divScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val b = (attributes["b"] as? Number) ?: 1.0
+        return listOf(matchShape(upstream.ops.divScalar(upstream, b), inputs[0]))
+    }
+
+    override fun rsubScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream.ops.mulScalar(upstream, -1), inputs[0]))
+
+    override fun rdivScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val a = (attributes["a"] as? Number) ?: 1.0
+        val bSquared = upstream.ops.multiply(inputs[0], inputs[0])
+        val gbRaw = upstream.ops.mulScalar(upstream, a).let { tmp -> upstream.ops.divide(tmp, bSquared) }
+        val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[0])
+        return listOf(gb)
+    }
+
+    override fun matmulBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val a = inputs[0]; val b = inputs[1]
+        val aT = upstream.ops.transpose(a)
+        val bT = upstream.ops.transpose(b)
+        val ga = upstream.ops.matmul(upstream, bT)
+        val gb = upstream.ops.matmul(aT, upstream)
+        return listOf(ga, gb)
+    }
+
+    override fun transposeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(upstream.ops.transpose(upstream))
+
+    override fun reluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(reluGrad(upstream, inputs[0], output))
+
+    override fun sumBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: -1
+        return listOf(sumGrad(upstream, inputs[0], dim))
+    }
+
+    override fun meanBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: -1
+        return listOf(meanGrad(upstream, inputs[0], dim))
+    }
+
+    override fun softmaxBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: (output.rank - 1)
+        return listOf(softmaxGrad(upstream, output, dim))
+    }
+
+    override fun logSoftmaxBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: (output.rank - 1)
+        return listOf(logSoftmaxGrad(upstream, output, dim))
+    }
+
+    override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("conv2dBackward")
+    override fun maxPool2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("maxPool2dBackward")
+    override fun upsample2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("upsample2dBackward")
+    override fun reshapeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
+    override fun flattenBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
+    override fun concatBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("concatBackward")
+    override fun splitBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("splitBackward")
+    override fun squeezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.unsqueeze(upstream, (attributes["dim"] as? Int) ?: 0)) // simplistic
+    override fun unsqueezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.squeeze(upstream, (attributes["dim"] as? Int) ?: 0))
+    override fun sigmoidBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("sigmoidBackward")
+    override fun siluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("siluBackward")
+    override fun geluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("geluBackward")
+    override fun varianceBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("varianceBackward")
+    override fun sqrtBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = TODO("sqrtBackward")
+
     private fun buildBackwardFromTrace(
         trace: OpTrace,
         inputs: List<Tensor<DType, Any>>,
         output: Tensor<DType, Any>
     ): BackwardOp<DType, Any>? {
         return when (trace.opType) {
-            "add", "addScalar" -> BackwardOp(inputs, output) { upstream ->
-                if (trace.opType == "add") {
-                    listOf(
-                        matchShape(upstream, inputs[0]),
-                        matchShape(upstream, inputs[1])
-                    )
-                } else {
-                    listOf(matchShape(upstream, inputs[0]))
-                }
-            }
-            "subtract", "subScalar", "rsubScalar" -> BackwardOp(inputs, output) { upstream ->
-                when (trace.opType) {
-                    "subtract" -> {
-                        val g = matchShape(upstream, inputs[0])
-                        val gb = matchShape(upstream.ops.mulScalar(upstream, -1), inputs[1])
-                        listOf(g, gb)
-                    }
-                    "subScalar" -> listOf(matchShape(upstream, inputs[0]))
-                    else -> { // rsubScalar
-                        val gb = matchShape(upstream.ops.mulScalar(upstream, -1), inputs[0])
-                        listOf(gb)
-                    }
-                }
-            }
-            "multiply", "mulScalar" -> BackwardOp(inputs, output) { upstream ->
-                if (trace.opType == "multiply") {
-                    val ga = matchShape(upstream.ops.multiply(upstream, inputs[1]), inputs[0])
-                    val gb = matchShape(upstream.ops.multiply(upstream, inputs[0]), inputs[1])
-                    listOf(ga, gb)
-                } else {
-                    val b = (trace.attributes["b"] as? Number) ?: 1.0
-                    listOf(matchShape(upstream.ops.mulScalar(upstream, b), inputs[0]))
-                }
-            }
-            "divide", "divScalar", "rdivScalar" -> BackwardOp(inputs, output) { upstream ->
-                when (trace.opType) {
-                    "divide" -> {
-                        val ga = matchShape(upstream.ops.divide(upstream, inputs[1]), inputs[0])
-                        val bSquared = upstream.ops.multiply(inputs[1], inputs[1])
-                        val gbRaw = upstream.ops.multiply(upstream, inputs[0]).let { tmp ->
-                            upstream.ops.divide(tmp, bSquared)
-                        }
-                        val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[1])
-                        listOf(ga, gb)
-                    }
-                    "divScalar" -> {
-                        val b = (trace.attributes["b"] as? Number) ?: 1.0
-                        listOf(matchShape(upstream.ops.divScalar(upstream, b), inputs[0]))
-                    }
-                    else -> { // rdivScalar
-                        val a = (trace.attributes["a"] as? Number) ?: 1.0
-                        val bSquared = upstream.ops.multiply(inputs[0], inputs[0])
-                        val gbRaw = upstream.ops.mulScalar(upstream, a).let { tmp ->
-                            upstream.ops.divide(tmp, bSquared)
-                        }
-                        val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[0])
-                        listOf(gb)
-                    }
-                }
-            }
-            "matmul" -> BackwardOp(inputs, output) { upstream ->
-                val a = inputs[0]; val b = inputs[1]
-                val aT = upstream.ops.transpose(a)
-                val bT = upstream.ops.transpose(b)
-                val ga = upstream.ops.matmul(upstream, bT)
-                val gb = upstream.ops.matmul(aT, upstream)
-                listOf(ga, gb)
-            }
-            "relu" -> BackwardOp(inputs, output) { upstream ->
-                listOf(reluGrad(upstream, inputs[0], output))
-            }
-            "sum" -> BackwardOp(inputs, output) { upstream ->
-                val dim = (trace.attributes["dim"] as? Int) ?: -1
-                listOf(sumGrad(upstream, inputs[0], dim))
-            }
-            "mean" -> BackwardOp(inputs, output) { upstream ->
-                val dim = (trace.attributes["dim"] as? Int) ?: -1
-                listOf(meanGrad(upstream, inputs[0], dim))
-            }
-            "softmax", "logSoftmax" -> BackwardOp(inputs, output) { upstream ->
-                val dim = (trace.attributes["dim"] as? Int) ?: (output.rank - 1)
-                val isLog = trace.opType == "logSoftmax"
-                listOf(if (isLog) logSoftmaxGrad(upstream, output, dim) else softmaxGrad(upstream, output, dim))
-            }
+            "add" -> BackwardOp(inputs, output) { upstream -> addBackward(upstream, output, inputs, trace.attributes) }
+            "addScalar" -> BackwardOp(inputs, output) { upstream -> addScalarBackward(upstream, output, inputs, trace.attributes) }
+            "subtract" -> BackwardOp(inputs, output) { upstream -> subtractBackward(upstream, output, inputs, trace.attributes) }
+            "subScalar" -> BackwardOp(inputs, output) { upstream -> subScalarBackward(upstream, output, inputs, trace.attributes) }
+            "rsubScalar" -> BackwardOp(inputs, output) { upstream -> rsubScalarBackward(upstream, output, inputs, trace.attributes) }
+            "multiply" -> BackwardOp(inputs, output) { upstream -> multiplyBackward(upstream, output, inputs, trace.attributes) }
+            "mulScalar" -> BackwardOp(inputs, output) { upstream -> mulScalarBackward(upstream, output, inputs, trace.attributes) }
+            "divide" -> BackwardOp(inputs, output) { upstream -> divideBackward(upstream, output, inputs, trace.attributes) }
+            "divScalar" -> BackwardOp(inputs, output) { upstream -> divScalarBackward(upstream, output, inputs, trace.attributes) }
+            "rdivScalar" -> BackwardOp(inputs, output) { upstream -> rdivScalarBackward(upstream, output, inputs, trace.attributes) }
+            "matmul" -> BackwardOp(inputs, output) { upstream -> matmulBackward(upstream, output, inputs, trace.attributes) }
+            "transpose" -> BackwardOp(inputs, output) { upstream -> transposeBackward(upstream, output, inputs, trace.attributes) }
+            "relu" -> BackwardOp(inputs, output) { upstream -> reluBackward(upstream, output, inputs, trace.attributes) }
+            "sum" -> BackwardOp(inputs, output) { upstream -> sumBackward(upstream, output, inputs, trace.attributes) }
+            "mean" -> BackwardOp(inputs, output) { upstream -> meanBackward(upstream, output, inputs, trace.attributes) }
+            "softmax" -> BackwardOp(inputs, output) { upstream -> softmaxBackward(upstream, output, inputs, trace.attributes) }
+            "logSoftmax" -> BackwardOp(inputs, output) { upstream -> logSoftmaxBackward(upstream, output, inputs, trace.attributes) }
+            "reshape" -> BackwardOp(inputs, output) { upstream -> reshapeBackward(upstream, output, inputs, trace.attributes) }
+            "flatten" -> BackwardOp(inputs, output) { upstream -> flattenBackward(upstream, output, inputs, trace.attributes) }
+            "squeeze" -> BackwardOp(inputs, output) { upstream -> squeezeBackward(upstream, output, inputs, trace.attributes) }
+            "unsqueeze" -> BackwardOp(inputs, output) { upstream -> unsqueezeBackward(upstream, output, inputs, trace.attributes) }
+            "sigmoid" -> BackwardOp(inputs, output) { upstream -> sigmoidBackward(upstream, output, inputs, trace.attributes) }
+            "silu" -> BackwardOp(inputs, output) { upstream -> siluBackward(upstream, output, inputs, trace.attributes) }
+            "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
+            "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
+            "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
+            "conv2d" -> BackwardOp(inputs, output) { upstream -> conv2dBackward(upstream, output, inputs, trace.attributes) }
+            "maxPool2d" -> BackwardOp(inputs, output) { upstream -> maxPool2dBackward(upstream, output, inputs, trace.attributes) }
+            "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
+            "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }
+            "split" -> BackwardOp(inputs, output) { upstream -> splitBackward(upstream, output, inputs, trace.attributes) }
             else -> null
         }
     }
