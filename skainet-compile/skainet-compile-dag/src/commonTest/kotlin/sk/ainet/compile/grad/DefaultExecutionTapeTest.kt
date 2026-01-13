@@ -80,9 +80,12 @@ class DefaultExecutionTapeTest {
         tape.computeGradients(targets = listOf(loss), sources = listOf(a, b))
         val analyticA = fbuf(a.grad!!)
         val analyticB = fbuf(b.grad!!)
+        
+        println("[DEBUG_LOG] analyticA: ${analyticA.joinToString()}")
+        println("[DEBUG_LOG] analyticB: ${analyticB.joinToString()}")
 
-        assertTrue(approxEqual(analyticA, floatArrayOf(1f, 1f)))
-        assertTrue(approxEqual(analyticB, floatArrayOf(1f, 1f)))
+        assertTrue(approxEqual(analyticA, floatArrayOf(1f, 1f)), "AnalyticA: ${analyticA.joinToString()}")
+        assertTrue(approxEqual(analyticB, floatArrayOf(1f, 1f)), "AnalyticB: ${analyticB.joinToString()}")
     }
 
     @Test
@@ -95,7 +98,14 @@ class DefaultExecutionTapeTest {
         tape.startRecording()
         // Manually record an operation
         val out = a + b
-        // session.refOf is now handled by the trainCtx session which tape also uses
+        
+        // Ensure tensors are registered in the session used by the tape
+        val refA = tape.session.refOf(a)
+        val refB = tape.session.refOf(b)
+        val refOut = tape.session.refOf(out)
+        
+        println("[DEBUG_LOG] a.id: ${refA.id}, b.id: ${refB.id}, out.id: ${refOut.id}")
+        
         tape.recordOperation(AddOperation<FP32, Float>(), listOf(a, b), listOf(out))
         tape.stopRecording()
 
@@ -110,7 +120,7 @@ class DefaultExecutionTapeTest {
         val a = trainCtx.fromFloatArray<FP32, Float>(Shape(1), FP32::class, floatArrayOf(1f))
         val b = trainCtx.fromFloatArray<FP32, Float>(Shape(1), FP32::class, floatArrayOf(2f))
 
-        val tape = DefaultExecutionTape()
+        val tape = DefaultExecutionTape(trainCtx.session)
         tape.startRecording()
         val out1 = a + b
         val out2 = out1 + b

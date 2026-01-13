@@ -111,8 +111,9 @@ public open class DefaultExecutionTape(
         if (!_isRecording) return
 
         val inputSpecs = inputs.map { tensor ->
+            val ref = session.refOf(tensor)
             TensorSpec(
-                name = "input_${_operationCounter}_${inputs.indexOf(tensor)}",
+                name = ref.id,
                 shape = tensor.shape.dimensions.toList(),
                 dtype = tensor.dtype.toString(),
                 requiresGrad = tensor.requiresGrad
@@ -120,8 +121,9 @@ public open class DefaultExecutionTape(
         }
 
         val outputSpecs = outputs.map { tensor ->
+            val ref = session.refOf(tensor)
             TensorSpec(
-                name = "output_${_operationCounter}_${outputs.indexOf(tensor)}",
+                name = ref.id,
                 shape = tensor.shape.dimensions.toList(),
                 dtype = tensor.dtype.toString(),
                 requiresGrad = tensor.requiresGrad
@@ -145,8 +147,37 @@ public open class DefaultExecutionTape(
             val inputs = op.inputs.map { spec ->
                 session.resolve(spec.name) ?: throw IllegalStateException("Input ${spec.name} not found")
             }
+            
             @Suppress("UNCHECKED_CAST")
-            lastOutputs = op.operation.execute(inputs as List<Tensor<DType, Any>>) as List<Tensor<T, V>>
+            val typedInputs = inputs as List<Tensor<DType, Any>>
+            
+            // Try to use typedInputs[0].ops if available, else fallback to session-resolved tensor's ops
+            val firstTensor = typedInputs.firstOrNull()
+            lastOutputs = if (firstTensor != null) {
+                val ops = firstTensor.ops
+                val opName = op.operation.name
+                val params = op.operation.parameters
+                
+                @Suppress("UNCHECKED_CAST")
+                val result = when (opName) {
+                    "add" -> listOf(ops.add(typedInputs[0], typedInputs[1]))
+                    "subtract" -> listOf(ops.subtract(typedInputs[0], typedInputs[1]))
+                    "multiply" -> listOf(ops.multiply(typedInputs[0], typedInputs[1]))
+                    "divide" -> listOf(ops.divide(typedInputs[0], typedInputs[1]))
+                    "matmul" -> listOf(ops.matmul(typedInputs[0], typedInputs[1]))
+                    "relu" -> listOf(ops.relu(typedInputs[0]))
+                    "sigmoid" -> listOf(ops.sigmoid(typedInputs[0]))
+                    "sum" -> listOf(ops.sum(typedInputs[0], params["dim"] as? Int))
+                    "mean" -> listOf(ops.mean(typedInputs[0], params["dim"] as? Int))
+                    "concat" -> listOf(ops.concat(typedInputs, params["dim"] as Int))
+                    else -> op.operation.execute(typedInputs)
+                } as List<Tensor<T, V>>
+                result
+            } else {
+                @Suppress("UNCHECKED_CAST")
+                op.operation.execute(typedInputs) as List<Tensor<T, V>>
+            }
+            
             // Register outputs in session for subsequent ops
             lastOutputs.forEach { t ->
                 session.refOf(t)
@@ -431,17 +462,23 @@ public class DefaultGradientTape(
         super.recordTrace(trace)
 
         val outputs = trace.outputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
-        val inputs = trace.inputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
+        // Workaround for KSP bug in concat: inputs might be empty in OpTrace, check attributes
+        val inputs = if (trace.opType == "concat" && trace.inputs.isEmpty()) {
+            (trace.attributes["tensors"] as? List<*>)?.mapNotNull { it as? Tensor<DType, Any> } ?: emptyList()
+        } else {
+            trace.inputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
+        }
         val out = outputs.firstOrNull() ?: return
         
         val anyInputRequiresGrad = inputs.any { it.requiresGrad }
-        if (!out.requiresGrad && !anyInputRequiresGrad) {
-            return
-        }
 
         // Propagate requiresGrad to output if any input requires it
         if (anyInputRequiresGrad && !out.requiresGrad) {
             out.withRequiresGrad(true)
+        }
+
+        if (!out.requiresGrad && !anyInputRequiresGrad) {
+            return
         }
 
         val backward = buildBackwardFromTrace(trace, inputs, out) ?: return
@@ -551,16 +588,24 @@ public class DefaultGradientTape(
         var offset = 0
         for (input in inputs) {
             val size = input.shape[dim]
-            // We need a split op that takes start and length, but we have split(tensor, splitSize, dim)
-            // If all inputs have the same size, split(upstream, size, dim) works.
-            // If they differ, we'd need more advanced split.
-            // For now, let's assume we can use a more precise split if available, 
-            // or just slice it. But TensorOps doesn't have slice yet.
-            // Let's use split and hope they match, or return null if they don't.
+            if (size == 0) {
+                grads.add(null)
+                continue
+            }
             try {
-                // This is still a bit hacky because DefaultCpuOps.split uses splitSize for ALL parts.
-                // If inputs have DIFFERENT sizes, this fails.
-                grads.add(upstream.ops.split(upstream, size, dim)[offset / size])
+                // Since DefaultCpuOps.split(tensor, splitSize, dim) produces chunks of splitSize,
+                // and the last chunk might be smaller, we can only use it if all chunks except
+                // possibly the last one match splitSize.
+                // However, concat might have arbitrary sizes.
+                // For now, let's try to slice it if possible, but we don't have slice yet.
+                // If all sizes are equal, split(upstream, size, dim) works perfectly.
+                val chunks = upstream.ops.split(upstream, size, dim)
+                val chunkIndex = offset / size
+                if (chunkIndex < chunks.size) {
+                    grads.add(chunks[chunkIndex])
+                } else {
+                    grads.add(null)
+                }
             } catch (e: Exception) {
                 grads.add(null)
             }

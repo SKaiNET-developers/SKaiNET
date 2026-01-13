@@ -76,7 +76,9 @@ public class DefaultGraphExecutionContext(
     override fun resetExecutionStats() { /* no-op */
     }
 
-    private val _ops: TensorOps by lazy {
+    private lateinit var _session: sk.ainet.lang.trace.TraceSession
+
+    private val _ops: KspTensorOps by lazy {
         val dynamicSink = object : OpSink {
             override fun onOpExecuted(trace: sk.ainet.lang.trace.OpTrace) {
                 val tape = tapeStack.currentTape
@@ -87,7 +89,7 @@ public class DefaultGraphExecutionContext(
             }
         }
         val context = this
-        val session = object : sk.ainet.lang.trace.TraceSession() {
+        val traceSession = object : sk.ainet.lang.trace.TraceSession() {
             private val fallbackSession = sk.ainet.lang.trace.TraceSession()
             private fun currentSession(): sk.ainet.lang.trace.TraceSession {
                 val tape = context.tapeStack.currentTape
@@ -97,10 +99,16 @@ public class DefaultGraphExecutionContext(
             override fun resolve(id: String): sk.ainet.lang.tensor.Tensor<*, *>? = currentSession().resolve(id)
             override fun resolve(ref: sk.ainet.lang.trace.TensorRef): sk.ainet.lang.tensor.Tensor<*, *>? = currentSession().resolve(ref)
         }
-        KspTensorOps(baseOps, dynamicSink, session)
+        _session = traceSession
+        KspTensorOps(baseOps, dynamicSink, traceSession)
     }
 
-    override val ops: TensorOps get() = _ops
+    override val ops: KspTensorOps get() = _ops
+
+    public val session: sk.ainet.lang.trace.TraceSession get() {
+        _ops // trigger lazy init
+        return _session
+    }
 
     /** Convenience helper to record within a block and return the produced tape (and keep existing graph). */
     public inline fun <R> record(block: DefaultGraphExecutionContext.() -> R): Pair<ExecutionTape?, R> {
