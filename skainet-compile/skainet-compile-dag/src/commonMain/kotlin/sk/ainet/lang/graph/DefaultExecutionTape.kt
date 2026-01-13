@@ -531,10 +531,24 @@ public class DefaultGradientTape(
 
     override fun matmulBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         val a = inputs[0]; val b = inputs[1]
-        val aT = upstream.ops.transpose(a)
-        val bT = upstream.ops.transpose(b)
-        val ga = matchShape(upstream.ops.matmul(upstream, bT), a)
-        val gb = matchShape(upstream.ops.matmul(aT, upstream), b)
+        
+        // Handle vector-matrix matmul if a or b is rank 1 by unsqueezing
+        val a2d = if (a.rank == 1) a.ops.unsqueeze(a, 0) else a
+        val b2d = if (b.rank == 1) b.ops.unsqueeze(b, 1) else b
+        val upstream2d = if (upstream.rank == 1) {
+            if (a.rank == 1) upstream.ops.unsqueeze(upstream, 0)
+            else upstream.ops.unsqueeze(upstream, 1)
+        } else upstream
+
+        val aT = a2d.ops.transpose(a2d)
+        val bT = b2d.ops.transpose(b2d)
+        
+        val ga2d = upstream2d.ops.matmul(upstream2d, bT)
+        val gb2d = upstream2d.ops.matmul(aT, upstream2d)
+        
+        val ga = matchShape(ga2d, a)
+        val gb = matchShape(gb2d, b)
+        
         return listOf(ga, gb)
     }
 
@@ -786,10 +800,24 @@ public class DefaultGradientTape(
             }
             operation is MatmulOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
                 val a = inputs[0]; val b = inputs[1]
-                val aT = upstream.ops.transpose(a)
-                val bT = upstream.ops.transpose(b)
-                val ga = matchShape(upstream.ops.matmul(upstream, bT), a)
-                val gb = matchShape(upstream.ops.matmul(aT, upstream), b)
+                
+                // Handle vector-matrix matmul if a or b is rank 1 by unsqueezing
+                val a2d = if (a.rank == 1) a.ops.unsqueeze(a, 0) else a
+                val b2d = if (b.rank == 1) b.ops.unsqueeze(b, 1) else b
+                val upstream2d = if (upstream.rank == 1) {
+                    if (a.rank == 1) upstream.ops.unsqueeze(upstream, 0)
+                    else upstream.ops.unsqueeze(upstream, 1)
+                } else upstream
+
+                val aT = a2d.ops.transpose(a2d)
+                val bT = b2d.ops.transpose(b2d)
+                
+                val ga2d = upstream2d.ops.matmul(upstream2d, bT)
+                val gb2d = upstream2d.ops.matmul(aT, upstream2d)
+                
+                val ga = matchShape(ga2d, a)
+                val gb = matchShape(gb2d, b)
+                
                 listOf(ga, gb)
             }
             operation is ReluOperation<*, *> -> BackwardOp(inputs, output) { upstream ->

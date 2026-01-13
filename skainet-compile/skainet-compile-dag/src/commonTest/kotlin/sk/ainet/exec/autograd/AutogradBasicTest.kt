@@ -81,7 +81,7 @@ class AutogradBasicTest {
         val backwardGraph = tape.toComputeGraph()
         val backwardDot = drawDot(backwardGraph)
         println("--- Backward Graph (DOT) ---")
-        // println(backwardDot.content)
+        println(backwardDot.content)
 
         // 7. Optimization step
         println("--- Optimization Step ---")
