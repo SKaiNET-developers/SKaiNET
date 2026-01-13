@@ -7,7 +7,7 @@ import sk.ainet.lang.types.*
  * TraceSession manages tensor references during computation graph tracing.
  * It provides methods to convert tensors to TensorRef objects for graph capture.
  */
-public class TraceSession {
+public open class TraceSession {
     private var nextId = 0
     private val tensorToRef = mutableMapOf<Tensor<*, *>, TensorRef>()
     private val refToId = mutableMapOf<String, Tensor<*, *>>()
@@ -15,7 +15,7 @@ public class TraceSession {
     /**
      * Get or create a TensorRef for the given tensor.
      */
-    public fun refOf(tensor: Tensor<*, *>): TensorRef {
+    public open fun refOf(tensor: Tensor<*, *>): TensorRef {
         return tensorToRef.getOrPut(tensor) {
             val dtypeInstance: DType = when (tensor.dtype) {
                 Int32::class -> Int32
@@ -39,14 +39,14 @@ public class TraceSession {
     /**
      * Resolve a TensorRef back to its original Tensor.
      */
-    public fun resolve(ref: TensorRef): Tensor<*, *>? {
+    public open fun resolve(ref: TensorRef): Tensor<*, *>? {
         return refToId[ref.id]
     }
     
     /**
      * Resolve a tensor ID back to its original Tensor.
      */
-    public fun resolve(id: String): Tensor<*, *>? {
+    public open fun resolve(id: String): Tensor<*, *>? {
         return refToId[id]
     }
     

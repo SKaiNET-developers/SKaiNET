@@ -17,6 +17,7 @@ class DualModuleCompositionTest {
     private val ctx: ExecutionContext = DefaultNeuralNetworkExecutionContext()
 
     // A mock dual module converting Int32 data to FP32 by casting values to float
+    // TODO: this functionality should be provided by SKN
     private class IntToFloatDual<V> : DualModule<Int32, FP32, V>() {
         override val name: String = "IntToFloatDual"
         override val modules: List<ModuleNode> = emptyList()
@@ -31,10 +32,11 @@ class DualModuleCompositionTest {
     }
 
     // A mock unary module that adds a scalar 1.0f to FP32 tensor
+    // TODO: this functionality should be provided by SKN
     private class AddOne<V> : Module<FP32, V>() {
         override val name: String = "AddOne"
         override val modules: List<Module<FP32, V>> = emptyList()
-        override fun forward(input: Tensor<FP32, V>, executionContext: ExecutionContext): Tensor<FP32, V> {
+        override fun forward(input: Tensor<FP32, V>, ctx: ExecutionContext): Tensor<FP32, V> {
             val shape = input.shape
             val floats = (input.data as FloatArrayTensorData<FP32>).buffer
             val out = FloatArray(floats.size) { i -> floats[i] + 1f }

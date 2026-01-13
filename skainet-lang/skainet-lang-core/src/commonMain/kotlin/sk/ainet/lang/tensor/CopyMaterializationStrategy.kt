@@ -10,6 +10,7 @@ import sk.ainet.lang.types.Int4
 import sk.ainet.lang.types.Int8
 import sk.ainet.lang.types.Ternary
 import kotlin.reflect.KClass
+import sk.ainet.lang.tensor.GradState
 
 /**
  * A materialization strategy that immediately copies all data from a tensor view
@@ -147,7 +148,8 @@ public class CopyMaterializationStrategy<T : DType, V> : MaterializationStrategy
         return MaterializedTensor(
             data = MaterializedTensorData<T, V>(shape, data),
             ops = view.ops,
-            dtype = view.dtype
+            dtype = view.dtype,
+            gradState = view.gradState
         )
     }
 
@@ -211,6 +213,7 @@ public class CopyMaterializationStrategy<T : DType, V> : MaterializationStrategy
     private class MaterializedTensor<T : DType, V>(
         override val data: TensorData<T, V>,
         override val ops: TensorOps,
-        override val dtype: KClass<T>
+        override val dtype: KClass<T>,
+        override val gradState: GradState<T, V>
     ) : Tensor<T, V>
 }

@@ -4,6 +4,7 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.nn.topology.ModuleNode
 import sk.ainet.lang.nn.topology.ModuleParameter
 import sk.ainet.lang.nn.topology.ModuleParameters
+import sk.ainet.lang.nn.topology.Parameter
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 
@@ -27,5 +28,20 @@ public abstract class Module<T : DType, V> : ModuleNode {
             is ModuleParameters<*, *> -> (this as ModuleParameters<Any?, Any?>).params as List<ModuleParameter<*, *>>
             else -> emptyList()
         }
+
+    /**
+     * Collect all trainable parameters for this module and its subtree.
+     * Trainable is defined by ModuleParameter.requiresGrad flag.
+     */
+    public open fun trainableParameters(): List<Parameter> {
+        val own = params.filter { it.requiresGrad }.map { Parameter(it.name, it) }
+        val childParams = modules.flatMap { it.trainableParameters() }
+        return own + childParams
+    }
+
+    /** Zero-out accumulated gradients for all trainable parameters in this module subtree. */
+    public fun zeroGrad() {
+        trainableParameters().forEach { p -> p.value.zeroGrad() }
+    }
 }
 

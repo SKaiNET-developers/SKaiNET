@@ -39,19 +39,35 @@ public class DefaultGraphExecutionContext(
     private val _tapes = DefaultTapeStack()
     override val tapeStack: TapeStack get() = _tapes
 
+    private var lastTape: ExecutionTape? = null
 
     override val currentTape: ExecutionTape? get() = _tapes.currentTape
 
-    public fun startRecording() {
+    override fun startRecording() {
         val tape = createTapeFactory(this)
         tape.startRecording()
         _tapes.pushTape(tape)
     }
 
-    public fun stopRecording(): ExecutionTape? {
+    override fun stopRecording(): ExecutionTape? {
         val tape = _tapes.popTape()
         tape?.stopRecording()
+        lastTape = tape
         return tape
+    }
+
+    /** Helper for internal use that returns the tape */
+    @Deprecated("Use stopRecording() instead as it now returns the tape", ReplaceWith("stopRecording()"))
+    public fun stopRecordingAndGet(): ExecutionTape? = stopRecording()
+
+    @Suppress("UNCHECKED_CAST")
+    override fun backward(targets: List<sk.ainet.lang.tensor.Tensor<*, *>>, sources: List<sk.ainet.lang.tensor.Tensor<*, *>>) {
+        val tape = lastTape
+        require(tape is sk.ainet.tape.GradientTape) { "No gradient tape available for backward pass. Ensure you recorded operations first." }
+        tape.computeGradients(
+            targets as List<sk.ainet.lang.tensor.Tensor<sk.ainet.lang.types.DType, Any?>>,
+            sources as List<sk.ainet.lang.tensor.Tensor<sk.ainet.lang.types.DType, Any?>>
+        )
     }
 
     override fun collectGarbage() { /* no-op */
@@ -60,27 +76,46 @@ public class DefaultGraphExecutionContext(
     override fun resetExecutionStats() { /* no-op */
     }
 
-    override val ops: TensorOps
-        get() {
-            // Compose sinks: base sink (could itself be a Composite) + optional TapeSink for current tape
-            val tape = currentTape
-            val dynamicSink: OpSink = tape?.let {
-                // Only attach TapeSink when we have a DefaultExecutionTape and recording is on
-                if (it.isRecording && it is DefaultExecutionTape) CompositeSink(listOf(baseSink, TapeSink(it))) else baseSink
-            } ?: baseSink
+    private lateinit var _session: sk.ainet.lang.trace.TraceSession
 
-            // Always expose KspTensorOps to avoid branching in hot path
-            // If we have a DefaultExecutionTape, use its session for stability (FR7)
-            val session = (tape as? DefaultExecutionTape)?.session ?: sk.ainet.lang.trace.TraceSession()
-            return KspTensorOps(baseOps, dynamicSink, session)
+    private val _ops: KspTensorOps by lazy {
+        val dynamicSink = object : OpSink {
+            override fun onOpExecuted(trace: sk.ainet.lang.trace.OpTrace) {
+                val tape = tapeStack.currentTape
+                if (tapeStack.isRecording() && tape is DefaultExecutionTape) {
+                    TapeSink(tape).onOpExecuted(trace)
+                }
+                baseSink.onOpExecuted(trace)
+            }
         }
+        val context = this
+        val traceSession = object : sk.ainet.lang.trace.TraceSession() {
+            private val fallbackSession = sk.ainet.lang.trace.TraceSession()
+            private fun currentSession(): sk.ainet.lang.trace.TraceSession {
+                val tape = context.tapeStack.currentTape
+                return if (tape is DefaultExecutionTape) tape.session else fallbackSession
+            }
+            override fun refOf(tensor: sk.ainet.lang.tensor.Tensor<*, *>): sk.ainet.lang.trace.TensorRef = currentSession().refOf(tensor)
+            override fun resolve(id: String): sk.ainet.lang.tensor.Tensor<*, *>? = currentSession().resolve(id)
+            override fun resolve(ref: sk.ainet.lang.trace.TensorRef): sk.ainet.lang.tensor.Tensor<*, *>? = currentSession().resolve(ref)
+        }
+        _session = traceSession
+        KspTensorOps(baseOps, dynamicSink, traceSession)
+    }
+
+    override val ops: KspTensorOps get() = _ops
+
+    public val session: sk.ainet.lang.trace.TraceSession get() {
+        _ops // trigger lazy init
+        return _session
+    }
 
     /** Convenience helper to record within a block and return the produced tape (and keep existing graph). */
     public inline fun <R> record(block: DefaultGraphExecutionContext.() -> R): Pair<ExecutionTape?, R> {
         startRecording()
         return try {
             val result = this.block()
-            stopRecording() to result
+            stopRecordingAndGet() to result
         } finally {
             if (isRecording) stopRecording()
         }

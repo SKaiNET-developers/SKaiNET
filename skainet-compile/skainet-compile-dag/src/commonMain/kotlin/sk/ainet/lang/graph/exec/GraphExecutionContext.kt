@@ -1,6 +1,7 @@
 package sk.ainet.lang.graph.exec
 
 import sk.ainet.context.ExecutionContext
+import sk.ainet.context.TrainingExecutionContext
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.TapeStack
 import sk.ainet.lang.tensor.ops.TensorOps
@@ -9,7 +10,7 @@ import sk.ainet.lang.tensor.ops.TensorOps
  * Context for managing execution state, including mode switching,
  * device management, and memory management.
  */
-public interface GraphExecutionContext : ExecutionContext {
+public interface GraphExecutionContext : ExecutionContext, TrainingExecutionContext {
 
     public val baseOps: TensorOps
 

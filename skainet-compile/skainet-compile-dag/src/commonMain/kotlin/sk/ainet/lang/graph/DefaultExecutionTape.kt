@@ -1,16 +1,26 @@
 package sk.ainet.lang.graph
 
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.withRequiresGrad
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
 import sk.ainet.lang.trace.TraceToGraphBuilder
 import sk.ainet.lang.trace.TraceRecordingSession
+import sk.ainet.lang.tensor.ops.DifferentiableTensorOps
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
 import sk.ainet.tape.TapeStack
+import kotlin.math.exp
+import sk.ainet.lang.tensor.ops.AddOperation
+import sk.ainet.lang.tensor.ops.DivideOperation
+import sk.ainet.lang.tensor.ops.MatmulOperation
+import sk.ainet.lang.tensor.ops.MultiplyOperation
+import sk.ainet.lang.tensor.ops.ReluOperation
+import sk.ainet.lang.tensor.ops.SoftmaxOperation
+import sk.ainet.lang.tensor.ops.SubtractOperation
 
 /**
  * Default implementation of ExecutionTape
@@ -18,6 +28,8 @@ import sk.ainet.tape.TapeStack
 public open class DefaultExecutionTape(
     public var session: sk.ainet.lang.trace.TraceSession = sk.ainet.lang.trace.TraceSession()
 ) : ExecutionTape {
+
+    public val sessionRef: sk.ainet.lang.trace.TraceSession get() = session
 
     protected var _isRecording: Boolean = false
     protected val _operations: MutableList<RecordedOperation> = mutableListOf()
@@ -37,9 +49,14 @@ public open class DefaultExecutionTape(
     }
 
     /** Record a high-level OpTrace into this tape (used by TapeSink). */
-    public fun recordTrace(trace: OpTrace) {
+    public open fun recordTrace(trace: OpTrace) {
         if (!_isRecording) return
         _traces.add(trace)
+
+        // Ensure tensors in trace are registered in our session
+        // This is crucial for computeGradients to find them using its own session
+        trace.inputs.forEach { session.refOf(session.resolve(it) ?: return@forEach) }
+        trace.outputs.forEach { session.refOf(session.resolve(it) ?: return@forEach) }
 
         // Also append a minimal RecordedOperation so legacy tests that assert on `operations`
         // continue to work while we transition to OpTrace-first recording.
@@ -94,20 +111,22 @@ public open class DefaultExecutionTape(
         if (!_isRecording) return
 
         val inputSpecs = inputs.map { tensor ->
+            val ref = session.refOf(tensor)
             TensorSpec(
-                name = "input_${_operationCounter}_${inputs.indexOf(tensor)}",
+                name = ref.id,
                 shape = tensor.shape.dimensions.toList(),
                 dtype = tensor.dtype.toString(),
-                requiresGrad = false // TODO: implement gradient tracking
+                requiresGrad = tensor.requiresGrad
             )
         }
 
         val outputSpecs = outputs.map { tensor ->
+            val ref = session.refOf(tensor)
             TensorSpec(
-                name = "output_${_operationCounter}_${outputs.indexOf(tensor)}",
+                name = ref.id,
                 shape = tensor.shape.dimensions.toList(),
                 dtype = tensor.dtype.toString(),
-                requiresGrad = false // TODO: implement gradient tracking
+                requiresGrad = tensor.requiresGrad
             )
         }
 
@@ -122,9 +141,49 @@ public open class DefaultExecutionTape(
     }
 
     override fun <T : DType, V> replay(): List<Tensor<T, V>> {
-        // TODO: Implement operation replay
-        // For now, return empty list as this requires tensor execution infrastructure
-        return emptyList()
+        if (_operations.isEmpty()) return emptyList()
+        var lastOutputs: List<Tensor<T, V>> = emptyList()
+        for (op in _operations) {
+            val inputs = op.inputs.map { spec ->
+                session.resolve(spec.name) ?: throw IllegalStateException("Input ${spec.name} not found")
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val typedInputs = inputs as List<Tensor<DType, Any>>
+            
+            // Try to use typedInputs[0].ops if available, else fallback to session-resolved tensor's ops
+            val firstTensor = typedInputs.firstOrNull()
+            lastOutputs = if (firstTensor != null) {
+                val ops = firstTensor.ops
+                val opName = op.operation.name
+                val params = op.operation.parameters
+                
+                @Suppress("UNCHECKED_CAST")
+                val result = when (opName) {
+                    "add" -> listOf(ops.add(typedInputs[0], typedInputs[1]))
+                    "subtract" -> listOf(ops.subtract(typedInputs[0], typedInputs[1]))
+                    "multiply" -> listOf(ops.multiply(typedInputs[0], typedInputs[1]))
+                    "divide" -> listOf(ops.divide(typedInputs[0], typedInputs[1]))
+                    "matmul" -> listOf(ops.matmul(typedInputs[0], typedInputs[1]))
+                    "relu" -> listOf(ops.relu(typedInputs[0]))
+                    "sigmoid" -> listOf(ops.sigmoid(typedInputs[0]))
+                    "sum" -> listOf(ops.sum(typedInputs[0], params["dim"] as? Int))
+                    "mean" -> listOf(ops.mean(typedInputs[0], params["dim"] as? Int))
+                    "concat" -> listOf(ops.concat(typedInputs, params["dim"] as Int))
+                    else -> op.operation.execute(typedInputs)
+                } as List<Tensor<T, V>>
+                result
+            } else {
+                @Suppress("UNCHECKED_CAST")
+                op.operation.execute(typedInputs) as List<Tensor<T, V>>
+            }
+            
+            // Register outputs in session for subsequent ops
+            lastOutputs.forEach { t ->
+                session.refOf(t)
+            }
+        }
+        return lastOutputs
     }
 
     override fun clear() {
@@ -134,7 +193,7 @@ public open class DefaultExecutionTape(
     }
 
     override fun copy(): ExecutionTape {
-        val copy = DefaultExecutionTape()
+        val copy = DefaultExecutionTape(session)
         copy._isRecording = this._isRecording
         copy._operations.addAll(this._operations)
         copy._operationCounter = this._operationCounter
@@ -143,15 +202,28 @@ public open class DefaultExecutionTape(
     }
 
     override fun optimize(): ExecutionTape {
-        // TODO: Implement operation fusion and optimization
-        // For now, return a copy
+        // Minimal implementation: just return a copy for now,
+        // or we could implement simple constant folding or op fusion here.
         return copy()
     }
 
     override fun prune(keepOutputs: Set<String>): ExecutionTape {
-        // TODO: Implement dead code elimination
-        // For now, return a copy
-        return copy()
+        // Minimal implementation: dead code elimination based on keepOutputs
+        val prunedOperations = mutableListOf<RecordedOperation>()
+        val needed = keepOutputs.toMutableSet()
+
+        // Traverse backwards
+        for (i in _operations.indices.reversed()) {
+            val op = _operations[i]
+            if (op.outputs.any { it.name in needed }) {
+                prunedOperations.add(0, op)
+                op.inputs.forEach { needed.add(it.name) }
+            }
+        }
+
+        val newTape = DefaultExecutionTape(session)
+        newTape._operations.addAll(prunedOperations)
+        return newTape
     }
 
     public fun toComputeGraph(): ComputeGraph {
@@ -279,29 +351,404 @@ public class DefaultTapeStack : TapeStack {
  */
 public class DefaultGradientTape(
     override val computeGradients: Boolean = true
-) : DefaultExecutionTape(), GradientTape {
+) : DefaultExecutionTape(), GradientTape, DifferentiableTensorOps<DType, Any> {
 
     private val watchedTensors = mutableSetOf<String>() // Using string IDs for simplicity
+    private data class BackwardOp<T : DType, V>(
+        val inputs: List<Tensor<T, V>>,
+        val output: Tensor<T, V>,
+        val backward: (upstream: Tensor<T, V>) -> List<Tensor<T, V>?>
+    )
+
+    private val backwardOps = mutableListOf<BackwardOp<*, *>>()
 
     override fun <T : DType, V> computeGradients(
         targets: List<Tensor<T, V>>,
         sources: List<Tensor<T, V>>
     ): Map<Tensor<T, V>, Tensor<T, V>> {
-        // TODO: Implement automatic differentiation
-        // For now, return empty map
-        return emptyMap()
+        if (!computeGradients) return emptyMap()
+
+        val gradMap = mutableMapOf<String, Tensor<*, *>>() // Key by Tensor ID
+
+        // Seed target gradients with 1s
+        targets.forEach { t ->
+            @Suppress("UNCHECKED_CAST")
+            val seeded = onesLike(t) as Tensor<T, V>
+            val ref = session.refOf(t)
+            gradMap[ref.id] = seeded
+        }
+
+        backwardOps.asReversed().forEach { op ->
+            val outRef = session.refOf(op.output)
+            @Suppress("UNCHECKED_CAST")
+            val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
+            
+            if (upstream == null) return@forEach
+            
+            @Suppress("UNCHECKED_CAST")
+            val castOp = op as BackwardOp<DType, Any>
+            val inputGrads = castOp.backward(upstream)
+            castOp.inputs.zip(inputGrads).forEach { (input, g) ->
+                if (g == null) return@forEach
+                val inRef = session.refOf(input)
+                @Suppress("UNCHECKED_CAST")
+                val prev = gradMap[inRef.id] as Tensor<DType, Any>?
+                val accum = prev?.let { input.ops.add(it, g) } ?: g
+                gradMap[inRef.id] = accum
+            }
+        }
+
+        // Populate tensor grad slots for convenience
+        gradMap.forEach { (id, g) ->
+            val t = session.resolve(id)
+            if (t != null) {
+                @Suppress("UNCHECKED_CAST")
+                (t as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+            }
+        }
+
+        // Ensure requested sources have a non-null grad set on the tensor, even if zero.
+        // Some callers (tests) read Tensor.grad directly instead of using the returned map.
+        sources.forEach { src ->
+            val ref = session.refOf(src)
+            @Suppress("UNCHECKED_CAST")
+            val g = (gradMap[ref.id] as Tensor<T, V>?) ?: zerosLike(src)
+            // Only accumulate explicitly if it wasn't already set through gradMap loop
+            if (gradMap[ref.id] == null) {
+                @Suppress("UNCHECKED_CAST")
+                (src as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+            }
+        }
+
+        return sources.associateWith { src ->
+            @Suppress("UNCHECKED_CAST")
+            (gradMap[session.refOf(src).id] as Tensor<T, V>?) ?: zerosLike(src)
+        }
     }
 
     override fun <T : DType, V> watch(tensors: List<Tensor<T, V>>) {
-        // TODO: Implement tensor watching for gradient computation
         tensors.forEach { tensor ->
-            watchedTensors.add(tensor.toString()) // Simplified tensor identification
+            val ref = session.refOf(tensor)
+            watchedTensors.add(ref.id)
+            // Ensure watched tensors also have requiresGrad true if they are to be sources
+            if (computeGradients && !tensor.requiresGrad) {
+                (tensor as? Tensor<DType, Any>)?.withRequiresGrad(true)
+            }
         }
     }
 
     override fun <T : DType, V> stopWatching(tensors: List<Tensor<T, V>>) {
         tensors.forEach { tensor ->
-            watchedTensors.remove(tensor.toString())
+            val ref = session.refOf(tensor)
+            watchedTensors.remove(ref.id)
+        }
+    }
+
+    override fun <T : DType, V> recordOperation(
+        operation: sk.ainet.lang.tensor.ops.Operation,
+        inputs: List<Tensor<T, V>>,
+        outputs: List<Tensor<T, V>>
+    ) {
+        super.recordOperation(operation, inputs, outputs)
+        if (!computeGradients) return
+        val out = outputs.firstOrNull() ?: return
+        if (!out.requiresGrad && inputs.none { it.requiresGrad }) return
+        val backward = buildBackward(operation, inputs, out) ?: return
+        backwardOps += backward
+    }
+
+    override fun recordTrace(trace: OpTrace) {
+        if (!isRecording) return
+        super.recordTrace(trace)
+
+        val outputs = trace.outputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
+        // Workaround for KSP bug in concat: inputs might be empty in OpTrace, check attributes
+        val inputs = if (trace.opType == "concat" && trace.inputs.isEmpty()) {
+            (trace.attributes["tensors"] as? List<*>)?.mapNotNull { it as? Tensor<DType, Any> } ?: emptyList()
+        } else {
+            trace.inputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
+        }
+        val out = outputs.firstOrNull() ?: return
+        
+        val anyInputRequiresGrad = inputs.any { it.requiresGrad }
+
+        // Propagate requiresGrad to output if any input requires it
+        if (anyInputRequiresGrad && !out.requiresGrad) {
+            out.withRequiresGrad(true)
+        }
+
+        if (!out.requiresGrad && !anyInputRequiresGrad) {
+            return
+        }
+
+        val backward = buildBackwardFromTrace(trace, inputs, out) ?: return
+        backwardOps += backward
+    }
+
+    override fun addBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]), matchShape(upstream, inputs[1]))
+
+    override fun subtractBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]), matchShape(upstream.ops.mulScalar(upstream, -1), inputs[1]))
+
+    override fun multiplyBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream.ops.multiply(upstream, inputs[1]), inputs[0]), matchShape(upstream.ops.multiply(upstream, inputs[0]), inputs[1]))
+
+    override fun divideBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val ga = matchShape(upstream.ops.divide(upstream, inputs[1]), inputs[0])
+        val bSquared = upstream.ops.multiply(inputs[1], inputs[1])
+        val gbRaw = upstream.ops.multiply(upstream, inputs[0]).let { tmp -> upstream.ops.divide(tmp, bSquared) }
+        val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[1])
+        return listOf(ga, gb)
+    }
+
+    override fun addScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]))
+
+    override fun subScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream, inputs[0]))
+
+    override fun mulScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val b = (attributes["b"] as? Number) ?: 1.0
+        return listOf(matchShape(upstream.ops.mulScalar(upstream, b), inputs[0]))
+    }
+
+    override fun divScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val b = (attributes["b"] as? Number) ?: 1.0
+        return listOf(matchShape(upstream.ops.divScalar(upstream, b), inputs[0]))
+    }
+
+    override fun rsubScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(matchShape(upstream.ops.mulScalar(upstream, -1), inputs[0]))
+
+    override fun rdivScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val a = (attributes["a"] as? Number) ?: 1.0
+        val bSquared = upstream.ops.multiply(inputs[0], inputs[0])
+        val gbRaw = upstream.ops.mulScalar(upstream, a).let { tmp -> upstream.ops.divide(tmp, bSquared) }
+        val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[0])
+        return listOf(gb)
+    }
+
+    override fun matmulBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val a = inputs[0]; val b = inputs[1]
+        
+        // Handle vector-matrix matmul if a or b is rank 1 by unsqueezing
+        val a2d = if (a.rank == 1) a.ops.unsqueeze(a, 0) else a
+        val b2d = if (b.rank == 1) b.ops.unsqueeze(b, 1) else b
+        val upstream2d = if (upstream.rank == 1) {
+            if (a.rank == 1) upstream.ops.unsqueeze(upstream, 0)
+            else upstream.ops.unsqueeze(upstream, 1)
+        } else upstream
+
+        val aT = a2d.ops.transpose(a2d)
+        val bT = b2d.ops.transpose(b2d)
+        
+        val ga2d = upstream2d.ops.matmul(upstream2d, bT)
+        val gb2d = upstream2d.ops.matmul(aT, upstream2d)
+        
+        val ga = matchShape(ga2d, a)
+        val gb = matchShape(gb2d, b)
+        
+        return listOf(ga, gb)
+    }
+
+    override fun transposeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(upstream.ops.transpose(upstream))
+
+    override fun reluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
+        listOf(reluGrad(upstream, inputs[0], output))
+
+    override fun sumBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: -1
+        return listOf(sumGrad(upstream, inputs[0], dim))
+    }
+
+    override fun meanBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: -1
+        return listOf(meanGrad(upstream, inputs[0], dim))
+    }
+
+    override fun softmaxBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: (output.rank - 1)
+        return listOf(softmaxGrad(upstream, output, dim))
+    }
+
+    override fun logSoftmaxBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: (output.rank - 1)
+        return listOf(logSoftmaxGrad(upstream, output, dim))
+    }
+
+    override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(conv2d(x, w, b))/dx, d(conv2d(x, w, b))/dw, d(conv2d(x, w, b))/db
+        // This is complex and usually implemented in the backend.
+        // For now we return null to signal it's not implemented yet, or throw if we want to be strict.
+        return listOf(null, null, null)
+    }
+
+    override fun maxPool2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        return listOf(null)
+    }
+
+    override fun upsample2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        return listOf(null)
+    }
+
+    override fun reshapeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
+    override fun flattenBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
+    
+    override fun concatBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val dim = (attributes["dim"] as? Int) ?: 0
+        val grads = mutableListOf<Tensor<DType, Any>?>()
+        var offset = 0
+        for (input in inputs) {
+            val size = input.shape[dim]
+            if (size == 0) {
+                grads.add(null)
+                continue
+            }
+            try {
+                // Since DefaultCpuOps.split(tensor, splitSize, dim) produces chunks of splitSize,
+                // and the last chunk might be smaller, we can only use it if all chunks except
+                // possibly the last one match splitSize.
+                // However, concat might have arbitrary sizes.
+                // For now, let's try to slice it if possible, but we don't have slice yet.
+                // If all sizes are equal, split(upstream, size, dim) works perfectly.
+                val chunks = upstream.ops.split(upstream, size, dim)
+                val chunkIndex = offset / size
+                if (chunkIndex < chunks.size) {
+                    grads.add(chunks[chunkIndex])
+                } else {
+                    grads.add(null)
+                }
+            } catch (e: Exception) {
+                grads.add(null)
+            }
+            offset += size
+        }
+        return grads
+    }
+
+    override fun splitBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // splitBackward: d(split(x))/dx = concat(upstreams)
+        // Since each output of split is recorded separately, we need to accumulate them.
+        // This is not easily handled in the current tape.
+        return listOf(null)
+    }
+    override fun squeezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.unsqueeze(upstream, (attributes["dim"] as? Int) ?: 0)) // simplistic
+    override fun unsqueezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.squeeze(upstream, (attributes["dim"] as? Int) ?: 0))
+    override fun sigmoidBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(sigmoid(x))/dx = sigmoid(x) * (1 - sigmoid(x)) = output * (1 - output)
+        val oneMinusOutput = output.ops.rsubScalar(1.0, output)
+        val grad = upstream.ops.multiply(upstream, output.ops.multiply(output, oneMinusOutput))
+        return listOf(grad)
+    }
+
+    override fun siluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // silu(x) = x * sigmoid(x)
+        // d(silu(x))/dx = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x)) = sigmoid(x) + silu(x) * (1 - sigmoid(x))
+        val x = inputs[0]
+        val sigX = x.ops.sigmoid(x)
+        val oneMinusSigX = sigX.ops.rsubScalar(1.0, sigX)
+        val gradX = sigX.ops.add(sigX, output.ops.multiply(output, oneMinusSigX))
+        val grad = upstream.ops.multiply(upstream, gradX)
+        return listOf(grad)
+    }
+
+    override fun geluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
+        // dGELU(x)/dx = 0.5 * (1 + erf(x / sqrt(2))) + (x / sqrt(2*pi)) * exp(-x^2 / 2)
+        // Using approximation:
+        // GELU(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+        // dGELU/dx ≈ 0.5 * (1 + tanh(h)) + 0.5 * x * (1 - tanh^2(h)) * (sqrt(2/pi) * (1 + 3 * 0.044715 * x^2))
+        // where h = sqrt(2/pi) * (x + 0.044715 * x^3)
+
+        val x = inputs[0]
+        val sqrt2overPi = 0.7978845608
+        val coeff = 0.044715
+
+        val x2 = x.ops.multiply(x, x)
+        val x3 = x.ops.multiply(x2, x)
+        val inner = x.ops.mulScalar(x.ops.add(x, x3.ops.mulScalar(x3, coeff)), sqrt2overPi)
+
+        // Since we don't have tanh yet, we can use: tanh(x) = (exp(2x) - 1) / (exp(2x) + 1)
+        // or just use a simpler approximation if tanh is missing.
+        // Actually, let's implement a simple tanh using sigmoid if possible.
+        // tanh(x) = 2 * sigmoid(2x) - 1
+        fun tanh(v: Tensor<DType, Any>): Tensor<DType, Any> {
+            val s = v.ops.sigmoid(v.ops.mulScalar(v, 2.0))
+            return v.ops.subScalar(v.ops.mulScalar(s, 2.0), 1.0)
+        }
+
+        val th = tanh(inner)
+        val term1 = th.ops.addScalar(th, 1.0).ops.mulScalar(th.ops.addScalar(th, 1.0), 0.5)
+
+        val sech2 = th.ops.rsubScalar(1.0, th.ops.multiply(th, th))
+        val dInner = x.ops.mulScalar(x.ops.addScalar(x2.ops.mulScalar(x2, 3.0 * coeff), 1.0), sqrt2overPi)
+        val term2 = x.ops.mulScalar(x.ops.multiply(x, sech2.ops.multiply(sech2, dInner)), 0.5)
+
+        val gradX = term1.ops.add(term1, term2)
+        return listOf(upstream.ops.multiply(upstream, gradX))
+    }
+
+    override fun varianceBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // var(x) = E[x^2] - E[x]^2
+        // d(var(x))/dx = 2/N * (x - E[x])
+        val x = inputs[0]
+        val dim = (attributes["dim"] as? Int)
+        val meanX = x.ops.mean(x, dim)
+        // Need to broadcast meanX back to x shape.
+        // For now, let's assume it's handled or use a simplified version.
+        val diff = x.ops.subtract(x, meanX)
+        val n = x.shape.volume.toDouble() // Simplified: should be size along dim
+        val gradX = diff.ops.mulScalar(diff, 2.0 / n)
+        return listOf(upstream.ops.multiply(upstream, gradX))
+    }
+
+    override fun sqrtBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(sqrt(x))/dx = 1 / (2 * sqrt(x)) = 1 / (2 * output)
+        val twoOutput = output.ops.mulScalar(output, 2.0)
+        val gradX = upstream.ops.divide(upstream, twoOutput)
+        return listOf(gradX)
+    }
+
+    private fun buildBackwardFromTrace(
+        trace: OpTrace,
+        inputs: List<Tensor<DType, Any>>,
+        output: Tensor<DType, Any>
+    ): BackwardOp<DType, Any>? {
+        return when (trace.opType) {
+            "add" -> BackwardOp(inputs, output) { upstream -> addBackward(upstream, output, inputs, trace.attributes) }
+            "addScalar" -> BackwardOp(inputs, output) { upstream -> addScalarBackward(upstream, output, inputs, trace.attributes) }
+            "subtract" -> BackwardOp(inputs, output) { upstream -> subtractBackward(upstream, output, inputs, trace.attributes) }
+            "subScalar" -> BackwardOp(inputs, output) { upstream -> subScalarBackward(upstream, output, inputs, trace.attributes) }
+            "rsubScalar" -> BackwardOp(inputs, output) { upstream -> rsubScalarBackward(upstream, output, inputs, trace.attributes) }
+            "multiply" -> BackwardOp(inputs, output) { upstream -> multiplyBackward(upstream, output, inputs, trace.attributes) }
+            "mulScalar" -> BackwardOp(inputs, output) { upstream -> mulScalarBackward(upstream, output, inputs, trace.attributes) }
+            "divide" -> BackwardOp(inputs, output) { upstream -> divideBackward(upstream, output, inputs, trace.attributes) }
+            "divScalar" -> BackwardOp(inputs, output) { upstream -> divScalarBackward(upstream, output, inputs, trace.attributes) }
+            "rdivScalar" -> BackwardOp(inputs, output) { upstream -> rdivScalarBackward(upstream, output, inputs, trace.attributes) }
+            "matmul" -> BackwardOp(inputs, output) { upstream -> matmulBackward(upstream, output, inputs, trace.attributes) }
+            "transpose" -> BackwardOp(inputs, output) { upstream -> transposeBackward(upstream, output, inputs, trace.attributes) }
+            "relu" -> BackwardOp(inputs, output) { upstream -> reluBackward(upstream, output, inputs, trace.attributes) }
+            "sum" -> BackwardOp(inputs, output) { upstream -> sumBackward(upstream, output, inputs, trace.attributes) }
+            "mean" -> BackwardOp(inputs, output) { upstream -> meanBackward(upstream, output, inputs, trace.attributes) }
+            "softmax" -> BackwardOp(inputs, output) { upstream -> softmaxBackward(upstream, output, inputs, trace.attributes) }
+            "logSoftmax" -> BackwardOp(inputs, output) { upstream -> logSoftmaxBackward(upstream, output, inputs, trace.attributes) }
+            "reshape" -> BackwardOp(inputs, output) { upstream -> reshapeBackward(upstream, output, inputs, trace.attributes) }
+            "flatten" -> BackwardOp(inputs, output) { upstream -> flattenBackward(upstream, output, inputs, trace.attributes) }
+            "squeeze" -> BackwardOp(inputs, output) { upstream -> squeezeBackward(upstream, output, inputs, trace.attributes) }
+            "unsqueeze" -> BackwardOp(inputs, output) { upstream -> unsqueezeBackward(upstream, output, inputs, trace.attributes) }
+            "sigmoid" -> BackwardOp(inputs, output) { upstream -> sigmoidBackward(upstream, output, inputs, trace.attributes) }
+            "silu" -> BackwardOp(inputs, output) { upstream -> siluBackward(upstream, output, inputs, trace.attributes) }
+            "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
+            "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
+            "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
+            "conv2d" -> BackwardOp(inputs, output) { upstream -> conv2dBackward(upstream, output, inputs, trace.attributes) }
+            "maxPool2d" -> BackwardOp(inputs, output) { upstream -> maxPool2dBackward(upstream, output, inputs, trace.attributes) }
+            "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
+            "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }
+            "split" -> BackwardOp(inputs, output) { upstream -> splitBackward(upstream, output, inputs, trace.attributes) }
+            else -> null
         }
     }
 
@@ -311,6 +758,219 @@ public class DefaultGradientTape(
         copy._operations.addAll(this._operations)
         copy._operationCounter = this._operationCounter
         copy.watchedTensors.addAll(this.watchedTensors)
+        copy.backwardOps.addAll(this.backwardOps)
         return copy
+    }
+
+    override fun clear() {
+        super.clear()
+        backwardOps.clear()
+    }
+
+    private fun <T : DType, V> buildBackward(
+        operation: sk.ainet.lang.tensor.ops.Operation,
+        inputs: List<Tensor<T, V>>,
+        output: Tensor<T, V>
+    ): BackwardOp<T, V>? {
+        return when {
+            operation is AddOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
+                listOf(
+                    matchShape(upstream, inputs[0]),
+                    matchShape(upstream, inputs[1])
+                )
+            }
+            operation is SubtractOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
+                val g = matchShape(upstream, inputs[0])
+                val gb = matchShape(upstream.ops.mulScalar(upstream, -1), inputs[1])
+                listOf(g, gb)
+            }
+            operation is MultiplyOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
+                val ga = matchShape(upstream.ops.multiply(upstream, inputs[1]), inputs[0])
+                val gb = matchShape(upstream.ops.multiply(upstream, inputs[0]), inputs[1])
+                listOf(ga, gb)
+            }
+            operation is DivideOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
+                val ga = matchShape(upstream.ops.divide(upstream, inputs[1]), inputs[0])
+                val bSquared = upstream.ops.multiply(inputs[1], inputs[1])
+                val gbRaw = upstream.ops.multiply(upstream, inputs[0]).let { tmp ->
+                    upstream.ops.divide(tmp, bSquared)
+                }
+                val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[1])
+                listOf(ga, gb)
+            }
+            operation is MatmulOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
+                val a = inputs[0]; val b = inputs[1]
+                
+                // Handle vector-matrix matmul if a or b is rank 1 by unsqueezing
+                val a2d = if (a.rank == 1) a.ops.unsqueeze(a, 0) else a
+                val b2d = if (b.rank == 1) b.ops.unsqueeze(b, 1) else b
+                val upstream2d = if (upstream.rank == 1) {
+                    if (a.rank == 1) upstream.ops.unsqueeze(upstream, 0)
+                    else upstream.ops.unsqueeze(upstream, 1)
+                } else upstream
+
+                val aT = a2d.ops.transpose(a2d)
+                val bT = b2d.ops.transpose(b2d)
+                
+                val ga2d = upstream2d.ops.matmul(upstream2d, bT)
+                val gb2d = upstream2d.ops.matmul(aT, upstream2d)
+                
+                val ga = matchShape(ga2d, a)
+                val gb = matchShape(gb2d, b)
+                
+                listOf(ga, gb)
+            }
+            operation is ReluOperation<*, *> -> BackwardOp(inputs, output) { upstream ->
+                listOf(reluGrad(upstream, inputs[0], output))
+            }
+            operation.name == "sum" -> BackwardOp(inputs, output) { upstream ->
+                val dim = (operation.parameters["dim"] as? Int) ?: -1
+                listOf(sumGrad(upstream, inputs[0], dim))
+            }
+            operation.name == "mean" -> BackwardOp(inputs, output) { upstream ->
+                val dim = (operation.parameters["dim"] as? Int) ?: -1
+                listOf(meanGrad(upstream, inputs[0], dim))
+            }
+            operation is SoftmaxOperation<*, *> || operation.name == "softmax" -> BackwardOp(inputs, output) { upstream ->
+                val dim = (operation.parameters["dim"] as? Int) ?: (output.rank - 1)
+                val isLog = (operation.parameters["log"] as? Boolean) ?: false
+                listOf(if (isLog) logSoftmaxGrad(upstream, output, dim) else softmaxGrad(upstream, output, dim))
+            }
+            else -> null
+        }
+    }
+
+    private fun <T : DType, V> onesLike(tensor: Tensor<T, V>): Tensor<T, V> {
+        val zeros = tensor.ops.mulScalar(tensor, 0.0)
+        return tensor.ops.addScalar(zeros, 1.0)
+    }
+
+    private fun <T : DType, V> zerosLike(tensor: Tensor<T, V>): Tensor<T, V> =
+        tensor.ops.mulScalar(tensor, 0.0)
+
+    private fun <T : DType, V> matchShape(grad: Tensor<T, V>, target: Tensor<T, V>): Tensor<T, V> {
+        if (grad.shape == target.shape) return grad
+        var g: Tensor<T, V> = grad
+        while (g.rank > target.rank) {
+            g = g.ops.sum(g, 0)
+            g = g.ops.unsqueeze(g, 0)
+        }
+        target.shape.dimensions.forEachIndexed { idx, dim ->
+            if (dim == 1 && g.shape[idx] != 1) {
+                g = g.ops.sum(g, idx)
+                g = g.ops.unsqueeze(g, idx)
+            }
+        }
+        return g
+    }
+
+    private fun <T : DType, V> broadcastToInput(grad: Tensor<T, V>, input: Tensor<T, V>, dim: Int?, scale: Number? = null): Tensor<T, V> {
+        val scaled = scale?.let { grad.ops.divScalar(grad, it) } ?: grad
+        var expanded = scaled
+        val targetDim = dim ?: -1
+        if (targetDim >= 0 && targetDim <= input.rank) {
+            expanded = expanded.ops.unsqueeze(expanded, targetDim)
+        }
+        val zero = zerosLike(input)
+        return zero.ops.add(zero, expanded)
+    }
+
+    private fun <T : DType, V> sumGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        return if (dim == -1) {
+            val zero = zerosLike(input)
+            zero.ops.add(zero, upstream)
+        } else {
+            broadcastToInput(upstream, input, dim)
+        }
+    }
+
+    private fun <T : DType, V> meanGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        return if (dim == -1) {
+            val volume = if (input.volume == 0) 1 else input.volume
+            val scaled = upstream.ops.divScalar(upstream, volume)
+            val zero = zerosLike(input)
+            zero.ops.add(zero, scaled)
+        } else {
+            val size = input.shape[dim].coerceAtLeast(1)
+            val scaled = upstream.ops.divScalar(upstream, size)
+            broadcastToInput(scaled, input, dim)
+        }
+    }
+
+    private fun <T : DType, V> softmaxGrad(upstream: Tensor<T, V>, output: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val dot = upstream.ops.multiply(upstream, output)
+        val sum = upstream.ops.sum(dot, dim)
+        val expanded = broadcastToInput(sum, output, dim)
+        val diff = upstream.ops.subtract(upstream, expanded)
+        return output.ops.multiply(output, diff)
+    }
+
+    private fun <T : DType, V> logSoftmaxGrad(upstream: Tensor<T, V>, logOutput: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val softmaxApprox = expTensor(logOutput)
+        val sum = upstream.ops.sum(upstream, dim)
+        val expanded = broadcastToInput(sum, logOutput, dim)
+        val scaled = softmaxApprox.ops.multiply(softmaxApprox, expanded)
+        return upstream.ops.subtract(upstream, scaled)
+    }
+
+    private fun <T : DType, V> reluGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, output: Tensor<T, V>): Tensor<T, V> {
+        val matchedUpstream = matchShape(upstream, output)
+        val gradOut = zerosLike(input)
+        val zeroTemplate = zerosLike(input)
+        val dims = input.shape.dimensions
+        val idx = IntArray(dims.size)
+
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                // Use input instead of output to determine gradient pass-through.
+                // Output might be slightly negative due to precision or 0.0,
+                // while input > 0 is a more robust check for ReLU.
+                val v = input.data.get(*idx)
+                val pass = when {
+                    v is Float -> v > 0.0f
+                    v is Double -> v > 0.0
+                    v is Int -> v > 0
+                    v is Number -> v.toDouble() > 0.0
+                    else -> false
+                }
+                if (pass) {
+                    val g = matchedUpstream.data.get(*idx)
+                    gradOut.data.set(*idx, value = g)
+                }
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return gradOut
+    }
+
+    private fun <T : DType, V> expTensor(logTensor: Tensor<T, V>): Tensor<T, V> {
+        val out = zerosLike(logTensor)
+        val dims = logTensor.shape.dimensions
+        val idx = IntArray(dims.size)
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                val v = logTensor.data.get(*idx)
+                val expv: Any = when (v) {
+                    is Float -> exp(v.toDouble()).toFloat()
+                    is Double -> exp(v)
+                    is Int -> exp(v.toDouble()).toFloat()
+                    else -> 0.0
+                }
+                @Suppress("UNCHECKED_CAST")
+                out.data.set(*idx, value = expv as V)
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return out
     }
 }

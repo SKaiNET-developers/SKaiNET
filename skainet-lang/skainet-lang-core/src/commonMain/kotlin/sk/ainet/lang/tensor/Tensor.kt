@@ -82,6 +82,37 @@ public interface Tensor<T : DType, V> {
     public val dtype: KClass<T>
 
     /**
+     * Gradient state tied to this tensor instance.
+     */
+    public val gradState: GradState<T, V>
+
+    /**
+     * Flag indicating if this tensor participates in gradient computation.
+     */
+    public val requiresGrad: Boolean
+        get() = gradState.requiresGrad
+
+    /**
+     * Accumulated gradient, if any.
+     */
+    public val grad: Tensor<T, V>?
+        get() = gradState.grad
+
+    /**
+     * Accumulate a gradient tensor onto this tensor.
+     */
+    public fun accumulateGrad(g: Tensor<T, V>) {
+        gradState.accumulate(g)
+    }
+
+    /**
+     * Reset accumulated gradient.
+     */
+    public fun zeroGrad() {
+        gradState.zero()
+    }
+
+    /**
      * The shape descriptor inherited from the data component.
      *
      * This property delegates to the data component's shape, maintaining consistency

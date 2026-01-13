@@ -108,14 +108,14 @@ public interface TypedDataContextDsl<T : DType, V> : DataContextDsl {
     ): Tensor<T, V>
 }
 
-internal class DataDefinitionContextDslImpl(
+public class DataDefinitionContextDslImpl(
     override val executionContext: ExecutionContext,
 ) : DataContextDsl {
 
-    var createdTensorsCount: Int = 0
+    public var createdTensorsCount: Int = 0
 
     // Keeps all named tensors created within the block; names must be unique in this context
-    internal val tensorsByName: LinkedHashMap<String, Tensor<*, *>> = LinkedHashMap()
+    public val tensorsByName: LinkedHashMap<String, Tensor<*, *>> = LinkedHashMap()
 
     // The core method uses an explicit dtype to avoid reified-in-interface
     override  fun <T : DType, V> scalar(

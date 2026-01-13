@@ -35,6 +35,7 @@ public class Conv2d<T : DType, V>(
     override val name: String = "Conv2d",
     initWeights: Tensor<T, V>,
     initBias: Tensor<T, V>? = null,
+    public val trainable: Boolean = true
 ) : Module<T, V>(), ModuleParameters<T, V> {
     
     init {
@@ -50,9 +51,9 @@ public class Conv2d<T : DType, V>(
     }
 
     override val params: List<ModuleParameter<T, V>> = buildList {
-        add(ModuleParameter.WeightParameter("$name.weight", initWeights))
+        add(ModuleParameter.WeightParameter("$name.weight", initWeights, trainable))
         if (bias && initBias != null) {
-            add(ModuleParameter.BiasParameter("$name.bias", initBias))
+            add(ModuleParameter.BiasParameter("$name.bias", initBias, trainable))
         }
     }
 

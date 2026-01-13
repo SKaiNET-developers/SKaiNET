@@ -1,5 +1,6 @@
 package sk.ainet.exec.tensor.ops
 
+import sk.ainet.lang.tensor.GradState
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.TensorOps
@@ -16,11 +17,23 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     protected class CpuTensor<T : DType, V>(
         override val data: sk.ainet.lang.tensor.data.TensorData<T, V>,
         private val opsRef: TensorOps,
-        override val dtype: kotlin.reflect.KClass<T>
+        override val dtype: kotlin.reflect.KClass<T>,
+        override val gradState: GradState<T, V> = GradState()
     ) : Tensor<T, V> {
         override val ops: TensorOps
             get() = opsRef
     }
+
+    protected fun <T : DType, V> gradStateFrom(vararg tensors: Tensor<T, V>): GradState<T, V> {
+        val requires = tensors.any { it.requiresGrad }
+        return GradState(requiresGrad = requires)
+    }
+
+    protected fun <T : DType, V> newTensor(
+        data: sk.ainet.lang.tensor.data.TensorData<T, V>,
+        dtype: kotlin.reflect.KClass<T>,
+        vararg inputs: Tensor<T, V>
+    ): Tensor<T, V> = CpuTensor(data, this, dtype, gradStateFrom(*inputs))
 
     protected fun broadcastShapes(a: Shape, b: Shape): Shape {
         val ad = a.dimensions
@@ -76,60 +89,60 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val bv = b.data.get(*bi)
             op(av, bv, a.dtype)
         }
-        return CpuTensor(outData, this, a.dtype)
+        return newTensor(outData, a.dtype, a, b)
     }
 
     // Scalar ops implemented via materializing a full-like tensor and delegating to elementwise ops
     override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
-        val sb = CpuTensor(
+        val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
-            this,
-            a.dtype
+            a.dtype,
+            a
         )
         return add(a, sb)
     }
 
     override fun <T : DType, V> subScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
-        val sb = CpuTensor(
+        val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
-            this,
-            a.dtype
+            a.dtype,
+            a
         )
         return subtract(a, sb)
     }
 
     override fun <T : DType, V> mulScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
-        val sb = CpuTensor(
+        val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
-            this,
-            a.dtype
+            a.dtype,
+            a
         )
         return multiply(a, sb)
     }
 
     override fun <T : DType, V> divScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
-        val sb = CpuTensor(
+        val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
-            this,
-            a.dtype
+            a.dtype,
+            a
         )
         return divide(a, sb)
     }
 
     override fun <T : DType, V> rsubScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> {
-        val ta = CpuTensor(
+        val ta = newTensor(
             dataFactory.full<T, V>(b.shape, b.dtype, a),
-            this,
-            b.dtype
+            b.dtype,
+            b
         )
         return subtract(ta, b)
     }
 
     override fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> {
-        val ta = CpuTensor(
+        val ta = newTensor(
             dataFactory.full<T, V>(b.shape, b.dtype, a),
-            this,
-            b.dtype
+            b.dtype,
+            b
         )
         return divide(ta, b)
     }
@@ -418,7 +431,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for matmul: ${a.dtype}")
             }
         }
-        return CpuTensor(outData, this, a.dtype)
+        return newTensor(outData, a.dtype, a, b)
     }
 
     @TensorOp()
@@ -438,7 +451,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             inIdx[rank - 1] = outIdx[rank - 2]
             tensor.data.get(*inIdx)
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -590,7 +603,11 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for conv2d: ${input.dtype}")
             }
         }
-        return CpuTensor(outData, this, input.dtype)
+        return if (bias != null) {
+            newTensor(outData, input.dtype, input, weight, bias)
+        } else {
+            newTensor(outData, input.dtype, input, weight)
+        }
     }
 
     @TensorOp()
@@ -621,7 +638,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val iw = ow / scaleW
             input.data.get(idx[0], idx[1], ih, iw)
         }
-        return CpuTensor(outData, this, input.dtype)
+        return newTensor(outData, input.dtype, input)
     }
 
     @TensorOp()
@@ -700,7 +717,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for maxPool2d: ${input.dtype}")
             }
         }
-        return CpuTensor(outData, this, input.dtype)
+        return newTensor(outData, input.dtype, input)
     }
 
     @TensorOp()
@@ -760,7 +777,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             }
             tensor.data.get(*inIdx)
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -845,7 +862,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             if (rank != 0) inIdx[nd] = localIdx
             src.data.get(*inIdx)
         }
-        return CpuTensor(outData, this, dtype)
+        return newTensor(outData, dtype, *tensors.toTypedArray())
     }
 
     @TensorOp()
@@ -875,7 +892,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 inIdx[nd] = inIdx[nd] + offset
                 tensor.data.get(*inIdx)
             }
-            result += CpuTensor(outData, this, dtype)
+            result += newTensor(outData, dtype, tensor)
             offset += size
         }
         return result
@@ -939,7 +956,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for relu: ${'$'}{tensor.dtype}")
             }
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -979,7 +996,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     @Suppress("UNCHECKED_CAST")
                     (num / denom) as V
                 }
-                return CpuTensor(outData, this, tensor.dtype)
+                return newTensor(outData, tensor.dtype, tensor)
             }
             else -> throw IllegalArgumentException("Unsupported dtype for softmax: ${tensor.dtype}")
         }
@@ -1016,7 +1033,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     @Suppress("UNCHECKED_CAST")
                     (xOut - logSumExp) as V
                 }
-                return CpuTensor(outData, this, tensor.dtype)
+                return newTensor(outData, tensor.dtype, tensor)
             }
             else -> throw IllegalArgumentException("Unsupported dtype for logSoftmax: ${tensor.dtype}")
         }
@@ -1035,7 +1052,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for sigmoid: ${tensor.dtype}")
             }
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -1052,7 +1069,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for silu: ${tensor.dtype}")
             }
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -1074,7 +1091,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 else -> throw IllegalArgumentException("Unsupported dtype for gelu: ${'$'}{tensor.dtype}")
             }
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -1109,7 +1126,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 }
             }
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
@@ -1178,7 +1195,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     else -> throw IllegalArgumentException("Unsupported dtype for sum: ${tensor.dtype}")
                 }
             }
-            return CpuTensor(outData, this, tensor.dtype)
+            return newTensor(outData, tensor.dtype, tensor)
         } else {
             val nd = if (dim < 0) dim + rank else dim
             require(nd in 0 until rank) { "sum: dim ${dim} out of range for rank ${rank}" }
@@ -1225,7 +1242,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     else -> throw IllegalArgumentException("Unsupported dtype for sum: ${tensor.dtype}")
                 }
             }
-            return CpuTensor(outData, this, tensor.dtype)
+            return newTensor(outData, tensor.dtype, tensor)
         }
     }
 
@@ -1294,7 +1311,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     else -> throw IllegalArgumentException("Unsupported dtype for mean: ${tensor.dtype}")
                 }
             }
-            return CpuTensor(outData, this, tensor.dtype)
+            return newTensor(outData, tensor.dtype, tensor)
         } else {
             val nd = if (dim < 0) dim + rank else dim
             require(nd in 0 until rank) { "mean: dim ${dim} out of range for rank ${rank}" }
@@ -1348,7 +1365,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     else -> throw IllegalArgumentException("Unsupported dtype for mean: ${tensor.dtype}")
                 }
             }
-            return CpuTensor(outData, this, tensor.dtype)
+            return newTensor(outData, tensor.dtype, tensor)
         }
     }
 
@@ -1431,7 +1448,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     else -> throw IllegalArgumentException("Unsupported dtype for variance: ${tensor.dtype}")
                 }
             }
-            return CpuTensor(outData, this, tensor.dtype)
+            return newTensor(outData, tensor.dtype, tensor)
         } else {
             val nd = if (dim < 0) dim + rank else dim
             require(nd in 0 until rank) { "variance: dim ${dim} out of range for rank ${rank}" }
@@ -1495,7 +1512,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     else -> throw IllegalArgumentException("Unsupported dtype for variance: ${tensor.dtype}")
                 }
             }
-            return CpuTensor(outData, this, tensor.dtype)
+            return newTensor(outData, tensor.dtype, tensor)
         }
     }
 
@@ -1512,7 +1529,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             @Suppress("UNCHECKED_CAST")
             sqrt(v) as V
         }
-        return CpuTensor(outData, this, tensor.dtype)
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     @TensorOp()
