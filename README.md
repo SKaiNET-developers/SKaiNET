@@ -4,7 +4,15 @@
 
 <img src="docs//SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-**SKaiNET** is a next-generation, Kotlin-based deep learning framework built with a device-first philosophy. It empowers software developers to create and deploy ML models with seamless portability – from JVM and JavaScript environments to microcontrollers – all through a clean DSL and a powerful compiler back-end. The project’s vision is to blend developer-friendly design with cutting-edge AI capabilities, making advanced machine learning accessible in modern applications..
+**SKaiNET** is a device-first AI framework for Kotlin Multiplatform. Build once in a clean, type-safe DSL and deploy everywhere—from high-performance JVM/Cloud environments to resource-constrained microcontrollers—using our advanced MLIR-based compiler.
+
+### 🌟 Vision
+SKaiNET aims to democratize "Edge AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
+
+### 🏗️ Architecture
+SKaiNET uses a hybrid backend strategy that separates development iteration from production deployment.
+
+![Architecture diagram of SKaiNET compiler](docs//SKaiNET-compiler.svg)
 
 ## Key features at a glance
 
@@ -170,10 +178,6 @@ Maven:
 - Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
 
-## Architecture
-
-![Architecture diagram of SKaiNET compiler](docs//SKaiNET-compiler.svg)
-
 ## 0.6.3 highlights (with tiny snippets)
 
 - StableHLO and CUDA support via IREE
@@ -286,6 +290,41 @@ Notes and limitations:
 See source for details:
 - SKaiNET-lang/SKaiNET-kan/src/commonMain/kotlin/sk/ainet/lang/kan/KanDsl.kt
 - SKaiNET-lang/SKaiNET-kan/src/commonMain/kotlin/sk/ainet/lang/kan/KanLayer.kt
+
+### 🚀 Sample Usage: Autograd
+Minimize cosine distance between tensors with just a few lines:
+
+```kotlin
+skainet(ctx) {
+    val a = tensor(1f, 0f, 0f).withRequiresGrad()
+    val b = tensor(0f, 1f, 0f)
+
+    // Record and compute gradients
+    val (tape, distance) = record { a.cosineDistance(b) }
+    tape.computeGradients(targets = listOf(distance), sources = listOf(a))
+
+    // Optimize
+    val optimizer = sgd(lr = 0.5)
+    optimizer.addParameter(a)
+    optimizer.step()
+    
+    println("Distance decreased to: ${a.cosineDistance(b).data.get()}")
+}
+```
+
+### 🗺️ Roadmap
+- **Q1 2026**: Full StableHLO coverage for Vision & NLP ops.
+- **Q2 2026**: K2 Compiler Plugin for implicit context propagation.
+- **Q3 2026**: IREE-based WebGPU backend for high-performance browser AI.
+- **Q4 2026**: Federated learning support for multi-device training.
+
+### 🤝 Join the Community
+*   **GitHub Discussions**: [Ask questions & suggest features as issue](https://github.com/SKaiNET-developers/SKaiNET/issues)
+
+### 🛠️ Contributing
+We love contributions! Whether it's a new operator, documentation, or a bug fix:
+1.  Read our [Contribution Guide](CONTRIBUTING.md).
+2.  Check the [Good First Issues](https://github.com/SKaiNET-developers/SKaiNET/labels/good%20first%20issue).
 
 ## License
 
