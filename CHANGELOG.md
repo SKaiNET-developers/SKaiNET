@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.1] - 2026-01-14
+
+### Added
+- **Sine Approximation CLI** (`skainet-sine-approx-cli`) as a new example application for training models.
+- `TapeRecordingStrategy` to handle different recording behaviors for prediction and backpropagation.
+- Comprehensive E2E tests for training sine wave approximations.
+- New documentation: `autograd-basic.md` explaining the autograd engine.
+
+### Changed
+- Refined `Linear`, `Flatten`, `Input` modules and `relu` activation to better support gradient tracking and context propagation.
+- Improved `DefaultExecutionTape` and `DefaultGraphExecutionContext` for more robust computation tracing.
+- Optimized internal `OpSink` and `TraceSession` handling.
+
+### Fixed
+- Infinite loop error during backpropagation tracing by implementing specialized tape recording strategies.
+- Context mismatch errors in backpropagation tracing.
+- Broken testing in the sinus sample application.
+
 ## [0.7.0] - 2026-01-14
 
 ### Added
