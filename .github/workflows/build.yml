@@ -46,3 +46,11 @@ jobs:
             -Dorg.gradle.configuration-cache=true \
             -Dorg.gradle.parallel=true \
              assemble allTests
+
+      - name: Upload JS browser test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jsBrowserTest-report
+          path: skainet-lang/skainet-lang-models/build/reports/tests/jsBrowserTest
+
