@@ -9,14 +9,15 @@ import sk.ainet.lang.types.*
  */
 public open class TraceSession {
     private var nextId = 0
-    private val tensorToRef = mutableMapOf<Tensor<*, *>, TensorRef>()
+    private val tensorToRef = mutableMapOf<Any, TensorRef>()
     private val refToId = mutableMapOf<String, Tensor<*, *>>()
     
     /**
      * Get or create a TensorRef for the given tensor.
      */
     public open fun refOf(tensor: Tensor<*, *>): TensorRef {
-        return tensorToRef.getOrPut(tensor) {
+        val key = unwrap(tensor)
+        return tensorToRef.getOrPut(key) {
             val dtypeInstance: DType = when (tensor.dtype) {
                 Int32::class -> Int32
                 FP32::class -> FP32
@@ -34,6 +35,13 @@ public open class TraceSession {
             refToId[ref.id] = tensor
             ref
         }
+    }
+
+    private fun unwrap(tensor: Tensor<*, *>): Any {
+        return (tensor as? sk.ainet.lang.tensor.operators.OpsBoundTensor<*, *>)?.let {
+            // Recursively unwrap to get the origin tensor, not data
+            unwrap(it.origin)
+        } ?: tensor
     }
 
     /**

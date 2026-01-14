@@ -124,8 +124,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.7.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.7.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.7.1")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -136,7 +136,6 @@ dependencies {
 - In Kotlin Notebooks for quick exploration
 - With sample projects to learn patterns
 
-See also CHANGELOG for what’s new in 0.7.0.
 
 ## Quick start
 
@@ -151,15 +150,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.7.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.7.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.7.1")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.7.0")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.7.1")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.7.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.7.0")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.7.1")
 }
 ```
 
@@ -169,7 +168,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.7.0</version>
+  <version>0.7.1</version>
 </dependency>
 ```
 
@@ -178,7 +177,29 @@ Maven:
 - Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
 
-## 0.7.0 highlights (with tiny snippets)
+## 0.7.1 highlights (with tiny snippets)
+
+- **Sine Approximation CLI**: Added `skainet-sine-approx-cli` for training models.
+- **Autograd Engine**: Initial support for automatic differentiation and reverse-mode gradients using `DefaultGradientTape`.
+- **Optimization & Training**: New `SgdOptimizer` and training DSL to build and run training loops.
+- **Loss Functions**: Added `MSELoss` and `CrossEntropyLoss` with configurable reduction strategies.
+
+```kotlin
+// Example training step with Autograd
+val loss = MSELoss()
+val optimizer = sgd(lr = 0.01)
+
+val (tape, l) = record { loss.forward(model.forward(x, ctx), y, ctx) }
+tape.computeGradients(targets = listOf(l), sources = model.parameters())
+optimizer.step()
+```
+
+- Improved **Graph DSL** with better wiring and recording support.
+- Stability improvements for StableHLO and CUDA backends.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
+## 0.7.1 highlights (with tiny snippets)
 
 - **Autograd Engine**: Initial support for automatic differentiation and reverse-mode gradients using `DefaultGradientTape`.
 - **Optimization & Training**: New `SgdOptimizer` and training DSL to build and run training loops.
@@ -197,7 +218,7 @@ optimizer.step()
 - Improved **Graph DSL** with better wiring and recording support.
 - Stability improvements for StableHLO and CUDA backends.
 
-See CHANGELOG.md for the full list.
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## 0.6.3 highlights (with tiny snippets)
 
@@ -225,7 +246,7 @@ facade.exportToArduinoLibrary(
 - KSP-based TracingOps generation for recording pipelines.
 - Improved HLO implementation and CUDA backend strategy.
 
-See CHANGELOG.md for the full list.
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## 0.5.0 highlights (with tiny snippets)
 

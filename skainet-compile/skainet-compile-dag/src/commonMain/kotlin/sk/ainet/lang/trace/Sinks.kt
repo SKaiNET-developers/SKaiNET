@@ -1,11 +1,15 @@
 package sk.ainet.lang.trace
 
 import sk.ainet.lang.graph.*
+import sk.ainet.tape.ExecutionTape
 
 /** Writes traces into DefaultExecutionTape. */
-public class TapeSink(private val tape: DefaultExecutionTape) : OpSink {
+public class TapeSink(private val tape: ExecutionTape) : OpSink {
     override fun onOpExecuted(trace: OpTrace) {
-        tape.recordTrace(trace)
+        when (tape) {
+            is DefaultExecutionTape -> tape.recordTrace(trace)
+            is DefaultGradientTape -> tape.recordTrace(trace)
+        }
     }
 }
 

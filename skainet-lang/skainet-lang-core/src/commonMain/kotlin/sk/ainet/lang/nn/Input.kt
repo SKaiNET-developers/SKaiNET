@@ -14,9 +14,8 @@ public class Input<T : DType, V>(
         get() = emptyList()
 
 
-    override fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> =
-        sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
-            input.gradState.requiresGrad = requiresGrad
-            input
-        }
+    override fun onForward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> {
+        input.gradState.requiresGrad = requiresGrad
+        return input
+    }
 }

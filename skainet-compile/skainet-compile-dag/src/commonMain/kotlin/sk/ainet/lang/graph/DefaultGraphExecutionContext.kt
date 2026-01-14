@@ -45,6 +45,11 @@ public class DefaultGraphExecutionContext(
 
     override fun startRecording() {
         val tape = createTapeFactory(this)
+        if (tape is DefaultExecutionTape) {
+            tape.session = this.session
+        } else if (tape is DefaultGradientTape) {
+            tape.session = this.session
+        }
         tape.startRecording()
         _tapes.pushTape(tape)
     }
@@ -82,25 +87,15 @@ public class DefaultGraphExecutionContext(
         val dynamicSink = object : OpSink {
             override fun onOpExecuted(trace: sk.ainet.lang.trace.OpTrace) {
                 val tape = tapeStack.currentTape
-                if (tapeStack.isRecording() && tape is DefaultExecutionTape) {
+                if (tapeStack.isRecording() && tape != null) {
                     TapeSink(tape).onOpExecuted(trace)
                 }
                 baseSink.onOpExecuted(trace)
             }
         }
-        val context = this
-        val traceSession = object : sk.ainet.lang.trace.TraceSession() {
-            private val fallbackSession = sk.ainet.lang.trace.TraceSession()
-            private fun currentSession(): sk.ainet.lang.trace.TraceSession {
-                val tape = context.tapeStack.currentTape
-                return if (tape is DefaultExecutionTape) tape.session else fallbackSession
-            }
-            override fun refOf(tensor: sk.ainet.lang.tensor.Tensor<*, *>): sk.ainet.lang.trace.TensorRef = currentSession().refOf(tensor)
-            override fun resolve(id: String): sk.ainet.lang.tensor.Tensor<*, *>? = currentSession().resolve(id)
-            override fun resolve(ref: sk.ainet.lang.trace.TensorRef): sk.ainet.lang.tensor.Tensor<*, *>? = currentSession().resolve(ref)
-        }
-        _session = traceSession
-        KspTensorOps(baseOps, dynamicSink, traceSession)
+        val sharedSession = sk.ainet.lang.trace.TraceSession()
+        _session = sharedSession
+        KspTensorOps(baseOps, dynamicSink, sharedSession)
     }
 
     override val ops: KspTensorOps get() = _ops

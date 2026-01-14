@@ -1,5 +1,6 @@
 package sk.ainet.lang.graph
 
+import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.withRequiresGrad
 import sk.ainet.lang.tensor.ops.Operation
@@ -7,7 +8,6 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
 import sk.ainet.lang.trace.TraceToGraphBuilder
-import sk.ainet.lang.trace.TraceRecordingSession
 import sk.ainet.lang.tensor.ops.DifferentiableTensorOps
 import sk.ainet.tape.ExecutionTape
 import sk.ainet.tape.GradientTape
@@ -32,11 +32,15 @@ public open class DefaultExecutionTape(
     public val sessionRef: sk.ainet.lang.trace.TraceSession get() = session
 
     protected var _isRecording: Boolean = false
+    protected var _recordingStrategy: sk.ainet.tape.TapeRecordingStrategy = sk.ainet.tape.ActiveRecordingStrategy()
     protected val _operations: MutableList<RecordedOperation> = mutableListOf()
     protected var _operationCounter: Long = 0L
     protected val _traces: MutableList<OpTrace> = mutableListOf()
 
     override val isRecording: Boolean get() = _isRecording
+    public var recordingStrategy: sk.ainet.tape.TapeRecordingStrategy
+        get() = _recordingStrategy
+        set(value) { _recordingStrategy = value }
     override val operations: List<RecordedOperation> get() = _operations.toList()
     public val traces: List<OpTrace> get() = _traces.toList()
 
@@ -51,7 +55,10 @@ public open class DefaultExecutionTape(
     /** Record a high-level OpTrace into this tape (used by TapeSink). */
     public open fun recordTrace(trace: OpTrace) {
         if (!_isRecording) return
-        _traces.add(trace)
+        
+        val prevSize = _traces.size
+        _recordingStrategy.recordTrace(trace, _traces)
+        if (_traces.size == prevSize) return // Strategy ignored it
 
         // Ensure tensors in trace are registered in our session
         // This is crucial for computeGradients to find them using its own session
@@ -92,14 +99,13 @@ public open class DefaultExecutionTape(
                 override fun serialize(): Map<String, Any> = mapOf("name" to name, "type" to type, "parameters" to parameters)
             }
 
-            _operations.add(
-                RecordedOperation(
-                    operation = op,
-                    inputs = inputs,
-                    outputs = outputs,
-                    timestamp = _operationCounter++
-                )
+            val recordedOp = RecordedOperation(
+                operation = op,
+                inputs = inputs,
+                outputs = outputs,
+                timestamp = _operationCounter++
             )
+            _recordingStrategy.recordOperation(recordedOp, _operations)
         }
     }
 
@@ -137,7 +143,7 @@ public open class DefaultExecutionTape(
             timestamp = _operationCounter++
         )
 
-        _operations.add(recordedOp)
+        _recordingStrategy.recordOperation(recordedOp, _operations)
     }
 
     override fun <T : DType, V> replay(): List<Tensor<T, V>> {
@@ -367,62 +373,70 @@ public class DefaultGradientTape(
         sources: List<Tensor<T, V>>
     ): Map<Tensor<T, V>, Tensor<T, V>> {
         if (!computeGradients) return emptyMap()
+        if (_recordingStrategy is sk.ainet.tape.NoOpRecordingStrategy) return emptyMap()
+        val prevStrategy = _recordingStrategy
+        _recordingStrategy = sk.ainet.tape.NoOpRecordingStrategy()
+        try {
+            val gradMap = mutableMapOf<String, Tensor<*, *>>() // Key by Tensor ID
 
-        val gradMap = mutableMapOf<String, Tensor<*, *>>() // Key by Tensor ID
-
-        // Seed target gradients with 1s
-        targets.forEach { t ->
-            @Suppress("UNCHECKED_CAST")
-            val seeded = onesLike(t) as Tensor<T, V>
-            val ref = session.refOf(t)
-            gradMap[ref.id] = seeded
-        }
-
-        backwardOps.asReversed().forEach { op ->
-            val outRef = session.refOf(op.output)
-            @Suppress("UNCHECKED_CAST")
-            val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
-            
-            if (upstream == null) return@forEach
-            
-            @Suppress("UNCHECKED_CAST")
-            val castOp = op as BackwardOp<DType, Any>
-            val inputGrads = castOp.backward(upstream)
-            castOp.inputs.zip(inputGrads).forEach { (input, g) ->
-                if (g == null) return@forEach
-                val inRef = session.refOf(input)
+            // Seed target gradients with 1s
+            targets.forEach { t ->
                 @Suppress("UNCHECKED_CAST")
-                val prev = gradMap[inRef.id] as Tensor<DType, Any>?
-                val accum = prev?.let { input.ops.add(it, g) } ?: g
-                gradMap[inRef.id] = accum
+                val seeded = onesLike(t) as Tensor<T, V>
+                val ref = session.refOf(t)
+                gradMap[ref.id] = seeded
             }
-        }
 
-        // Populate tensor grad slots for convenience
-        gradMap.forEach { (id, g) ->
-            val t = session.resolve(id)
-            if (t != null) {
+            backwardOps.asReversed().forEachIndexed { index, op ->
+                val outRef = session.refOf(op.output)
                 @Suppress("UNCHECKED_CAST")
-                (t as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
-            }
-        }
-
-        // Ensure requested sources have a non-null grad set on the tensor, even if zero.
-        // Some callers (tests) read Tensor.grad directly instead of using the returned map.
-        sources.forEach { src ->
-            val ref = session.refOf(src)
-            @Suppress("UNCHECKED_CAST")
-            val g = (gradMap[ref.id] as Tensor<T, V>?) ?: zerosLike(src)
-            // Only accumulate explicitly if it wasn't already set through gradMap loop
-            if (gradMap[ref.id] == null) {
+                val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
+                
+                if (upstream == null) {
+                    return@forEachIndexed
+                }
+                
                 @Suppress("UNCHECKED_CAST")
-                (src as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+                val castOp = op as BackwardOp<DType, Any>
+                val inputGrads = castOp.backward(upstream)
+                castOp.inputs.zip(inputGrads).forEach { (input, g) ->
+                    if (g == null) return@forEach
+                    val inRef = session.refOf(input)
+                    @Suppress("UNCHECKED_CAST")
+                    val prev = gradMap[inRef.id] as Tensor<DType, Any>?
+                    val accum = prev?.let { input.ops.add(it, g) } ?: g
+                    gradMap[inRef.id] = accum
+                }
             }
-        }
 
-        return sources.associateWith { src ->
-            @Suppress("UNCHECKED_CAST")
-            (gradMap[session.refOf(src).id] as Tensor<T, V>?) ?: zerosLike(src)
+            // Populate tensor grad slots for convenience
+            gradMap.forEach { (id, g) ->
+                val t = session.resolve(id)
+                if (t != null) {
+                    @Suppress("UNCHECKED_CAST")
+                    (t as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+                }
+            }
+
+            // Ensure requested sources have a non-null grad set on the tensor, even if zero.
+            // Some callers (tests) read Tensor.grad directly instead of using the returned map.
+            sources.forEach { src ->
+                val ref = session.refOf(src)
+                @Suppress("UNCHECKED_CAST")
+                val g = (gradMap[ref.id] as Tensor<T, V>?) ?: zerosLike(src)
+                // Only accumulate explicitly if it wasn't already set through gradMap loop
+                if (gradMap[ref.id] == null) {
+                    @Suppress("UNCHECKED_CAST")
+                    (src as Tensor<DType, Any>).accumulateGrad(g as Tensor<DType, Any>)
+                }
+            }
+
+            return sources.associateWith { src ->
+                @Suppress("UNCHECKED_CAST")
+                (gradMap[session.refOf(src).id] as Tensor<T, V>?) ?: zerosLike(src)
+            }
+        } finally {
+            _recordingStrategy = prevStrategy
         }
     }
 
@@ -450,7 +464,7 @@ public class DefaultGradientTape(
         outputs: List<Tensor<T, V>>
     ) {
         super.recordOperation(operation, inputs, outputs)
-        if (!computeGradients) return
+        if (!computeGradients || _recordingStrategy is sk.ainet.tape.NoOpRecordingStrategy) return
         val out = outputs.firstOrNull() ?: return
         if (!out.requiresGrad && inputs.none { it.requiresGrad }) return
         val backward = buildBackward(operation, inputs, out) ?: return
@@ -458,8 +472,16 @@ public class DefaultGradientTape(
     }
 
     override fun recordTrace(trace: OpTrace) {
-        if (!isRecording) return
-        super.recordTrace(trace)
+        if (!isRecording || _recordingStrategy is sk.ainet.tape.NoOpRecordingStrategy) return
+        
+        // Ensure tensors in trace are registered in our session
+        // This is crucial for computeGradients to find them using its own session
+        trace.inputs.forEach { id -> 
+            session.resolve(id)?.let { session.refOf(it) }
+        }
+        trace.outputs.forEach { id ->
+            session.resolve(id)?.let { session.refOf(it) }
+        }
 
         val outputs = trace.outputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
         // Workaround for KSP bug in concat: inputs might be empty in OpTrace, check attributes
@@ -474,10 +496,10 @@ public class DefaultGradientTape(
 
         // Propagate requiresGrad to output if any input requires it
         if (anyInputRequiresGrad && !out.requiresGrad) {
-            out.withRequiresGrad(true)
+            (out as? Tensor<DType, Any>)?.withRequiresGrad(true)
         }
 
-        if (!out.requiresGrad && !anyInputRequiresGrad) {
+        if (!out.requiresGrad) {
             return
         }
 
@@ -851,14 +873,23 @@ public class DefaultGradientTape(
     private fun <T : DType, V> matchShape(grad: Tensor<T, V>, target: Tensor<T, V>): Tensor<T, V> {
         if (grad.shape == target.shape) return grad
         var g: Tensor<T, V> = grad
+        
+        // 1. Handle rank reduction if g has more dimensions than target
         while (g.rank > target.rank) {
             g = g.ops.sum(g, 0)
-            g = g.ops.unsqueeze(g, 0)
+            if (g.shape.dimensions.isNotEmpty() && g.shape.dimensions[0] == 1) {
+                g = g.ops.reshape(g, Shape(*g.shape.dimensions.drop(1).toIntArray()))
+            }
         }
-        target.shape.dimensions.forEachIndexed { idx, dim ->
-            if (dim == 1 && g.shape[idx] != 1) {
+        
+        // 2. Handle broadcasting for shared ranks (e.g. [N, 1] vs [N, M])
+        val targetDims = target.shape.dimensions
+        for (idx in targetDims.indices.reversed()) {
+            if (targetDims[idx] == 1 && g.shape.dimensions.size > idx && g.shape.dimensions[idx] != 1) {
                 g = g.ops.sum(g, idx)
-                g = g.ops.unsqueeze(g, idx)
+                val dims = g.shape.dimensions.toMutableList()
+                dims[idx] = 1
+                g = g.ops.reshape(g, Shape(*dims.toIntArray()))
             }
         }
         return g

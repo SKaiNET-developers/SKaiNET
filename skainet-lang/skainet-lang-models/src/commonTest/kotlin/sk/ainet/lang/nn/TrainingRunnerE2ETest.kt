@@ -8,6 +8,7 @@ import sk.ainet.lang.nn.dsl.training
 import sk.ainet.lang.nn.loss.MSELoss
 import sk.ainet.lang.nn.optim.sgd
 import sk.ainet.lang.nn.topology.ModuleParameter
+import sk.ainet.lang.tensor.operators.bind
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
@@ -43,7 +44,13 @@ class TrainingRunnerE2ETest {
             override val modules: List<Module<FP32, Float>> = emptyList()
             override val params: List<ModuleParameter<FP32, Float>> = listOf(w)
             override fun forward(input: Tensor<FP32, Float>, ctx: sk.ainet.context.ExecutionContext): Tensor<FP32, Float> {
-                return ctx.ops.matmul(input, w.value) as Tensor<FP32, Float>
+                val boundInput = input.bind(ctx)
+                val boundW = w.value.bind(ctx)
+                val result = ctx.ops.matmul(boundInput, boundW) as Tensor<FP32, Float>
+                if (ctx is DefaultGraphExecutionContext) {
+                    println("[DEBUG_LOG] forward1: result.id=${ctx.session.refOf(result).id}")
+                }
+                return result
             }
         }
 
@@ -57,9 +64,11 @@ class TrainingRunnerE2ETest {
         // 2. Run trainStep
         val initialLossValue = trainStep(model, loss, optimizer, ctx, x, y)
         val initialLoss = initialLossValue.data.get() as Float
+        println("[DEBUG_LOG] after first trainStep: w.value.grad=${w.value.grad}")
         
         val secondLossValue = trainStep(model, loss, optimizer, ctx, x, y)
         val secondLoss = secondLossValue.data.get() as Float
+        println("[DEBUG_LOG] after second trainStep: w.value.grad=${w.value.grad}")
 
         // 3. Verify loss decreased
         println("Initial loss: $initialLoss, Second loss: $secondLoss")
@@ -81,7 +90,10 @@ class TrainingRunnerE2ETest {
             override val modules: List<Module<FP32, Float>> = emptyList()
             override val params: List<ModuleParameter<FP32, Float>> = listOf(w)
             override fun forward(input: Tensor<FP32, Float>, ctx: sk.ainet.context.ExecutionContext): Tensor<FP32, Float> {
-                return ctx.ops.matmul(input, w.value) as Tensor<FP32, Float>
+                val boundW = w.value.bind(ctx)
+                val result = ctx.ops.matmul(input, boundW) as Tensor<FP32, Float>
+                println("[DEBUG_LOG] forward2: w.value=${w.value}, boundW=$boundW, w.value.ops=${w.value.ops}, boundW.ops=${boundW.ops}, ctx.ops=${ctx.ops}")
+                return result
             }
         }
 

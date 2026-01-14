@@ -18,8 +18,6 @@ public class Flatten<T : DType, V>(
     override val modules: List<Module<T, V>>
         get() = emptyList()
 
-    override fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> =
-        sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
-            input.flatten(startDim, endDim)
-        }
+    override fun onForward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> =
+        input.flatten(startDim, endDim)
 }

@@ -56,23 +56,22 @@ public class Linear<T : DType, V>(
     override val modules: List<Module<T, V>>
         get() = emptyList()
 
-    override fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> =
-        sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
-            val weight = params.weights().value
-            val bias = params.bias().value
+    @Suppress("UNCHECKED_CAST")
+    override fun onForward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> {
+        val weight = params.weights().value
+        val bias = params.bias().value
 
-            // Use proper tensor operations
-            val weightTransposed = weight.t()
-            val matmulResult = input.matmul(weightTransposed)
+        val weightTransposed = weight.t()
+        val matmulResult = input.matmul(weightTransposed)
 
-            // If input is a 1D vector, ensure bias is also 1D to avoid broadcasting to [1, out]
-            val result = if (input.rank == 1 && bias.rank == 2 && bias.shape.dimensions[0] == 1) {
-                val outFeatures = bias.shape.dimensions[1]
-                val bias1d = bias.reshape(Shape(outFeatures))
-                matmulResult + bias1d
-            } else {
-                matmulResult + bias
-            }
-            result
+        // If input is a 1D vector, ensure bias is also 1D to avoid broadcasting to [1, out]
+        val result = if (input.rank == 1 && bias.rank == 2 && bias.shape.dimensions[0] == 1) {
+            val outFeatures = bias.shape.dimensions[1]
+            val bias1d = bias.reshape(Shape(outFeatures))
+            matmulResult + bias1d
+        } else {
+            matmulResult + bias
         }
+        return result as Tensor<T, V>
+    }
 }
