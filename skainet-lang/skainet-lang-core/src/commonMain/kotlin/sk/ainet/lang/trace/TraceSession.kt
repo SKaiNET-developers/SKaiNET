@@ -38,9 +38,9 @@ public open class TraceSession {
     }
 
     private fun unwrap(tensor: Tensor<*, *>): Any {
-        return (tensor as? sk.ainet.lang.tensor.operators.OpsBoundTensor<*, *>)?.let { 
-            // Recursively unwrap if nested, but usually one level
-            it.data 
+        return (tensor as? sk.ainet.lang.tensor.operators.OpsBoundTensor<*, *>)?.let {
+            // Recursively unwrap to get the origin tensor, not data
+            unwrap(it.origin)
         } ?: tensor
     }
 
