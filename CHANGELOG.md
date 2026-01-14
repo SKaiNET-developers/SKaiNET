@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0] - 2026-01-14
+
+### Added
+- Initial **Autograd** engine (`DefaultGradientTape`) for automatic differentiation and reverse-mode gradients.
+- **Optimizer API** with `SgdOptimizer` implementation for training neural networks.
+- **Loss functions** module including `MSELoss` and `CrossEntropyLoss` with configurable reductions (MEAN, SUM, NONE).
+- **Training DSL** and helper utilities for building training loops (`trainStep`, `evaluateLoss`).
+- Improved **Graph DSL** with better context propagation and support for recording computation traces.
+
+### Changed
+- Updated dependency versions and refined internal execution context APIs to support gradient tracking.
+- Refactored `skainet-compile-dag` to support autograd and graph inversion.
+
 ## [0.6.0] - 2025-12-31
 
 ### Added
