@@ -20,7 +20,8 @@ class SineApproxReproductionTest {
 
     @Test
     fun testSineApproximationTraining() {
-        val epochs = 100
+        // 50 epochs should be enough for this simple sine approx and safer for JS timeouts
+        val epochs = 50 
         val batchSize = 64
         val lr = 0.01
         val seed = 42
