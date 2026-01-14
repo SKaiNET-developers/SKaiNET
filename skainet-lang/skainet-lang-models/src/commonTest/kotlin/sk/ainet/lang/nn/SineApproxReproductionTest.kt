@@ -12,6 +12,7 @@ import sk.ainet.lang.tensor.relu
 import sk.ainet.lang.types.FP32
 import kotlin.math.PI
 import kotlin.math.sin
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -22,6 +23,7 @@ class SineApproxReproductionTest {
         val epochs = 100
         val batchSize = 64
         val lr = 0.01
+        val seed = 42
 
         val baseCtx = DirectCpuExecutionContext()
         val trainCtxFinal = DefaultGraphExecutionContext(
@@ -30,19 +32,21 @@ class SineApproxReproductionTest {
             createTapeFactory = { _ -> DefaultGradientTape() }
         )
 
+        val random = Random(seed)
+
         // 1. Define Model
         val model = sequential<FP32, Float>(trainCtxFinal) {
             input(1)
             dense(16) {
-                weights { randn(std = 0.1f) }
+                weights { randn(std = 0.1f, random = random) }
             }
             activation { it.relu() }
             dense(16) {
-                weights { randn(std = 0.1f) }
+                weights { randn(std = 0.1f, random = random) }
             }
             activation { it.relu() }
             dense(1) {
-                weights { randn(std = 0.1f) }
+                weights { randn(std = 0.1f, random = random) }
             }
         }
 
@@ -87,6 +91,7 @@ class SineApproxReproductionTest {
         }
 
         println("[DEBUG_LOG] First Loss: $firstLoss, Last Loss: $lastLoss")
+        assertTrue(firstLoss > 0.0001f, "First loss should be positive, but was $firstLoss")
         assertTrue(lastLoss < firstLoss, "Loss should decrease from $firstLoss to $lastLoss")
     }
 }
