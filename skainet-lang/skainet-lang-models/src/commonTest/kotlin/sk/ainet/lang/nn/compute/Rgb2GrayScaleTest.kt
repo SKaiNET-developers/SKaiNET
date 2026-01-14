@@ -38,7 +38,7 @@ class Rgb2GrayScaleTest {
             data = arr,
             dtype = FP32
         )
-        return OpsBoundTensor(data, FP32::class, VoidTensorOps())
+        return OpsBoundTensor.fromData(data, FP32::class, VoidTensorOps())
     }
 
     @Test

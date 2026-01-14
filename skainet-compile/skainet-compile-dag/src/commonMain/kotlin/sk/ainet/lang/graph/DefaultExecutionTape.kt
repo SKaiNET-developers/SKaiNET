@@ -387,19 +387,25 @@ public class DefaultGradientTape(
                 gradMap[ref.id] = seeded
             }
 
-            backwardOps.asReversed().forEach { op ->
+            println("[DEBUG_LOG] computeGradients: targets=${targets.size}, backwardOps=${backwardOps.size}")
+            backwardOps.asReversed().forEachIndexed { index, op ->
                 val outRef = session.refOf(op.output)
                 @Suppress("UNCHECKED_CAST")
                 val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
                 
-                if (upstream == null) return@forEach
+                if (upstream == null) {
+                    println("[DEBUG_LOG] backward step $index: no upstream for output ID=${outRef.id}")
+                    return@forEachIndexed
+                }
                 
                 @Suppress("UNCHECKED_CAST")
                 val castOp = op as BackwardOp<DType, Any>
                 val inputGrads = castOp.backward(upstream)
+                println("[DEBUG_LOG] backward step $index: outputID=${outRef.id}, inputGrads=${inputGrads.filterNotNull().size}")
                 castOp.inputs.zip(inputGrads).forEach { (input, g) ->
                     if (g == null) return@forEach
                     val inRef = session.refOf(input)
+                    println("[DEBUG_LOG]   propagating to inputID=${inRef.id}")
                     @Suppress("UNCHECKED_CAST")
                     val prev = gradMap[inRef.id] as Tensor<DType, Any>?
                     val accum = prev?.let { input.ops.add(it, g) } ?: g
@@ -471,7 +477,15 @@ public class DefaultGradientTape(
 
     override fun recordTrace(trace: OpTrace) {
         if (!isRecording || _recordingStrategy is sk.ainet.tape.NoOpRecordingStrategy) return
-        super.recordTrace(trace)
+        
+        // Ensure tensors in trace are registered in our session
+        // This is crucial for computeGradients to find them using its own session
+        trace.inputs.forEach { id -> 
+            session.resolve(id)?.let { session.refOf(it) }
+        }
+        trace.outputs.forEach { id ->
+            session.resolve(id)?.let { session.refOf(it) }
+        }
 
         val outputs = trace.outputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
         // Workaround for KSP bug in concat: inputs might be empty in OpTrace, check attributes
@@ -486,13 +500,16 @@ public class DefaultGradientTape(
 
         // Propagate requiresGrad to output if any input requires it
         if (anyInputRequiresGrad && !out.requiresGrad) {
-            out.withRequiresGrad(true)
+            println("[DEBUG_LOG] Propagating requiresGrad=true to output of ${trace.opType}")
+            (out as? Tensor<DType, Any>)?.withRequiresGrad(true)
         }
 
-        if (!out.requiresGrad && !anyInputRequiresGrad) {
+        if (!out.requiresGrad) {
+            println("[DEBUG_LOG] Skipping backward recording for ${trace.opType} (output does not require grad)")
             return
         }
 
+        println("[DEBUG_LOG] Recording trace for backward: ${trace.opType}, inputs: ${inputs.size}, out.id: ${session.refOf(out).id}, out.requiresGrad: ${out.requiresGrad}")
         val backward = buildBackwardFromTrace(trace, inputs, out) ?: return
         backwardOps += backward
     }

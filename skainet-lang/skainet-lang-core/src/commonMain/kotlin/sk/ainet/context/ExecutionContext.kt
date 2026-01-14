@@ -44,7 +44,7 @@ public interface ExecutionContext {
     }
 
 
-    public fun <T : DType, V> fromData(data: TensorData<T, V>, dtype: KClass<T>): Tensor<T, V> = OpsBoundTensor(
+    public fun <T : DType, V> fromData(data: TensorData<T, V>, dtype: KClass<T>): Tensor<T, V> = OpsBoundTensor.fromData(
         data, dtype,
         ops
     )
