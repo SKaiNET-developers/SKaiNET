@@ -387,25 +387,21 @@ public class DefaultGradientTape(
                 gradMap[ref.id] = seeded
             }
 
-            println("[DEBUG_LOG] computeGradients: targets=${targets.size}, backwardOps=${backwardOps.size}")
             backwardOps.asReversed().forEachIndexed { index, op ->
                 val outRef = session.refOf(op.output)
                 @Suppress("UNCHECKED_CAST")
                 val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
                 
                 if (upstream == null) {
-                    println("[DEBUG_LOG] backward step $index: no upstream for output ID=${outRef.id}")
                     return@forEachIndexed
                 }
                 
                 @Suppress("UNCHECKED_CAST")
                 val castOp = op as BackwardOp<DType, Any>
                 val inputGrads = castOp.backward(upstream)
-                println("[DEBUG_LOG] backward step $index: outputID=${outRef.id}, inputGrads=${inputGrads.filterNotNull().size}")
                 castOp.inputs.zip(inputGrads).forEach { (input, g) ->
                     if (g == null) return@forEach
                     val inRef = session.refOf(input)
-                    println("[DEBUG_LOG]   propagating to inputID=${inRef.id}")
                     @Suppress("UNCHECKED_CAST")
                     val prev = gradMap[inRef.id] as Tensor<DType, Any>?
                     val accum = prev?.let { input.ops.add(it, g) } ?: g
@@ -500,16 +496,13 @@ public class DefaultGradientTape(
 
         // Propagate requiresGrad to output if any input requires it
         if (anyInputRequiresGrad && !out.requiresGrad) {
-            println("[DEBUG_LOG] Propagating requiresGrad=true to output of ${trace.opType}")
             (out as? Tensor<DType, Any>)?.withRequiresGrad(true)
         }
 
         if (!out.requiresGrad) {
-            println("[DEBUG_LOG] Skipping backward recording for ${trace.opType} (output does not require grad)")
             return
         }
 
-        println("[DEBUG_LOG] Recording trace for backward: ${trace.opType}, inputs: ${inputs.size}, out.id: ${session.refOf(out).id}, out.requiresGrad: ${out.requiresGrad}")
         val backward = buildBackwardFromTrace(trace, inputs, out) ?: return
         backwardOps += backward
     }
