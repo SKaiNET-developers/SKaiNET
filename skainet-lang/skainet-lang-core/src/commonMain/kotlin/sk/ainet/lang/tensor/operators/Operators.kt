@@ -26,3 +26,9 @@ public class OpsBoundTensor<T : DType, V>(
  */
 public fun <T : DType, V> Tensor<T, V>.withOps(ops: TensorOps): Tensor<T, V> =
     OpsBoundTensor(this.data, this.dtype, ops, this.gradState)
+
+/**
+ * Binds this tensor to the operations of the given execution context.
+ */
+public fun <T : DType, V> Tensor<T, V>.bind(ctx: sk.ainet.context.ExecutionContext): Tensor<T, V> =
+    this.withOps(ctx.ops)

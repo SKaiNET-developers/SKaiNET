@@ -6,8 +6,8 @@ import sk.ainet.lang.nn.topology.ModuleParameter
 import sk.ainet.lang.nn.topology.ModuleParameters
 import sk.ainet.lang.nn.topology.Parameter
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.operators.bind
 import sk.ainet.lang.types.DType
-
 
 public abstract class Module<T : DType, V> : ModuleNode {
 
@@ -15,7 +15,16 @@ public abstract class Module<T : DType, V> : ModuleNode {
 
     public abstract val modules: List<Module<T, V>>
 
-    public abstract fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V>
+    public open fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> {
+        val boundInput = input.bind(ctx)
+        return sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, boundInput) {
+            onForward(boundInput, ctx)
+        }
+    }
+
+    protected open fun onForward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> {
+        return input
+    }
 
     // ModuleNode implementation
     override val id: String get() = name

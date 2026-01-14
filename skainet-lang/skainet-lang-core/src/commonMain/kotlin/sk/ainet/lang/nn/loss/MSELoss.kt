@@ -10,8 +10,11 @@ import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 
+import sk.ainet.lang.tensor.operators.bind
+
 public class MSELoss : Loss {
 
+    @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> forward(
         preds: Tensor<T, V>,
         targets: Tensor<out DType, *>,
@@ -22,14 +25,16 @@ public class MSELoss : Loss {
         require(preds.dtype == targets.dtype) {
             "MSELoss requires preds/targets dtype match, got ${preds.dtype} vs ${targets.dtype}"
         }
-        @Suppress("UNCHECKED_CAST")
-        val tgt = targets as Tensor<T, V>
-        val diff = preds - tgt
-        val squared = diff * diff
+
+        val boundPreds = preds.bind(ctx)
+        val tgt = (targets as Tensor<T, V>).bind(ctx)
+
+        val diff = ctx.ops.subtract(boundPreds, tgt)
+        val squared = ctx.ops.multiply(diff, diff)
         return when (reduction) {
             Reduction.NONE -> squared
-            Reduction.SUM -> squared.sum()
-            Reduction.MEAN -> squared.mean()
+            Reduction.SUM -> ctx.ops.sum(squared, null) as Tensor<T, V>
+            Reduction.MEAN -> ctx.ops.mean(squared, null) as Tensor<T, V>
         }
     }
 
