@@ -46,6 +46,10 @@ include("skainet-backends:benchmarks:jvm-cpu-jmh")
 include("skainet-data:skainet-data-api")
 include("skainet-data:skainet-data-transform")
 include("skainet-data:skainet-data-simple")
+include("skainet-data:skainet-data-media")
+
+// ====== PIPELINE
+include("skainet-pipeline")
 
 // ====== IO
 include("skainet-io:skainet-io-core")

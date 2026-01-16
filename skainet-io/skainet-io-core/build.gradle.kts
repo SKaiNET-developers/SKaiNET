@@ -70,6 +70,17 @@ kotlin {
             }
         }
 
+        val jsMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines)
+            }
+        }
+
+        val wasmJsMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines)
+            }
+        }
     }
 }
 

@@ -4,11 +4,19 @@ import kotlin.reflect.KClass
 
 public fun DType.kotlinClass(): KClass<*> = when (this) {
     FP32 -> Float::class
-    Int8 -> Byte::class
-    Int4 -> Byte::class // best you can do, no 4-bit type
-    Ternary -> Boolean::class // or custom
+    FP64 -> Double::class
     FP16 -> Float::class
+    BF16 -> Float::class
+    Int8 -> Byte::class
+    Int16 -> Short::class
     Int32 -> Int::class
+    Int64 -> Long::class
+    Int4 -> Byte::class // best you can do, no 4-bit type
+    UInt8 -> UByte::class
+    UInt16 -> UShort::class
+    UInt32 -> UInt::class
+    UInt64 -> ULong::class
+    Ternary -> Boolean::class // or custom
 }
 
 /**

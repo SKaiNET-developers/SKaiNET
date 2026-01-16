@@ -66,6 +66,19 @@ kotlin {
         val jvmTest by getting {
             dependencies {
                 implementation(libs.junit)
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+
+        val jsMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines)
+            }
+        }
+
+        val wasmJsMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines)
             }
         }
     }
