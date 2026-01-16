@@ -40,9 +40,17 @@ public sealed interface DType {
             "Ternary" to Ternary,
             "Int4" to Int4,
             "Int8" to Int8,
+            "Int16" to Int16,
             "Int32" to Int32,
+            "Int64" to Int64,
+            "UInt8" to UInt8,
+            "UInt16" to UInt16,
+            "UInt32" to UInt32,
+            "UInt64" to UInt64,
             "Float16" to FP16,
-            "Float32" to FP32
+            "BFloat16" to BF16,
+            "Float32" to FP32,
+            "Float64" to FP64
         )
 
         /**
