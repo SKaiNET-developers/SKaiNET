@@ -575,12 +575,19 @@ class TracingWrapperProcessor(
             .filter { it.validate() }
             .toList()
 
-        if (tracingSymbols.isEmpty() && graphDslSymbols.isEmpty()) {
-            logger.info("No interfaces annotated with @GenerateTracingWrapper or @GenerateGraphDsl found")
+        // Find interfaces annotated with @GenerateNetworkDsl
+        val networkDslSymbols = resolver
+            .getSymbolsWithAnnotation("sk.ainet.lang.nn.dsl.GenerateNetworkDsl")
+            .filterIsInstance<KSClassDeclaration>()
+            .filter { it.validate() }
+            .toList()
+
+        if (tracingSymbols.isEmpty() && graphDslSymbols.isEmpty() && networkDslSymbols.isEmpty()) {
+            logger.info("No interfaces annotated with @GenerateTracingWrapper, @GenerateGraphDsl, or @GenerateNetworkDsl found")
             return emptyList()
         }
 
-        logger.info("Found ${tracingSymbols.size} tracing interfaces and ${graphDslSymbols.size} Graph DSL interfaces")
+        logger.info("Found ${tracingSymbols.size} tracing interfaces, ${graphDslSymbols.size} Graph DSL interfaces, and ${networkDslSymbols.size} Network DSL interfaces")
 
         // Process each annotated interface
         val unprocessedSymbols = mutableListOf<KSAnnotated>()
@@ -607,6 +614,19 @@ class TracingWrapperProcessor(
                 }
             } catch (e: Exception) {
                 logger.error("Failed to process interface ${symbol.simpleName.asString()} for Graph DSL: ${e.message}", symbol)
+                unprocessedSymbols.add(symbol)
+            }
+        }
+
+        for (symbol in networkDslSymbols) {
+            try {
+                if (validateAnnotatedSymbol(symbol)) {
+                    generateNetworkDsl(symbol)
+                } else {
+                    unprocessedSymbols.add(symbol)
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to process interface ${symbol.simpleName.asString()} for Network DSL: ${e.message}", symbol)
                 unprocessedSymbols.add(symbol)
             }
         }
@@ -849,6 +869,36 @@ class TracingWrapperProcessor(
 
         val generator = GraphDslGenerator(codeGenerator, logger)
         generator.generateGraphDsl(interfaceDeclaration, methods)
+    }
+
+    /**
+     * Generates the Network DSL extensions for the given interface.
+     * This scans for methods annotated with @ActivationDsl and generates
+     * extension functions for NeuralNetworkDsl.
+     */
+    private fun generateNetworkDsl(interfaceDeclaration: KSClassDeclaration) {
+        logger.info("Generating Network DSL for ${interfaceDeclaration.simpleName.asString()}")
+
+        val methodAnalyzer = MethodAnalyzer()
+        val allMethods = methodAnalyzer.analyzeInterface(interfaceDeclaration)
+
+        // Filter for methods annotated with @ActivationDsl
+        val activationMethods = interfaceDeclaration.getAllFunctions()
+            .filter { func ->
+                func.annotations.any { ann ->
+                    ann.shortName.asString() == "ActivationDsl" ||
+                    ann.annotationType.resolve().declaration.qualifiedName?.asString() == "sk.ainet.lang.nn.dsl.ActivationDsl"
+                }
+            }
+            .mapNotNull { func ->
+                allMethods.find { it.name == func.simpleName.asString() }
+            }
+            .toList()
+
+        logger.info("Found ${activationMethods.size} activation methods for Network DSL")
+
+        val generator = NetworkDslGenerator(codeGenerator, logger)
+        generator.generateNetworkDsl(interfaceDeclaration, activationMethods)
     }
 }
 

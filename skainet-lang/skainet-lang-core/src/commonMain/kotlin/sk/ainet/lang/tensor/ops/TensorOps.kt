@@ -5,8 +5,11 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.GenerateTracingWrapper
 import sk.ainet.lang.trace.Diff
+import sk.ainet.lang.nn.dsl.GenerateNetworkDsl
+import sk.ainet.lang.nn.dsl.ActivationDsl
 
 @GenerateTracingWrapper
+@GenerateNetworkDsl
 public interface TensorOps {
     // Basic mathematical operations
     @Diff
@@ -114,20 +117,26 @@ public interface TensorOps {
 
     // Activation functions
     @Diff
+    @ActivationDsl
     public fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V>
     @Diff
+    @ActivationDsl
     public fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float = 0.01f): Tensor<T, V>
     @Diff
+    @ActivationDsl
     public fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float = 1.0f): Tensor<T, V>
     @Diff
     public fun <T : DType, V> softmax(tensor: Tensor<T, V>, dim: Int = -1): Tensor<T, V>
     @Diff
     public fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int = -1): Tensor<T, V>
     @Diff
+    @ActivationDsl
     public fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V>
     @Diff
+    @ActivationDsl
     public fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V>
     @Diff
+    @ActivationDsl
     public fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V>
 
     // Reduction operations

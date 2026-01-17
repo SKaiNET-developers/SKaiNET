@@ -1,7 +1,10 @@
 package sk.ainet.lang.nn.dsl
 
 import sk.ainet.lang.nn.activations.ActivationsWrapperModule
+import sk.ainet.lang.nn.AvgPool2d
+import sk.ainet.lang.nn.Conv1d
 import sk.ainet.lang.nn.Conv2d
+import sk.ainet.lang.nn.Conv3d
 import sk.ainet.lang.nn.Flatten
 import sk.ainet.lang.nn.Input
 import sk.ainet.lang.nn.Linear
@@ -321,6 +324,73 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
     )
 
     /**
+     * Creates a 1D convolutional layer for processing sequence data.
+     *
+     * @param outChannels Number of output channels/filters
+     * @param kernelSize Size of the convolving kernel
+     * @param stride Stride of the convolution (default: 1)
+     * @param padding Padding added to both sides of the input (default: 0)
+     * @param dilation Spacing between kernel elements (default: 1)
+     * @param groups Number of groups for grouped convolution (default: 1)
+     * @param bias Whether to add a learnable bias (default: true)
+     * @param id Optional identifier for the layer
+     * @param content Configuration block for weights and bias initialization
+     */
+    public fun conv1d(
+        outChannels: Int,
+        kernelSize: Int,
+        stride: Int = 1,
+        padding: Int = 0,
+        dilation: Int = 1,
+        groups: Int = 1,
+        bias: Boolean = true,
+        id: String = "",
+        content: CONV1D<T, V>.() -> Unit = {}
+    )
+
+    /**
+     * Creates a 3D convolutional layer for processing volumetric data.
+     *
+     * @param outChannels Number of output channels/filters
+     * @param kernelSize Size of the convolving kernel (depth, height, width)
+     * @param stride Stride of the convolution (default: 1, 1, 1)
+     * @param padding Padding added to all sides of the input (default: 0, 0, 0)
+     * @param dilation Spacing between kernel elements (default: 1, 1, 1)
+     * @param groups Number of groups for grouped convolution (default: 1)
+     * @param bias Whether to add a learnable bias (default: true)
+     * @param id Optional identifier for the layer
+     * @param content Configuration block for weights and bias initialization
+     */
+    public fun conv3d(
+        outChannels: Int,
+        kernelSize: Triple<Int, Int, Int>,
+        stride: Triple<Int, Int, Int> = Triple(1, 1, 1),
+        padding: Triple<Int, Int, Int> = Triple(0, 0, 0),
+        dilation: Triple<Int, Int, Int> = Triple(1, 1, 1),
+        groups: Int = 1,
+        bias: Boolean = true,
+        id: String = "",
+        content: CONV3D<T, V>.() -> Unit = {}
+    )
+
+    /**
+     * Creates a 2D average pooling layer for downsampling feature maps.
+     *
+     * @param kernelSize Size of the pooling window (height, width)
+     * @param stride Stride of the pooling operation (default: same as kernelSize)
+     * @param padding Padding added to all sides of the input (default: 0, 0)
+     * @param countIncludePad Whether to include padding in the average calculation (default: true)
+     * @param id Optional identifier for the layer
+     */
+    public fun avgPool2d(
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int> = kernelSize,
+        padding: Pair<Int, Int> = 0 to 0,
+        countIncludePad: Boolean = true,
+        id: String = ""
+    )
+
+    /**
      * Groups layers into a sequential block for better organization.
      *
      * @param content DSL block containing the sequence of layers
@@ -410,6 +480,49 @@ public interface UPSAMPLE2D<T : DType, V> : NetworkDslItem {
     public fun scale(factor: Int)
 }
 
+@NetworkDsl
+public interface CONV1D<T : DType, V> : NetworkDslItem, WandBTensorValueContext<T, V> {
+    public var inChannels: Int
+    public var outChannels: Int
+    public var kernelSize: Int
+    public var stride: Int
+    public var padding: Int
+    public var dilation: Int
+    public var groups: Int
+    public var bias: Boolean
+    public var trainable: Boolean
+}
+
+@NetworkDsl
+public interface CONV3D<T : DType, V> : NetworkDslItem, WandBTensorValueContext<T, V> {
+    public var inChannels: Int
+    public var outChannels: Int
+    public var kernelSize: Triple<Int, Int, Int>
+    public var stride: Triple<Int, Int, Int>
+    public var padding: Triple<Int, Int, Int>
+    public var dilation: Triple<Int, Int, Int>
+    public var groups: Int
+    public var bias: Boolean
+    public var trainable: Boolean
+
+    // Helper setters to allow concise Int-based configuration in DSL blocks
+    public fun kernelSize(size: Int)
+    public fun stride(size: Int)
+    public fun padding(size: Int)
+}
+
+@NetworkDsl
+public interface AVGPOOL2D<T : DType, V> : NetworkDslItem {
+    public var kernelSize: Pair<Int, Int>
+    public var stride: Pair<Int, Int>
+    public var padding: Pair<Int, Int>
+    public var countIncludePad: Boolean
+
+    // Helper setters to allow concise Int-based configuration in DSL blocks
+    public fun kernelSize(size: Int)
+    public fun stride(size: Int)
+    public fun padding(size: Int)
+}
 
 /**
  * Scope for weights initialization with implicit shape context.
@@ -748,6 +861,178 @@ public class Upsample2dImpl<T : DType, V>(
     }
 }
 
+public class Conv1dImpl<T : DType, V>(
+    override val executionContext: ExecutionContext,
+    initialInChannels: Int,
+    initialOutChannels: Int,
+    initialKernelSize: Int,
+    initialStride: Int,
+    initialPadding: Int,
+    initialDilation: Int,
+    initialGroups: Int,
+    initialBias: Boolean,
+    private val id: String,
+    private val kClass: KClass<T>,
+) : CONV1D<T, V> {
+
+    private var weightsValue: Tensor<T, V>? = null
+    private var biasValue: Tensor<T, V>? = null
+
+    override var inChannels: Int = initialInChannels
+    override var outChannels: Int = initialOutChannels
+    override var kernelSize: Int = initialKernelSize
+    override var stride: Int = initialStride
+    override var padding: Int = initialPadding
+    override var dilation: Int = initialDilation
+    override var groups: Int = initialGroups
+    override var bias: Boolean = initialBias
+    override var trainable: Boolean = true
+
+    override val weightsShape: Shape
+        get() = Shape(intArrayOf(outChannels, inChannels / groups, kernelSize))
+
+    override val biasShape: Shape
+        get() = Shape(intArrayOf(outChannels))
+
+    public fun create(): Conv1d<T, V> {
+        require(outChannels > 0) { "Conv1d outChannels must be > 0." }
+        require(kernelSize > 0) { "Conv1d kernelSize must be > 0." }
+        require(inChannels > 0) { "Conv1d inChannels must be > 0." }
+
+        val weights = weightsValue ?: executionContext.zeros(weightsShape, kClass)
+        val biasParam = if (bias) biasValue ?: executionContext.zeros(biasShape, kClass) else null
+
+        return Conv1d(
+            inChannels = inChannels,
+            outChannels = outChannels,
+            kernelSize = kernelSize,
+            stride = stride,
+            padding = padding,
+            dilation = dilation,
+            groups = groups,
+            bias = bias,
+            name = getDefaultName(id, "Conv1d", 0),
+            initWeights = weights,
+            initBias = biasParam,
+            trainable = trainable
+        )
+    }
+
+    override fun weights(initBlock: WeightsScope<T, V>.(Shape) -> Tensor<T, V>) {
+        val scope = WeightsScopeImpl<T, V>(executionContext, weightsShape, kClass)
+        weightsValue = scope.initBlock(weightsShape)
+    }
+
+    override fun bias(initBlock: BiasScope<T, V>.(Shape) -> Tensor<T, V>) {
+        val scope = BiasScopeImpl<T, V>(executionContext, biasShape, kClass)
+        biasValue = scope.initBlock(biasShape)
+    }
+}
+
+public class Conv3dImpl<T : DType, V>(
+    override val executionContext: ExecutionContext,
+    initialInChannels: Int,
+    initialOutChannels: Int,
+    initialKernelSize: Triple<Int, Int, Int>,
+    initialStride: Triple<Int, Int, Int>,
+    initialPadding: Triple<Int, Int, Int>,
+    initialDilation: Triple<Int, Int, Int>,
+    initialGroups: Int,
+    initialBias: Boolean,
+    private val id: String,
+    private val kClass: KClass<T>,
+) : CONV3D<T, V> {
+
+    override fun kernelSize(size: Int) { this.kernelSize = Triple(size, size, size) }
+    override fun stride(size: Int) { this.stride = Triple(size, size, size) }
+    override fun padding(size: Int) { this.padding = Triple(size, size, size) }
+
+    private var weightsValue: Tensor<T, V>? = null
+    private var biasValue: Tensor<T, V>? = null
+
+    override var inChannels: Int = initialInChannels
+    override var outChannels: Int = initialOutChannels
+    override var kernelSize: Triple<Int, Int, Int> = initialKernelSize
+    override var stride: Triple<Int, Int, Int> = initialStride
+    override var padding: Triple<Int, Int, Int> = initialPadding
+    override var dilation: Triple<Int, Int, Int> = initialDilation
+    override var groups: Int = initialGroups
+    override var bias: Boolean = initialBias
+    override var trainable: Boolean = true
+
+    override val weightsShape: Shape
+        get() = Shape(intArrayOf(outChannels, inChannels / groups, kernelSize.first, kernelSize.second, kernelSize.third))
+
+    override val biasShape: Shape
+        get() = Shape(intArrayOf(outChannels))
+
+    public fun create(): Conv3d<T, V> {
+        require(outChannels > 0) { "Conv3d outChannels must be > 0." }
+        require(kernelSize.first > 0 && kernelSize.second > 0 && kernelSize.third > 0) { "Conv3d kernelSize must be > 0." }
+        require(inChannels > 0) { "Conv3d inChannels must be > 0." }
+
+        val weights = weightsValue ?: executionContext.zeros(weightsShape, kClass)
+        val biasParam = if (bias) biasValue ?: executionContext.zeros(biasShape, kClass) else null
+
+        return Conv3d(
+            inChannels = inChannels,
+            outChannels = outChannels,
+            kernelSize = kernelSize,
+            stride = stride,
+            padding = padding,
+            dilation = dilation,
+            groups = groups,
+            bias = bias,
+            name = getDefaultName(id, "Conv3d", 0),
+            initWeights = weights,
+            initBias = biasParam,
+            trainable = trainable
+        )
+    }
+
+    override fun weights(initBlock: WeightsScope<T, V>.(Shape) -> Tensor<T, V>) {
+        val scope = WeightsScopeImpl<T, V>(executionContext, weightsShape, kClass)
+        weightsValue = scope.initBlock(weightsShape)
+    }
+
+    override fun bias(initBlock: BiasScope<T, V>.(Shape) -> Tensor<T, V>) {
+        val scope = BiasScopeImpl<T, V>(executionContext, biasShape, kClass)
+        biasValue = scope.initBlock(biasShape)
+    }
+}
+
+public class AvgPool2dImpl<T : DType, V>(
+    override val executionContext: ExecutionContext,
+    initialKernelSize: Pair<Int, Int>,
+    initialStride: Pair<Int, Int>,
+    initialPadding: Pair<Int, Int>,
+    initialCountIncludePad: Boolean,
+    private val id: String,
+) : AVGPOOL2D<T, V> {
+
+    override fun kernelSize(size: Int) { this.kernelSize = size to size }
+    override fun stride(size: Int) { this.stride = size to size }
+    override fun padding(size: Int) { this.padding = size to size }
+
+    override var kernelSize: Pair<Int, Int> = initialKernelSize
+    override var stride: Pair<Int, Int> = initialStride
+    override var padding: Pair<Int, Int> = initialPadding
+    override var countIncludePad: Boolean = initialCountIncludePad
+
+    public fun create(): AvgPool2d<T, V> {
+        require(kernelSize.first > 0 && kernelSize.second > 0) { "AvgPool2d kernelSize must be > 0." }
+        require(stride.first > 0 && stride.second > 0) { "AvgPool2d stride must be > 0." }
+        require(padding.first >= 0 && padding.second >= 0) { "AvgPool2d padding must be >= 0." }
+
+        return AvgPool2d(
+            kernelSize = kernelSize,
+            stride = stride,
+            padding = padding,
+            countIncludePad = countIncludePad,
+            name = getDefaultName(id, "AvgPool2d", 0)
+        )
+    }
+}
 
 // Stage implementation
 public class StageImpl<T : DType, V>(
@@ -1022,6 +1307,78 @@ public class StageImpl<T : DType, V>(
         )
         impl.content()
         modules += impl.create()
+    }
+
+    override fun conv1d(
+        outChannels: Int,
+        kernelSize: Int,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int,
+        bias: Boolean,
+        id: String,
+        content: CONV1D<T, V>.() -> Unit
+    ) {
+        val conv1dImpl = Conv1dImpl<T, V>(
+            executionContext = executionContext,
+            initialInChannels = 1,
+            initialOutChannels = outChannels,
+            initialKernelSize = kernelSize,
+            initialStride = stride,
+            initialPadding = padding,
+            initialDilation = dilation,
+            initialGroups = groups,
+            initialBias = bias,
+            id = getDefaultName(id, "Conv1d", modules.size),
+            kClass = kClass
+        )
+        conv1dImpl.content()
+        modules.add(conv1dImpl.create())
+    }
+
+    override fun conv3d(
+        outChannels: Int,
+        kernelSize: Triple<Int, Int, Int>,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int,
+        bias: Boolean,
+        id: String,
+        content: CONV3D<T, V>.() -> Unit
+    ) {
+        val conv3dImpl = Conv3dImpl<T, V>(
+            executionContext = executionContext,
+            initialInChannels = 1,
+            initialOutChannels = outChannels,
+            initialKernelSize = kernelSize,
+            initialStride = stride,
+            initialPadding = padding,
+            initialDilation = dilation,
+            initialGroups = groups,
+            initialBias = bias,
+            id = getDefaultName(id, "Conv3d", modules.size),
+            kClass = kClass
+        )
+        conv3dImpl.content()
+        modules.add(conv3dImpl.create())
+    }
+
+    override fun avgPool2d(
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        countIncludePad: Boolean,
+        id: String
+    ) {
+        modules += AvgPool2d(
+            kernelSize = kernelSize,
+            stride = stride,
+            padding = padding,
+            countIncludePad = countIncludePad,
+            name = getDefaultName(id, "AvgPool2d", modules.size)
+        )
     }
 
     override fun softmax(dim: Int, id: String) {
@@ -1304,6 +1661,78 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         impl.content()
         modules.add(impl.create())
+    }
+
+    override fun conv1d(
+        outChannels: Int,
+        kernelSize: Int,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int,
+        bias: Boolean,
+        id: String,
+        content: CONV1D<T, V>.() -> Unit
+    ) {
+        val conv1dImpl = Conv1dImpl<T, V>(
+            executionContext = executionContext,
+            initialInChannels = 1,
+            initialOutChannels = outChannels,
+            initialKernelSize = kernelSize,
+            initialStride = stride,
+            initialPadding = padding,
+            initialDilation = dilation,
+            initialGroups = groups,
+            initialBias = bias,
+            id = getDefaultName(id, "Conv1d", modules.size),
+            kClass = kClass
+        )
+        conv1dImpl.content()
+        modules.add(conv1dImpl.create())
+    }
+
+    override fun conv3d(
+        outChannels: Int,
+        kernelSize: Triple<Int, Int, Int>,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int,
+        bias: Boolean,
+        id: String,
+        content: CONV3D<T, V>.() -> Unit
+    ) {
+        val conv3dImpl = Conv3dImpl<T, V>(
+            executionContext = executionContext,
+            initialInChannels = 1,
+            initialOutChannels = outChannels,
+            initialKernelSize = kernelSize,
+            initialStride = stride,
+            initialPadding = padding,
+            initialDilation = dilation,
+            initialGroups = groups,
+            initialBias = bias,
+            id = getDefaultName(id, "Conv3d", modules.size),
+            kClass = kClass
+        )
+        conv3dImpl.content()
+        modules.add(conv3dImpl.create())
+    }
+
+    override fun avgPool2d(
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        countIncludePad: Boolean,
+        id: String
+    ) {
+        modules += AvgPool2d(
+            kernelSize = kernelSize,
+            stride = stride,
+            padding = padding,
+            countIncludePad = countIncludePad,
+            name = getDefaultName(id, "AvgPool2d", modules.size)
+        )
     }
 
     override fun softmax(dim: Int, id: String) {
