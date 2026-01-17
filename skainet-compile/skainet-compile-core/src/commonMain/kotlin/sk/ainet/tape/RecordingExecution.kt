@@ -235,6 +235,16 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     }
 
     // --- Conv/Pool ---
+    override fun <T : DType, V> conv1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V> = base.conv1d(input, weight, bias, stride, padding, dilation, groups)
+
     override fun <T : DType, V> conv2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -259,6 +269,16 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         )
         return out
     }
+
+    override fun <T : DType, V> conv3d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int
+    ): Tensor<T, V> = base.conv3d(input, weight, bias, stride, padding, dilation, groups)
 
     override fun <T : DType, V> maxPool2d(
         input: Tensor<T, V>,

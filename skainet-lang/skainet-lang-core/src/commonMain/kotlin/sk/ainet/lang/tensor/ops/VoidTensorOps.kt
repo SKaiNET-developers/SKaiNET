@@ -150,6 +150,20 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> conv1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V> {
+        val resultShape = calculateConv1dShape(input.shape, weight.shape, stride, padding, dilation)
+        val resultData = dataFactory.zeros<T, V>(resultShape, input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
     override fun <T : DType, V> conv2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -160,6 +174,20 @@ public class VoidTensorOps : TensorOps {
         groups: Int
     ): Tensor<T, V> {
         val resultShape = calculateConv2dShape(input.shape, weight.shape, stride, padding, dilation)
+        val resultData = dataFactory.zeros<T, V>(resultShape, input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
+    override fun <T : DType, V> conv3d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int
+    ): Tensor<T, V> {
+        val resultShape = calculateConv3dShape(input.shape, weight.shape, stride, padding, dilation)
         val resultData = dataFactory.zeros<T, V>(resultShape, input.dtype)
         return VoidOpsTensor(resultData, input.dtype)
     }
@@ -578,6 +606,76 @@ public class VoidTensorOps : TensorOps {
                 Shape(resultDims)
             }
         }
+    }
+
+    /**
+     * Calculates the result shape for conv1d operation.
+     * Input shape: (batch, in_channels, length)
+     * Weight shape: (out_channels, in_channels_per_group, kernel_length)
+     * Output shape: (batch, out_channels, out_length)
+     */
+    private fun calculateConv1dShape(
+        inputShape: Shape,
+        weightShape: Shape,
+        stride: Int,
+        padding: Int,
+        dilation: Int
+    ): Shape {
+        if (inputShape.rank != 3) {
+            throw IllegalArgumentException("Conv1d input must be 3D tensor (batch, channels, length)")
+        }
+        if (weightShape.rank != 3) {
+            throw IllegalArgumentException("Conv1d weight must be 3D tensor (out_channels, in_channels, kernel_length)")
+        }
+
+        val batch = inputShape.dimensions[0]
+        val outChannels = weightShape.dimensions[0]
+        val inputLength = inputShape.dimensions[2]
+        val kernelLength = weightShape.dimensions[2]
+
+        val outputLength = ((inputLength + 2 * padding - dilation * (kernelLength - 1) - 1) / stride) + 1
+
+        return Shape(batch, outChannels, outputLength)
+    }
+
+    /**
+     * Calculates the result shape for conv3d operation.
+     * Input shape: (batch, in_channels, depth, height, width)
+     * Weight shape: (out_channels, in_channels_per_group, kernel_depth, kernel_height, kernel_width)
+     * Output shape: (batch, out_channels, out_depth, out_height, out_width)
+     */
+    private fun calculateConv3dShape(
+        inputShape: Shape,
+        weightShape: Shape,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>
+    ): Shape {
+        if (inputShape.rank != 5) {
+            throw IllegalArgumentException("Conv3d input must be 5D tensor (batch, channels, depth, height, width)")
+        }
+        if (weightShape.rank != 5) {
+            throw IllegalArgumentException("Conv3d weight must be 5D tensor (out_channels, in_channels, kernel_d, kernel_h, kernel_w)")
+        }
+
+        val batch = inputShape.dimensions[0]
+        val outChannels = weightShape.dimensions[0]
+        val inputDepth = inputShape.dimensions[2]
+        val inputHeight = inputShape.dimensions[3]
+        val inputWidth = inputShape.dimensions[4]
+        val kernelDepth = weightShape.dimensions[2]
+        val kernelHeight = weightShape.dimensions[3]
+        val kernelWidth = weightShape.dimensions[4]
+
+        val (strideD, strideH, strideW) = stride
+        val (padD, padH, padW) = padding
+        val (dilationD, dilationH, dilationW) = dilation
+
+        val outputDepth = ((inputDepth + 2 * padD - dilationD * (kernelDepth - 1) - 1) / strideD) + 1
+        val outputHeight = ((inputHeight + 2 * padH - dilationH * (kernelHeight - 1) - 1) / strideH) + 1
+        val outputWidth = ((inputWidth + 2 * padW - dilationW * (kernelWidth - 1) - 1) / strideW) + 1
+
+        return Shape(batch, outChannels, outputDepth, outputHeight, outputWidth)
     }
 
     /**

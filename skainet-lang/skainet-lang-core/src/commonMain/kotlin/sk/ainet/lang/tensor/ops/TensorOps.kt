@@ -42,6 +42,17 @@ public interface TensorOps {
 
     // Convolutional operations
     @Diff
+    public fun <T : DType, V> conv1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>? = null,
+        stride: Int = 1,
+        padding: Int = 0,
+        dilation: Int = 1,
+        groups: Int = 1
+    ): Tensor<T, V>
+
+    @Diff
     public fun <T : DType, V> conv2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -49,6 +60,17 @@ public interface TensorOps {
         stride: Pair<Int, Int> = 1 to 1,
         padding: Pair<Int, Int> = 0 to 0,
         dilation: Pair<Int, Int> = 1 to 1,
+        groups: Int = 1
+    ): Tensor<T, V>
+
+    @Diff
+    public fun <T : DType, V> conv3d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>? = null,
+        stride: Triple<Int, Int, Int> = Triple(1, 1, 1),
+        padding: Triple<Int, Int, Int> = Triple(0, 0, 0),
+        dilation: Triple<Int, Int, Int> = Triple(1, 1, 1),
         groups: Int = 1
     ): Tensor<T, V>
 

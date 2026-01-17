@@ -611,6 +611,312 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
+    override fun <T : DType, V> conv1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V> {
+        // Validate shapes
+        require(input.rank == 3) { "conv1d: input must be 3D (N, C_in, L), got ${input.shape.dimensions.contentToString()}" }
+        require(weight.rank == 3) { "conv1d: weight must be 3D (C_out, C_in/groups, K), got ${weight.shape.dimensions.contentToString()}" }
+        require(groups >= 1) { "conv1d: groups must be >= 1" }
+        require(input.dtype == weight.dtype) { "conv1d: dtype mismatch between input and weight: ${input.dtype} vs ${weight.dtype}" }
+        bias?.let { require(it.dtype == input.dtype) { "conv1d: dtype mismatch for bias" } }
+
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val inL = input.shape[2]
+
+        val cOut = weight.shape[0]
+        val cInPerGroup = weight.shape[1]
+        val kL = weight.shape[2]
+
+        require(cIn % groups == 0) { "conv1d: input channels ${cIn} not divisible by groups ${groups}" }
+        require(cOut % groups == 0) { "conv1d: output channels ${cOut} not divisible by groups ${groups}" }
+        require(cInPerGroup == cIn / groups) { "conv1d: weight input channels ${cInPerGroup} must equal C_in/groups ${cIn / groups}" }
+
+        fun outDim(inDim: Int, k: Int, s: Int, p: Int, d: Int): Int {
+            return ((inDim + 2 * p - d * (k - 1) - 1) / s) + 1
+        }
+        val outL = outDim(inL, kL, stride, padding, dilation)
+        require(outL >= 0) { "conv1d: computed negative output length (L=${outL})" }
+
+        // Validate bias shape if provided
+        if (bias != null) {
+            when (bias.rank) {
+                1 -> require(bias.shape[0] == cOut) { "conv1d: bias shape must be [C_out], got ${bias.shape.dimensions.contentToString()}" }
+                3 -> {
+                    require(bias.shape[0] == 1 && bias.shape[1] == cOut && bias.shape[2] == 1) {
+                        "conv1d: bias shape must be [1,C_out,1] when 3D, got ${bias.shape.dimensions.contentToString()}"
+                    }
+                }
+                else -> error("conv1d: unsupported bias rank ${bias.rank}")
+            }
+        }
+
+        val outShape = Shape(n, cOut, outL)
+        val outData = dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+            val bIdx = outIdx[0]
+            val oc = outIdx[1]
+            val ol = outIdx[2]
+
+            when (input.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    var acc = 0.0f
+                    val groupIdx = (oc * groups) / cOut
+                    val inCStart = groupIdx * cInPerGroup
+                    val inCEnd = inCStart + cInPerGroup
+                    val lBase = ol * stride - padding
+
+                    var ic = inCStart
+                    while (ic < inCEnd) {
+                        val kc = ic - inCStart
+                        var kl = 0
+                        while (kl < kL) {
+                            val il = lBase + kl * dilation
+                            if (il >= 0 && il < inL) {
+                                val vIn = input.data.get(bIdx, ic, il) as Float
+                                val vW = weight.data.get(oc, kc, kl) as Float
+                                acc += vIn * vW
+                            }
+                            kl++
+                        }
+                        ic++
+                    }
+                    if (bias != null) {
+                        val b = when (bias.rank) {
+                            1 -> bias.data.get(oc) as Float
+                            3 -> bias.data.get(0, oc, 0) as Float
+                            else -> 0.0f
+                        }
+                        acc += b
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    acc as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    var acc = 0
+                    val groupIdx = (oc * groups) / cOut
+                    val inCStart = groupIdx * cInPerGroup
+                    val inCEnd = inCStart + cInPerGroup
+                    val lBase = ol * stride - padding
+
+                    var ic = inCStart
+                    while (ic < inCEnd) {
+                        val kc = ic - inCStart
+                        var kl = 0
+                        while (kl < kL) {
+                            val il = lBase + kl * dilation
+                            if (il >= 0 && il < inL) {
+                                val vIn = input.data.get(bIdx, ic, il) as Int
+                                val vW = weight.data.get(oc, kc, kl) as Int
+                                acc += vIn * vW
+                            }
+                            kl++
+                        }
+                        ic++
+                    }
+                    if (bias != null) {
+                        val b = when (bias.rank) {
+                            1 -> bias.data.get(oc) as Int
+                            3 -> bias.data.get(0, oc, 0) as Int
+                            else -> 0
+                        }
+                        acc += b
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    acc as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for conv1d: ${input.dtype}")
+            }
+        }
+        return if (bias != null) {
+            newTensor(outData, input.dtype, input, weight, bias)
+        } else {
+            newTensor(outData, input.dtype, input, weight)
+        }
+    }
+
+    @TensorOp()
+    override fun <T : DType, V> conv3d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int
+    ): Tensor<T, V> {
+        // Validate shapes
+        require(input.rank == 5) { "conv3d: input must be 5D (N, C_in, D, H, W), got ${input.shape.dimensions.contentToString()}" }
+        require(weight.rank == 5) { "conv3d: weight must be 5D (C_out, C_in/groups, kD, kH, kW), got ${weight.shape.dimensions.contentToString()}" }
+        require(groups >= 1) { "conv3d: groups must be >= 1" }
+        require(input.dtype == weight.dtype) { "conv3d: dtype mismatch between input and weight: ${input.dtype} vs ${weight.dtype}" }
+        bias?.let { require(it.dtype == input.dtype) { "conv3d: dtype mismatch for bias" } }
+
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val inD = input.shape[2]
+        val inH = input.shape[3]
+        val inW = input.shape[4]
+
+        val cOut = weight.shape[0]
+        val cInPerGroup = weight.shape[1]
+        val kD = weight.shape[2]
+        val kH = weight.shape[3]
+        val kW = weight.shape[4]
+
+        require(cIn % groups == 0) { "conv3d: input channels ${cIn} not divisible by groups ${groups}" }
+        require(cOut % groups == 0) { "conv3d: output channels ${cOut} not divisible by groups ${groups}" }
+        require(cInPerGroup == cIn / groups) { "conv3d: weight input channels ${cInPerGroup} must equal C_in/groups ${cIn / groups}" }
+
+        val (sD, sH, sW) = stride
+        val (pD, pH, pW) = padding
+        val (dD, dH, dW) = dilation
+
+        fun outDim(inDim: Int, k: Int, s: Int, p: Int, d: Int): Int {
+            return ((inDim + 2 * p - d * (k - 1) - 1) / s) + 1
+        }
+        val outD = outDim(inD, kD, sD, pD, dD)
+        val outH = outDim(inH, kH, sH, pH, dH)
+        val outW = outDim(inW, kW, sW, pW, dW)
+        require(outD >= 0 && outH >= 0 && outW >= 0) { "conv3d: computed negative output shape (D=${outD}, H=${outH}, W=${outW})" }
+
+        // Validate bias shape if provided
+        if (bias != null) {
+            when (bias.rank) {
+                1 -> require(bias.shape[0] == cOut) { "conv3d: bias shape must be [C_out], got ${bias.shape.dimensions.contentToString()}" }
+                5 -> {
+                    require(bias.shape[0] == 1 && bias.shape[1] == cOut && bias.shape[2] == 1 && bias.shape[3] == 1 && bias.shape[4] == 1) {
+                        "conv3d: bias shape must be [1,C_out,1,1,1] when 5D, got ${bias.shape.dimensions.contentToString()}"
+                    }
+                }
+                else -> error("conv3d: unsupported bias rank ${bias.rank}")
+            }
+        }
+
+        val outShape = Shape(n, cOut, outD, outH, outW)
+        val outData = dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+            val bIdx = outIdx[0]
+            val oc = outIdx[1]
+            val od = outIdx[2]
+            val oh = outIdx[3]
+            val ow = outIdx[4]
+
+            when (input.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    var acc = 0.0f
+                    val groupIdx = (oc * groups) / cOut
+                    val inCStart = groupIdx * cInPerGroup
+                    val inCEnd = inCStart + cInPerGroup
+                    val dBase = od * sD - pD
+                    val hBase = oh * sH - pH
+                    val wBase = ow * sW - pW
+
+                    var ic = inCStart
+                    while (ic < inCEnd) {
+                        val kc = ic - inCStart
+                        var kd = 0
+                        while (kd < kD) {
+                            val id = dBase + kd * dD
+                            if (id >= 0 && id < inD) {
+                                var kh = 0
+                                while (kh < kH) {
+                                    val ih = hBase + kh * dH
+                                    if (ih >= 0 && ih < inH) {
+                                        var kw = 0
+                                        while (kw < kW) {
+                                            val iw = wBase + kw * dW
+                                            if (iw >= 0 && iw < inW) {
+                                                val vIn = input.data.get(bIdx, ic, id, ih, iw) as Float
+                                                val vW = weight.data.get(oc, kc, kd, kh, kw) as Float
+                                                acc += vIn * vW
+                                            }
+                                            kw++
+                                        }
+                                    }
+                                    kh++
+                                }
+                            }
+                            kd++
+                        }
+                        ic++
+                    }
+                    if (bias != null) {
+                        val b = when (bias.rank) {
+                            1 -> bias.data.get(oc) as Float
+                            5 -> bias.data.get(0, oc, 0, 0, 0) as Float
+                            else -> 0.0f
+                        }
+                        acc += b
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    acc as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    var acc = 0
+                    val groupIdx = (oc * groups) / cOut
+                    val inCStart = groupIdx * cInPerGroup
+                    val inCEnd = inCStart + cInPerGroup
+                    val dBase = od * sD - pD
+                    val hBase = oh * sH - pH
+                    val wBase = ow * sW - pW
+
+                    var ic = inCStart
+                    while (ic < inCEnd) {
+                        val kc = ic - inCStart
+                        var kd = 0
+                        while (kd < kD) {
+                            val id = dBase + kd * dD
+                            if (id >= 0 && id < inD) {
+                                var kh = 0
+                                while (kh < kH) {
+                                    val ih = hBase + kh * dH
+                                    if (ih >= 0 && ih < inH) {
+                                        var kw = 0
+                                        while (kw < kW) {
+                                            val iw = wBase + kw * dW
+                                            if (iw >= 0 && iw < inW) {
+                                                val vIn = input.data.get(bIdx, ic, id, ih, iw) as Int
+                                                val vW = weight.data.get(oc, kc, kd, kh, kw) as Int
+                                                acc += vIn * vW
+                                            }
+                                            kw++
+                                        }
+                                    }
+                                    kh++
+                                }
+                            }
+                            kd++
+                        }
+                        ic++
+                    }
+                    if (bias != null) {
+                        val b = when (bias.rank) {
+                            1 -> bias.data.get(oc) as Int
+                            5 -> bias.data.get(0, oc, 0, 0, 0) as Int
+                            else -> 0
+                        }
+                        acc += b
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    acc as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for conv3d: ${input.dtype}")
+            }
+        }
+        return if (bias != null) {
+            newTensor(outData, input.dtype, input, weight, bias)
+        } else {
+            newTensor(outData, input.dtype, input, weight)
+        }
+    }
+
+    @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-upsample2d")
     override fun <T : DType, V> upsample2d(
         input: Tensor<T, V>,

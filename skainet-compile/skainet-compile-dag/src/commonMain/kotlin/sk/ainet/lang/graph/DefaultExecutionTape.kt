@@ -600,10 +600,20 @@ public class DefaultGradientTape(
         return listOf(logSoftmaxGrad(upstream, output, dim))
     }
 
+    override fun conv1dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Conv1d backward is complex, return null for now
+        return listOf(null, null, null)
+    }
+
     override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // d(conv2d(x, w, b))/dx, d(conv2d(x, w, b))/dw, d(conv2d(x, w, b))/db
         // This is complex and usually implemented in the backend.
         // For now we return null to signal it's not implemented yet, or throw if we want to be strict.
+        return listOf(null, null, null)
+    }
+
+    override fun conv3dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Conv3d backward is complex, return null for now
         return listOf(null, null, null)
     }
 
@@ -780,7 +790,9 @@ public class DefaultGradientTape(
             "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
             "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
             "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
+            "conv1d" -> BackwardOp(inputs, output) { upstream -> conv1dBackward(upstream, output, inputs, trace.attributes) }
             "conv2d" -> BackwardOp(inputs, output) { upstream -> conv2dBackward(upstream, output, inputs, trace.attributes) }
+            "conv3d" -> BackwardOp(inputs, output) { upstream -> conv3dBackward(upstream, output, inputs, trace.attributes) }
             "maxPool2d" -> BackwardOp(inputs, output) { upstream -> maxPool2dBackward(upstream, output, inputs, trace.attributes) }
             "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
             "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }

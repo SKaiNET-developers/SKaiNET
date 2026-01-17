@@ -294,10 +294,10 @@ class TracingWrapperGenerator(
                 // Fix the type for nullable parameters that should have ? suffix
                 val correctedType = when {
                     param.name == "dim" && method.name in listOf("squeeze", "sum", "mean", "variance") && !param.type.endsWith("?") -> "${param.type}?"
-                    param.name == "bias" && method.name == "conv2d" && !param.type.endsWith("?") -> "${param.type}?"
+                    param.name == "bias" && method.name in listOf("conv1d", "conv2d", "conv3d") && !param.type.endsWith("?") -> "${param.type}?"
                     else -> param.type
                 }
-                
+
                 // Override methods cannot specify default values - they inherit them from the interface
                 "${param.name}: $correctedType"
             })
