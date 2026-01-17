@@ -17,7 +17,8 @@ import sk.ainet.apps.kllama.LlamaRuntime
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
-import sk.ai.net.sample.llama2.model.TokenizerUtils
+import sk.ainet.apps.kllama.Tokenizer
+import sk.ainet.apps.kllama.TokenizerUtils
 
 private val scope = MainScope()
 
@@ -38,11 +39,11 @@ fun main() {
                 output.appendChild(document.createTextNode("Generating...\n"))
                 val promptTokens = tokenizer.encode("Hello")
                 runtime.reset()
-                runtime.generate(prompt = promptTokens.toIntArray(), steps = 64, temperature = 0.8f) { id ->
+                runtime.generate(prompt = promptTokens, steps = 64, temperature = 0.8f) { id ->
                     output.appendChild(document.createTextNode(tokenizer.decode(id)))
                 }
             } catch (t: Throwable) {
-                console.error("Failed to run LLaMA demo", t)
+                println("Failed to run LLaMA demo: ${t.message}")
                 output.appendChild(document.createTextNode("\nError: ${t.message}"))
             }
         }
@@ -78,7 +79,7 @@ private suspend fun loadRuntime(path: String, format: LlamaWeightLoader.Format):
     return LlamaRuntime(ctx, weights)
 }
 
-private suspend fun loadTokenizer(path: String, vocabSize: Int): sk.ai.net.sample.llama2.model.Tokenizer {
+private suspend fun loadTokenizer(path: String, vocabSize: Int): Tokenizer {
     val resp: Response = (window.fetch(path) as Promise<Response>).await()
     if (!resp.ok) error("Failed to fetch tokenizer: ${resp.statusText}")
     val buf: ArrayBuffer = (resp.arrayBuffer() as Promise<ArrayBuffer>).await()

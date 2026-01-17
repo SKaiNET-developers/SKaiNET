@@ -22,9 +22,33 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
-    macosArm64 ()
-    linuxX64 ()
-    linuxArm64 ()
+
+    macosArm64 {
+        binaries {
+            executable {
+                entryPoint = "sk.ainet.apps.kllama.cli.main"
+                baseName = "kllama"
+            }
+        }
+    }
+
+    linuxX64 {
+        binaries {
+            executable {
+                entryPoint = "sk.ainet.apps.kllama.cli.main"
+                baseName = "kllama"
+            }
+        }
+    }
+
+    linuxArm64 {
+        binaries {
+            executable {
+                entryPoint = "sk.ainet.apps.kllama.cli.main"
+                baseName = "kllama"
+            }
+        }
+    }
 
     jvm()
 
