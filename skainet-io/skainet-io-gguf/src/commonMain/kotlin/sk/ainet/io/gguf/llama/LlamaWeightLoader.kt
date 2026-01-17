@@ -967,12 +967,12 @@ public class LlamaWeightLoader(
                     }
 
                     name.contains("attn_k") || name.contains("attn_v") -> {
-                        // K and V projections support GQA: [dim, kv_dim] where kv_dim = kv_heads * head_size
+                        // K and V projections support GQA: stored as [dim, kv_dim] in GGUF
                         val headSize = metadata.embeddingLength / metadata.headCount
                         val kvDim = metadata.kvHeadCount * headSize
                         val expectedProduct = metadata.embeddingLength * kvDim
                         require(dims.size == 2 && dims.product() == expectedProduct) {
-                            "Tensor $name must be [dim=${ metadata.embeddingLength }, kv_dim=$kvDim]; got $dims"
+                            "Tensor $name must have product [dim=${metadata.embeddingLength}]*[kv_dim=$kvDim]=$expectedProduct; got $dims with product ${dims.product()}"
                         }
                     }
 
@@ -1029,19 +1029,17 @@ public class LlamaWeightLoader(
     private fun inferEmbeddingFromTensor(tensors: List<ReaderTensor>): Int {
         val token = tensors.firstOrNull { it.name == LlamaTensorNames.TOKEN_EMBEDDINGS }
             ?: error("Cannot infer embedding length without token embeddings tensor")
-        return token.shape.map { it.toInt() }.maxOrNull()
+        // For most LLMs, embedding_length < vocab_size, so we take the min
+        return token.shape.map { it.toInt() }.minOrNull()
             ?: error("Cannot infer embedding length from tensor shape ${token.shape}")
     }
 
     private fun inferVocabFromTensor(tensors: List<ReaderTensor>): Int {
         val token = tensors.firstOrNull { it.name == LlamaTensorNames.TOKEN_EMBEDDINGS }
             ?: error("Cannot infer vocab size without token embeddings tensor")
-        val dims = token.shape.map { it.toInt() }
-        val emb = dims.maxOrNull() ?: 0
-        val prod = dims.product()
-        val vocab = if (emb == 0) 0 else prod / emb
-        require(vocab > 0) { "Cannot infer vocab size from shape $dims" }
-        return vocab
+        // For most LLMs, vocab_size > embedding_length, so we take the max
+        return token.shape.map { it.toInt() }.maxOrNull()
+            ?: error("Cannot infer vocab size from tensor shape ${token.shape}")
     }
 
     private fun List<Int>.product(): Int = fold(1) { acc, v -> acc * v }

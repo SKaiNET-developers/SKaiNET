@@ -44,18 +44,24 @@ public class LlamaRuntime(
     private val seqLen = weights.metadata.contextLength
     private val nLayers = weights.metadata.blockCount
     private val nHeads = weights.metadata.headCount
+    private val nKvHeads = weights.metadata.kvHeadCount
     private val headSize = dim / nHeads
+    private val kvDim = nKvHeads * headSize
     private val vocabSize = weights.metadata.vocabSize
     private val ropeDim = weights.metadata.ropeDimensionCount ?: headSize
+    // GQA: number of query heads per KV head group
+    private val nHeadsPerKv = nHeads / nKvHeads
 
-    private val keyCache = FloatArray(nLayers * seqLen * dim)
-    private val valueCache = FloatArray(nLayers * seqLen * dim)
+    // KV cache sized for KV heads (smaller than query heads for GQA)
+    private val keyCache = FloatArray(nLayers * seqLen * kvDim)
+    private val valueCache = FloatArray(nLayers * seqLen * kvDim)
     private var position: Int = 0
 
     private val embedding = Embedding(
         numEmbeddings = vocabSize,
         embeddingDim = dim,
-        initWeight = weights.tokenEmbedding,
+        // GGUF stores embeddings as [dim, vocab], transpose to [vocab, dim]
+        initWeight = weights.tokenEmbedding.t(),
         name = "token_embd"
     )
 
@@ -83,7 +89,8 @@ public class LlamaRuntime(
         }
 
         val norm = rmsNorm(x, weights.outputNorm)
-        val logits = norm.matmul(weights.outputWeight.t())
+        // Use matmulNoBias to handle GGUF [in, out] vs Karpathy [out, in] formats
+        val logits = matmulNoBias(norm, weights.outputWeight)
         position++
         return logits
     }
@@ -108,20 +115,21 @@ public class LlamaRuntime(
     private fun runLayer(layerIdx: Int, layer: LlamaLayerWeights, input: Tensor<FP32, Float>): Tensor<FP32, Float> {
         var x = input
 
-        // Self-attention
+        // Self-attention with GQA support
         val attnNorm = rmsNorm(x, layer.attnNorm)
         val q = matmulNoBias(attnNorm, layer.wq)
         val k = matmulNoBias(attnNorm, layer.wk)
         val v = matmulNoBias(attnNorm, layer.wv)
 
         val qHeads = q.reshape(Shape(nHeads, headSize))
-        val kHeads = k.reshape(Shape(nHeads, headSize))
-        val vHeads = v.reshape(Shape(nHeads, headSize))
+        // GQA: K and V have fewer heads
+        val kHeads = k.reshape(Shape(nKvHeads, headSize))
+        val vHeads = v.reshape(Shape(nKvHeads, headSize))
 
-        applyRope(qHeads, kHeads, position)
-        cacheKv(layerIdx, kHeads, vHeads, position)
+        applyRopeGqa(qHeads, kHeads, position)
+        cacheKvGqa(layerIdx, kHeads, vHeads, position)
 
-        val attnOut = attention(layerIdx, qHeads, position)
+        val attnOut = attentionGqa(layerIdx, qHeads, position)
         val attnTensor = ctx.fromFloatArray<FP32, Float>(Shape(1, dim), FP32::class, attnOut)
         x = x + attnTensor
 
@@ -145,8 +153,17 @@ public class LlamaRuntime(
     }
 
     private fun matmulNoBias(input: Tensor<FP32, Float>, weight: Tensor<FP32, Float>): Tensor<FP32, Float> {
-        // Weights are stored as [out, in]; matmul expects [batch, in] x [in, out]
-        return input.matmul(weight.t())
+        // Detect weight orientation and transpose only if needed
+        // matmul: input[batch, in] x weight[in, out] = output[batch, out]
+        val inDim = input.shape[input.rank - 1]
+        val w0 = weight.shape[0]
+        return if (w0 == inDim) {
+            // Weight is [in, out] (GGUF format), no transpose needed
+            input.matmul(weight)
+        } else {
+            // Weight is [out, in] (Karpathy format), transpose to get [in, out]
+            input.matmul(weight.t())
+        }
     }
 
     private fun applyRope(q: Tensor<FP32, Float>, k: Tensor<FP32, Float>, pos: Int) {
@@ -192,6 +209,90 @@ public class LlamaRuntime(
     private fun ropeFrequency(pair: Int, pos: Int): Float {
         val exponent = (2f * pair) / ropeDim
         return pos / ropeFreqBase.pow(exponent)
+    }
+
+    /** GQA-aware RoPE: Q has nHeads, K has nKvHeads */
+    private fun applyRopeGqa(q: Tensor<FP32, Float>, k: Tensor<FP32, Float>, pos: Int) {
+        val qBuf = q.expectFloatBuffer()
+        val kBuf = k.expectFloatBuffer()
+        val ropeReal = weights.ropeFreqReal?.expectFloatBuffer()
+        val ropeImag = weights.ropeFreqImag?.expectFloatBuffer()
+        val ropeStride = headSize / 2
+
+        require(headSize % 2 == 0) { "RoPE requires even head size; got $headSize" }
+
+        // Apply RoPE to Q (nHeads)
+        for (h in 0 until nHeads) {
+            val headOffset = h * headSize
+            for (pair in 0 until ropeDim / 2) {
+                val i = pair * 2
+                val fcr = ropeReal?.get(pos * ropeStride + pair) ?: ropeCosFallback(pair, pos)
+                val fci = ropeImag?.get(pos * ropeStride + pair) ?: ropeSinFallback(pair, pos)
+
+                val q0 = qBuf[headOffset + i]
+                val q1 = qBuf[headOffset + i + 1]
+                qBuf[headOffset + i] = q0 * fcr - q1 * fci
+                qBuf[headOffset + i + 1] = q0 * fci + q1 * fcr
+            }
+        }
+
+        // Apply RoPE to K (nKvHeads)
+        for (h in 0 until nKvHeads) {
+            val headOffset = h * headSize
+            for (pair in 0 until ropeDim / 2) {
+                val i = pair * 2
+                val fcr = ropeReal?.get(pos * ropeStride + pair) ?: ropeCosFallback(pair, pos)
+                val fci = ropeImag?.get(pos * ropeStride + pair) ?: ropeSinFallback(pair, pos)
+
+                val k0 = kBuf[headOffset + i]
+                val k1 = kBuf[headOffset + i + 1]
+                kBuf[headOffset + i] = k0 * fcr - k1 * fci
+                kBuf[headOffset + i + 1] = k0 * fci + k1 * fcr
+            }
+        }
+    }
+
+    /** GQA-aware KV caching: K and V have nKvHeads */
+    private fun cacheKvGqa(layerIdx: Int, k: Tensor<FP32, Float>, v: Tensor<FP32, Float>, pos: Int) {
+        val kBuf = k.expectFloatBuffer()
+        val vBuf = v.expectFloatBuffer()
+        val base = (layerIdx * seqLen + pos) * kvDim
+        kBuf.copyInto(keyCache, base, 0, kvDim)
+        vBuf.copyInto(valueCache, base, 0, kvDim)
+    }
+
+    /** GQA-aware attention: Q has nHeads, KV cache has nKvHeads */
+    private fun attentionGqa(layerIdx: Int, q: Tensor<FP32, Float>, pos: Int): FloatArray {
+        val qBuf = q.expectFloatBuffer()
+        val out = FloatArray(dim)
+        val scale = 1f / sqrt(headSize.toDouble()).toFloat()
+
+        for (h in 0 until nHeads) {
+            val qHeadOffset = h * headSize
+            // Map query head to its corresponding KV head
+            val kvHeadIdx = h / nHeadsPerKv
+            val scores = FloatArray(pos + 1)
+
+            for (t in 0..pos) {
+                val cacheBase = (layerIdx * seqLen + t) * kvDim + kvHeadIdx * headSize
+                var score = 0f
+                for (i in 0 until headSize) {
+                    score += qBuf[qHeadOffset + i] * keyCache[cacheBase + i]
+                }
+                scores[t] = score * scale
+            }
+
+            softmaxInPlace(scores)
+
+            for (t in 0..pos) {
+                val cacheBase = (layerIdx * seqLen + t) * kvDim + kvHeadIdx * headSize
+                val weight = scores[t]
+                for (i in 0 until headSize) {
+                    out[qHeadOffset + i] += weight * valueCache[cacheBase + i]
+                }
+            }
+        }
+        return out
     }
 
     private fun cacheKv(layerIdx: Int, k: Tensor<FP32, Float>, v: Tensor<FP32, Float>, pos: Int) {
