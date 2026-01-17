@@ -61,6 +61,14 @@ public interface TensorOps {
         padding: Pair<Int, Int> = 0 to 0
     ): Tensor<T, V>
     @Diff
+    public fun <T : DType, V> avgPool2d(
+        input: Tensor<T, V>,
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int> = kernelSize,
+        padding: Pair<Int, Int> = 0 to 0,
+        countIncludePad: Boolean = true
+    ): Tensor<T, V>
+    @Diff
     public fun <T : DType, V> upsample2d(
         input: Tensor<T, V>,
         scale: Pair<Int, Int>,
@@ -85,6 +93,10 @@ public interface TensorOps {
     // Activation functions
     @Diff
     public fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V>
+    @Diff
+    public fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float = 0.01f): Tensor<T, V>
+    @Diff
+    public fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float = 1.0f): Tensor<T, V>
     @Diff
     public fun <T : DType, V> softmax(tensor: Tensor<T, V>, dim: Int = -1): Tensor<T, V>
     @Diff

@@ -60,6 +60,8 @@ public operator fun <T : DType, V> Number.div(t: Tensor<T, V>): Tensor<T, V> = t
 // Additional convenience functions
 public fun <T : DType, V> Tensor<T, V>.reshape(newShape: Shape): Tensor<T, V> = ops.reshape(this, newShape)
 public fun <T : DType, V> Tensor<T, V>.relu(): Tensor<T, V> = ops.relu(this)
+public fun <T : DType, V> Tensor<T, V>.leakyRelu(negativeSlope: Float = 0.01f): Tensor<T, V> = ops.leakyRelu(this, negativeSlope)
+public fun <T : DType, V> Tensor<T, V>.elu(alpha: Float = 1.0f): Tensor<T, V> = ops.elu(this, alpha)
 public fun <T : DType, V> Tensor<T, V>.sigmoid(): Tensor<T, V> = ops.sigmoid(this)
 public fun <T : DType, V> Tensor<T, V>.silu(): Tensor<T, V> = ops.silu(this)
 public fun <T : DType, V> Tensor<T, V>.gelu(): Tensor<T, V> = ops.gelu(this)
@@ -75,5 +77,11 @@ public fun <T : DType, V> Tensor<T, V>.upsample2d(
     mode: UpsampleMode = UpsampleMode.Nearest,
     alignCorners: Boolean = false
 ): Tensor<T, V> = ops.upsample2d(this, scale, mode, alignCorners)
+public fun <T : DType, V> Tensor<T, V>.avgPool2d(
+    kernelSize: Pair<Int, Int>,
+    stride: Pair<Int, Int> = kernelSize,
+    padding: Pair<Int, Int> = 0 to 0,
+    countIncludePad: Boolean = true
+): Tensor<T, V> = ops.avgPool2d(this, kernelSize, stride, padding, countIncludePad)
 
 // Global matmul function for the Linear layer usage pattern (removed due to duplicate with extension function)

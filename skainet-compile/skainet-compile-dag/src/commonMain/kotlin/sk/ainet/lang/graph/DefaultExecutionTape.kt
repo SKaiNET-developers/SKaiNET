@@ -611,8 +611,23 @@ public class DefaultGradientTape(
         return listOf(null)
     }
 
+    override fun avgPool2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // AvgPool2d backward is complex, return null for now
+        return listOf(null)
+    }
+
     override fun upsample2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         return listOf(null)
+    }
+
+    override fun leakyReluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val negativeSlope = (attributes["negativeSlope"] as? Float) ?: 0.01f
+        return listOf(leakyReluGrad(upstream, inputs[0], output, negativeSlope))
+    }
+
+    override fun eluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val alpha = (attributes["alpha"] as? Float) ?: 1.0f
+        return listOf(eluGrad(upstream, inputs[0], output, alpha))
     }
 
     override fun reshapeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
@@ -968,6 +983,68 @@ public class DefaultGradientTape(
                     val g = matchedUpstream.data.get(*idx)
                     gradOut.data.set(*idx, value = g)
                 }
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return gradOut
+    }
+
+    private fun <T : DType, V> leakyReluGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, output: Tensor<T, V>, negativeSlope: Float): Tensor<T, V> {
+        val matchedUpstream = matchShape(upstream, output)
+        val gradOut = zerosLike(input)
+        val dims = input.shape.dimensions
+        val idx = IntArray(dims.size)
+
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                val v = input.data.get(*idx)
+                val g = matchedUpstream.data.get(*idx) ?: return
+                val grad: Any = when (v) {
+                    is Float -> if (v >= 0.0f) g else (g as Float) * negativeSlope
+                    is Double -> if (v >= 0.0) g else (g as Double) * negativeSlope
+                    is Int -> if (v >= 0) g else ((g as Int).toFloat() * negativeSlope).toInt()
+                    is Number -> if (v.toDouble() >= 0.0) g else ((g as Number).toFloat() * negativeSlope)
+                    else -> g
+                }
+                @Suppress("UNCHECKED_CAST")
+                gradOut.data.set(*idx, value = grad as V)
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return gradOut
+    }
+
+    private fun <T : DType, V> eluGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, output: Tensor<T, V>, alpha: Float): Tensor<T, V> {
+        val matchedUpstream = matchShape(upstream, output)
+        val gradOut = zerosLike(input)
+        val dims = input.shape.dimensions
+        val idx = IntArray(dims.size)
+
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                val v = input.data.get(*idx) ?: return
+                val o = output.data.get(*idx) ?: return
+                val g = matchedUpstream.data.get(*idx) ?: return
+                // ELU gradient: 1 for x >= 0, output + alpha for x < 0
+                val grad: Any = when (v) {
+                    is Float -> if (v >= 0.0f) g else (g as Float) * ((o as Float) + alpha)
+                    is Double -> if (v >= 0.0) g else (g as Double) * ((o as Double) + alpha)
+                    is Int -> if (v >= 0) g else ((g as Int).toFloat() * ((o as Int).toFloat() + alpha)).toInt()
+                    is Number -> if (v.toDouble() >= 0.0) g else ((g as Number).toFloat() * ((o as Number).toFloat() + alpha))
+                    else -> g
+                }
+                @Suppress("UNCHECKED_CAST")
+                gradOut.data.set(*idx, value = grad as V)
                 return
             }
             for (i in 0 until dims[pos]) {
