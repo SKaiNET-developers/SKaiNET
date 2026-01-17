@@ -78,7 +78,8 @@ class GraphDslGenerator(
                    if (param.type.startsWith("kotlin.collections.List<") || param.type.startsWith("List<")) "List<GraphValue<*>>" else "GraphValue<*>"
                 } else {
                     // Replace generic type parameters with DType/Any if they appear in non-tensor params
-                    param.type.replace("T", "DType").replace("V", "Any")
+                    // Use regex to only replace standalone type parameters, not substrings like "Triple"
+                    param.type.replace(Regex("\\bT\\b"), "DType").replace(Regex("\\bV\\b"), "Any")
                 }
                 
                 // If the parameter is optional but we don't have a default value yet,
@@ -116,7 +117,7 @@ class GraphDslGenerator(
             append(dslParams.joinToString(", "))
             append("): ")
             
-            val returnType = if (method.returnType.isTensor) "GraphValue<*>" else if (method.returnType.isTensorList) "List<GraphValue<*>>" else method.returnType.type.replace("T", "DType").replace("V", "Any")
+            val returnType = if (method.returnType.isTensor) "GraphValue<*>" else if (method.returnType.isTensorList) "List<GraphValue<*>>" else method.returnType.type.replace(Regex("\\bT\\b"), "DType").replace(Regex("\\bV\\b"), "Any")
             appendLine("$returnType {")
             
             // Map parameters to attributes
