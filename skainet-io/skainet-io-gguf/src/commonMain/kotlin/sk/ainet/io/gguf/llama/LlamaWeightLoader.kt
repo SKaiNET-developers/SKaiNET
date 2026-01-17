@@ -91,7 +91,7 @@ public class LlamaWeightLoader(
             val first = raw.firstOrNull()
             return when (first) {
                 is Byte -> ByteArray(raw.size) { (raw[it] as Number).toByte() }
-                is UByte -> UByteArray(raw.size) { (raw[it] as Number).toByte().toUByte() }.toByteArray()
+                is UByte -> ByteArray(raw.size) { (raw[it] as UByte).toByte() }
                 else -> error("Unexpected raw data type ${typeName(first)} for tensor $tensorName")
             }
         }
@@ -156,7 +156,9 @@ public class LlamaWeightLoader(
         internal fun dequantQ4_0(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q4_0")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 18 // 2 (f16 scale) + 16 (32 nibbles)
+            // Calculate blockCount from actual bytes, not nElems, to avoid reading past end
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -179,7 +181,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ5_0(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q5_0")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 22 // 2 (f16 scale) + 4 (qh) + 16 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -210,7 +213,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ8_0(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q8_0")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 34 // 2 (f16 scale) + 32 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -229,7 +233,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ4_1(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q4_1")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 20 // 2 (f16 d) + 2 (f16 m) + 16 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -253,7 +258,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ5_1(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q5_1")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 24 // 2 (f16 d) + 2 (f16 m) + 4 (qh) + 16 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -285,7 +291,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ8_1(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q8_1")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 40 // 4 (f32 d) + 4 (f32 s) + 32 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -309,7 +316,8 @@ public class LlamaWeightLoader(
         internal fun dequantIQ4NL(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "IQ4_NL")
             val blockSize = 32
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 18 // 2 (f16 d) + 16 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -332,7 +340,8 @@ public class LlamaWeightLoader(
         internal fun dequantIQ4XS(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "IQ4_XS")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 2 + 2 + QK_K / 2 + QK_K / 64 // d + scalesH + qs + scalesL = 136
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -365,7 +374,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q2_K")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 2 + 2 + QK_K / 16 + QK_K / 4 // d + dMin + scales + qs = 84
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -400,7 +410,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ3K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q3_K")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 2 + QK_K / 4 + QK_K / 8 + 12 // d + hmask + qs + scales = 110
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -441,7 +452,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ4K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q4_K")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 144 // 2 (f16 d) + 2 (f16 dMin) + 12 (scales) + 128 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -483,7 +495,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ5K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q5_K")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 176 // 2 (f16 d) + 2 (f16 dMin) + 12 (scales) + 32 (qh) + 128 (qs)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -530,7 +543,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ6K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q6_K")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 210 // 2 (f16 d) + 16 (scales) + 128 (ql) + 64 (qh)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -565,7 +579,8 @@ public class LlamaWeightLoader(
         internal fun dequantQ8K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q8_K")
             val blockSize = QK_K
-            val blockCount = max(1, (nElems + blockSize - 1) / blockSize)
+            val bytesPerBlock = 292 // 4 (f32 d) + 256 (qs) + 32 (bsums)
+            val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
@@ -944,10 +959,20 @@ public class LlamaWeightLoader(
                         }
                     }
 
-                    name.contains("attn_q") || name.contains("attn_k") || name.contains("attn_v")
-                            || name.contains("attn_output") -> {
+                    name.contains("attn_q") || name.contains("attn_output") -> {
+                        // Q and O projections are [dim, dim]
                         require(dims.size == 2 && dims.all { it == metadata.embeddingLength }) {
                             "Tensor $name must be [dim, dim]; got $dims"
+                        }
+                    }
+
+                    name.contains("attn_k") || name.contains("attn_v") -> {
+                        // K and V projections support GQA: [dim, kv_dim] where kv_dim = kv_heads * head_size
+                        val headSize = metadata.embeddingLength / metadata.headCount
+                        val kvDim = metadata.kvHeadCount * headSize
+                        val expectedProduct = metadata.embeddingLength * kvDim
+                        require(dims.size == 2 && dims.product() == expectedProduct) {
+                            "Tensor $name must be [dim=${ metadata.embeddingLength }, kv_dim=$kvDim]; got $dims"
                         }
                     }
 
