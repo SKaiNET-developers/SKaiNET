@@ -721,6 +721,93 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
+    override fun <T : DType, V> avgPool2d(
+        input: Tensor<T, V>,
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        countIncludePad: Boolean
+    ): Tensor<T, V> {
+        require(input.rank == 4) { "avgPool2d: input must be 4D (N, C, H, W)" }
+        val n = input.shape[0]
+        val c = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+        val (kH, kW) = kernelSize
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        require(kH > 0 && kW > 0) { "avgPool2d: kernel must be > 0" }
+        require(sH > 0 && sW > 0) { "avgPool2d: stride must be > 0" }
+        fun outDim(inDim: Int, k: Int, s: Int, p: Int): Int = ((inDim + 2 * p - k) / s) + 1
+        val outH = outDim(inH, kH, sH, pH)
+        val outW = outDim(inW, kW, sW, pW)
+        require(outH >= 0 && outW >= 0) { "avgPool2d: negative output size (H=${outH}, W=${outW})" }
+        val outShape = Shape(n, c, outH, outW)
+        val outData = dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+            val bIdx = outIdx[0]
+            val ch = outIdx[1]
+            val oh = outIdx[2]
+            val ow = outIdx[3]
+            val hBase = oh * sH - pH
+            val wBase = ow * sW - pW
+            when (input.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    var sum = 0.0f
+                    var count = 0
+                    var kh = 0
+                    while (kh < kH) {
+                        val ih = hBase + kh
+                        var kw = 0
+                        while (kw < kW) {
+                            val iw = wBase + kw
+                            if (ih in 0 until inH && iw in 0 until inW) {
+                                val v = input.data.get(bIdx, ch, ih, iw) as Float
+                                sum += v
+                                count++
+                            } else if (countIncludePad) {
+                                // Include padding as zero in the count
+                                count++
+                            }
+                            kw++
+                        }
+                        kh++
+                    }
+                    // If countIncludePad is true but no valid elements, use kernel size
+                    val divisor = if (countIncludePad) (kH * kW) else maxOf(count, 1)
+                    @Suppress("UNCHECKED_CAST")
+                    (sum / divisor) as V
+                }
+                sk.ainet.lang.types.Int32::class, sk.ainet.lang.types.Int8::class -> {
+                    var sum = 0
+                    var count = 0
+                    var kh = 0
+                    while (kh < kH) {
+                        val ih = hBase + kh
+                        var kw = 0
+                        while (kw < kW) {
+                            val iw = wBase + kw
+                            if (ih in 0 until inH && iw in 0 until inW) {
+                                val v = input.data.get(bIdx, ch, ih, iw) as Int
+                                sum += v
+                                count++
+                            } else if (countIncludePad) {
+                                count++
+                            }
+                            kw++
+                        }
+                        kh++
+                    }
+                    val divisor = if (countIncludePad) (kH * kW) else maxOf(count, 1)
+                    @Suppress("UNCHECKED_CAST")
+                    (sum / divisor) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for avgPool2d: ${input.dtype}")
+            }
+        }
+        return newTensor(outData, input.dtype, input)
+    }
+
+    @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-reshape")
     override fun <T : DType, V> reshape(
         tensor: Tensor<T, V>,
@@ -954,6 +1041,41 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     (if (v < 0) 0 else v) as V
                 }
                 else -> throw IllegalArgumentException("Unsupported dtype for relu: ${'$'}{tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    override fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v < 0f) negativeSlope * v else v) as V
+                }
+                sk.ainet.lang.types.Int32::class, sk.ainet.lang.types.Int8::class -> {
+                    val v = tensor.data.get(*idx) as Int
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v < 0) (negativeSlope * v).toInt() else v) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for leakyRelu: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    override fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v >= 0f) v else alpha * (kotlin.math.exp(v) - 1f)) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for elu: ${tensor.dtype}")
             }
         }
         return newTensor(outData, tensor.dtype, tensor)

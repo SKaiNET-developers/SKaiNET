@@ -175,6 +175,19 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, input.dtype)
     }
 
+    override fun <T : DType, V> avgPool2d(
+        input: Tensor<T, V>,
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        countIncludePad: Boolean
+    ): Tensor<T, V> {
+        // AvgPool2d has same output shape calculation as MaxPool2d
+        val resultShape = calculateMaxPool2dShape(input.shape, kernelSize, stride, padding)
+        val resultData = dataFactory.zeros<T, V>(resultShape, input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
     override fun <T : DType, V> upsample2d(
         input: Tensor<T, V>,
         scale: Pair<Int, Int>,
@@ -226,6 +239,18 @@ public class VoidTensorOps : TensorOps {
 
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
         // Activation functions preserve shape
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float): Tensor<T, V> {
+        // LeakyReLU activation function preserves shape
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float): Tensor<T, V> {
+        // ELU activation function preserves shape
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
         return VoidOpsTensor(resultData, tensor.dtype)
     }
