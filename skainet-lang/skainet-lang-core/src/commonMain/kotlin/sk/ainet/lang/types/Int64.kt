@@ -20,7 +20,7 @@ public object Int64 : DType {
             Ternary, Int4, Int8, Int16, Int32 -> Int64
             Int64 -> Int64
             UInt8, UInt16, UInt32 -> Int64
-            UInt64 -> Int64               // Best we can do for signed
+            UInt64 -> FP64               // No larger signed integer, use FP64
             FP16, BF16 -> FP64
             FP32 -> FP64
             FP64 -> FP64
