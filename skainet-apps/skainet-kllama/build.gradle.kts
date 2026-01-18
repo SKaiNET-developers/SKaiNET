@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -8,6 +9,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
+    alias(libs.plugins.shadow)
 }
 
 kotlin {
@@ -155,4 +157,27 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+// Shadow JAR configuration for JVM fat JAR
+tasks.register<ShadowJar>("shadowJar") {
+    archiveBaseName.set("kllama")
+    archiveClassifier.set("all")
+    archiveVersion.set("")
+
+    manifest {
+        attributes(
+            "Main-Class" to "sk.ainet.apps.kllama.cli.MainKt",
+            "Add-Opens" to "java.base/jdk.internal.misc",
+            "Multi-Release" to "true"
+        )
+    }
+
+    from(kotlin.jvm().compilations.getByName("main").output)
+    configurations = listOf(project.configurations.getByName("jvmRuntimeClasspath"))
+
+    // Merge service files for proper SPI support
+    mergeServiceFiles()
+
+    dependsOn("jvmJar")
 }
