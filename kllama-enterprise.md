@@ -30,14 +30,14 @@ KLlama is a Kotlin Multiplatform LLM inference runtime. This document outlines t
 | Browser (Wasm) | ✅ | ❌ | Via bindings |
 | Quantized inference | ❌ | ✅ | ✅ |
 | SIMD optimization | Partial | ✅ | ✅ |
-| Memory-mapped I/O | ❌ | ✅ | ✅ |
+| Memory-mapped I/O | ✅ (JVM) | ✅ | ✅ |
 | Multiple architectures | ❌ | ✅ | ✅ |
 | GPU acceleration | ❌ | ❌ | ✅ |
 
 ### Key Gaps
 
 1. **Performance**: Dequantizes all weights to FP32, losing quantization benefits
-2. **Memory**: Loads entire model into heap, causing OOM on larger models
+2. **Memory**: ~~Loads entire model into heap~~ JVM mmap implemented, other platforms pending
 3. **API**: Low-level only, no chat/conversation abstractions
 4. **Models**: LLaMA-only, missing Mistral/Phi/Gemma/Qwen
 5. **Distribution**: Not on Maven Central, no package managers
@@ -438,9 +438,11 @@ fun ComputeBackend.matmulQuantized(
 
 **Goal**: Match jlama performance, enable 7B+ models
 
-### 1.1 Memory-Mapped GGUF Loading
+### 1.1 Memory-Mapped GGUF Loading ✅ COMPLETED
 
 Replace heap-based loading with memory-mapped files for efficient large model handling.
+
+**Implementation**: `MmapLlamaLoader`, `MmapFloatTensorData`, `MmapTensorSource` (JVM)
 
 ```kotlin
 // Current (problematic for large models)
