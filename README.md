@@ -18,8 +18,23 @@ SKaiNET uses a hybrid backend strategy that separates development iteration from
 
 ### SKaiNET is Data
 
-- Data loaders (MNIST, JSON datasets, image helpers)
-- Type‑safe tensors across JVM/JS/Native
+- **Built-in Data Loaders**: `MNIST`, `Fashion-MNIST`, `CIFAR-10`
+- **I/O Formats**: `GGUF`, `ONNX`, `JSON`, `Image` (JPEG, PNG, etc.)
+- **Type-safe Tensors**: Unified API across JVM, JS, and Native
+- **Data Transforms**: Fluent API for data preprocessing, including image resizing, normalization, and tensor conversion.
+- **Transformation DSL**: Compose complex preprocessing pipelines using a type-safe Kotlin DSL.
+
+```kotlin
+// Data Transformation Pipeline
+val transform = transforms<PlatformBitmapImage, Tensor<FP32, Float>> {
+    resize(224, 224)
+    centerCrop(200, 200)
+    toTensor(ctx)
+    normalize(ctx, mean = floatArrayOf(0.485f, 0.456f, 0.406f), std = floatArrayOf(0.229f, 0.224f, 0.225f))
+}
+
+val processedTensor = transform.apply(rawImage)
+```
 
 ```kotlin
 // data loaders
@@ -96,12 +111,18 @@ println(ds.describe())
 
 ### SKaiNET is Compiler
 
-- MLIR/StableHLO based lowering (modules provided in `SKaiNET-compile-*`)
+- **MLIR/StableHLO Backend**: Lowering from high-level Kotlin DSL to MLIR StableHLO dialect.
+- **Optimization Passes**: Extensible transformation API for optimizing the compiled IR.
+    - `ConstantFoldingPass`: Folds arithmetic operations with constant operands.
+    - `OperationFusionPass`: Fuses multiple ops (e.g., Add + ReLU) into efficient kernels.
+    - `DeadCodeEliminationPass`: Removes unused computations.
+
 ```kotlin
-// Illustrative: export graph to JSON/StableHLO IR
-val ir = Compile.toStableHlo(model)
-println(ir.pretty())
+// Applying Compiler Optimizations
+val optimizer = StableHloOptimizer.createDefault()
+val optimizedModule = optimizer.optimize(mlirModule)
 ```
+
 - **Arduino C Code Generation**: Export models to standalone, optimized C99 code with static memory allocation.
 
 ```kotlin
@@ -124,8 +145,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.7.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.3")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -150,15 +171,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.7.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.3")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.8.3")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.7.1")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.7.1")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.8.3")
 }
 ```
 
@@ -168,7 +189,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.7.1</version>
+  <version>0.8.3</version>
 </dependency>
 ```
 
@@ -177,25 +198,25 @@ Maven:
 - Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
 
-## 0.7.1 highlights (with tiny snippets)
+## 0.8.3 highlights (with tiny snippets)
 
-- **Sine Approximation CLI**: Added `skainet-sine-approx-cli` for training models.
-- **Autograd Engine**: Initial support for automatic differentiation and reverse-mode gradients using `DefaultGradientTape`.
-- **Optimization & Training**: New `SgdOptimizer` and training DSL to build and run training loops.
-- **Loss Functions**: Added `MSELoss` and `CrossEntropyLoss` with configurable reduction strategies.
+- **KLlama (Llama 2 port)**: Initial version supporting GGUF models with `mmap` for zero-copy loading.
+- **Quantization & BitNet**: Support for `Q8_0`, `Q4_K`, and BitNet/Ternary (`TQ1_0`, `TQ2_0`) formats.
+- **Streaming & I/O**: Added streaming support for GGUF/ONNX and improved GGUF metadata loading.
+- **Advanced Operations**: Added `LeakyReLU`, `ELU`, `AvgPool2d`, `Conv1d`, and `Conv3d`.
+- **Optimizers & Metrics**: New `Adam`, `AdamW` optimizers and `Accuracy` metrics.
+- **Datasets & Transforms**: Support for `CIFAR-10`, `Fashion-MNIST`, and a new `Data Transform API`.
 
 ```kotlin
-// Example training step with Autograd
-val loss = MSELoss()
-val optimizer = sgd(lr = 0.01)
-
-val (tape, l) = record { loss.forward(model.forward(x, ctx), y, ctx) }
-tape.computeGradients(targets = listOf(l), sources = model.parameters())
-optimizer.step()
+// Example: Streaming inference with KLlama (GGUF)
+val llama = KLlama.load("path/to/model.gguf")
+llama.generate("Once upon a time") { token ->
+    print(token) // streaming output
+}
 ```
 
-- Improved **Graph DSL** with better wiring and recording support.
-- Stability improvements for StableHLO and CUDA backends.
+- **WASM/JS**: Initial support for web-based deployments.
+- **GGUF-only**: Simplified I/O by focusing on GGUF (removed legacy formats).
 
 See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
