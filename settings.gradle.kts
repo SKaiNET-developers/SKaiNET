@@ -60,6 +60,9 @@ include("skainet-models:skainet-model-yolo")
 //include("skainet-integrations:skainet-simple-cpu")
 
 
+// ====== TEST
+include("skainet-test:skainet-test-groundtruth")
+
 // ====== APPS
 //include("skainet-apps:skainet-KGPChat")
 include("skainet-apps:skainet-tensor-tools")
