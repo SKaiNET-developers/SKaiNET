@@ -28,7 +28,8 @@ KLlama is a Kotlin Multiplatform LLM inference runtime. This document outlines t
 | Multiplatform | ✅ | ❌ | ❌ |
 | iOS/Android native | ✅ | ❌ | Via bindings |
 | Browser (Wasm) | ✅ | ❌ | Via bindings |
-| Quantized inference | ❌ | ✅ | ✅ |
+| Quantized inference | 🚧 Planned | ✅ | ✅ |
+| **BitNet/Ternary native** | 🚧 Planned | ❌ | Partial |
 | SIMD optimization | Partial | ✅ | ✅ |
 | Memory-mapped I/O | ✅ (JVM) | ✅ | ✅ |
 | Multiple architectures | ❌ | ✅ | ✅ |
@@ -466,7 +467,97 @@ class MappedGGUFReader(path: Path) {
 
 **Impact**: Enable 7B, 13B, 70B models without OOM
 
-### 1.2 Quantized Inference Kernels
+### 1.2 BitNet / Ternary Quantization Support 🆕 HIGH PRIORITY
+
+Native support for Microsoft's BitNet 1.58-bit models with ternary weights {-1, 0, +1}.
+
+**Why BitNet First?**
+- Simplest quantization format (no scales, no block structure)
+- Fastest inference (addition only, no FP multiply)
+- Unique differentiator (most frameworks don't have native ternary kernels)
+- We already have `Ternary` DType and `DenseTernaryTensorArray`
+
+**Architecture Integration:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Module.forward() calls ctx.ops.matmul(input, weights)          │
+│                              │                                   │
+│                              ▼                                   │
+│  TensorOps.matmul() dispatches based on weights.data type:      │
+│    ├─ FloatArrayTensorData  → matmulFP32()                      │
+│    ├─ TernaryTensorData     → matmulTernary()  ← BitNet!        │
+│    └─ Q4KTensorData         → matmulQ4K()      ← Quantized      │
+│                              │                                   │
+│  Higher layers unchanged - transparent dispatch!                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Tasks:**
+
+1. **TQ1_0 Loader** - Parse GGUF ternary format into `TernaryTensorData`
+```kotlin
+fun loadTQ1_0(bytes: ByteArray, shape: Shape): TernaryTensorData {
+    // TQ1_0: 5 ternary values packed per byte using base-3 encoding
+    // Decode and store in DenseTernaryTensorArray (2-bit per value)
+}
+```
+
+2. **TernaryTensorData** - New TensorData implementation
+```kotlin
+class TernaryTensorData<T : DType>(
+    override val shape: Shape,
+    val packed: DenseTernaryTensorArray  // 2-bit packed storage
+) : TensorData<T, Byte> {
+    // Implements get/set for ternary values
+}
+```
+
+3. **Ternary Matmul Kernel** - The killer feature!
+```kotlin
+// In DefaultCpuOps
+fun matmulTernary(input: Tensor<FP32>, weights: TernaryTensorData): Tensor<FP32> {
+    val output = FloatArray(outDim)
+    for (i in 0 until outDim) {
+        var sum = 0f
+        for (j in 0 until inDim) {
+            when (weights[i, j]) {
+                +1 -> sum += input[j]   // Just ADD
+                -1 -> sum -= input[j]   // Just SUBTRACT
+                 0 -> { }                // Skip (sparse!)
+            }
+        }
+        output[i] = sum
+    }
+    return output
+}
+```
+
+4. **SIMD Ternary Kernel** (JVM Vector API)
+```kotlin
+// Pack ternary as masks, use vector blend operations
+fun matmulTernarySIMD(input: FloatArray, weights: TernaryTensorData): FloatArray {
+    val posMask = weights.getPositiveMask()  // Where weight = +1
+    val negMask = weights.getNegativeMask()  // Where weight = -1
+    // Vector masked add/subtract
+}
+```
+
+**Existing Foundation:**
+| Component | Status | Location |
+|-----------|--------|----------|
+| `Ternary` DType | ✅ | `skainet-lang-core/.../types/Ternary.kt` |
+| `DenseTernaryTensorArray` | ✅ | `skainet-lang-core/.../data/dense/` |
+| GGUF TQ1_0/TQ2_0 enum | ✅ | `GGMLQuantizationType` |
+| Type promotion | ✅ | Ternary → Int8 → FP32 |
+
+**Impact**:
+- **Speed**: 5-10x faster than FP32 (no FP multiply, integer add only)
+- **Memory**: 16x smaller than FP32 (2-bit vs 32-bit)
+- **Unique**: First pure-Kotlin BitNet inference engine
+
+---
+
+### 1.3 Standard Quantized Inference Kernels
 
 Implement native quantized matmul without dequantizing entire tensors.
 
@@ -488,14 +579,14 @@ actual fun createQuantizedKernel(): QuantizedKernel = SimdQuantKernel()
 ```
 
 **Priority order** (by popularity):
-1. Q4_K_M (most common)
-2. Q8_0 (simplest, good quality)
+1. Q8_0 (simplest, good baseline)
+2. Q4_K_M (most common in llama.cpp)
 3. Q4_0 (legacy but common)
 4. Q5_K_M, Q6_K (quality-focused)
 
 **Impact**: 2-4x memory reduction, 2-3x inference speedup
 
-### 1.3 JVM Vector API Integration
+### 1.4 JVM Vector API Integration
 
 Leverage `jdk.incubator.vector` for SIMD operations.
 
@@ -524,7 +615,7 @@ fun dotProductSimd(a: FloatArray, b: FloatArray): Float {
 
 **Impact**: 4-8x speedup for FP32 operations on modern CPUs
 
-### 1.4 KV-Cache Optimization
+### 1.5 KV-Cache Optimization
 
 Move KV-cache off-heap for better memory management.
 
