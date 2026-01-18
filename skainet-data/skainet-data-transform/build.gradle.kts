@@ -41,6 +41,7 @@ kotlin {
             dependencies {
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-data:skainet-data-api"))
+                implementation(project(":skainet-io:skainet-io-image"))
             }
         }
 

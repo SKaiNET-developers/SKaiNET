@@ -44,6 +44,7 @@ include("skainet-backends:benchmarks:jvm-cpu-jmh")
 
 // ====== DATA
 include("skainet-data:skainet-data-api")
+include("skainet-data:skainet-data-transform")
 include("skainet-data:skainet-data-simple")
 
 // ====== IO
