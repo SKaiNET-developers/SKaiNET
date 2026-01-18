@@ -12,6 +12,7 @@ public object Int8 : DType {
             is Int32 -> true    // Can promote to Int32
             is FP16 -> true     // Can promote to FP16
             is FP32 -> true     // Can promote to FP32
+            else -> true        // Compatible with other numeric types
         }
     }
 
@@ -20,9 +21,17 @@ public object Int8 : DType {
             is Ternary -> Int8  // Int8 + Ternary → Int8
             is Int4 -> Int8     // Int8 + Int4 → Int8
             is Int8 -> Int8     // Int8 + Int8 → Int8
+            is Int16 -> Int16   // Int8 + Int16 → Int16
             is Int32 -> Int32   // Int8 + Int32 → Int32
+            is Int64 -> Int64   // Int8 + Int64 → Int64
+            is UInt8 -> Int16   // Int8 + UInt8 → Int16 (smallest type holding both ranges)
+            is UInt16 -> Int32  // Int8 + UInt16 → Int32
+            is UInt32 -> Int64  // Int8 + UInt32 → Int64
+            is UInt64 -> FP64   // Int8 + UInt64 → FP64 (no integer type covers both)
             is FP16 -> FP16     // Int8 + FP16 → FP16
+            is BF16 -> FP32     // Int8 + BF16 → FP32
             is FP32 -> FP32     // Int8 + FP32 → FP32
+            is FP64 -> FP64     // Int8 + FP64 → FP64
         }
     }
 }

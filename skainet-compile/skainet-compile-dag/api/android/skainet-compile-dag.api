@@ -41,34 +41,73 @@ public class sk/ainet/lang/graph/DefaultExecutionTape : sk/ainet/tape/ExecutionT
 	public fun clear ()V
 	public fun copy ()Lsk/ainet/tape/ExecutionTape;
 	public fun getOperations ()Ljava/util/List;
+	public final fun getRecordingStrategy ()Lsk/ainet/tape/TapeRecordingStrategy;
 	public final fun getSession ()Lsk/ainet/lang/trace/TraceSession;
+	public final fun getSessionRef ()Lsk/ainet/lang/trace/TraceSession;
 	public final fun getTraces ()Ljava/util/List;
 	protected final fun get_isRecording ()Z
 	protected final fun get_operationCounter ()J
 	protected final fun get_operations ()Ljava/util/List;
+	protected final fun get_recordingStrategy ()Lsk/ainet/tape/TapeRecordingStrategy;
 	protected final fun get_traces ()Ljava/util/List;
 	public fun isRecording ()Z
 	public fun optimize ()Lsk/ainet/tape/ExecutionTape;
 	public fun prune (Ljava/util/Set;)Lsk/ainet/tape/ExecutionTape;
 	public fun recordOperation (Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Ljava/util/List;)V
-	public final fun recordTrace (Lsk/ainet/lang/trace/OpTrace;)V
+	public fun recordTrace (Lsk/ainet/lang/trace/OpTrace;)V
 	public fun replay ()Ljava/util/List;
+	public final fun setRecordingStrategy (Lsk/ainet/tape/TapeRecordingStrategy;)V
 	public final fun setSession (Lsk/ainet/lang/trace/TraceSession;)V
 	protected final fun set_isRecording (Z)V
 	protected final fun set_operationCounter (J)V
+	protected final fun set_recordingStrategy (Lsk/ainet/tape/TapeRecordingStrategy;)V
 	public fun startRecording ()V
 	public fun stopRecording ()V
 	public final fun toComputeGraph ()Lsk/ainet/lang/graph/ComputeGraph;
 }
 
-public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph/DefaultExecutionTape, sk/ainet/tape/GradientTape {
+public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph/DefaultExecutionTape, sk/ainet/lang/tensor/ops/DifferentiableTensorOps, sk/ainet/tape/GradientTape {
 	public fun <init> ()V
 	public fun <init> (Z)V
 	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun addBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun addScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun clear ()V
 	public fun computeGradients (Ljava/util/List;Ljava/util/List;)Ljava/util/Map;
+	public fun concatBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun conv2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun copy ()Lsk/ainet/tape/ExecutionTape;
+	public fun divScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun divideBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun flattenBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun geluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun getComputeGradients ()Z
+	public fun logSoftmaxBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun matmulBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun maxPool2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun meanBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun mulScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun multiplyBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun rdivScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun recordOperation (Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Ljava/util/List;)V
+	public fun recordTrace (Lsk/ainet/lang/trace/OpTrace;)V
+	public fun reluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun reshapeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun rsubScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun sigmoidBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun siluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun softmaxBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun splitBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun sqrtBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun squeezeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun stopWatching (Ljava/util/List;)V
+	public fun subScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun subtractBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun sumBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun transposeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun unsqueezeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun upsample2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun varianceBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun watch (Ljava/util/List;)V
 }
 
@@ -77,6 +116,7 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun <init> ()V
 	public fun <init> (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/context/Phase;Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/nn/hooks/ForwardHooks;Lsk/ainet/context/MemoryInfo;Lsk/ainet/context/ExecutionStats;Lkotlin/jvm/functions/Function1;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/OpSink;)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/context/Phase;Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/nn/hooks/ForwardHooks;Lsk/ainet/context/MemoryInfo;Lsk/ainet/context/ExecutionStats;Lkotlin/jvm/functions/Function1;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/OpSink;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun backward (Ljava/util/List;Ljava/util/List;)V
 	public fun collectGarbage ()V
 	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun fromData (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -91,16 +131,20 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
-	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
+	public fun getOps ()Lsk/ainet/lang/tensor/ops/KspTensorOps;
+	public synthetic fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public final fun getSession ()Lsk/ainet/lang/trace/TraceSession;
 	public fun getTapeStack ()Lsk/ainet/tape/TapeStack;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public final fun record (Lkotlin/jvm/functions/Function1;)Lkotlin/Pair;
 	public fun resetExecutionStats ()V
-	public final fun startRecording ()V
-	public final fun stopRecording ()Lsk/ainet/tape/ExecutionTape;
+	public fun startRecording ()V
+	public synthetic fun stopRecording ()Ljava/lang/Object;
+	public fun stopRecording ()Lsk/ainet/tape/ExecutionTape;
+	public final fun stopRecordingAndGet ()Lsk/ainet/tape/ExecutionTape;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -249,7 +293,32 @@ public final class sk/ainet/lang/graph/dsl/GraphExecutionResult {
 	public fun toString ()Ljava/lang/String;
 }
 
-public abstract interface class sk/ainet/lang/graph/exec/GraphExecutionContext : sk/ainet/context/ExecutionContext {
+public final class sk/ainet/lang/graph/dsl/GraphProgramCompilerKt {
+	public static final fun toComputeGraph (Lsk/ainet/lang/dag/GraphProgram;Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static synthetic fun toComputeGraph$default (Lsk/ainet/lang/dag/GraphProgram;Lsk/ainet/lang/graph/ComputeGraph;ILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
+}
+
+public final class sk/ainet/lang/graph/dsl/SkainetScope : sk/ainet/lang/tensor/dsl/DataContextDsl {
+	public fun <init> (Lsk/ainet/lang/graph/DefaultGraphExecutionContext;)V
+	public final fun getCtx ()Lsk/ainet/lang/graph/DefaultGraphExecutionContext;
+	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
+	public fun matrix (JJLkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun record (Lkotlin/jvm/functions/Function1;)Lkotlin/Pair;
+	public fun scalar (Ljava/lang/Object;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun tensor (Lkotlin/reflect/KClass;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
+	public fun tensor (Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun tensorOf (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public final fun trainStep (Lsk/ainet/lang/nn/optim/Optimizer;[Lsk/ainet/lang/nn/topology/ModuleParameter;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
+	public fun vector (JLkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun withRequiresGrad (Lsk/ainet/lang/tensor/Tensor;Z)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun withRequiresGrad$default (Lsk/ainet/lang/graph/dsl/SkainetScope;Lsk/ainet/lang/tensor/Tensor;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/graph/dsl/SkainetScopeKt {
+	public static final fun skainet (Lsk/ainet/lang/graph/DefaultGraphExecutionContext;Lkotlin/jvm/functions/Function1;)V
+}
+
+public abstract interface class sk/ainet/lang/graph/exec/GraphExecutionContext : sk/ainet/context/ExecutionContext, sk/ainet/context/TrainingExecutionContext {
 	public abstract fun collectGarbage ()V
 	public abstract fun getBaseOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public abstract fun getCreateTapeFactory ()Lkotlin/jvm/functions/Function1;
@@ -303,7 +372,7 @@ public final class sk/ainet/lang/trace/GraphSink : sk/ainet/lang/trace/OpSink {
 }
 
 public final class sk/ainet/lang/trace/TapeSink : sk/ainet/lang/trace/OpSink {
-	public fun <init> (Lsk/ainet/lang/graph/DefaultExecutionTape;)V
+	public fun <init> (Lsk/ainet/tape/ExecutionTape;)V
 	public fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
 }
 

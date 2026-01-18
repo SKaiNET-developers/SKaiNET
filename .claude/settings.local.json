@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :skainet-lang:skainet-lang-core:jvmTest:*)",
+      "Bash(./gradlew:*)"
+    ]
+  }
+}

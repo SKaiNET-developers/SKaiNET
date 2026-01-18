@@ -12,6 +12,7 @@ public object FP16 : DType {
             is FP16 -> true     // Same type compatibility
             is FP32 -> true     // Can promote to FP32
             is Int32 -> true
+            else -> true        // Compatible with other numeric types
         }
     }
 
@@ -23,6 +24,9 @@ public object FP16 : DType {
             is Int32 -> FP16    // FP16 + Int32 → FP16
             is FP16 -> FP16     // FP16 + FP16 → FP16
             is FP32 -> FP32     // FP16 + FP32 → FP32
+            is FP64 -> FP64     // FP16 + FP64 → FP64
+            is BF16 -> FP32     // FP16 + BF16 → FP32
+            else -> FP32        // Default to FP32 for other types
         }
     }
 }

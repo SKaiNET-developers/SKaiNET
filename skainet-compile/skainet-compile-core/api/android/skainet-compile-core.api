@@ -109,25 +109,17 @@ public abstract interface class sk/ainet/execute/context/dsl/ComputationContextD
 	public abstract fun tensor (Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
 }
 
-public final class sk/ainet/lang/trace/CompositeSink : sk/ainet/lang/trace/OpSink {
-	public fun <init> (Ljava/util/List;)V
-	public fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
-}
-
-public final class sk/ainet/lang/trace/NoOpSink : sk/ainet/lang/trace/OpSink {
-	public static final field INSTANCE Lsk/ainet/lang/trace/NoOpSink;
-	public fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
-}
-
-public abstract interface class sk/ainet/lang/trace/OpSink {
-	public abstract fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
-}
-
 public final class sk/ainet/lang/trace/TraceRecordingSession {
 	public fun <init> ()V
 	public final fun refOf (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/trace/TensorRef;
 	public final fun refsOf (Ljava/util/List;)Ljava/util/List;
 	public final fun resolve (Lsk/ainet/lang/trace/TensorRef;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/tape/ActiveRecordingStrategy : sk/ainet/tape/TapeRecordingStrategy {
+	public fun <init> ()V
+	public fun recordOperation (Lsk/ainet/tape/RecordedOperation;Ljava/util/List;)V
+	public fun recordTrace (Lsk/ainet/lang/trace/OpTrace;Ljava/util/List;)V
 }
 
 public final class sk/ainet/tape/Execution {
@@ -163,6 +155,12 @@ public abstract interface class sk/ainet/tape/GradientTape : sk/ainet/tape/Execu
 	public abstract fun watch (Ljava/util/List;)V
 }
 
+public final class sk/ainet/tape/NoOpRecordingStrategy : sk/ainet/tape/TapeRecordingStrategy {
+	public fun <init> ()V
+	public fun recordOperation (Lsk/ainet/tape/RecordedOperation;Ljava/util/List;)V
+	public fun recordTrace (Lsk/ainet/lang/trace/OpTrace;Ljava/util/List;)V
+}
+
 public final class sk/ainet/tape/RecordedOperation {
 	public fun <init> (Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Ljava/util/List;JLjava/util/Map;)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Ljava/util/List;JLjava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -195,6 +193,11 @@ public final class sk/ainet/tape/SimpleExecutionTape : sk/ainet/tape/ExecutionTa
 	public fun replay ()Ljava/util/List;
 	public fun startRecording ()V
 	public fun stopRecording ()V
+}
+
+public abstract interface class sk/ainet/tape/TapeRecordingStrategy {
+	public abstract fun recordOperation (Lsk/ainet/tape/RecordedOperation;Ljava/util/List;)V
+	public abstract fun recordTrace (Lsk/ainet/lang/trace/OpTrace;Ljava/util/List;)V
 }
 
 public abstract interface class sk/ainet/tape/TapeStack {
