@@ -29,7 +29,7 @@ KLlama is a Kotlin Multiplatform LLM inference runtime. This document outlines t
 | iOS/Android native | ✅ | ❌ | Via bindings |
 | Browser (Wasm) | ✅ | ❌ | Via bindings |
 | Quantized inference | 🚧 Planned | ✅ | ✅ |
-| **BitNet/Ternary native** | 🚧 Planned | ❌ | Partial |
+| **BitNet/Ternary native** | ✅ TQ1_0/TQ2_0 dequant + ternary matmul | ❌ | Partial |
 | SIMD optimization | Partial | ✅ | ✅ |
 | Memory-mapped I/O | ✅ (JVM) | ✅ | ✅ |
 | Multiple architectures | ❌ | ✅ | ✅ |
@@ -467,7 +467,7 @@ class MappedGGUFReader(path: Path) {
 
 **Impact**: Enable 7B, 13B, 70B models without OOM
 
-### 1.2 BitNet / Ternary Quantization Support 🆕 HIGH PRIORITY
+### 1.2 BitNet / Ternary Quantization Support ✅ IMPLEMENTED
 
 Native support for Microsoft's BitNet 1.58-bit models with ternary weights {-1, 0, +1}.
 
@@ -476,6 +476,14 @@ Native support for Microsoft's BitNet 1.58-bit models with ternary weights {-1, 
 - Fastest inference (addition only, no FP multiply)
 - Unique differentiator (most frameworks don't have native ternary kernels)
 - We already have `Ternary` DType and `DenseTernaryTensorArray`
+
+**What's Implemented:**
+- ✅ TQ1_0 dequantization (base-3 packed ternary format, ~1.69 bpw)
+- ✅ TQ2_0 dequantization (2-bit packed ternary format, ~2.06 bpw)
+- ✅ `Ternary2BitTensorData` - compact storage with TQ format encoding
+- ✅ `TernaryMatmul.matmul()` - addition-only kernel (no FP multiply)
+- ✅ `matmulAutoDispatch()` - automatic ternary detection and dispatch
+- ✅ Comprehensive unit tests for all components
 
 **Architecture Integration:**
 ```
@@ -542,13 +550,18 @@ fun matmulTernarySIMD(input: FloatArray, weights: TernaryTensorData): FloatArray
 }
 ```
 
-**Existing Foundation:**
+**Implementation Status:**
 | Component | Status | Location |
 |-----------|--------|----------|
 | `Ternary` DType | ✅ | `skainet-lang-core/.../types/Ternary.kt` |
 | `DenseTernaryTensorArray` | ✅ | `skainet-lang-core/.../data/dense/` |
 | GGUF TQ1_0/TQ2_0 enum | ✅ | `GGMLQuantizationType` |
 | Type promotion | ✅ | Ternary → Int8 → FP32 |
+| `dequantTQ1_0()` | ✅ | `LlamaWeightLoader.kt` |
+| `dequantTQ2_0()` | ✅ | `LlamaWeightLoader.kt` |
+| `Ternary2BitTensorData` | ✅ | `skainet-lang-core/.../data/TernaryTensorData.kt` |
+| `TernaryMatmul` | ✅ | `skainet-lang-core/.../ops/TernaryMatmul.kt` |
+| Unit tests | ✅ | `LlamaQuantDequantTest`, `TernaryTensorDataTest`, `TernaryMatmulTest` |
 
 **Impact**:
 - **Speed**: 5-10x faster than FP32 (no FP multiply, integer add only)

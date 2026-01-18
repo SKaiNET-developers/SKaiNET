@@ -190,4 +190,124 @@ class LlamaQuantDequantTest {
         }
         assertContentEquals(expected.toList(), out.toList())
     }
+
+    @Test
+    fun `dequant TQ2_0 block with scale 1 and all zeros yields minus ones`() {
+        // TQ2_0: 66 bytes = 64 data + 2 f16 scale
+        // All data bytes = 0x00 -> each 2-bit value is 0 -> (0-1) = -1
+        // Scale = 1.0 (0x3C00)
+        val raw = ByteArray(66) { 0x00 }
+        raw[64] = 0x00  // scale low byte
+        raw[65] = 0x3C  // scale high byte (f16 1.0)
+        val out = LlamaWeightLoader.dequantTQ2_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { -1f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ2_0 block with all ones yields zeros`() {
+        // All data bytes = 0x55 -> each 2-bit value is 1 (01 01 01 01) -> (1-1) = 0
+        // Scale = 1.0
+        val raw = ByteArray(66) { 0x55 }
+        raw[64] = 0x00; raw[65] = 0x3C
+        val out = LlamaWeightLoader.dequantTQ2_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { 0f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ2_0 block with all twos yields plus ones`() {
+        // All data bytes = 0xAA -> each 2-bit value is 2 (10 10 10 10) -> (2-1) = +1
+        // Scale = 1.0
+        val raw = ByteArray(66) { 0xAA.toByte() }
+        raw[64] = 0x00; raw[65] = 0x3C
+        val out = LlamaWeightLoader.dequantTQ2_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { 1f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ2_0 block applies scale correctly`() {
+        // All twos (+1) with scale = 2.0 (0x4000)
+        val raw = ByteArray(66) { 0xAA.toByte() }
+        raw[64] = 0x00; raw[65] = 0x40  // f16 2.0
+        val out = LlamaWeightLoader.dequantTQ2_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { 2f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ2_0 block with mixed values`() {
+        // First byte = 0xE4 = 11 10 01 00 in binary
+        // Values: v0=0 (-1), v1=1 (0), v2=2 (+1), v3=3 -> but 3 is invalid, should be clamped to +2
+        // Actually TQ2_0 only uses values 0,1,2. If we see 3, (3-1)=2
+        val raw = ByteArray(66) { 0x55 }  // default to zeros
+        raw[0] = 0xE4.toByte()  // 11_10_01_00: v0=-1, v1=0, v2=+1, v3=+2 (if 3 is allowed)
+        raw[64] = 0x00; raw[65] = 0x3C  // scale = 1.0
+        val out = LlamaWeightLoader.dequantTQ2_0(raw.toList(), 256)
+        // First 4 elements: (0-1)=-1, (1-1)=0, (2-1)=+1, (3-1)=+2
+        kotlin.test.assertEquals(-1f, out[0], 0.001f)
+        kotlin.test.assertEquals(0f, out[1], 0.001f)
+        kotlin.test.assertEquals(1f, out[2], 0.001f)
+        kotlin.test.assertEquals(2f, out[3], 0.001f)  // 3 encodes as +2 when scaled
+    }
+
+    @Test
+    fun `dequant TQ1_0 block with all zeros yields minus ones`() {
+        // TQ1_0: 54 bytes = 48 base-3 + 4 2-bit + 2 f16 scale
+        // All base-3 bytes = 0 means each decoded value is 0 -> (0-1) = -1
+        // All 2-bit bytes = 0 means remaining 16 values are also -1
+        val raw = ByteArray(54) { 0x00 }
+        raw[52] = 0x00; raw[53] = 0x3C  // scale = 1.0
+        val out = LlamaWeightLoader.dequantTQ1_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { -1f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ1_0 block with base3 ones yields zeros`() {
+        // Base-3 encoding: each byte encodes 5 values as v0 + v1*3 + v2*9 + v3*27 + v4*81
+        // For all ones: 1 + 3 + 9 + 27 + 81 = 121 (0x79)
+        // 2-bit packed: 0x55 = 01 01 01 01 = all ones
+        val raw = ByteArray(54) { 0x00 }
+        repeat(48) { raw[it] = 0x79 }  // base-3 all ones
+        repeat(4) { raw[48 + it] = 0x55 }  // 2-bit all ones
+        raw[52] = 0x00; raw[53] = 0x3C  // scale = 1.0
+        val out = LlamaWeightLoader.dequantTQ1_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { 0f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ1_0 block with base3 twos yields plus ones`() {
+        // For all twos: 2 + 6 + 18 + 54 + 162 = 242 (0xF2)
+        // 2-bit packed: 0xAA = 10 10 10 10 = all twos
+        val raw = ByteArray(54) { 0x00 }
+        repeat(48) { raw[it] = 0xF2.toByte() }  // base-3 all twos
+        repeat(4) { raw[48 + it] = 0xAA.toByte() }  // 2-bit all twos
+        raw[52] = 0x00; raw[53] = 0x3C  // scale = 1.0
+        val out = LlamaWeightLoader.dequantTQ1_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { 1f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ1_0 block applies scale correctly`() {
+        // All twos with scale = 2.0
+        val raw = ByteArray(54) { 0x00 }
+        repeat(48) { raw[it] = 0xF2.toByte() }  // base-3 all twos
+        repeat(4) { raw[48 + it] = 0xAA.toByte() }  // 2-bit all twos
+        raw[52] = 0x00; raw[53] = 0x40  // scale = 2.0
+        val out = LlamaWeightLoader.dequantTQ1_0(raw.toList(), 256)
+        assertContentEquals(FloatArray(256) { 2f }.toList(), out.toList())
+    }
+
+    @Test
+    fun `dequant TQ1_0 base3 decoding for mixed values`() {
+        // Test decoding first 5 values from one base-3 byte
+        // Values: 0, 1, 2, 0, 1 -> 0 + 1*3 + 2*9 + 0*27 + 1*81 = 3 + 18 + 81 = 102 (0x66)
+        val raw = ByteArray(54) { 0x79 }  // default all ones
+        raw[0] = 0x66  // first 5 values: -1, 0, +1, -1, 0
+        repeat(4) { raw[48 + it] = 0x55 }  // 2-bit all ones
+        raw[52] = 0x00; raw[53] = 0x3C  // scale = 1.0
+        val out = LlamaWeightLoader.dequantTQ1_0(raw.toList(), 256)
+        kotlin.test.assertEquals(-1f, out[0], 0.001f)
+        kotlin.test.assertEquals(0f, out[1], 0.001f)
+        kotlin.test.assertEquals(1f, out[2], 0.001f)
+        kotlin.test.assertEquals(-1f, out[3], 0.001f)
+        kotlin.test.assertEquals(0f, out[4], 0.001f)
+    }
 }

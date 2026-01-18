@@ -597,6 +597,123 @@ public class LlamaWeightLoader(
             }
             return out
         }
+
+        /**
+         * Dequantize TQ2_0 (Ternary 2-bit) format to FP32.
+         *
+         * TQ2_0 layout per block (256 elements, 66 bytes):
+         * - 64 bytes: quantized data (4 ternary values per byte, 2-bit each)
+         * - 2 bytes: f16 scale
+         *
+         * Values encoded as {0, 1, 2} represent {-1, 0, +1}.
+         * Dequantization: output[i] = (ternary[i] - 1) * scale
+         */
+        internal fun dequantTQ2_0(raw: List<Any>, nElems: Int): FloatArray {
+            val bytes = toByteArray(raw, "TQ2_0")
+            val blockSize = 256
+            val bytesPerBlock = 66 // 64 (qs) + 2 (f16 scale)
+            val blockCount = bytes.size / bytesPerBlock
+            val out = FloatArray(blockCount * blockSize)
+            var offset = 0
+            var outOff = 0
+
+            repeat(blockCount) {
+                // Read quantized values first (64 bytes = 256 values at 2-bit each)
+                val qs = bytes.copyOfRange(offset, offset + 64)
+                offset += 64
+
+                // Read f16 scale (last 2 bytes)
+                val scale = halfToFloat(
+                    (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+                )
+                offset += 2
+
+                // Decode 2-bit values: 4 values per byte
+                // Bit layout: [v3:v2:v1:v0] where each vN is 2 bits
+                for (i in 0 until 64) {
+                    val b = qs[i].toInt() and 0xFF
+                    val v0 = (b and 0x03) - 1         // bits 0-1
+                    val v1 = ((b shr 2) and 0x03) - 1 // bits 2-3
+                    val v2 = ((b shr 4) and 0x03) - 1 // bits 4-5
+                    val v3 = ((b shr 6) and 0x03) - 1 // bits 6-7
+
+                    out[outOff + i * 4 + 0] = v0 * scale
+                    out[outOff + i * 4 + 1] = v1 * scale
+                    out[outOff + i * 4 + 2] = v2 * scale
+                    out[outOff + i * 4 + 3] = v3 * scale
+                }
+                outOff += blockSize
+            }
+            return out
+        }
+
+        /**
+         * Dequantize TQ1_0 (Ternary base-3) format to FP32.
+         *
+         * TQ1_0 layout per block (256 elements, 54 bytes):
+         * - 48 bytes: base-3 packed data (5 values per byte, 240 elements total)
+         * - 4 bytes: 2-bit packed for remaining 16 elements
+         * - 2 bytes: f16 scale
+         *
+         * Base-3 encoding: 5 ternary values packed into one byte (3^5 = 243 < 256).
+         * Values {0, 1, 2} represent {-1, 0, +1}.
+         * Dequantization: output[i] = (ternary[i] - 1) * scale
+         */
+        internal fun dequantTQ1_0(raw: List<Any>, nElems: Int): FloatArray {
+            val bytes = toByteArray(raw, "TQ1_0")
+            val blockSize = 256
+            val bytesPerBlock = 54 // 48 (base-3) + 4 (2-bit) + 2 (f16 scale)
+            val blockCount = bytes.size / bytesPerBlock
+            val out = FloatArray(blockCount * blockSize)
+            var offset = 0
+            var outOff = 0
+
+            repeat(blockCount) {
+                // Read base-3 packed data (48 bytes = 240 elements)
+                val qsBase3 = bytes.copyOfRange(offset, offset + 48)
+                offset += 48
+
+                // Read 2-bit packed data for remaining 16 elements (4 bytes)
+                val qs2bit = bytes.copyOfRange(offset, offset + 4)
+                offset += 4
+
+                // Read f16 scale
+                val scale = halfToFloat(
+                    (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+                )
+                offset += 2
+
+                // Decode base-3 packed values (5 values per byte)
+                // Each byte b encodes: v0 + v1*3 + v2*9 + v3*27 + v4*81
+                var outIdx = 0
+                for (i in 0 until 48) {
+                    var b = qsBase3[i].toInt() and 0xFF
+                    repeat(5) {
+                        val v = (b % 3) - 1  // Extract value and convert to {-1, 0, +1}
+                        out[outOff + outIdx] = v * scale
+                        outIdx++
+                        b /= 3
+                    }
+                }
+
+                // Decode remaining 16 elements from 2-bit packing (4 bytes)
+                for (i in 0 until 4) {
+                    val b = qs2bit[i].toInt() and 0xFF
+                    val v0 = (b and 0x03) - 1
+                    val v1 = ((b shr 2) and 0x03) - 1
+                    val v2 = ((b shr 4) and 0x03) - 1
+                    val v3 = ((b shr 6) and 0x03) - 1
+
+                    out[outOff + 240 + i * 4 + 0] = v0 * scale
+                    out[outOff + 240 + i * 4 + 1] = v1 * scale
+                    out[outOff + 240 + i * 4 + 2] = v2 * scale
+                    out[outOff + 240 + i * 4 + 3] = v3 * scale
+                }
+
+                outOff += blockSize
+            }
+            return out
+        }
     }
 
     /**
@@ -922,7 +1039,9 @@ public class LlamaWeightLoader(
             GGMLQuantizationType.Q6_K,
             GGMLQuantizationType.Q8_K,
             GGMLQuantizationType.IQ4_NL,
-            GGMLQuantizationType.IQ4_XS -> {
+            GGMLQuantizationType.IQ4_XS,
+            GGMLQuantizationType.TQ1_0,
+            GGMLQuantizationType.TQ2_0 -> {
                 when (quantPolicy) {
                     QuantPolicy.RAW_BYTES -> {
                         require(dtype == Int8::class) {
@@ -954,6 +1073,8 @@ public class LlamaWeightLoader(
                             GGMLQuantizationType.Q8_K -> dequantQ8K(raw, rt.nElements)
                             GGMLQuantizationType.IQ4_NL -> dequantIQ4NL(raw, rt.nElements)
                             GGMLQuantizationType.IQ4_XS -> dequantIQ4XS(raw, rt.nElements)
+                            GGMLQuantizationType.TQ1_0 -> dequantTQ1_0(raw, rt.nElements)
+                            GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, rt.nElements)
                             else -> error("Dequantization for ${rt.tensorType} not implemented yet")
                         }
                         @Suppress("UNCHECKED_CAST")
