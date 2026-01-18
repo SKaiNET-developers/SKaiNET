@@ -76,21 +76,26 @@ public final class sk/ainet/apps/kllama/LlamaRuntime {
 	public final fun reset ()V
 }
 
-public final class sk/ainet/apps/kllama/OffheapKvCache : java/lang/AutoCloseable {
+public final class sk/ainet/apps/kllama/OffheapKvCache : java/lang/AutoCloseable, sk/ainet/apps/kllama/KvCache {
 	public fun <init> (III)V
 	public fun close ()V
 	public final fun computeKeyScores (I[FIIIF[F)V
-	public final fun getKey (II[FI)V
-	public static synthetic fun getKey$default (Lsk/ainet/apps/kllama/OffheapKvCache;II[FIILjava/lang/Object;)V
+	public fun getKey (IIII)F
 	public final fun getKeyFloat (I)F
 	public final fun getKeyOffset (II)I
-	public final fun getValue (II[FI)V
-	public static synthetic fun getValue$default (Lsk/ainet/apps/kllama/OffheapKvCache;II[FIILjava/lang/Object;)V
+	public final fun getKeyVector (II[FI)V
+	public static synthetic fun getKeyVector$default (Lsk/ainet/apps/kllama/OffheapKvCache;II[FIILjava/lang/Object;)V
+	public fun getKvDim ()I
+	public fun getNLayers ()I
+	public fun getSeqLen ()I
+	public fun getValue (IIII)F
 	public final fun getValueFloat (I)F
 	public final fun getValueOffset (II)I
+	public final fun getValueVector (II[FI)V
+	public static synthetic fun getValueVector$default (Lsk/ainet/apps/kllama/OffheapKvCache;II[FIILjava/lang/Object;)V
 	public final fun memoryStats ()Lsk/ainet/apps/kllama/OffheapKvCache$MemoryStats;
-	public final fun reset ()V
-	public final fun store (II[FI[FI)V
+	public fun reset ()V
+	public fun store (II[FI[FI)V
 	public final fun store (II[F[F)V
 	public final fun weightedValueSum (I[FIII[FI)V
 	public static synthetic fun weightedValueSum$default (Lsk/ainet/apps/kllama/OffheapKvCache;I[FIII[FIILjava/lang/Object;)V

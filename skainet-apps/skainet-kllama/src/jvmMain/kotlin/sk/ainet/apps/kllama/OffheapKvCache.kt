@@ -21,10 +21,10 @@ import kotlin.math.sqrt
  * @param kvDim KV head dimension (nKvHeads * headSize)
  */
 public class OffheapKvCache(
-    private val nLayers: Int,
-    private val seqLen: Int,
-    private val kvDim: Int
-) : AutoCloseable {
+    override val nLayers: Int,
+    override val seqLen: Int,
+    override val kvDim: Int
+) : KvCache, AutoCloseable {
 
     private val floatsPerLayer = seqLen * kvDim
     private val bytesPerLayer = floatsPerLayer * Float.SIZE_BYTES
@@ -83,7 +83,7 @@ public class OffheapKvCache(
      * @param values Source value array
      * @param valuesOffset Starting offset in values array
      */
-    public fun store(
+    override fun store(
         layerIdx: Int,
         position: Int,
         keys: FloatArray,
@@ -183,7 +183,7 @@ public class OffheapKvCache(
     /**
      * Reset all cached values to zero.
      */
-    public fun reset() {
+    override fun reset() {
         keyFloatBuffer.clear()
         valueFloatBuffer.clear()
 
@@ -220,7 +220,7 @@ public class OffheapKvCache(
     /**
      * Read a key vector at the specified position.
      */
-    public fun getKey(layerIdx: Int, position: Int, dest: FloatArray, destOffset: Int = 0) {
+    public fun getKeyVector(layerIdx: Int, position: Int, dest: FloatArray, destOffset: Int = 0) {
         val offset = (layerIdx * seqLen + position) * kvDim
         keyFloatBuffer.position(offset)
         keyFloatBuffer.get(dest, destOffset, kvDim)
@@ -229,10 +229,26 @@ public class OffheapKvCache(
     /**
      * Read a value vector at the specified position.
      */
-    public fun getValue(layerIdx: Int, position: Int, dest: FloatArray, destOffset: Int = 0) {
+    public fun getValueVector(layerIdx: Int, position: Int, dest: FloatArray, destOffset: Int = 0) {
         val offset = (layerIdx * seqLen + position) * kvDim
         valueFloatBuffer.position(offset)
         valueFloatBuffer.get(dest, destOffset, kvDim)
+    }
+
+    /**
+     * Get a key value at a specific index (KvCache interface).
+     */
+    override fun getKey(layerIdx: Int, position: Int, headOffset: Int, elementIdx: Int): Float {
+        val index = (layerIdx * seqLen + position) * kvDim + headOffset + elementIdx
+        return keyFloatBuffer[index]
+    }
+
+    /**
+     * Get a value at a specific index (KvCache interface).
+     */
+    override fun getValue(layerIdx: Int, position: Int, headOffset: Int, elementIdx: Int): Float {
+        val index = (layerIdx * seqLen + position) * kvDim + headOffset + elementIdx
+        return valueFloatBuffer[index]
     }
 
     /**
