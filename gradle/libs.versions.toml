@@ -21,7 +21,7 @@ kotlin-compile-testing = "1.6.0"
 asciidoctorj = "3.0.1"
 dokka = "2.1.0"
 kotlinxCli = "0.3.6"
-kotlinxBenchmark = "0.4.13"
+kotlinxBenchmark = "0.4.15"
 kotlinxIo = "0.8.2"
 pbandk = "0.16.0"
 
