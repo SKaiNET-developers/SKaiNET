@@ -145,8 +145,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.2")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.2")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -171,15 +171,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.2")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.2")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.8.1")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.8.2")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.8.1")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.8.1")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.8.2")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.8.2")
 }
 ```
 
@@ -189,7 +189,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.8.1</version>
+  <version>0.8.2</version>
 </dependency>
 ```
 
@@ -198,7 +198,7 @@ Maven:
 - Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
 
-## 0.8.1 highlights (with tiny snippets)
+## 0.8.2 highlights (with tiny snippets)
 
 - **KLlama (Llama 2 port)**: Initial version supporting GGUF models with `mmap` for zero-copy loading.
 - **Quantization & BitNet**: Support for `Q8_0`, `Q4_K`, and BitNet/Ternary (`TQ1_0`, `TQ2_0`) formats.

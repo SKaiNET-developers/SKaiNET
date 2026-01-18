@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.1] - 2026-01-18
+## [0.8.2] - 2026-01-18
 
 ### Added
 - **KLlama (Llama 2 port)**: Initial version ported from `llama2-kmp`, supporting GGUF models.
@@ -42,6 +42,9 @@
 - Resolved compilation errors and failing tests in CIFAR-10 support.
 - Fixed KSP and TracingWrapperProcessor tests to match updated log messages.
 - Fixed GGUF metadata loading issues.
+
+## [0.8.1] - 2026-01-18
+- Initial release of 0.8.x series.
 
 ## [0.7.1] - 2026-01-14
 
