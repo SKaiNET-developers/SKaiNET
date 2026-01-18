@@ -5,6 +5,7 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlin.time.measureTime
+import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.kllama.Tokenizer
@@ -14,33 +15,55 @@ import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 
 private fun usage(): Nothing {
-    println("Usage: kllama <model-path> <tokenizer-path> <prompt> [steps=64] [temperature=0.8]")
+    println("Usage: kllama <model-path> <prompt> [tokenizer-path] [steps=64] [temperature=0.8]")
+    println("       For GGUF models, tokenizer-path is optional (uses embedded tokenizer)")
     throw IllegalArgumentException("Invalid arguments")
 }
 
 fun main(args: Array<String>) = runBlocking {
-    if (args.size < 3) usage()
+    if (args.size < 2) usage()
 
     val modelPathStr = args[0]
-    val tokenizerPathStr = args[1]
-    val prompt = args[2]
-    val steps = args.getOrNull(3)?.toIntOrNull() ?: 64
-    val temperature = args.getOrNull(4)?.toFloatOrNull() ?: 0.8f
+    val prompt = args[1]
+
+    // Parse remaining args: tokenizer-path is optional for GGUF
+    var tokenizerPathStr: String? = null
+    var steps = 64
+    var temperature = 0.8f
+
+    // Check if args[2] is a file path or a number (steps)
+    if (args.size > 2) {
+        val arg2 = args[2]
+        if (arg2.toIntOrNull() != null) {
+            // It's steps
+            steps = arg2.toInt()
+            temperature = args.getOrNull(3)?.toFloatOrNull() ?: 0.8f
+        } else {
+            // It's tokenizer path
+            tokenizerPathStr = arg2
+            steps = args.getOrNull(3)?.toIntOrNull() ?: 64
+            temperature = args.getOrNull(4)?.toFloatOrNull() ?: 0.8f
+        }
+    }
 
     val modelPath = Path(modelPathStr)
-    val tokenizerPath = Path(tokenizerPathStr)
 
     if (!SystemFileSystem.exists(modelPath)) {
         error("Model not found: $modelPathStr")
-    }
-    if (!SystemFileSystem.exists(tokenizerPath)) {
-        error("Tokenizer not found: $tokenizerPathStr")
     }
 
     val modelFormat = when {
         modelPathStr.endsWith(".gguf", ignoreCase = true) -> LlamaWeightLoader.Format.GGUF
         modelPathStr.endsWith(".bin", ignoreCase = true) -> LlamaWeightLoader.Format.KARPATHY_BIN
         else -> error("Unknown model extension. Use .gguf or .bin")
+    }
+
+    // For .bin format, tokenizer is required
+    if (modelFormat == LlamaWeightLoader.Format.KARPATHY_BIN && tokenizerPathStr == null) {
+        error("Tokenizer path is required for .bin format models")
+    }
+    if (tokenizerPathStr != null && !SystemFileSystem.exists(Path(tokenizerPathStr))) {
+        error("Tokenizer not found: $tokenizerPathStr")
     }
 
     val ctx = DirectCpuExecutionContext()
@@ -58,8 +81,14 @@ fun main(args: Array<String>) = runBlocking {
         SystemFileSystem.source(modelPath).buffered()
     }
 
-    println("Loading tokenizer from $tokenizerPathStr...")
-    val tokenizer = loadTokenizer(tokenizerPath, runtimeWeights.metadata.vocabSize)
+    // Load tokenizer: use embedded GGUF tokenizer if no external path provided
+    val tokenizer: Tokenizer = if (tokenizerPathStr != null) {
+        println("Loading tokenizer from $tokenizerPathStr...")
+        loadTokenizer(Path(tokenizerPathStr), runtimeWeights.metadata.vocabSize)
+    } else {
+        println("Using embedded GGUF tokenizer...")
+        GGUFTokenizer.fromSource(SystemFileSystem.source(modelPath).buffered())
+    }
 
     val runtime = LlamaRuntime(ctx, runtimeWeights)
     val promptTokens = tokenizer.encode(prompt)

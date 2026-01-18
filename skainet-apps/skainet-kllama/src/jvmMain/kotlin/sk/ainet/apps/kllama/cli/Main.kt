@@ -9,6 +9,7 @@ import kotlin.time.measureTime
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSource
 import kotlinx.io.buffered
+import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.kllama.Tokenizer
@@ -18,44 +19,76 @@ import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 
 private fun usage(): Nothing {
-    println("Usage: kllama <model-path> <tokenizer-path> <prompt> [steps=64] [temperature=0.8]")
+    println("Usage: kllama <model-path> <prompt> [tokenizer-path] [steps=64] [temperature=0.8]")
+    println("       For GGUF models, tokenizer-path is optional (uses embedded tokenizer)")
     exitProcess(1)
 }
 
 fun main(args: Array<String>) {
     runBlocking {
-        if (args.size < 3) usage()
+        if (args.size < 2) usage()
 
         val modelPath = Path.of(args[0])
-        val tokenizerPath = Path.of(args[1])
-        val prompt = args[2]
-    val steps = args.getOrNull(3)?.toIntOrNull() ?: 64
-    val temperature = args.getOrNull(4)?.toFloatOrNull() ?: 0.8f
+        val prompt = args[1]
 
-    if (!modelPath.exists()) error("Model not found: $modelPath")
-    if (!tokenizerPath.exists()) error("Tokenizer not found: $tokenizerPath")
+        // Parse remaining args: tokenizer-path is optional for GGUF
+        var tokenizerPath: Path? = null
+        var steps = 64
+        var temperature = 0.8f
 
-    val format = when (modelPath.extension.lowercase()) {
-        "gguf" -> LlamaWeightLoader.Format.GGUF
-        "bin" -> LlamaWeightLoader.Format.KARPATHY_BIN
-        else -> error("Unknown model extension: ${modelPath.extension}. Use .gguf or .bin")
-    }
+        // Check if args[2] is a file path or a number (steps)
+        if (args.size > 2) {
+            val arg2 = args[2]
+            if (arg2.toIntOrNull() != null) {
+                // It's steps
+                steps = arg2.toInt()
+                temperature = args.getOrNull(3)?.toFloatOrNull() ?: 0.8f
+            } else {
+                // It's tokenizer path
+                tokenizerPath = Path.of(arg2)
+                steps = args.getOrNull(3)?.toIntOrNull() ?: 64
+                temperature = args.getOrNull(4)?.toFloatOrNull() ?: 0.8f
+            }
+        }
 
-    val ctx = DirectCpuExecutionContext()
+        if (!modelPath.exists()) error("Model not found: $modelPath")
+
+        val format = when (modelPath.extension.lowercase()) {
+            "gguf" -> LlamaWeightLoader.Format.GGUF
+            "bin" -> LlamaWeightLoader.Format.KARPATHY_BIN
+            else -> error("Unknown model extension: ${modelPath.extension}. Use .gguf or .bin")
+        }
+
+        // For .bin format, tokenizer is required
+        if (format == LlamaWeightLoader.Format.KARPATHY_BIN && tokenizerPath == null) {
+            error("Tokenizer path is required for .bin format models")
+        }
+        if (tokenizerPath != null && !tokenizerPath.exists()) {
+            error("Tokenizer not found: $tokenizerPath")
+        }
+
+        val ctx = DirectCpuExecutionContext()
         val ingestion = LlamaIngestion(
             ctx = ctx,
             config = LlamaLoadConfig(
                 format = format,
                 quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
-            allowQuantized = false
+                allowQuantized = false
+            )
         )
-    )
 
         val runtimeWeights = ingestion.load {
             Files.newInputStream(modelPath).asSource().buffered()
         }
         val runtime = LlamaRuntime(ctx, runtimeWeights)
-        val tokenizer = loadTokenizer(tokenizerPath, runtimeWeights.metadata.vocabSize)
+
+        // Load tokenizer: use embedded GGUF tokenizer if no external path provided
+        val tokenizer: Tokenizer = if (tokenizerPath != null) {
+            loadTokenizer(tokenizerPath, runtimeWeights.metadata.vocabSize)
+        } else {
+            println("Using embedded GGUF tokenizer...")
+            GGUFTokenizer.fromSource(Files.newInputStream(modelPath).asSource().buffered())
+        }
 
         val promptTokens = tokenizer.encode(prompt)
 
