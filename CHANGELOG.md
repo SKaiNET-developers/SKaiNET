@@ -9,6 +9,9 @@
     - Embedded tokenizer support in GGUF.
     - New quantization formats: `Q8_0`, `Q4_K`, and BitNet/Ternary support (`TQ1_0`, `TQ2_0`).
     - Improved loading and bug fixes for quantization and mapping.
+    - Added `int64` support for GGUF.
+    - Improved GGUF metadata loading.
+- **Streaming Support**: Added streaming support for GGUF and ONNX models.
 - **Advanced Operations**:
     - New activations: `LeakyReLU`, `ELU`.
     - New pooling: `AvgPool2d`.
@@ -21,20 +24,24 @@
 - **Data & Datasets**:
     - Support for `CIFAR-10` and `Fashion-MNIST` datasets.
     - New `Data Transform API` and `Image Transform DSL`.
-- **Testing & Validation**:
+- **Testing & Documentation**:
     - `skainet-test-groundtruth` module for validation against PyTorch.
     - Integration tests for quantized inference and `KvCache`.
     - Shadow JAR support for JVM fat JAR builds.
+    - New documentation for testing architecture with Mermaid diagrams.
 - **WASM/JS**: Initial version of a simple WASM/JS sample.
 
 ### Changed
 - Simplified model support to **GGUF-only** (removed legacy Karpathy `.bin` format support).
 - Improved KLlama loading and robustness.
 - Updated roadmap with Phase 1 completion and multi-backend storage abstraction plans.
+- Improved I/O system and overall robustness.
 
 ### Fixed
 - Fixed various bugs in quantization and memory mapping.
 - Resolved compilation errors and failing tests in CIFAR-10 support.
+- Fixed KSP and TracingWrapperProcessor tests to match updated log messages.
+- Fixed GGUF metadata loading issues.
 
 ## [0.7.1] - 2026-01-14
 
