@@ -21,10 +21,16 @@ class LlamaRuntimeTest {
         val seqLen = 4
         val vocab = 3
 
+        // GGUF format shapes:
+        // - attention weights: [dim, dim] or [dim, kv_dim]
+        // - ffn gate/up: [dim, ff_dim]
+        // - ffn down: [ff_dim, dim]
+        // - token embedding: [dim, vocab]
+        // - output weight: [dim, vocab]
         val ones1d = ctx.full<FP32, Float>(Shape(dim), FP32::class, 1f)
         val ones2d = ctx.full<FP32, Float>(Shape(dim, dim), FP32::class, 0.25f)
-        val gate = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.1f)
-        val down = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)
+        val gateUp = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.1f)  // [dim, ff_dim]
+        val down = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)   // [ff_dim, dim]
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 0f)
 
@@ -35,9 +41,9 @@ class LlamaRuntimeTest {
             wv = ones2d,
             wo = ones2d,
             ffnNorm = ones1d,
-            ffnGate = gate,
+            ffnGate = gateUp,
             ffnDown = down,
-            ffnUp = gate
+            ffnUp = gateUp
         )
 
         val weights = LlamaRuntimeWeights(
@@ -52,12 +58,12 @@ class LlamaRuntimeTest {
                 ropeDimensionCount = headSize,
                 vocabSize = vocab
             ),
-            tokenEmbedding = ctx.full(Shape(vocab, dim), FP32::class, 0.2f),
+            tokenEmbedding = ctx.full(Shape(dim, vocab), FP32::class, 0.2f),  // [dim, vocab]
             ropeFreqReal = ropeReal,
             ropeFreqImag = ropeImag,
             layers = listOf(layer),
             outputNorm = ones1d,
-            outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)
+            outputWeight = ctx.full(Shape(dim, vocab), FP32::class, 0.3f)     // [dim, vocab]
         )
 
         val runtime = LlamaRuntime(ctx, weights)
@@ -75,10 +81,11 @@ class LlamaRuntimeTest {
         val seqLen = 6
         val vocab = 4
 
+        // GGUF format shapes
         val ones1d = ctx.full<FP32, Float>(Shape(dim), FP32::class, 1f)
         val ones2d = ctx.full<FP32, Float>(Shape(dim, dim), FP32::class, 0.1f)
-        val gate = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)
-        val down = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)
+        val gateUp = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)  // [dim, ff_dim]
+        val down = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)    // [ff_dim, dim]
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 0f)
 
@@ -89,9 +96,9 @@ class LlamaRuntimeTest {
             wv = ones2d,
             wo = ones2d,
             ffnNorm = ones1d,
-            ffnGate = gate,
+            ffnGate = gateUp,
             ffnDown = down,
-            ffnUp = gate
+            ffnUp = gateUp
         )
 
         val weights = LlamaRuntimeWeights(
@@ -106,12 +113,12 @@ class LlamaRuntimeTest {
                 ropeDimensionCount = dim,
                 vocabSize = vocab
             ),
-            tokenEmbedding = ctx.full(Shape(vocab, dim), FP32::class, 0.2f),
+            tokenEmbedding = ctx.full(Shape(dim, vocab), FP32::class, 0.2f),  // [dim, vocab]
             ropeFreqReal = ropeReal,
             ropeFreqImag = ropeImag,
             layers = listOf(layer),
             outputNorm = ones1d,
-            outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)
+            outputWeight = ctx.full(Shape(dim, vocab), FP32::class, 0.3f)     // [dim, vocab]
         )
 
         val runtime = LlamaRuntime(ctx, weights)

@@ -14,11 +14,11 @@ import org.khronos.webgl.DataView
 import org.w3c.fetch.Response
 import kotlin.js.Promise
 import sk.ainet.apps.kllama.LlamaRuntime
+import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
 import sk.ainet.apps.kllama.Tokenizer
-import sk.ainet.apps.kllama.TokenizerUtils
 
 private val scope = MainScope()
 
@@ -30,11 +30,9 @@ fun main() {
         suspend fun runDemo() {
             output.textContent = "Loading model...\n"
             try {
-                val modelPath = "models/model.gguf" // change to your filename if different
-                val format = if (modelPath.endsWith(".gguf")) LlamaWeightLoader.Format.GGUF else LlamaWeightLoader.Format.KARPATHY_BIN
+                val modelPath = "models/model.gguf"
 
-                val runtime = loadRuntime(modelPath, format)
-                val tokenizer = loadTokenizer("models/tokenizer.bin", runtime.weights.metadata.vocabSize)
+                val (runtime, tokenizer) = loadRuntimeAndTokenizer(modelPath)
 
                 output.appendChild(document.createTextNode("Generating...\n"))
                 val promptTokens = tokenizer.encode("Hello")
@@ -55,7 +53,7 @@ fun main() {
     }
 }
 
-private suspend fun loadRuntime(path: String, format: LlamaWeightLoader.Format): LlamaRuntime {
+private suspend fun loadRuntimeAndTokenizer(path: String): Pair<LlamaRuntime, Tokenizer> {
     val resp: Response = (window.fetch(path) as Promise<Response>).await()
     if (!resp.ok) error("Failed to fetch model: ${resp.statusText}")
     // On Wasm, use arrayBuffer() and feed bytes into a kotlinx-io Buffer as Source
@@ -66,30 +64,21 @@ private suspend fun loadRuntime(path: String, format: LlamaWeightLoader.Format):
     for (i in 0 until length) {
         bytes[i] = view.getUint8(i).toByte()
     }
-    // Disambiguate buffered() by casting Buffer to RawSource explicitly
-    val buffer = Buffer().apply { write(bytes) }
-    val source: Source = (buffer as RawSource).buffered()
+
+    // Create source for loading weights
+    val buffer1 = Buffer().apply { write(bytes) }
+    val source1: Source = (buffer1 as RawSource).buffered()
     val ctx = DirectCpuExecutionContext()
     val weights = loadLlamaRuntimeWeights(
         ctx = ctx,
-        sourceProvider = { source },
-        format = format,
+        sourceProvider = { source1 },
         quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
     )
-    return LlamaRuntime(ctx, weights)
-}
 
-private suspend fun loadTokenizer(path: String, vocabSize: Int): Tokenizer {
-    val resp: Response = (window.fetch(path) as Promise<Response>).await()
-    if (!resp.ok) error("Failed to fetch tokenizer: ${resp.statusText}")
-    val buf: ArrayBuffer = (resp.arrayBuffer() as Promise<ArrayBuffer>).await()
-    val view = DataView(buf)
-    val length = view.byteLength
-    val bytes = ByteArray(length)
-    for (i in 0 until length) {
-        bytes[i] = view.getUint8(i).toByte()
-    }
-    val buffer = Buffer().apply { write(bytes) }
-    val source: Source = (buffer as RawSource).buffered()
-    return TokenizerUtils.buildTokenizer(source, vocabSize)
+    // Create source for loading tokenizer (need fresh buffer as source is consumed)
+    val buffer2 = Buffer().apply { write(bytes) }
+    val source2: Source = (buffer2 as RawSource).buffered()
+    val tokenizer = GGUFTokenizer.fromSource(source2)
+
+    return LlamaRuntime(ctx, weights) to tokenizer
 }

@@ -7,11 +7,10 @@ import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
 
 /**
- * Thin facade around the GGUF/Karpathy loader that sets sensible defaults for the KLLama app.
+ * Thin facade around the GGUF loader that sets sensible defaults for the KLLama app.
  * Default policy dequantizes to FP32 to ensure parity before quant-aware kernels are wired.
  */
 public data class LlamaLoadConfig(
-    val format: LlamaWeightLoader.Format = LlamaWeightLoader.Format.GGUF,
     val quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
     val allowQuantized: Boolean = false
 )
@@ -21,7 +20,7 @@ public class LlamaIngestion(
     private val config: LlamaLoadConfig = LlamaLoadConfig()
 ) {
     /**
-     * Load LLaMA runtime weights from the provided source (GGUF by default).
+     * Load LLaMA runtime weights from the provided GGUF source.
      *
      * @throws IllegalStateException if metadata/tensors are missing or quantized tensors are present
      * when [config.allowQuantized] is false.
@@ -30,7 +29,6 @@ public class LlamaIngestion(
         return loadLlamaRuntimeWeights(
             ctx = ctx,
             sourceProvider = sourceProvider,
-            format = config.format,
             quantPolicy = config.quantPolicy,
             allowQuantized = config.allowQuantized
         )

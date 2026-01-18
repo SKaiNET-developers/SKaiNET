@@ -2,8 +2,6 @@ package sk.ainet.io.gguf.llama
 
 import kotlinx.io.Source
 import kotlinx.io.buffered
-import kotlinx.io.readByteArray
-import kotlinx.io.readIntLe
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.gguf.GGMLQuantizationType
 import sk.ainet.io.gguf.GGUFReader
@@ -18,7 +16,6 @@ import sk.ainet.lang.types.Int8
 import kotlin.math.pow
 import kotlin.math.max
 import kotlin.ExperimentalUnsignedTypes
-import kotlin.math.abs
 import kotlin.reflect.KClass
 
 public data class LlamaModelMetadata(
@@ -58,19 +55,17 @@ public object LlamaTensorNames {
 }
 
 /**
- * Adapter that loads LLaMA weights either from GGUF (preferred) or Karpathy-style .bin
- * checkpoints and emits them in the canonical gguf tensor naming scheme. Validation covers
- * metadata presence and basic shape consistency for the tensors we materialize.
+ * Adapter that loads LLaMA weights from GGUF files and emits them in the canonical GGUF tensor
+ * naming scheme. Validation covers metadata presence and basic shape consistency for the tensors
+ * we materialize.
  */
 public class LlamaWeightLoader(
     private val sourceProvider: () -> Source,
-    private val format: Format = Format.GGUF,
     private val loadTensorData: Boolean = true,
     private val quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES
     // Note: set loadTensorData=false to only validate metadata; tensors will be materialized
     // lazily when needed.
 ) {
-    public enum class Format { GGUF, KARPATHY_BIN }
     public enum class QuantPolicy {
         /** Keep quantized payloads as raw bytes (Int8 tensor) with quantized shape. */
         RAW_BYTES,
@@ -291,7 +286,7 @@ public class LlamaWeightLoader(
         internal fun dequantQ8_1(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q8_1")
             val blockSize = 32
-            val bytesPerBlock = 40 // 4 (f32 d) + 4 (f32 s) + 32 (qs)
+            val bytesPerBlock = 36 // 2 (f16 d) + 2 (f16 s) + 32 (qs)
             val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
@@ -612,10 +607,7 @@ public class LlamaWeightLoader(
         dtype: KClass<T>,
         onTensorLoaded: (String, Tensor<T, V>) -> Unit
     ): LlamaModelMetadata {
-        return when (format) {
-            Format.GGUF -> loadFromGguf(ctx, dtype, onTensorLoaded, null)
-            Format.KARPATHY_BIN -> loadFromKarpathyBin(ctx, dtype, onTensorLoaded, null)
-        }
+        return loadFromGguf(ctx, dtype, onTensorLoaded, null)
     }
 
     public suspend inline fun <reified T : DType, V> load(
@@ -630,14 +622,8 @@ public class LlamaWeightLoader(
     ): LlamaWeights<T, V> {
         val byName = linkedMapOf<String, Tensor<T, V>>()
         val quantTypes = linkedMapOf<String, GGMLQuantizationType>()
-        val meta = when (format) {
-            Format.GGUF -> loadFromGguf(ctx, dtype, { name, tensor -> byName[name] = tensor }) { name, qt ->
-                quantTypes[name] = qt
-            }
-
-            Format.KARPATHY_BIN -> loadFromKarpathyBin(ctx, dtype, { name, tensor -> byName[name] = tensor }) { name, qt ->
-                quantTypes[name] = qt
-            }
+        val meta = loadFromGguf(ctx, dtype, { name, tensor -> byName[name] = tensor }) { name, qt ->
+            quantTypes[name] = qt
         }
         return LlamaWeights(meta, byName, quantTypes)
     }
@@ -691,178 +677,6 @@ public class LlamaWeightLoader(
         }
 
         return metadata
-    }
-
-    private fun <T : DType, V> loadFromKarpathyBin(
-        ctx: ExecutionContext,
-        dtype: KClass<T>,
-        onTensorLoaded: (String, Tensor<T, V>) -> Unit,
-        quantCallback: ((String, GGMLQuantizationType) -> Unit)?
-    ): LlamaModelMetadata {
-        require(dtype == FP32::class) {
-            "Karpathy .bin loader currently supports FP32 tensors only (got ${dtype.simpleName})"
-        }
-
-        return sourceProvider().buffered().use { buffer ->
-            val metadata = readKarpathyMetadata(buffer)
-            validateMetadata(metadata)
-
-            val headSize = metadata.embeddingLength / metadata.headCount
-
-            // Token embeddings
-            val tokenEmbeddings = buffer.readFloatLeArray(metadata.vocabSize * metadata.embeddingLength)
-            onTensorLoaded(
-                LlamaTensorNames.TOKEN_EMBEDDINGS,
-                ctx.fromFloatArray<T, Float>(
-                    Shape(metadata.vocabSize, metadata.embeddingLength),
-                    dtype,
-                    tokenEmbeddings
-                ) as Tensor<T, V>
-            )
-
-            // Layered weights
-            val baseDim = metadata.embeddingLength
-            val ffDim = metadata.feedForwardLength
-            val layerMatSize = baseDim * baseDim
-            val gateMatSize = ffDim * baseDim
-            val downMatSize = baseDim * ffDim
-
-            val rmsAtt = buffer.readFloatLeArray(metadata.blockCount * baseDim)
-            val wq = buffer.readFloatLeArray(metadata.blockCount * layerMatSize)
-            val wk = buffer.readFloatLeArray(metadata.blockCount * layerMatSize)
-            val wv = buffer.readFloatLeArray(metadata.blockCount * layerMatSize)
-            val wo = buffer.readFloatLeArray(metadata.blockCount * layerMatSize)
-            val rmsFfn = buffer.readFloatLeArray(metadata.blockCount * baseDim)
-            val w1 = buffer.readFloatLeArray(metadata.blockCount * gateMatSize)
-            val w2 = buffer.readFloatLeArray(metadata.blockCount * downMatSize)
-            val w3 = buffer.readFloatLeArray(metadata.blockCount * gateMatSize)
-
-            repeat(metadata.blockCount) { layer ->
-                onTensorLoaded(
-                    LlamaTensorNames.attnNorm(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim),
-                    dtype,
-                    sliceFloats(rmsAtt, layer * baseDim, baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.attnQ(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim, baseDim),
-                    dtype,
-                    sliceFloats(wq, layer * baseDim * baseDim, baseDim * baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.attnK(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim, baseDim),
-                    dtype,
-                    sliceFloats(wk, layer * baseDim * baseDim, baseDim * baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.attnV(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim, baseDim),
-                    dtype,
-                    sliceFloats(wv, layer * baseDim * baseDim, baseDim * baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.attnOut(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim, baseDim),
-                    dtype,
-                    sliceFloats(wo, layer * baseDim * baseDim, baseDim * baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.ffnNorm(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim),
-                    dtype,
-                    sliceFloats(rmsFfn, layer * baseDim, baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.ffnGate(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(ffDim, baseDim),
-                    dtype,
-                    sliceFloats(w1, layer * ffDim * baseDim, ffDim * baseDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.ffnDown(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(baseDim, ffDim),
-                    dtype,
-                    sliceFloats(w2, layer * baseDim * ffDim, baseDim * ffDim)
-                ) as Tensor<T, V>
-            )
-
-                onTensorLoaded(
-                    LlamaTensorNames.ffnUp(layer),
-                ctx.fromFloatArray<T, Float>(
-                    Shape(ffDim, baseDim),
-                    dtype,
-                    sliceFloats(w3, layer * ffDim * baseDim, ffDim * baseDim)
-                ) as Tensor<T, V>
-            )
-            }
-
-            // Final norm
-            val rmsFinal = buffer.readFloatLeArray(metadata.embeddingLength)
-            onTensorLoaded(
-                LlamaTensorNames.OUTPUT_NORM,
-                ctx.fromFloatArray<T, Float>(
-                    Shape(metadata.embeddingLength),
-                    dtype,
-                    rmsFinal
-                ) as Tensor<T, V>
-            )
-
-            // RoPE tables (kept optional and not emitted as tensors yet)
-            val _freqCisReal = buffer.readFloatLeArray(metadata.contextLength * headSize / 2)
-            val _freqCisImag = buffer.readFloatLeArray(metadata.contextLength * headSize / 2)
-            onTensorLoaded(
-                LlamaTensorNames.ROPE_FREQS_REAL,
-                ctx.fromFloatArray<T, Float>(
-                    Shape(metadata.contextLength, headSize / 2),
-                    dtype,
-                    _freqCisReal
-                ) as Tensor<T, V>
-            )
-            onTensorLoaded(
-                LlamaTensorNames.ROPE_FREQS_IMAG,
-                ctx.fromFloatArray<T, Float>(
-                    Shape(metadata.contextLength, headSize / 2),
-                    dtype,
-                    _freqCisImag
-                ) as Tensor<T, V>
-            )
-
-            // Classifier / output weight
-            onTensorLoaded(
-                LlamaTensorNames.OUTPUT_WEIGHT,
-                ctx.fromFloatArray<T, Float>(
-                    Shape(metadata.vocabSize, metadata.embeddingLength),
-                    dtype,
-                    tokenEmbeddings
-                ) as Tensor<T, V>
-            )
-
-            metadata
-        }
     }
 
     private fun metadataFromGguf(
@@ -1043,59 +857,6 @@ public class LlamaWeightLoader(
     }
 
     private fun List<Int>.product(): Int = fold(1) { acc, v -> acc * v }
-
-    private fun bytesToFloat(bytes: ByteArray, littleEndian: Boolean = true): Float {
-        val bits = if (littleEndian) {
-            bytes[0].toInt() and 0xFF or
-                (bytes[1].toInt() and 0xFF shl 8) or
-                (bytes[2].toInt() and 0xFF shl 16) or
-                (bytes[3].toInt() shl 24)
-        } else {
-            bytes[3].toInt() and 0xFF or
-                (bytes[2].toInt() and 0xFF shl 8) or
-                (bytes[1].toInt() and 0xFF shl 16) or
-                (bytes[0].toInt() shl 24)
-        }
-        return Float.fromBits(bits)
-    }
-
-    private fun Source.readFloatLe(): Float = bytesToFloat(readByteArray(4))
-
-    private fun Source.readFloatLeArray(size: Int): FloatArray {
-        val floats = FloatArray(size)
-        for (i in 0 until size) {
-            floats[i] = readFloatLe()
-        }
-        return floats
-    }
-
-    private fun sliceFloats(src: FloatArray, offset: Int, length: Int): FloatArray {
-        val out = FloatArray(length)
-        src.copyInto(out, 0, offset, offset + length)
-        return out
-    }
-
-    private fun readKarpathyMetadata(buffer: Source): LlamaModelMetadata {
-        val dim = buffer.readIntLe()
-        val hiddenDim = buffer.readIntLe()
-        val nLayers = buffer.readIntLe()
-        val nHeads = buffer.readIntLe()
-        val nKvHeads = buffer.readIntLe()
-        val vocabSize = abs(buffer.readIntLe())
-        val seqLen = buffer.readIntLe()
-
-        return LlamaModelMetadata(
-            architecture = "llama",
-            embeddingLength = dim,
-            contextLength = seqLen,
-            blockCount = nLayers,
-            headCount = nHeads,
-            kvHeadCount = nKvHeads,
-            feedForwardLength = hiddenDim,
-            ropeDimensionCount = dim / nHeads,
-            vocabSize = vocabSize
-        )
-    }
 
     private fun <T : DType, V> readerTensorToTensor(
         ctx: ExecutionContext,

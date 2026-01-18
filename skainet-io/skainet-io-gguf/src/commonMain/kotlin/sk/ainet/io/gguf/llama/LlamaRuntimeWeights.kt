@@ -140,18 +140,16 @@ public object LlamaWeightMapper {
 }
 
 /**
- * Convenience loader: reads weights from source (GGUF or Karpathy .bin), maps them into runtime structure.
+ * Convenience loader: reads weights from GGUF source, maps them into runtime structure.
  */
 public suspend fun loadLlamaRuntimeWeights(
     ctx: ExecutionContext,
     sourceProvider: () -> Source,
-    format: LlamaWeightLoader.Format = LlamaWeightLoader.Format.GGUF,
     quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): LlamaRuntimeWeights {
     val loader = LlamaWeightLoader(
         sourceProvider = sourceProvider,
-        format = format,
         quantPolicy = quantPolicy
     )
     val loaded = loader.loadToMap<FP32, Float>(ctx)
@@ -166,12 +164,10 @@ public suspend fun loadLlamaRuntimeWeights(
  */
 public suspend fun loadLlamaRuntimeWeightsDequantized(
     ctx: ExecutionContext,
-    sourceProvider: () -> Source,
-    format: LlamaWeightLoader.Format = LlamaWeightLoader.Format.GGUF
+    sourceProvider: () -> Source
 ): LlamaRuntimeWeights {
     val loader = LlamaWeightLoader(
         sourceProvider = sourceProvider,
-        format = format,
         quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
     )
     val loaded = loader.loadToMap<FP32, Float>(ctx)
