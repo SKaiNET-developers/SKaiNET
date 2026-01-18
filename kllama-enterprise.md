@@ -44,6 +44,396 @@ KLlama is a Kotlin Multiplatform LLM inference runtime. This document outlines t
 
 ---
 
+## Core Architecture: Multi-Backend Storage Abstraction
+
+**Goal**: Enable zero-copy loading and seamless GPU acceleration across all backends (CPU, MLX, Metal, WebGPU, CUDA)
+
+### The Problem
+
+Different compute backends have different memory models:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Memory Landscape                         │
+├─────────────┬─────────────┬─────────────┬──────────────────┤
+│   CPU       │   MLX       │   Metal     │   WebGPU         │
+├─────────────┼─────────────┼─────────────┼──────────────────┤
+│ FloatArray  │ mlx.array   │ MTLBuffer   │ GPUBuffer        │
+│ mmap OK ✓   │ unified mem │ GPU memory  │ GPU memory       │
+│             │ mmap OK* ✓  │ needs copy  │ needs copy       │
+└─────────────┴─────────────┴─────────────┴──────────────────┘
+
+* MLX on Apple Silicon shares physical memory with CPU - zero copy possible!
+```
+
+### Layered Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    High-Level API                            │
+│         model.generate("Hello") → "Hello world!"            │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Tensor Operations                         │
+│              matmul, softmax, attention, etc.               │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Compute Backend                           │
+│         CpuBackend, MlxBackend, MetalBackend, etc.          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Tensor Storage                            │
+│     HostStorage (mmap), DeviceStorage (GPU), Unified        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Data Source                               │
+│              MappedGGUF, Network, Generated                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tensor Data Abstraction
+
+Separate data representation from operations, enabling zero-copy and pluggable backends:
+
+```kotlin
+/**
+ * Abstract tensor data storage - decoupled from compute operations.
+ * Enables zero-copy mmap, quantized storage, and lazy loading.
+ */
+sealed interface TensorData<T> {
+    val size: Int
+    operator fun get(index: Int): T
+    fun slice(offset: Int, length: Int): TensorData<T>
+    fun toArray(): Array<T>  // Only when truly needed
+}
+
+/** Heap-backed data (current implementation) */
+class HeapFloatData(private val array: FloatArray) : TensorData<Float> {
+    override val size = array.size
+    override fun get(index: Int) = array[index]
+    override fun slice(offset: Int, length: Int) =
+        HeapFloatData(array.copyOfRange(offset, offset + length))
+}
+
+/** Memory-mapped data - zero copy! */
+class MappedFloatData(
+    private val buffer: MappedByteBuffer,
+    private val offset: Long,
+    override val size: Int
+) : TensorData<Float> {
+
+    override fun get(index: Int): Float {
+        // Direct access to mapped memory - no copy
+        return buffer.getFloat((offset + index * 4).toInt())
+    }
+
+    override fun slice(offset: Int, length: Int): TensorData<Float> {
+        // Just a view - no copy!
+        return MappedFloatData(buffer, this.offset + offset * 4, length)
+    }
+}
+
+/** Quantized data - dequantizes on access */
+class QuantizedData(
+    private val buffer: MappedByteBuffer,
+    private val offset: Long,
+    override val size: Int,
+    private val quantType: GGMLQuantizationType
+) : TensorData<Float> {
+
+    override fun get(index: Int): Float = dequantizeAt(index)
+
+    // For bulk operations - dequantize a block at a time
+    fun getBlock(blockIndex: Int, output: FloatArray) {
+        dequantizeBlock(blockIndex, output)
+    }
+}
+```
+
+### Storage Abstraction
+
+```kotlin
+/**
+ * Where tensor data physically lives - decoupled from how it's accessed.
+ */
+sealed interface TensorStorage {
+    val sizeBytes: Long
+    val device: Device
+
+    // Transfer to another device (may be zero-copy!)
+    fun transferTo(target: Device): TensorStorage
+}
+
+sealed interface Device {
+    object CPU : Device
+    data class Metal(val deviceId: Int) : Device
+    data class MLX(val stream: Any?) : Device
+    data class WebGPU(val adapter: Any) : Device
+    data class CUDA(val deviceId: Int) : Device
+}
+
+/** Host memory - can be heap or mmap */
+class HostStorage(
+    val memory: HostMemory,
+    override val sizeBytes: Long
+) : TensorStorage {
+    override val device = Device.CPU
+
+    override fun transferTo(target: Device): TensorStorage = when (target) {
+        Device.CPU -> this  // Already there
+        is Device.MLX -> MlxStorage.fromHost(this)  // Zero-copy on Apple Silicon!
+        is Device.Metal -> MetalStorage.fromHost(this)
+        is Device.WebGPU -> WebGPUStorage.fromHost(this)
+        is Device.CUDA -> CudaStorage.fromHost(this)
+    }
+}
+
+/** MLX unified memory storage */
+class MlxStorage(
+    val mlxArray: Any,
+    override val sizeBytes: Long
+) : TensorStorage {
+    override val device = Device.MLX()
+
+    companion object {
+        fun fromHost(host: HostStorage): MlxStorage {
+            // On Apple Silicon: potentially zero-copy!
+            return if (host.memory is MappedMemory) {
+                createFromMappedMemory(host.memory)  // No copy
+            } else {
+                createFromHeap(host.memory)  // Must copy
+            }
+        }
+    }
+}
+```
+
+### Compute Backend Interface
+
+```kotlin
+/**
+ * Backend that executes tensor operations.
+ * Each backend knows how to handle its storage type optimally.
+ */
+interface ComputeBackend {
+    val device: Device
+
+    // Create storage appropriate for this backend
+    fun allocate(shape: Shape, dtype: DType): TensorStorage
+
+    // Import from host (may be zero-copy)
+    fun import(host: HostStorage, hint: ImportHint = ImportHint.DEFAULT): TensorStorage
+
+    // Core operations
+    fun matmul(a: Tensor, b: Tensor): Tensor
+    fun add(a: Tensor, b: Tensor): Tensor
+    fun softmax(x: Tensor, axis: Int): Tensor
+    fun rmsNorm(x: Tensor, weight: Tensor, eps: Float): Tensor
+
+    // Quantized operations (backend decides optimal strategy)
+    fun matmulQuantized(input: Tensor, weights: QuantizedStorage): Tensor
+}
+
+enum class ImportHint {
+    DEFAULT,          // Backend decides
+    PREFER_ZERO_COPY, // Keep in host memory if possible
+    PREFER_DEVICE,    // Copy to device memory
+    LAZY              // Transfer on first use
+}
+```
+
+### Backend Implementations
+
+```kotlin
+/** Pure CPU backend with mmap support */
+class CpuBackend : ComputeBackend {
+    override val device = Device.CPU
+
+    override fun import(host: HostStorage, hint: ImportHint): TensorStorage {
+        return host  // CPU can always use host storage directly - true zero copy!
+    }
+
+    override fun matmulQuantized(input: Tensor, weights: QuantizedStorage): Tensor {
+        // Block-wise dequantization from mmap'd data
+        return quantizedMatmulCpu(input, weights)
+    }
+}
+
+/** MLX backend for Apple Silicon */
+class MlxBackend : ComputeBackend {
+    override val device = Device.MLX()
+
+    override fun import(host: HostStorage, hint: ImportHint): TensorStorage {
+        return when {
+            // Apple Silicon unified memory: zero-copy possible!
+            host.memory is MappedMemory && isAppleSilicon() -> {
+                MlxStorage.zeroCopyFromMapped(host.memory)
+            }
+            hint == ImportHint.LAZY -> LazyMlxStorage(host)
+            else -> MlxStorage.copyFrom(host)
+        }
+    }
+}
+
+/** Metal backend for explicit GPU control */
+class MetalBackend(val metalDevice: MTLDevice) : ComputeBackend {
+    override fun import(host: HostStorage, hint: ImportHint): TensorStorage {
+        return when {
+            isAppleSilicon() && host.memory is MappedMemory -> {
+                // Shared storage mode - GPU accesses host memory directly
+                val buffer = metalDevice.makeBuffer(
+                    bytesNoCopy = host.memory.pointer,
+                    length = host.sizeBytes,
+                    options = .storageModeShared
+                )
+                MetalStorage(buffer)
+            }
+            else -> {
+                // Copy to GPU private memory
+                metalDevice.makeBuffer(bytes = host.toByteArray())
+            }
+        }
+    }
+}
+```
+
+### Zero-Copy Flow on Apple Silicon
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    Apple Silicon (M1/M2/M3/M4)                       │
+│                     Unified Memory Architecture                       │
+│                                                                       │
+│   ┌─────────────┐                      ┌─────────────────────────┐   │
+│   │  GGUF File  │──── mmap() ────────▶ │   Physical Memory       │   │
+│   │   (SSD)     │                      │   ┌─────────────────┐   │   │
+│   └─────────────┘                      │   │  Tensor Data    │   │   │
+│                                        │   │  (weights)      │   │   │
+│                                        │   └────────┬────────┘   │   │
+│                                        │            │            │   │
+│   ┌─────────────┐                      │     ┌──────┴──────┐     │   │
+│   │  CPU Cores  │◀─────────────────────┼─────│  Shared     │     │   │
+│   └─────────────┘     same memory!     │     │  View       │     │   │
+│                                        │     └──────┬──────┘     │   │
+│   ┌─────────────┐                      │            │            │   │
+│   │  GPU Cores  │◀─────────────────────┼────────────┘            │   │
+│   │  (MLX/Metal)│     zero copy!       │                         │   │
+│   └─────────────┘                      └─────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
+
+Result: Load 70B model, GPU inference, ~0 bytes copied!
+```
+
+### Platform-Specific Mmap Implementation
+
+```kotlin
+// Common interface
+expect class MappedMemory(path: Path) : Closeable {
+    val size: Long
+    fun getFloat(offset: Long): Float
+    fun getPointer(): Pointer  // For zero-copy GPU import
+}
+
+// JVM
+actual class MappedMemory(path: Path) : Closeable {
+    private val channel = FileChannel.open(path, READ)
+    private val buffer = channel.map(READ_ONLY, 0, channel.size())
+
+    actual fun getFloat(offset: Long) = buffer.getFloat(offset.toInt())
+}
+
+// Native (macOS/Linux/iOS)
+actual class MappedMemory(path: String) : Closeable {
+    private val fd = open(path, O_RDONLY)
+    private val size = lseek(fd, 0, SEEK_END)
+    private val ptr = mmap(null, size, PROT_READ, MAP_PRIVATE, fd, 0)!!
+
+    actual fun getFloat(offset: Long): Float {
+        return (ptr + offset)!!.reinterpret<FloatVar>().pointed.value
+    }
+
+    actual fun getPointer() = ptr  // Direct pointer for Metal/MLX
+}
+
+// Wasm/JS - chunked loading (no true mmap, but similar API)
+actual class MappedMemory(arrayBuffer: ArrayBuffer) : Closeable {
+    private val view = DataView(arrayBuffer)
+    actual fun getFloat(offset: Long) = view.getFloat32(offset.toInt(), littleEndian = true)
+}
+```
+
+### Backend Compatibility Matrix
+
+| Feature | CPU | MLX | Metal | WebGPU | CUDA |
+|---------|-----|-----|-------|--------|------|
+| Mmap zero-copy load | ✅ | ✅* | ✅* | ❌ | ❌ |
+| Unified memory | N/A | ✅ | ✅* | ❌ | ❌ |
+| Lazy transfer | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Quantized matmul | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Block dequant | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+*On Apple Silicon only
+
+### Key Benefits
+
+| Aspect | Heap (Current) | Mmap + Backend Abstraction |
+|--------|---------------|----------------------------|
+| Loading 7B model | ~14GB heap | ~0 heap (OS manages) |
+| Tensor slicing | Copy data | View (zero-copy) |
+| Memory pressure | OOM crash | OS pages out unused |
+| GPU transfer | Always copy | Zero-copy on unified memory |
+| Backend switch | Rewrite code | Change one line |
+
+### Usage Example
+
+```kotlin
+// Load with optimal backend for platform
+val backend = ComputeBackend.optimal()  // Auto-detects MLX, Metal, CPU, etc.
+val model = KLlama.load("llama3-70b-q4.gguf", backend)
+
+// On Apple Silicon with MLX: literally zero copies from disk to GPU!
+model.generate("Hello")
+
+// Explicit backend selection
+val cpuModel = KLlama.load("model.gguf", CpuBackend())
+val mlxModel = KLlama.load("model.gguf", MlxBackend())
+val metalModel = KLlama.load("model.gguf", MetalBackend())
+```
+
+### Integration with Quantized Inference
+
+The real power: mmap + backend abstraction + block-wise dequantization:
+
+```kotlin
+// Quantized matmul - never fully dequantizes!
+fun ComputeBackend.matmulQuantized(
+    input: Tensor,              // Small: [1, dim] on device
+    weights: QuantizedStorage,  // Large: mmap'd Q4_K blocks
+    output: Tensor              // Small: [1, out_dim] on device
+) {
+    for (block in 0 until weights.blockCount) {
+        // Dequantize one block (32-256 values) at a time
+        val dequantized = scratchBuffer.slice(0, blockSize)
+        weights.dequantizeBlock(block, dequantized)
+
+        // Backend-specific optimized partial matmul
+        accumulateMatmul(input, dequantized, output, block)
+    }
+}
+```
+
+**Result**: Run 70B models in 16GB RAM with GPU acceleration.
+
+---
+
 ## Phase 1: Performance Foundation
 
 **Goal**: Match jlama performance, enable 7B+ models
