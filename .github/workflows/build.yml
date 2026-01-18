@@ -55,13 +55,4 @@ jobs:
           path: |
             **/build/reports/tests/**
             **/build/test-results/**
-          retention-days: 30
-
-      - name: Upload JS browser test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jsBrowserTest-report
-          path: skainet-lang/skainet-lang-models/build/reports/tests/jsBrowserTest
-          retention-days: 30
-
+          retention-days: 14
