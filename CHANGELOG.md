@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.3] - 2026-01-18
+
+### Changed
+- Updated version to 0.8.3.
+
 ## [0.8.2] - 2026-01-18
 
 ### Added
