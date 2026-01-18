@@ -583,11 +583,11 @@ class TracingWrapperProcessor(
             .toList()
 
         if (tracingSymbols.isEmpty() && graphDslSymbols.isEmpty() && networkDslSymbols.isEmpty()) {
-            logger.info("No interfaces annotated with @GenerateTracingWrapper or @GenerateGraphDsl found")
+            logger.info("No interfaces annotated with @GenerateTracingWrapper, @GenerateGraphDsl, or @GenerateNetworkDsl found")
             return emptyList()
         }
 
-        logger.info("Found ${tracingSymbols.size} tracing interfaces and ${graphDslSymbols.size} Graph DSL interfaces")
+        logger.info("Found ${tracingSymbols.size} tracing interfaces, ${graphDslSymbols.size} Graph DSL interfaces, and ${networkDslSymbols.size} Network DSL interfaces")
 
         // Process each annotated interface
         val unprocessedSymbols = mutableListOf<KSAnnotated>()
