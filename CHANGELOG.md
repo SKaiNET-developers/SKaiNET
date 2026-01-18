@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.0] - 2026-01-18
+## [0.8.1] - 2026-01-18
 
 ### Added
 - **KLlama (Llama 2 port)**: Initial version ported from `llama2-kmp`, supporting GGUF models.
