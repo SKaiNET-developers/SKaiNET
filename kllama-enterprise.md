@@ -646,6 +646,47 @@ All Phase 1 "Performance Foundation" items are complete:
 
 **Test Coverage:** Unit tests + integration tests (`LlamaRuntimeQuantizedTest`)
 
+### Phase 1 Verification (Pending)
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Memory Profiling | 🔲 | Compare heap usage: HeapKvCache vs OffheapKvCache |
+| GC Analysis | 🔲 | Measure GC pause times during long inference sessions |
+| End-to-end Test | 🔲 | Load real Q4_K GGUF model, run inference, verify output coherence |
+| Benchmark Suite | 🔲 | tok/s comparison: quantized vs dequantized path |
+
+**Memory Profiling Plan:**
+```kotlin
+// Test scenario: Generate 1000 tokens with 4K context
+fun profileMemory(cacheType: String, cache: KvCache) {
+    val runtime = LlamaRuntime(ctx, weights, cache)
+
+    // Measure before
+    val heapBefore = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+
+    // Run generation
+    runtime.generate(prompt, steps = 1000)
+
+    // Measure after + GC stats
+    System.gc()
+    val heapAfter = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+    val gcTime = ManagementFactory.getGarbageCollectorMXBeans().sumOf { it.collectionTime }
+
+    println("$cacheType: heap=${heapAfter/1024/1024}MB, gcTime=${gcTime}ms")
+}
+
+// Compare
+profileMemory("HeapKvCache", HeapKvCache(nLayers, seqLen, kvDim))
+profileMemory("OffheapKvCache", OffheapKvCache(nLayers, seqLen, kvDim))
+```
+
+**Expected Results:**
+| Metric | HeapKvCache | OffheapKvCache | Improvement |
+|--------|-------------|----------------|-------------|
+| Heap usage | ~X MB | ~Y MB | -Z% |
+| GC pauses | ~A ms | ~B ms | -C% |
+| Max context | Limited by heap | Limited by RAM | Nx longer |
+
 ---
 
 ## Phase 2: Developer Experience
