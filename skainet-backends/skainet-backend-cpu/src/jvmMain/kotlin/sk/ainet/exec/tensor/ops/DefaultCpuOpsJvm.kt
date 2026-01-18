@@ -7,6 +7,8 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
+import sk.ainet.lang.tensor.data.Q8_0TensorData
+import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -41,8 +43,73 @@ internal class DefaultCpuOpsJvm(
     }
 
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        // Try quantized matmul path first (FP32 input x quantized weights)
+        chooseQuantizedMatmul(a, b)?.let { return it }
+        // Fallback to standard FP32 matmul
         chooseMatmul(a, b)?.let { return it }
         return super.matmul(a, b)
+    }
+
+    /**
+     * Dispatch to vectorized quantized matmul kernels for Q8_0 and Q4_K weights.
+     * Input must be FP32, weights can be Q8_0TensorData or Q4_KTensorData.
+     */
+    private fun <T : DType, V> chooseQuantizedMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
+        // Input must be FP32 with FloatArray backing
+        if (a.dtype != FP32::class) return null
+        val aData = a.data as? FloatArrayTensorData<*> ?: return null
+        if (a.shape.rank != 2) return null
+
+        val bData = b.data
+        val bShape = b.shape
+        if (bShape.rank != 2) return null
+
+        val batchSize = a.shape[0]
+        val inputDim = a.shape[1]
+        val weightInputDim = bShape[0]
+        val outputDim = bShape[1]
+
+        if (inputDim != weightInputDim) return null
+
+        return when (bData) {
+            is Q8_0TensorData -> {
+                val outBuffer = FloatArray(batchSize * outputDim)
+                for (batch in 0 until batchSize) {
+                    val inputOffset = batch * inputDim
+                    val outputOffset = batch * outputDim
+                    JvmQuantizedVectorKernels.matmulQ8_0Vec(
+                        aData.buffer,
+                        bData.packedData,
+                        inputDim,
+                        outputDim,
+                        outBuffer,
+                        outputOffset
+                    )
+                }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            is Q4_KTensorData -> {
+                val outBuffer = FloatArray(batchSize * outputDim)
+                for (batch in 0 until batchSize) {
+                    val inputOffset = batch * inputDim
+                    val outputOffset = batch * outputDim
+                    JvmQuantizedVectorKernels.matmulQ4_KVec(
+                        aData.buffer,
+                        bData.packedData,
+                        inputDim,
+                        outputDim,
+                        outBuffer,
+                        outputOffset
+                    )
+                }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            else -> null
+        }
     }
 
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {

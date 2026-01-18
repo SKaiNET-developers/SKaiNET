@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KLLama Wasm Demo</title>
+  <style>
+    body { font-family: sans-serif; margin: 1.5rem; }
+    #output { white-space: pre-wrap; border: 1px solid #ddd; padding: 1rem; min-height: 200px; }
+    button { padding: 0.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>KLLama Wasm Demo</h1>
+  <p>Drop a tiny GGUF (or Karpathy .bin) and tokenizer into <code>src/wasmJsMain/resources/models/</code> as <code>model.gguf</code> and <code>tokenizer.bin</code>, then click run.</p>
+  <button id="run">Run Demo</button>
+  <div id="output"></div>
+  <script type="application/javascript">
+    document.getElementById("run").addEventListener("click", () => {
+      // Kotlin/JS main() runs on load; this just ensures the bundle is loaded.
+      if (typeof wasmExports === "undefined") {
+        console.warn("Bundle not loaded yet; ensure the Kotlin wasm script is included.");
+      }
+    });
+  </script>
+  <!-- The Kotlin/Wasm bundle will be injected by the build (wasmJs browser target). -->
+</body>
+</html>

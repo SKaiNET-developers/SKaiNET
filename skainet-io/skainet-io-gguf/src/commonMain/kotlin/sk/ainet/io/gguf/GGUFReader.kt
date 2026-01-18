@@ -408,7 +408,8 @@ class GGUFReader(
             var npDims = dims.reversed()
             val (blockSize, typeSize) = GGML_QUANT_SIZES[ggmlType]
                 ?: throw IllegalArgumentException("Invalid quantization type")
-            val nBytes = nElems.toInt() * typeSize / blockSize
+            // Use Long arithmetic to avoid overflow for large tensors
+            val nBytes = (nElems.toLong() * typeSize / blockSize).toInt()
             val dataOffs = startOffs + offsetTensor[0].toInt()
 
             // For non-native/quantized types, tensor payload is stored as bytes

@@ -61,5 +61,5 @@ include("skainet-models:skainet-model-yolo")
 
 
 // ====== APPS
-//include("skainet-apps:skainet-KGPChat")
 include("skainet-apps:skainet-tensor-tools")
+include("skainet-apps:skainet-kllama")
