@@ -27,7 +27,8 @@ public object Int16 : DType {
             UInt16 -> Int32               // Need larger signed to hold UInt16
             UInt32 -> Int64
             UInt64 -> Int64               // Best we can do
-            FP16, BF16 -> FP32
+            FP16 -> FP16
+            BF16 -> FP32
             FP32 -> FP32
             FP64 -> FP64
         }

@@ -63,6 +63,7 @@ kotlin {
             dependencies {
                 implementation(libs.junit)
                 implementation(libs.kotlinx.coroutines)
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
     }

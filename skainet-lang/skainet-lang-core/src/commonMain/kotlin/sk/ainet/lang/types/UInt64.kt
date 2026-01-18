@@ -9,7 +9,8 @@ public object UInt64 : DType {
 
     override fun isCompatible(other: DType): Boolean {
         return when (other) {
-            Ternary, Int4, Int8, Int16, Int32, Int64 -> true
+            Ternary, Int4, Int8, Int16, Int32 -> true
+            Int64 -> false  // UInt64 range exceeds Int64
             UInt8, UInt16, UInt32, UInt64 -> true
             FP16, BF16, FP32, FP64 -> true
         }

@@ -36,6 +36,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun getDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	protected final fun gradStateFrom ([Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/GradState;
 	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun mapIndex ([ILsk/ainet/lang/tensor/Shape;)[I
 	public fun matmul (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -43,6 +44,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun mean (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
 	public fun mulScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun multiply (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	protected final fun newTensor (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;[Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rdivScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun requireSameDType (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
@@ -65,12 +67,18 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 }
 
 protected final class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase$CpuTensor : sk/ainet/lang/tensor/Tensor {
-	public fun <init> (Lsk/ainet/lang/tensor/data/TensorData;Lsk/ainet/lang/tensor/ops/TensorOps;Lkotlin/reflect/KClass;)V
+	public fun <init> (Lsk/ainet/lang/tensor/data/TensorData;Lsk/ainet/lang/tensor/ops/TensorOps;Lkotlin/reflect/KClass;Lsk/ainet/lang/tensor/GradState;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/data/TensorData;Lsk/ainet/lang/tensor/ops/TensorOps;Lkotlin/reflect/KClass;Lsk/ainet/lang/tensor/GradState;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun accumulateGrad (Lsk/ainet/lang/tensor/Tensor;)V
 	public fun getData ()Lsk/ainet/lang/tensor/data/TensorData;
 	public fun getDtype ()Lkotlin/reflect/KClass;
+	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
+	public fun getGradState ()Lsk/ainet/lang/tensor/GradState;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getRank ()I
+	public fun getRequiresGrad ()Z
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getVolume ()I
+	public fun zeroGrad ()V
 }
 
