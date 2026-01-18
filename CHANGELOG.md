@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.8.0] - 2026-01-18
+
+### Added
+- **KLlama (Llama 2 port)**: Initial version ported from `llama2-kmp`, supporting GGUF models.
+- **GGUF Enhancements**:
+    - Support for `mmap` for zero-copy GGUF tensor loading.
+    - Embedded tokenizer support in GGUF.
+    - New quantization formats: `Q8_0`, `Q4_K`, and BitNet/Ternary support (`TQ1_0`, `TQ2_0`).
+    - Improved loading and bug fixes for quantization and mapping.
+- **Advanced Operations**:
+    - New activations: `LeakyReLU`, `ELU`.
+    - New pooling: `AvgPool2d`.
+    - New convolutions: `Conv1d`, `Conv3d`.
+- **Optimizers & Training**:
+    - Added `Adam` and `AdamW` optimizers.
+    - Comprehensive loss function library.
+    - New `Metric` interface with `Accuracy` implementation.
+    - KSP-based DSL generator for Network activations.
+- **Data & Datasets**:
+    - Support for `CIFAR-10` and `Fashion-MNIST` datasets.
+    - New `Data Transform API` and `Image Transform DSL`.
+- **Testing & Validation**:
+    - `skainet-test-groundtruth` module for validation against PyTorch.
+    - Integration tests for quantized inference and `KvCache`.
+    - Shadow JAR support for JVM fat JAR builds.
+- **WASM/JS**: Initial version of a simple WASM/JS sample.
+
+### Changed
+- Simplified model support to **GGUF-only** (removed legacy Karpathy `.bin` format support).
+- Improved KLlama loading and robustness.
+- Updated roadmap with Phase 1 completion and multi-backend storage abstraction plans.
+
+### Fixed
+- Fixed various bugs in quantization and memory mapping.
+- Resolved compilation errors and failing tests in CIFAR-10 support.
+
 ## [0.7.1] - 2026-01-14
 
 ### Added
