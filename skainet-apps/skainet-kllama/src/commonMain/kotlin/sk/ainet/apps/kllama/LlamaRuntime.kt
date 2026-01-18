@@ -28,14 +28,33 @@ import sk.ainet.lang.types.FP32
 /**
  * Minimal runtime that executes a LLaMA decoder using SKaiNET tensors and a CPU execution context.
  * Supports single-token autoregressive generation with a KV cache.
+ *
+ * @param ctx ExecutionContext for tensor operations
+ * @param weights LLaMA model weights
+ * @param kvCache KV cache implementation (uses platform-optimal cache if null)
+ * @param ropeFreqBase Base frequency for RoPE positional encoding
+ * @param eps Epsilon for RMS normalization
+ * @param random Random generator for sampling
  */
 public class LlamaRuntime(
     private val ctx: ExecutionContext,
     val weights: LlamaRuntimeWeights,
+    private val kvCache: KvCache? = null,
     private val ropeFreqBase: Float = 10000f,
     private val eps: Float = 1e-5f,
     private val random: Random = Random.Default
 ) {
+    /**
+     * Secondary constructor for backward compatibility.
+     */
+    public constructor(
+        ctx: ExecutionContext,
+        weights: LlamaRuntimeWeights,
+        ropeFreqBase: Float = 10000f,
+        eps: Float = 1e-5f,
+        random: Random = Random.Default
+    ) : this(ctx, weights, null, ropeFreqBase, eps, random)
+
     private companion object {
         const val BOS_TOKEN: Int = 1
     }
@@ -52,9 +71,17 @@ public class LlamaRuntime(
     // GQA: number of query heads per KV head group
     private val nHeadsPerKv = nHeads / nKvHeads
 
-    // KV cache sized for KV heads (smaller than query heads for GQA)
-    private val keyCache = FloatArray(nLayers * seqLen * kvDim)
-    private val valueCache = FloatArray(nLayers * seqLen * kvDim)
+    // KV cache: use provided cache, or fall back to legacy FloatArray implementation
+    private val cache: KvCache = kvCache ?: HeapKvCache(nLayers, seqLen, kvDim)
+
+    // Legacy arrays for backward compatibility (deprecated, use KvCache instead)
+    @Deprecated("Use KvCache interface instead")
+    private val keyCache: FloatArray
+        get() = (cache as? HeapKvCache)?.keyArray ?: FloatArray(0)
+    @Deprecated("Use KvCache interface instead")
+    private val valueCache: FloatArray
+        get() = (cache as? HeapKvCache)?.valueArray ?: FloatArray(0)
+
     private var position: Int = 0
 
     private val embedding = Embedding(
@@ -70,8 +97,7 @@ public class LlamaRuntime(
 
     /** Clear KV caches and rewind position. */
     public fun reset() {
-        keyCache.fill(0f)
-        valueCache.fill(0f)
+        cache.reset()
         position = 0
     }
 
@@ -256,9 +282,7 @@ public class LlamaRuntime(
     private fun cacheKvGqa(layerIdx: Int, k: Tensor<FP32, Float>, v: Tensor<FP32, Float>, pos: Int) {
         val kBuf = k.expectFloatBuffer()
         val vBuf = v.expectFloatBuffer()
-        val base = (layerIdx * seqLen + pos) * kvDim
-        kBuf.copyInto(keyCache, base, 0, kvDim)
-        vBuf.copyInto(valueCache, base, 0, kvDim)
+        cache.store(layerIdx, pos, kBuf, 0, vBuf, 0)
     }
 
     /** GQA-aware attention: Q has nHeads, KV cache has nKvHeads */
@@ -271,13 +295,13 @@ public class LlamaRuntime(
             val qHeadOffset = h * headSize
             // Map query head to its corresponding KV head
             val kvHeadIdx = h / nHeadsPerKv
+            val kvHeadOffset = kvHeadIdx * headSize
             val scores = FloatArray(pos + 1)
 
             for (t in 0..pos) {
-                val cacheBase = (layerIdx * seqLen + t) * kvDim + kvHeadIdx * headSize
                 var score = 0f
                 for (i in 0 until headSize) {
-                    score += qBuf[qHeadOffset + i] * keyCache[cacheBase + i]
+                    score += qBuf[qHeadOffset + i] * cache.getKey(layerIdx, t, kvHeadOffset, i)
                 }
                 scores[t] = score * scale
             }
@@ -285,24 +309,23 @@ public class LlamaRuntime(
             softmaxInPlace(scores)
 
             for (t in 0..pos) {
-                val cacheBase = (layerIdx * seqLen + t) * kvDim + kvHeadIdx * headSize
                 val weight = scores[t]
                 for (i in 0 until headSize) {
-                    out[qHeadOffset + i] += weight * valueCache[cacheBase + i]
+                    out[qHeadOffset + i] += weight * cache.getValue(layerIdx, t, kvHeadOffset, i)
                 }
             }
         }
         return out
     }
 
+    @Deprecated("Use cacheKvGqa for GQA-aware caching")
     private fun cacheKv(layerIdx: Int, k: Tensor<FP32, Float>, v: Tensor<FP32, Float>, pos: Int) {
         val kBuf = k.expectFloatBuffer()
         val vBuf = v.expectFloatBuffer()
-        val base = (layerIdx * seqLen + pos) * dim
-        kBuf.copyInto(keyCache, base, 0, dim)
-        vBuf.copyInto(valueCache, base, 0, dim)
+        cache.store(layerIdx, pos, kBuf, 0, vBuf, 0)
     }
 
+    @Deprecated("Use attentionGqa for GQA-aware attention")
     private fun attention(layerIdx: Int, q: Tensor<FP32, Float>, pos: Int): FloatArray {
         val qBuf = q.expectFloatBuffer()
         val out = FloatArray(dim)
@@ -313,10 +336,9 @@ public class LlamaRuntime(
             val scores = FloatArray(pos + 1)
 
             for (t in 0..pos) {
-                val cacheBase = (layerIdx * seqLen + t) * dim + headOffset
                 var score = 0f
                 for (i in 0 until headSize) {
-                    score += qBuf[headOffset + i] * keyCache[cacheBase + i]
+                    score += qBuf[headOffset + i] * cache.getKey(layerIdx, t, headOffset, i)
                 }
                 scores[t] = score * scale
             }
@@ -324,10 +346,9 @@ public class LlamaRuntime(
             softmaxInPlace(scores)
 
             for (t in 0..pos) {
-                val cacheBase = (layerIdx * seqLen + t) * dim + headOffset
                 val weight = scores[t]
                 for (i in 0 until headSize) {
-                    out[headOffset + i] += weight * valueCache[cacheBase + i]
+                    out[headOffset + i] += weight * cache.getValue(layerIdx, t, headOffset, i)
                 }
             }
         }
