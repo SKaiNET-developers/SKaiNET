@@ -9,6 +9,15 @@
 ### 🌟 Vision
 SKaiNET aims to democratize "Edge AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
 
+> [!IMPORTANT]
+> **About the name**
+>
+> “SKaiNET” is a **working project name** chosen early in the project’s life as part of a personal learning and experimentation effort, before any trademark considerations were known.
+>
+> The name is **not intended to reference, infringe, or imply association with any existing trademarks, companies, or products**. It is not a commercial brand and is **not claimed or assignable** to any company or organization that contributors may be affiliated with.
+>
+> If a naming conflict arises, the project name may be changed in the future.
+
 ### 🏗️ Architecture
 SKaiNET uses a hybrid backend strategy that separates development iteration from production deployment.
 
