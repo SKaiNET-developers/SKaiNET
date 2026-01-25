@@ -10,6 +10,8 @@ public final class sk/ainet/apps/kllama/GGUFTokenizer : sk/ainet/apps/kllama/Tok
 public final class sk/ainet/apps/kllama/GGUFTokenizer$Companion {
 	public final fun fromGGUF (Lsk/ainet/io/gguf/GGUFReader;Z)Lsk/ainet/apps/kllama/GGUFTokenizer;
 	public static synthetic fun fromGGUF$default (Lsk/ainet/apps/kllama/GGUFTokenizer$Companion;Lsk/ainet/io/gguf/GGUFReader;ZILjava/lang/Object;)Lsk/ainet/apps/kllama/GGUFTokenizer;
+	public final fun fromRandomAccessSource (Lsk/ainet/io/RandomAccessSource;Z)Lsk/ainet/apps/kllama/GGUFTokenizer;
+	public static synthetic fun fromRandomAccessSource$default (Lsk/ainet/apps/kllama/GGUFTokenizer$Companion;Lsk/ainet/io/RandomAccessSource;ZILjava/lang/Object;)Lsk/ainet/apps/kllama/GGUFTokenizer;
 	public final fun fromSource (Lkotlinx/io/Source;Z)Lsk/ainet/apps/kllama/GGUFTokenizer;
 	public static synthetic fun fromSource$default (Lsk/ainet/apps/kllama/GGUFTokenizer$Companion;Lkotlinx/io/Source;ZILjava/lang/Object;)Lsk/ainet/apps/kllama/GGUFTokenizer;
 }
@@ -45,6 +47,7 @@ public final class sk/ainet/apps/kllama/LlamaIngestion {
 	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/apps/kllama/LlamaLoadConfig;)V
 	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/apps/kllama/LlamaLoadConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun load (Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun loadStreaming (Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class sk/ainet/apps/kllama/LlamaLoadConfig {

@@ -2,8 +2,10 @@ package sk.ainet.apps.kllama
 
 import kotlinx.io.Source
 import kotlinx.io.buffered
+import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGUFReader
 import sk.ainet.io.gguf.ReaderField
+import sk.ainet.io.gguf.StreamingGGUFReader
 
 /**
  * Tokenizer that extracts vocabulary from GGUF file metadata.
@@ -80,6 +82,112 @@ class GGUFTokenizer private constructor(
             }
 
             return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId)
+        }
+
+        /**
+         * Create a tokenizer using streaming API.
+         * Parses metadata only (~1MB memory), suitable for large models.
+         * The source is closed after reading metadata.
+         */
+        fun fromRandomAccessSource(source: RandomAccessSource, debug: Boolean = false): GGUFTokenizer {
+            return StreamingGGUFReader.open(source).use { reader ->
+                fromStreamingFields(reader.fields, debug)
+            }
+        }
+
+        /**
+         * Create a tokenizer from StreamingGGUFReader fields.
+         * StreamingGGUFReader.fields returns direct values (Map<String, Any?>),
+         * not ReaderField objects.
+         */
+        private fun fromStreamingFields(fields: Map<String, Any?>, debug: Boolean = false): GGUFTokenizer {
+            // Extract vocabulary tokens (stored as List<String> in streaming reader)
+            val tokensValue = fields["tokenizer.ggml.tokens"]
+                ?: error("GGUF file missing tokenizer.ggml.tokens field")
+            val vocab = extractStringList(tokensValue)
+
+            if (debug) {
+                println("DEBUG: Vocab size = ${vocab.size}")
+                println("DEBUG: First 10 tokens:")
+                vocab.take(10).forEachIndexed { idx, token ->
+                    val bytes = token.encodeToByteArray()
+                    val hexStr = bytes.joinToString(" ") { b ->
+                        val hex = (b.toInt() and 0xFF).toString(16).uppercase()
+                        if (hex.length == 1) "0$hex" else hex
+                    }
+                    println("  [$idx] = '$token' (bytes: $hexStr)")
+                }
+                println("DEBUG: Tokens around index 1000:")
+                vocab.drop(1000).take(5).forEachIndexed { idx, token ->
+                    println("  [${1000 + idx}] = '$token'")
+                }
+            }
+
+            // Extract BPE scores
+            val scoresValue = fields["tokenizer.ggml.scores"]
+            val scores = if (scoresValue != null) {
+                extractFloatList(scoresValue)
+            } else {
+                FloatArray(vocab.size) { 0f }
+            }
+
+            // Extract special token IDs
+            val bosTokenId = fields["tokenizer.ggml.bos_token_id"]?.toIntValue() ?: DEFAULT_BOS_TOKEN_ID
+            val eosTokenId = fields["tokenizer.ggml.eos_token_id"]?.toIntValue() ?: DEFAULT_EOS_TOKEN_ID
+            val unkTokenId = fields["tokenizer.ggml.unknown_token_id"]?.toIntValue() ?: DEFAULT_UNK_TOKEN_ID
+
+            if (debug) {
+                println("DEBUG: BOS=$bosTokenId, EOS=$eosTokenId, UNK=$unkTokenId")
+            }
+
+            return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId)
+        }
+
+        /**
+         * Extract a list of strings from streaming field value.
+         */
+        @Suppress("UNCHECKED_CAST")
+        private fun extractStringList(value: Any): List<String> {
+            return when (value) {
+                is List<*> -> value.filterIsInstance<String>()
+                else -> error("Expected List<String> for tokens field, got ${value::class.simpleName}")
+            }
+        }
+
+        /**
+         * Extract float array from streaming field value.
+         */
+        @Suppress("UNCHECKED_CAST")
+        private fun extractFloatList(value: Any): FloatArray {
+            return when (value) {
+                is List<*> -> {
+                    val floats = mutableListOf<Float>()
+                    for (item in value) {
+                        when (item) {
+                            is Float -> floats.add(item)
+                            is Double -> floats.add(item.toFloat())
+                            is Number -> floats.add(item.toFloat())
+                        }
+                    }
+                    floats.toFloatArray()
+                }
+                else -> error("Expected List<Number> for scores field, got ${value::class.simpleName}")
+            }
+        }
+
+        /**
+         * Convert streaming field value to Int.
+         */
+        private fun Any?.toIntValue(): Int? = when (this) {
+            is Int -> this
+            is UInt -> this.toInt()
+            is Long -> this.toInt()
+            is ULong -> this.toInt()
+            is Short -> this.toInt()
+            is UShort -> this.toInt()
+            is Byte -> this.toInt()
+            is UByte -> this.toInt()
+            else -> null
         }
 
         private fun extractStringArray(field: ReaderField): List<String> {
