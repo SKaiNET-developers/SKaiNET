@@ -52,6 +52,7 @@ kotlin {
             dependencies {
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(libs.kotlinx.io.core)
+                implementation(libs.kotlinx.coroutines)
 
                 implementation(libs.kotlinx.serialization.json)
             }
@@ -79,6 +80,13 @@ kotlin {
         val wasmJsMain by getting {
             dependencies {
                 implementation(libs.kotlinx.coroutines)
+                implementation(libs.kotlinx.browser)
+            }
+        }
+
+        val wasmJsTest by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
     }

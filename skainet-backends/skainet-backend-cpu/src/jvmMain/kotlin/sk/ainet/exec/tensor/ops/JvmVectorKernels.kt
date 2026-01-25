@@ -197,4 +197,655 @@ internal object JvmVectorKernels {
         }
     }
     // endregion
+
+    // region Conv2d (im2col + vectorized matmul)
+
+    /**
+     * Optimized conv2d using im2col transformation + vectorized matmul.
+     * Converts convolution into matrix multiplication for better cache utilization and SIMD.
+     *
+     * @param input Input tensor data in NCHW format, flattened
+     * @param weight Weight tensor data in (C_out, C_in, kH, kW) format, flattened
+     * @param bias Optional bias data of shape (C_out)
+     * @param n Batch size
+     * @param cIn Input channels
+     * @param inH Input height
+     * @param inW Input width
+     * @param cOut Output channels
+     * @param kH Kernel height
+     * @param kW Kernel width
+     * @param sH Stride height
+     * @param sW Stride width
+     * @param pH Padding height
+     * @param pW Padding width
+     * @param outH Output height
+     * @param outW Output width
+     * @param output Pre-allocated output buffer of size (n * cOut * outH * outW)
+     */
+    fun conv2dIm2Col(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inH: Int, inW: Int,
+        cOut: Int, kH: Int, kW: Int,
+        sH: Int, sW: Int, pH: Int, pW: Int,
+        outH: Int, outW: Int,
+        output: FloatArray
+    ) {
+        val colSize = cIn * kH * kW
+        val patchCount = outH * outW
+
+        // Process each batch
+        for (batch in 0 until n) {
+            val inputOffset = batch * cIn * inH * inW
+            val outputOffset = batch * cOut * outH * outW
+
+            // im2col: extract patches into column matrix
+            // col shape: (patchCount, colSize) = (outH*outW, cIn*kH*kW)
+            val col = FloatArray(patchCount * colSize)
+            im2colNCHW(input, inputOffset, cIn, inH, inW, kH, kW, sH, sW, pH, pW, outH, outW, col)
+
+            // weight shape: (cOut, cIn*kH*kW) - already in correct layout
+            // matmul: col @ weight^T => (patchCount, cOut)
+            // We compute: for each patch p, for each output channel oc:
+            //   out[p, oc] = sum over k: col[p, k] * weight[oc, k]
+
+            // Transpose weight for better memory access (weight is cOut x colSize)
+            // After transpose: weightT is colSize x cOut
+            // But actually we want col @ weightT which means: (patchCount x colSize) @ (colSize x cOut)
+            // Output is (patchCount x cOut)
+
+            // Actually for NCHW output we need (cOut, patchCount) then reshape
+            // Let's compute weight @ col^T = (cOut, colSize) @ (colSize, patchCount) = (cOut, patchCount)
+
+            matmulConv(weight, cOut, colSize, col, patchCount, output, outputOffset, bias)
+        }
+    }
+
+    /**
+     * Extract image patches into columns (im2col for NCHW format).
+     */
+    private fun im2colNCHW(
+        input: FloatArray,
+        inputOffset: Int,
+        cIn: Int, inH: Int, inW: Int,
+        kH: Int, kW: Int,
+        sH: Int, sW: Int,
+        pH: Int, pW: Int,
+        outH: Int, outW: Int,
+        col: FloatArray
+    ) {
+        val colSize = cIn * kH * kW
+        var colIdx = 0
+
+        for (oh in 0 until outH) {
+            for (ow in 0 until outW) {
+                val hStart = oh * sH - pH
+                val wStart = ow * sW - pW
+
+                for (c in 0 until cIn) {
+                    val inputChannelOffset = inputOffset + c * inH * inW
+                    for (kh in 0 until kH) {
+                        val ih = hStart + kh
+                        for (kw in 0 until kW) {
+                            val iw = wStart + kw
+                            col[colIdx++] = if (ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
+                                input[inputChannelOffset + ih * inW + iw]
+                            } else {
+                                0f // Zero padding
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Vectorized matmul for conv2d: weight @ col^T + bias
+     * weight: (cOut, colSize)
+     * col: (patchCount, colSize) - we treat as colSize x patchCount for the matmul
+     * output: (cOut, patchCount) written to output buffer
+     */
+    private fun matmulConv(
+        weight: FloatArray,
+        cOut: Int,
+        colSize: Int,
+        col: FloatArray,
+        patchCount: Int,
+        output: FloatArray,
+        outputOffset: Int,
+        bias: FloatArray?
+    ) {
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(colSize)
+
+        for (oc in 0 until cOut) {
+            val weightRowOffset = oc * colSize
+            val biasVal = bias?.get(oc) ?: 0f
+
+            for (p in 0 until patchCount) {
+                // Compute dot product: weight[oc, :] · col[p, :]
+                var idx = 0
+                var accVec = FloatVector.zero(floatSpecies)
+
+                while (idx < loopBound) {
+                    val vw = FloatVector.fromArray(floatSpecies, weight, weightRowOffset + idx)
+                    val vc = FloatVector.fromArray(floatSpecies, col, p * colSize + idx)
+                    accVec = accVec.add(vw.mul(vc))
+                    idx += step
+                }
+
+                var acc = accVec.reduceLanes(VectorOperators.ADD)
+
+                // Scalar tail
+                while (idx < colSize) {
+                    acc += weight[weightRowOffset + idx] * col[p * colSize + idx]
+                    idx++
+                }
+
+                output[outputOffset + oc * patchCount + p] = acc + biasVal
+            }
+        }
+    }
+
+    /**
+     * Direct vectorized conv2d without im2col for small kernels.
+     * More memory efficient for 1x1 convolutions.
+     */
+    fun conv2dDirect1x1(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inH: Int, inW: Int,
+        cOut: Int,
+        output: FloatArray
+    ) {
+        val spatialSize = inH * inW
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(cIn)
+
+        for (batch in 0 until n) {
+            val inputBatchOffset = batch * cIn * spatialSize
+            val outputBatchOffset = batch * cOut * spatialSize
+
+            for (oc in 0 until cOut) {
+                val weightRowOffset = oc * cIn
+                val biasVal = bias?.get(oc) ?: 0f
+                val outputChannelOffset = outputBatchOffset + oc * spatialSize
+
+                for (sp in 0 until spatialSize) {
+                    var idx = 0
+                    var accVec = FloatVector.zero(floatSpecies)
+
+                    while (idx < loopBound) {
+                        val vw = FloatVector.fromArray(floatSpecies, weight, weightRowOffset + idx)
+                        // Gather input values for this spatial position across channels
+                        // input[batch, ic, h, w] = input[inputBatchOffset + ic * spatialSize + sp]
+                        // This is strided access - need to handle differently
+
+                        // For 1x1 conv, we can reorganize: instead of looping over channels with SIMD,
+                        // we can loop over spatial positions with SIMD
+                        idx += step
+                    }
+
+                    // Fall back to scalar for strided channel access
+                    var acc = 0f
+                    for (ic in 0 until cIn) {
+                        acc += weight[weightRowOffset + ic] * input[inputBatchOffset + ic * spatialSize + sp]
+                    }
+                    output[outputChannelOffset + sp] = acc + biasVal
+                }
+            }
+        }
+    }
+
+    /**
+     * Optimized 1x1 conv with channel-last reordering for better SIMD utilization.
+     */
+    fun conv2d1x1Optimized(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inH: Int, inW: Int,
+        cOut: Int,
+        output: FloatArray
+    ) {
+        val spatialSize = inH * inW
+        val step = floatSpecies.length()
+
+        for (batch in 0 until n) {
+            val inputBatchOffset = batch * cIn * spatialSize
+            val outputBatchOffset = batch * cOut * spatialSize
+
+            // Reorder input to channel-last: (spatial, cIn)
+            val inputReordered = FloatArray(spatialSize * cIn)
+            for (sp in 0 until spatialSize) {
+                for (ic in 0 until cIn) {
+                    inputReordered[sp * cIn + ic] = input[inputBatchOffset + ic * spatialSize + sp]
+                }
+            }
+
+            // Now we can do efficient matmul: inputReordered @ weight^T
+            // inputReordered: (spatialSize, cIn)
+            // weight: (cOut, cIn)
+            // output: (spatialSize, cOut)
+
+            val loopBound = floatSpecies.loopBound(cIn)
+
+            for (sp in 0 until spatialSize) {
+                val inputRowOffset = sp * cIn
+
+                for (oc in 0 until cOut) {
+                    val weightRowOffset = oc * cIn
+                    val biasVal = bias?.get(oc) ?: 0f
+
+                    var idx = 0
+                    var accVec = FloatVector.zero(floatSpecies)
+
+                    while (idx < loopBound) {
+                        val vi = FloatVector.fromArray(floatSpecies, inputReordered, inputRowOffset + idx)
+                        val vw = FloatVector.fromArray(floatSpecies, weight, weightRowOffset + idx)
+                        accVec = accVec.add(vi.mul(vw))
+                        idx += step
+                    }
+
+                    var acc = accVec.reduceLanes(VectorOperators.ADD)
+                    while (idx < cIn) {
+                        acc += inputReordered[inputRowOffset + idx] * weight[weightRowOffset + idx]
+                        idx++
+                    }
+
+                    // Write to output in NCHW format
+                    output[outputBatchOffset + oc * spatialSize + sp] = acc + biasVal
+                }
+            }
+        }
+    }
+    // endregion
+
+    // region Conv1d (im2col + vectorized matmul)
+
+    /**
+     * Optimized conv1d using im2col transformation + vectorized matmul.
+     */
+    fun conv1dIm2Col(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inL: Int,
+        cOut: Int, kL: Int,
+        stride: Int, padding: Int, dilation: Int,
+        outL: Int,
+        output: FloatArray
+    ) {
+        val colSize = cIn * kL
+        val patchCount = outL
+
+        for (batch in 0 until n) {
+            val inputOffset = batch * cIn * inL
+            val outputOffset = batch * cOut * outL
+
+            // im2col for 1D
+            val col = FloatArray(patchCount * colSize)
+            im2col1D(input, inputOffset, cIn, inL, kL, stride, padding, dilation, outL, col)
+
+            // matmul: weight @ col^T
+            matmulConv1d(weight, cOut, colSize, col, patchCount, output, outputOffset, bias)
+        }
+    }
+
+    private fun im2col1D(
+        input: FloatArray,
+        inputOffset: Int,
+        cIn: Int, inL: Int,
+        kL: Int,
+        stride: Int, padding: Int, dilation: Int,
+        outL: Int,
+        col: FloatArray
+    ) {
+        var colIdx = 0
+        for (ol in 0 until outL) {
+            val lStart = ol * stride - padding
+            for (c in 0 until cIn) {
+                val inputChannelOffset = inputOffset + c * inL
+                for (kl in 0 until kL) {
+                    val il = lStart + kl * dilation
+                    col[colIdx++] = if (il >= 0 && il < inL) {
+                        input[inputChannelOffset + il]
+                    } else {
+                        0f
+                    }
+                }
+            }
+        }
+    }
+
+    private fun matmulConv1d(
+        weight: FloatArray,
+        cOut: Int,
+        colSize: Int,
+        col: FloatArray,
+        patchCount: Int,
+        output: FloatArray,
+        outputOffset: Int,
+        bias: FloatArray?
+    ) {
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(colSize)
+
+        for (oc in 0 until cOut) {
+            val weightRowOffset = oc * colSize
+            val biasVal = bias?.get(oc) ?: 0f
+
+            for (p in 0 until patchCount) {
+                var idx = 0
+                var accVec = FloatVector.zero(floatSpecies)
+
+                while (idx < loopBound) {
+                    val vw = FloatVector.fromArray(floatSpecies, weight, weightRowOffset + idx)
+                    val vc = FloatVector.fromArray(floatSpecies, col, p * colSize + idx)
+                    accVec = accVec.add(vw.mul(vc))
+                    idx += step
+                }
+
+                var acc = accVec.reduceLanes(VectorOperators.ADD)
+                while (idx < colSize) {
+                    acc += weight[weightRowOffset + idx] * col[p * colSize + idx]
+                    idx++
+                }
+
+                output[outputOffset + oc * patchCount + p] = acc + biasVal
+            }
+        }
+    }
+    // endregion
+
+    // region Conv2d with dilation support
+
+    /**
+     * Conv2d with dilation support using im2col.
+     */
+    fun conv2dIm2ColDilated(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inH: Int, inW: Int,
+        cOut: Int, kH: Int, kW: Int,
+        sH: Int, sW: Int, pH: Int, pW: Int,
+        dH: Int, dW: Int,
+        outH: Int, outW: Int,
+        output: FloatArray
+    ) {
+        val colSize = cIn * kH * kW
+        val patchCount = outH * outW
+
+        for (batch in 0 until n) {
+            val inputOffset = batch * cIn * inH * inW
+            val outputOffset = batch * cOut * outH * outW
+
+            val col = FloatArray(patchCount * colSize)
+            im2colNCHWDilated(input, inputOffset, cIn, inH, inW, kH, kW, sH, sW, pH, pW, dH, dW, outH, outW, col)
+            matmulConv(weight, cOut, colSize, col, patchCount, output, outputOffset, bias)
+        }
+    }
+
+    private fun im2colNCHWDilated(
+        input: FloatArray,
+        inputOffset: Int,
+        cIn: Int, inH: Int, inW: Int,
+        kH: Int, kW: Int,
+        sH: Int, sW: Int,
+        pH: Int, pW: Int,
+        dH: Int, dW: Int,
+        outH: Int, outW: Int,
+        col: FloatArray
+    ) {
+        var colIdx = 0
+        for (oh in 0 until outH) {
+            for (ow in 0 until outW) {
+                val hStart = oh * sH - pH
+                val wStart = ow * sW - pW
+
+                for (c in 0 until cIn) {
+                    val inputChannelOffset = inputOffset + c * inH * inW
+                    for (kh in 0 until kH) {
+                        val ih = hStart + kh * dH
+                        for (kw in 0 until kW) {
+                            val iw = wStart + kw * dW
+                            col[colIdx++] = if (ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
+                                input[inputChannelOffset + ih * inW + iw]
+                            } else {
+                                0f
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Grouped conv2d using im2col per group.
+     */
+    fun conv2dGrouped(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inH: Int, inW: Int,
+        cOut: Int, kH: Int, kW: Int,
+        sH: Int, sW: Int, pH: Int, pW: Int,
+        dH: Int, dW: Int,
+        groups: Int,
+        outH: Int, outW: Int,
+        output: FloatArray
+    ) {
+        val cInPerGroup = cIn / groups
+        val cOutPerGroup = cOut / groups
+        val colSize = cInPerGroup * kH * kW
+        val patchCount = outH * outW
+
+        for (batch in 0 until n) {
+            for (g in 0 until groups) {
+                val inputGroupOffset = batch * cIn * inH * inW + g * cInPerGroup * inH * inW
+                val outputGroupOffset = batch * cOut * outH * outW + g * cOutPerGroup * outH * outW
+                val weightGroupOffset = g * cOutPerGroup * colSize
+
+                // im2col for this group's input channels
+                val col = FloatArray(patchCount * colSize)
+                im2colNCHWGrouped(input, inputGroupOffset, cInPerGroup, inH, inW, kH, kW, sH, sW, pH, pW, dH, dW, outH, outW, col)
+
+                // matmul for this group
+                matmulConvGrouped(weight, weightGroupOffset, cOutPerGroup, colSize, col, patchCount, output, outputGroupOffset, bias, g * cOutPerGroup)
+            }
+        }
+    }
+
+    private fun im2colNCHWGrouped(
+        input: FloatArray,
+        inputOffset: Int,
+        cInPerGroup: Int, inH: Int, inW: Int,
+        kH: Int, kW: Int,
+        sH: Int, sW: Int,
+        pH: Int, pW: Int,
+        dH: Int, dW: Int,
+        outH: Int, outW: Int,
+        col: FloatArray
+    ) {
+        var colIdx = 0
+        for (oh in 0 until outH) {
+            for (ow in 0 until outW) {
+                val hStart = oh * sH - pH
+                val wStart = ow * sW - pW
+
+                for (c in 0 until cInPerGroup) {
+                    val inputChannelOffset = inputOffset + c * inH * inW
+                    for (kh in 0 until kH) {
+                        val ih = hStart + kh * dH
+                        for (kw in 0 until kW) {
+                            val iw = wStart + kw * dW
+                            col[colIdx++] = if (ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
+                                input[inputChannelOffset + ih * inW + iw]
+                            } else {
+                                0f
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun matmulConvGrouped(
+        weight: FloatArray,
+        weightOffset: Int,
+        cOutPerGroup: Int,
+        colSize: Int,
+        col: FloatArray,
+        patchCount: Int,
+        output: FloatArray,
+        outputOffset: Int,
+        bias: FloatArray?,
+        biasOffset: Int
+    ) {
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(colSize)
+
+        for (oc in 0 until cOutPerGroup) {
+            val weightRowOffset = weightOffset + oc * colSize
+            val biasVal = bias?.get(biasOffset + oc) ?: 0f
+
+            for (p in 0 until patchCount) {
+                var idx = 0
+                var accVec = FloatVector.zero(floatSpecies)
+
+                while (idx < loopBound) {
+                    val vw = FloatVector.fromArray(floatSpecies, weight, weightRowOffset + idx)
+                    val vc = FloatVector.fromArray(floatSpecies, col, p * colSize + idx)
+                    accVec = accVec.add(vw.mul(vc))
+                    idx += step
+                }
+
+                var acc = accVec.reduceLanes(VectorOperators.ADD)
+                while (idx < colSize) {
+                    acc += weight[weightRowOffset + idx] * col[p * colSize + idx]
+                    idx++
+                }
+
+                output[outputOffset + oc * patchCount + p] = acc + biasVal
+            }
+        }
+    }
+    // endregion
+
+    // region Conv3d (im2col + vectorized matmul)
+
+    /**
+     * Optimized conv3d using im2col transformation + vectorized matmul.
+     */
+    fun conv3dIm2Col(
+        input: FloatArray,
+        weight: FloatArray,
+        bias: FloatArray?,
+        n: Int, cIn: Int, inD: Int, inH: Int, inW: Int,
+        cOut: Int, kD: Int, kH: Int, kW: Int,
+        sD: Int, sH: Int, sW: Int,
+        pD: Int, pH: Int, pW: Int,
+        dD: Int, dH: Int, dW: Int,
+        outD: Int, outH: Int, outW: Int,
+        output: FloatArray
+    ) {
+        val colSize = cIn * kD * kH * kW
+        val patchCount = outD * outH * outW
+
+        for (batch in 0 until n) {
+            val inputOffset = batch * cIn * inD * inH * inW
+            val outputOffset = batch * cOut * outD * outH * outW
+
+            val col = FloatArray(patchCount * colSize)
+            im2col3D(input, inputOffset, cIn, inD, inH, inW, kD, kH, kW, sD, sH, sW, pD, pH, pW, dD, dH, dW, outD, outH, outW, col)
+            matmulConv3d(weight, cOut, colSize, col, patchCount, output, outputOffset, bias)
+        }
+    }
+
+    private fun im2col3D(
+        input: FloatArray,
+        inputOffset: Int,
+        cIn: Int, inD: Int, inH: Int, inW: Int,
+        kD: Int, kH: Int, kW: Int,
+        sD: Int, sH: Int, sW: Int,
+        pD: Int, pH: Int, pW: Int,
+        dD: Int, dH: Int, dW: Int,
+        outD: Int, outH: Int, outW: Int,
+        col: FloatArray
+    ) {
+        var colIdx = 0
+        for (od in 0 until outD) {
+            for (oh in 0 until outH) {
+                for (ow in 0 until outW) {
+                    val dStart = od * sD - pD
+                    val hStart = oh * sH - pH
+                    val wStart = ow * sW - pW
+
+                    for (c in 0 until cIn) {
+                        val inputChannelOffset = inputOffset + c * inD * inH * inW
+                        for (kd in 0 until kD) {
+                            val id = dStart + kd * dD
+                            for (kh in 0 until kH) {
+                                val ih = hStart + kh * dH
+                                for (kw in 0 until kW) {
+                                    val iw = wStart + kw * dW
+                                    col[colIdx++] = if (id >= 0 && id < inD && ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
+                                        input[inputChannelOffset + id * inH * inW + ih * inW + iw]
+                                    } else {
+                                        0f
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun matmulConv3d(
+        weight: FloatArray,
+        cOut: Int,
+        colSize: Int,
+        col: FloatArray,
+        patchCount: Int,
+        output: FloatArray,
+        outputOffset: Int,
+        bias: FloatArray?
+    ) {
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(colSize)
+
+        for (oc in 0 until cOut) {
+            val weightRowOffset = oc * colSize
+            val biasVal = bias?.get(oc) ?: 0f
+
+            for (p in 0 until patchCount) {
+                var idx = 0
+                var accVec = FloatVector.zero(floatSpecies)
+
+                while (idx < loopBound) {
+                    val vw = FloatVector.fromArray(floatSpecies, weight, weightRowOffset + idx)
+                    val vc = FloatVector.fromArray(floatSpecies, col, p * colSize + idx)
+                    accVec = accVec.add(vw.mul(vc))
+                    idx += step
+                }
+
+                var acc = accVec.reduceLanes(VectorOperators.ADD)
+                while (idx < colSize) {
+                    acc += weight[weightRowOffset + idx] * col[p * colSize + idx]
+                    idx++
+                }
+
+                output[outputOffset + oc * patchCount + p] = acc + biasVal
+            }
+        }
+    }
+    // endregion
 }

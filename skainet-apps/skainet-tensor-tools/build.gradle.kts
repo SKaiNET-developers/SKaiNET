@@ -17,6 +17,7 @@ dependencies {
 
     implementation(project(":skainet-lang:skainet-lang-core"))
     implementation(project(":skainet-lang:skainet-lang-models"))
+    implementation(project(":skainet-io:skainet-io-core"))
     implementation(project(":skainet-io:skainet-io-onnx"))
     implementation(project(":skainet-io:skainet-io-image"))
     implementation(project(":skainet-io:skainet-io-gguf"))
@@ -29,6 +30,9 @@ dependencies {
 
 application {
     mainClass.set("sk.ainet.apps.onnx.tools.WeightExportKt")
+    applicationDefaultJvmArgs = listOf(
+        "--add-modules=jdk.incubator.vector"
+    )
 }
 
 tasks.test {

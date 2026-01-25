@@ -50,6 +50,229 @@ internal class DefaultCpuOpsJvm(
         return super.matmul(a, b)
     }
 
+    override fun <T : DType, V> conv2d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+        groups: Int
+    ): Tensor<T, V> {
+        // Try vectorized path for FP32
+        chooseConv2d(input, weight, bias, stride, padding, dilation, groups)?.let { return it }
+        return super.conv2d(input, weight, bias, stride, padding, dilation, groups)
+    }
+
+    private fun <T : DType, V> chooseConv2d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+        groups: Int
+    ): Tensor<T, V>? {
+        if (input.dtype != FP32::class) return null
+
+        val inputData = input.data as? FloatArrayTensorData<*> ?: return null
+        val weightData = weight.data as? FloatArrayTensorData<*> ?: return null
+        val biasData = bias?.data as? FloatArrayTensorData<*>
+
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+
+        val cOut = weight.shape[0]
+        val kH = weight.shape[2]
+        val kW = weight.shape[3]
+
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        val (dH, dW) = dilation
+
+        val outH = (inH + 2 * pH - dH * (kH - 1) - 1) / sH + 1
+        val outW = (inW + 2 * pW - dW * (kW - 1) - 1) / sW + 1
+
+        if (outH <= 0 || outW <= 0) return null
+
+        val outBuffer = FloatArray(n * cOut * outH * outW)
+        val biasBuffer = biasData?.buffer
+
+        when {
+            // Grouped convolution (includes depthwise when groups == cIn == cOut)
+            groups > 1 -> {
+                JvmVectorKernels.conv2dGrouped(
+                    inputData.buffer, weightData.buffer, biasBuffer,
+                    n, cIn, inH, inW,
+                    cOut, kH, kW,
+                    sH, sW, pH, pW, dH, dW,
+                    groups,
+                    outH, outW,
+                    outBuffer
+                )
+            }
+            // 1x1 convolution without dilation - use optimized kernel
+            kH == 1 && kW == 1 && sH == 1 && sW == 1 && pH == 0 && pW == 0 && dH == 1 && dW == 1 -> {
+                JvmVectorKernels.conv2d1x1Optimized(
+                    inputData.buffer, weightData.buffer, biasBuffer,
+                    n, cIn, inH, inW, cOut,
+                    outBuffer
+                )
+            }
+            // Standard convolution with dilation
+            dH != 1 || dW != 1 -> {
+                JvmVectorKernels.conv2dIm2ColDilated(
+                    inputData.buffer, weightData.buffer, biasBuffer,
+                    n, cIn, inH, inW,
+                    cOut, kH, kW,
+                    sH, sW, pH, pW, dH, dW,
+                    outH, outW,
+                    outBuffer
+                )
+            }
+            // Standard convolution without dilation
+            else -> {
+                JvmVectorKernels.conv2dIm2Col(
+                    inputData.buffer, weightData.buffer, biasBuffer,
+                    n, cIn, inH, inW,
+                    cOut, kH, kW,
+                    sH, sW, pH, pW,
+                    outH, outW,
+                    outBuffer
+                )
+            }
+        }
+
+        val outData = DenseFloatArrayTensorData<T>(Shape(n, cOut, outH, outW), outBuffer)
+        @Suppress("UNCHECKED_CAST")
+        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
+    }
+
+    override fun <T : DType, V> conv1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V> {
+        chooseConv1d(input, weight, bias, stride, padding, dilation, groups)?.let { return it }
+        return super.conv1d(input, weight, bias, stride, padding, dilation, groups)
+    }
+
+    private fun <T : DType, V> chooseConv1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V>? {
+        if (input.dtype != FP32::class) return null
+        if (groups != 1) return null  // TODO: Add grouped conv1d support
+
+        val inputData = input.data as? FloatArrayTensorData<*> ?: return null
+        val weightData = weight.data as? FloatArrayTensorData<*> ?: return null
+        val biasData = bias?.data as? FloatArrayTensorData<*>
+
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val inL = input.shape[2]
+
+        val cOut = weight.shape[0]
+        val kL = weight.shape[2]
+
+        val outL = (inL + 2 * padding - dilation * (kL - 1) - 1) / stride + 1
+        if (outL <= 0) return null
+
+        val outBuffer = FloatArray(n * cOut * outL)
+
+        JvmVectorKernels.conv1dIm2Col(
+            inputData.buffer, weightData.buffer, biasData?.buffer,
+            n, cIn, inL,
+            cOut, kL,
+            stride, padding, dilation,
+            outL,
+            outBuffer
+        )
+
+        val outData = DenseFloatArrayTensorData<T>(Shape(n, cOut, outL), outBuffer)
+        @Suppress("UNCHECKED_CAST")
+        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
+    }
+
+    override fun <T : DType, V> conv3d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int
+    ): Tensor<T, V> {
+        chooseConv3d(input, weight, bias, stride, padding, dilation, groups)?.let { return it }
+        return super.conv3d(input, weight, bias, stride, padding, dilation, groups)
+    }
+
+    private fun <T : DType, V> chooseConv3d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int
+    ): Tensor<T, V>? {
+        if (input.dtype != FP32::class) return null
+        if (groups != 1) return null  // TODO: Add grouped conv3d support
+
+        val inputData = input.data as? FloatArrayTensorData<*> ?: return null
+        val weightData = weight.data as? FloatArrayTensorData<*> ?: return null
+        val biasData = bias?.data as? FloatArrayTensorData<*>
+
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val inD = input.shape[2]
+        val inH = input.shape[3]
+        val inW = input.shape[4]
+
+        val cOut = weight.shape[0]
+        val kD = weight.shape[2]
+        val kH = weight.shape[3]
+        val kW = weight.shape[4]
+
+        val (sD, sH, sW) = stride
+        val (pD, pH, pW) = padding
+        val (dD, dH, dW) = dilation
+
+        val outD = (inD + 2 * pD - dD * (kD - 1) - 1) / sD + 1
+        val outH = (inH + 2 * pH - dH * (kH - 1) - 1) / sH + 1
+        val outW = (inW + 2 * pW - dW * (kW - 1) - 1) / sW + 1
+
+        if (outD <= 0 || outH <= 0 || outW <= 0) return null
+
+        val outBuffer = FloatArray(n * cOut * outD * outH * outW)
+
+        JvmVectorKernels.conv3dIm2Col(
+            inputData.buffer, weightData.buffer, biasData?.buffer,
+            n, cIn, inD, inH, inW,
+            cOut, kD, kH, kW,
+            sD, sH, sW,
+            pD, pH, pW,
+            dD, dH, dW,
+            outD, outH, outW,
+            outBuffer
+        )
+
+        val outData = DenseFloatArrayTensorData<T>(Shape(n, cOut, outD, outH, outW), outBuffer)
+        @Suppress("UNCHECKED_CAST")
+        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
+    }
+
     /**
      * Dispatch to vectorized quantized matmul kernels for Q8_0 and Q4_K weights.
      * Input must be FP32, weights can be Q8_0TensorData or Q4_KTensorData.

@@ -1,20 +1,18 @@
 package sk.ainet.apps.kllama.cli
 
 import java.nio.file.Path
-import java.nio.file.Files
 import kotlin.io.path.exists
 import kotlin.io.path.extension
 import kotlin.system.exitProcess
 import kotlin.time.measureTime
 import kotlinx.coroutines.runBlocking
-import kotlinx.io.asSource
-import kotlinx.io.buffered
 import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.kllama.Tokenizer
 import sk.ainet.apps.kllama.LlamaRuntime
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 
 private fun usage(): Nothing {
@@ -46,15 +44,18 @@ fun main(args: Array<String>) {
             )
         )
 
-        println("Loading model from $modelPath...")
-        val runtimeWeights = ingestion.load {
-            Files.newInputStream(modelPath).asSource().buffered()
+        // Use streaming API for large model support (>2GB)
+        println("Loading model from $modelPath (streaming mode)...")
+        val runtimeWeights = ingestion.loadStreaming {
+            JvmRandomAccessSource.open(modelPath.toString())
         }
         val runtime = LlamaRuntime(ctx, runtimeWeights)
 
-        // Load embedded GGUF tokenizer
+        // Load embedded GGUF tokenizer using streaming API
         println("Loading embedded GGUF tokenizer...")
-        val tokenizer: Tokenizer = GGUFTokenizer.fromSource(Files.newInputStream(modelPath).asSource().buffered())
+        val tokenizer: Tokenizer = JvmRandomAccessSource.open(modelPath.toString()).use { source ->
+            GGUFTokenizer.fromRandomAccessSource(source)
+        }
 
         val promptTokens = tokenizer.encode(prompt)
 

@@ -61,16 +61,26 @@ class LlamaQuantDequantTest {
     }
 
     @Test
-    fun `dequant Q8_1 returns min when codes are zero`() {
-        // d=1, m=2 -> bytes: d(0x00 0x3C), m(0x00 0x40), qs zeros
-        val raw = ByteArray(4 + 32) { idx ->
+    fun `dequant Q8_1 scales codes correctly`() {
+        // Q8_1 uses f32 for d and s (not f16)
+        // d=1.0f (0x3F800000 little-endian: 0x00 0x00 0x80 0x3F)
+        // s=0.0f (not used in dequant, just stored)
+        // qs = 1, 2, 3, 4, ... for first 4 values, rest zeros
+        val raw = ByteArray(8 + 32) { 0x00 }
+        // d = 1.0f in little-endian
+        raw[0] = 0x00; raw[1] = 0x00; raw[2] = 0x80.toByte(); raw[3] = 0x3F
+        // s = 0.0f (unused)
+        raw[4] = 0x00; raw[5] = 0x00; raw[6] = 0x00; raw[7] = 0x00
+        // qs[0..3] = 1, 2, 3, 4
+        raw[8] = 0x01; raw[9] = 0x02; raw[10] = 0x03; raw[11] = 0x04
+        val out = LlamaWeightLoader.dequantQ8_1(raw.toList(), 32)
+        val expected = FloatArray(32) { idx ->
             when (idx) {
-                0 -> 0x00; 1 -> 0x3C; 2 -> 0x00; 3 -> 0x40
-                else -> 0x00
+                0 -> 1f; 1 -> 2f; 2 -> 3f; 3 -> 4f
+                else -> 0f
             }
-        }.toList()
-        val out = LlamaWeightLoader.dequantQ8_1(raw, 32)
-        assertContentEquals(FloatArray(32) { 2f }.toList(), out.toList())
+        }
+        assertContentEquals(expected.toList(), out.toList())
     }
 
     @Test

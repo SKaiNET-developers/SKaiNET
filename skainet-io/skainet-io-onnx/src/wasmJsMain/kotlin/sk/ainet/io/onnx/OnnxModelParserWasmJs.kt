@@ -1,12 +1,12 @@
 package sk.ainet.io.onnx
 
+import org.w3c.files.Blob
 import sk.ainet.io.JsBlobRandomAccessSource
 import sk.ainet.io.model.ModelMetadata
 import sk.ainet.io.model.ModelInfo
 import sk.ainet.io.model.TensorInfo
 import sk.ainet.io.model.ModelFormat
 import sk.ainet.io.model.DataType
-import kotlin.js.JsAny
 
 /**
  * Browser-specific ONNX parsing result for WASM JS.
@@ -39,12 +39,12 @@ public class OnnxBlobParseResult(
 /**
  * Parse ONNX model from a browser Blob/File for WASM JS.
  *
- * @param blob Browser Blob or File object (passed as JsAny)
+ * @param blob Browser Blob or File object
  * @param preloadSize Bytes to preload for sync access (default 50MB)
  * @return Parse result with metadata, tensors, and streaming reader
  */
 public suspend fun parseOnnxFromBlob(
-    blob: JsAny,
+    blob: Blob,
     preloadSize: Int = JsBlobRandomAccessSource.DEFAULT_PRELOAD_SIZE
 ): OnnxBlobParseResult {
     return try {
