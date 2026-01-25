@@ -35,13 +35,18 @@ data class ReaderField(
 data class ReaderTensor(
     val name: String,
     val tensorType: GGMLQuantizationType,
+    /** Raw type value from file (useful when tensorType is UNKNOWN) */
+    val rawTypeValue: Int,
     val shape: List<UInt>,
     val nElements: Int,
     val nBytes: Int,
     val dataOffset: Int,
     val data: List<Any>,
     val field: ReaderField
-)
+) {
+    /** Whether this tensor uses an unknown/unsupported quantization type */
+    val isUnknownType: Boolean get() = tensorType.isUnknown
+}
 
 // Data class to hold the return values
 data class FieldParts(
@@ -402,17 +407,23 @@ class GGUFReader(
             }
             tensorNames.add(tensorName)
 
-            val ggmlType = GGMLQuantizationType.fromValue(rawDtype[0].toInt())
-                ?: throw IllegalArgumentException("Invalid ggmlType")
-            val nElems = dims.reduce { acc, dim -> acc * dim }
+            val rawTypeValue = rawDtype[0].toInt()
+            val ggmlType = GGMLQuantizationType.fromValueOrUnknown(rawTypeValue)
+            if (ggmlType.isUnknown) {
+                println("WARNING: Unknown GGML quantization type $rawTypeValue for tensor '$tensorName'. Will treat as raw bytes.")
+            }
+            val nElems = if (dims.isEmpty()) 1UL else dims.reduce { acc, dim -> acc * dim }
             var npDims = dims.reversed()
-            val (blockSize, typeSize) = GGML_QUANT_SIZES[ggmlType]
-                ?: throw IllegalArgumentException("Invalid quantization type")
-            // Use Long arithmetic to avoid overflow for large tensors
-            val nBytes = (nElems.toLong() * typeSize / blockSize).toInt()
+            // Use fallback size for unknown types (1 byte per element as estimate)
+            val (blockSize, typeSize) = GGML_QUANT_SIZES[ggmlType] ?: (1 to 1)
+            // Calculate bytes: (nElems / blockSize) * typeSize
+            // Divide first to avoid overflow, then multiply. For quantized tensors,
+            // nElems must be divisible by blockSize, so this is exact.
+            val numBlocks = nElems.toLong() / blockSize
+            val nBytes = (numBlocks * typeSize).toInt()
             val dataOffs = startOffs + offsetTensor[0].toInt()
 
-            // For non-native/quantized types, tensor payload is stored as bytes
+            // For non-native/quantized types (including unknown), tensor payload is stored as bytes
             if (ggmlType !in listOf(
                     GGMLQuantizationType.F32,
                     GGMLQuantizationType.F64,
@@ -422,7 +433,12 @@ class GGUFReader(
                     GGMLQuantizationType.I64
                 )
             ) {
-                npDims = quantShapeToByteShape(npDims, ggmlType)
+                // For unknown types, treat as raw bytes (shape becomes byte count)
+                npDims = if (ggmlType.isUnknown) {
+                    listOf(nBytes.toULong())
+                } else {
+                    quantShapeToByteShape(npDims, ggmlType)
+                }
             }
 
             val materializedData: List<Any> = if (loadTensorData) {
@@ -440,6 +456,7 @@ class GGUFReader(
                 ReaderTensor(
                     name = tensorName,
                     tensorType = ggmlType,
+                    rawTypeValue = rawTypeValue,
                     shape = dims.map { it.toUInt() },
                     nElements = nElems.toInt(),
                     nBytes = nBytes,

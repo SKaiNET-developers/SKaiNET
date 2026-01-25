@@ -190,6 +190,16 @@ public class StreamingGGUFReader private constructor(
     private fun parseTensorInfoSection(startOffset: Long, count: Int): Long {
         var offset = startOffset
 
+        // First pass: collect all tensor info with relative offsets
+        data class TensorParseInfo(
+            val name: String,
+            val dims: List<ULong>,
+            val typeValue: Int,
+            val ggmlType: GGMLQuantizationType,
+            val relativeOffset: Long
+        )
+        val parsedTensors = mutableListOf<TensorParseInfo>()
+
         for (i in 0 until count) {
             // Read tensor name
             val nameLength = readULong(offset)
@@ -213,27 +223,62 @@ public class StreamingGGUFReader private constructor(
             val tensorTypeValue = readUInt(offset).toInt()
             offset += 4
 
-            val ggmlType = GGMLQuantizationType.fromValue(tensorTypeValue)
-                ?: throw IllegalArgumentException("Unknown GGMLQuantizationType: $tensorTypeValue for tensor '$tensorName'")
+            // Use graceful fallback for unknown types
+            val ggmlType = GGMLQuantizationType.fromValueOrUnknown(tensorTypeValue)
+            if (ggmlType.isUnknown) {
+                // Log warning about unknown type (could be a new llama.cpp quantization)
+                println("WARNING: Unknown GGML quantization type $tensorTypeValue for tensor '$tensorName'. Will treat as raw bytes.")
+            }
 
             // Read relative data offset (8 bytes)
             val relativeDataOffset = readULong(offset)
             offset += 8
 
-            // Calculate tensor size
-            val (blockSize, typeSize) = GGML_QUANT_SIZES[ggmlType]
-                ?: throw IllegalArgumentException("Unknown quantization size for: $ggmlType")
-            val nElements = if (dims.isEmpty()) 0UL else dims.reduce { acc, d -> acc * d }
-            val nBytes = (nElements.toLong() * typeSize / blockSize).toInt()
+            parsedTensors.add(TensorParseInfo(
+                name = tensorName,
+                dims = dims,
+                typeValue = tensorTypeValue,
+                ggmlType = ggmlType,
+                relativeOffset = relativeDataOffset.toLong()
+            ))
+        }
+
+        // Second pass: calculate sizes (for unknown types, estimate from adjacent offsets)
+        // Sort by relative offset to find adjacent tensors
+        val sortedByOffset = parsedTensors.sortedBy { it.relativeOffset }
+
+        for ((index, info) in parsedTensors.withIndex()) {
+            val nElements = if (info.dims.isEmpty()) 0L else info.dims.fold(1UL) { acc, d -> acc * d }.toLong()
+
+            val nBytes: Int = if (info.ggmlType.isUnknown) {
+                // For unknown types, estimate size from next tensor's offset
+                val sortedIndex = sortedByOffset.indexOfFirst { it.name == info.name }
+                if (sortedIndex < sortedByOffset.size - 1) {
+                    // Use gap to next tensor as size estimate
+                    val nextOffset = sortedByOffset[sortedIndex + 1].relativeOffset
+                    (nextOffset - info.relativeOffset).toInt()
+                } else {
+                    // Last tensor - estimate from element count assuming 1 byte per element
+                    // This is a rough fallback; actual loading may need adjustment
+                    nElements.toInt()
+                }
+            } else {
+                // Known type - calculate from quantization parameters
+                val (blockSize, typeSize) = GGML_QUANT_SIZES[info.ggmlType]
+                    ?: (1 to 1) // Fallback for types in enum but not in size map
+                val numBlocks = nElements / blockSize
+                (numBlocks * typeSize).toInt()
+            }
 
             _tensors.add(
                 StreamingTensorInfo(
-                    name = tensorName,
-                    shape = dims.map { it.toUInt() },
-                    tensorType = ggmlType,
-                    nElements = nElements.toLong(),
+                    name = info.name,
+                    shape = info.dims.map { it.toUInt() },
+                    tensorType = info.ggmlType,
+                    rawTypeValue = info.typeValue,
+                    nElements = nElements,
                     nBytes = nBytes,
-                    relativeOffset = relativeDataOffset.toLong(),
+                    relativeOffset = info.relativeOffset,
                     absoluteDataOffset = 0L // Set after calculating dataOffset
                 )
             )
@@ -393,14 +438,19 @@ public data class StreamingTensorInfo(
     val name: String,
     /** Tensor dimensions */
     val shape: List<UInt>,
-    /** GGML quantization type */
+    /** GGML quantization type (may be UNKNOWN for unsupported types) */
     val tensorType: GGMLQuantizationType,
+    /** Raw type value from file (useful when tensorType is UNKNOWN) */
+    val rawTypeValue: Int,
     /** Total number of elements */
     val nElements: Long,
-    /** Size in bytes */
+    /** Size in bytes (estimated for unknown types) */
     val nBytes: Int,
     /** Offset relative to data section start */
     val relativeOffset: Long,
     /** Absolute byte offset in file (set after parsing) */
     var absoluteDataOffset: Long
-)
+) {
+    /** Whether this tensor uses an unknown/unsupported quantization type */
+    val isUnknownType: Boolean get() = tensorType.isUnknown
+}

@@ -11,6 +11,13 @@ const val GGUF_MAGIC = 0x46554747u
 const val GGUF_VERSION = 3
 const val GGUF_DEFAULT_ALIGNMENT = 32
 
+/**
+ * GGML quantization types.
+ *
+ * When new quantization types are added to llama.cpp, they may not be immediately
+ * supported here. Use [fromValueOrUnknown] to gracefully handle unknown types
+ * (they'll be treated as raw bytes).
+ */
 enum class GGMLQuantizationType(val value: Int) {
     F32(0),
     F16(1),
@@ -42,11 +49,32 @@ enum class GGMLQuantizationType(val value: Int) {
     IQ1_M(29),
     BF16(30),
     TQ1_0(34),
-    TQ2_0(35);
+    TQ2_0(35),
+    // Note: types 31-33 and 36-38 have been removed in llama.cpp
+    MXFP4(39),
+
+    /**
+     * Placeholder for unknown/unsupported quantization types.
+     * The actual type value is stored but not recognized.
+     * Data will be treated as raw bytes.
+     */
+    UNKNOWN(-1);
+
+    /** Whether this is an unknown/unsupported type */
+    val isUnknown: Boolean get() = this == UNKNOWN
 
     companion object {
+        /** Returns the enum value or null if not found */
         fun fromValue(value: Int): GGMLQuantizationType? {
-            return values().find { it.value == value }
+            return entries.find { it.value == value && it != UNKNOWN }
+        }
+
+        /**
+         * Returns the enum value or [UNKNOWN] if not recognized.
+         * Use this for graceful degradation when loading models with new quantization types.
+         */
+        fun fromValueOrUnknown(value: Int): GGMLQuantizationType {
+            return fromValue(value) ?: UNKNOWN
         }
     }
 }
@@ -86,7 +114,9 @@ val GGML_QUANT_SIZES: Map<GGMLQuantizationType, Pair<Int, Int>> = mapOf(
     GGMLQuantizationType.IQ1_M to (256 to QK_K / 8 + QK_K / 16 + QK_K / 32),
     GGMLQuantizationType.BF16 to (1 to 2),
     GGMLQuantizationType.TQ1_0 to (256 to 2 + 4 * 13),
-    GGMLQuantizationType.TQ2_0 to (256 to 2 + 64)
+    GGMLQuantizationType.TQ2_0 to (256 to 2 + 64),
+    // MXFP4: Microscaling FP4 format - 32 elements per block, 17 bytes (16 for data + 1 for scale)
+    GGMLQuantizationType.MXFP4 to (32 to 17)
 )
 
 enum class GGUFValueType(val value: Int) {

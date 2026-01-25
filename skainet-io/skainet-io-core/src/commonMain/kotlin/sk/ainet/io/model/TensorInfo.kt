@@ -15,6 +15,9 @@ package sk.ainet.io.model
  * @property nativeDType The original dtype name from the source format (e.g., "F32", "FLOAT")
  * @property skainetDType The corresponding SKaiNET DType name, or null if not supported
  * @property canLoadNatively True if this tensor can be loaded into SKaiNET without conversion
+ * @property sourceFile For sharded models, the shard filename containing this tensor
+ * @property shardIndex For sharded models, the 1-based shard index
+ * @property totalShards For sharded models, the total number of shards
  */
 public data class TensorInfo(
     val name: String,
@@ -25,8 +28,18 @@ public data class TensorInfo(
     val format: ModelFormat,
     val nativeDType: String? = null,
     val skainetDType: String? = null,
-    val canLoadNatively: Boolean = false
+    val canLoadNatively: Boolean = false,
+    val sourceFile: String? = null,
+    val shardIndex: Int? = null,
+    val totalShards: Int? = null
 ) {
+    /** Whether this tensor is from a sharded model */
+    val isFromShardedModel: Boolean
+        get() = sourceFile != null && totalShards != null && totalShards > 1
+
+    /** Formatted shard location, e.g., "1/3" */
+    val shardLocation: String?
+        get() = if (shardIndex != null && totalShards != null) "$shardIndex/$totalShards" else null
     /**
      * Human-readable shape string, e.g., "[3, 224, 224]"
      */
