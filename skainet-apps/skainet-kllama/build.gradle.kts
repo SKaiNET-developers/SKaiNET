@@ -95,6 +95,15 @@ kotlin {
         wasmJsMain.dependencies {
             implementation(libs.kotlinx.browser)
         }
+
+        val nativeMain by creating {
+            dependsOn(commonMain.get())
+        }
+        val linuxX64Main by getting { dependsOn(nativeMain) }
+        val linuxArm64Main by getting { dependsOn(nativeMain) }
+        val macosArm64Main by getting { dependsOn(nativeMain) }
+        val iosArm64Main by getting { dependsOn(nativeMain) }
+        val iosSimulatorArm64Main by getting { dependsOn(nativeMain) }
     }
 }
 
