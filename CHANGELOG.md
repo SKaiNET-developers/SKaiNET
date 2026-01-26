@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0] - 2026-01-26
+
+### Added
+- **SafeTensors Support**: Initial implementation of `skainet-io-safetensors` for reading SafeTensors format.
+- **Generalized I/O & Weight Mapping**:
+    - New `WeightMapper` and `WeightLoader` APIs for unified model parameter loading across formats.
+    - `LoadingProgress` API for tracking model loading state.
+    - `GgufModelMetadata` and `OnnxModelMetadata` for better inspection of model files.
+- **JVM Performance**: Enhanced `DefaultCpuOpsJvm` with `JvmVectorKernels` for SIMD-accelerated tensor operations using the Java Vector API.
+- **Llama Enhancements**:
+    - Added `GGUFTokenizer` for better text processing.
+    - Improved `LlamaIngestion` and ingestion pipelines.
+
+### Changed
+- **Improved GGUF/ONNX Loading**: Robust weight loading and metadata parsing for GGUF and ONNX models.
+- **Streamlined CLI**: Removed unfinished CLI samples and reorganized `skainet-tensor-tools`.
+- **Documentation Cleanup**: Removed outdated technical docs and consolidated architecture information.
+
+### Fixed
+- Improved robustness of GGUF and ONNX streaming readers.
+- Fixed various issues in WASM/JS weight parsing.
+
 ## [0.8.3] - 2026-01-18
 
 ### Changed
