@@ -154,8 +154,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.3")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.0")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -180,15 +180,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.3")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.0")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.8.3")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.0")
 }
 ```
 
@@ -198,7 +198,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.8.3</version>
+  <version>0.9.0</version>
 </dependency>
 ```
 
@@ -206,6 +206,21 @@ Maven:
 
 - Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.9.0 highlights (with tiny snippets)
+
+- **SafeTensors**: Native support for the SafeTensors format for secure and fast model loading.
+- **Generalized Weight Loading**: Improved I/O pipeline with `WeightMapper` and progress tracking.
+- **JVM Vector API**: Optimized tensor kernels for JVM using SIMD instructions.
+- **Llama & GGUF**: Enhanced tokenizer and ingestion logic for Llama-based models.
+
+```kotlin
+// Example: Loading SafeTensors weights
+val loader = SafeTensorsParametersLoader(ctx)
+loader.load("model.safetensors", model)
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## 0.8.3 highlights (with tiny snippets)
 
