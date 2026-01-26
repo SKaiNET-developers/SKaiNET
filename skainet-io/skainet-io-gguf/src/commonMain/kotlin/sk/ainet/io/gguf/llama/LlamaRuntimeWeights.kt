@@ -5,6 +5,7 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.FP32
 import sk.ainet.context.ExecutionContext
 import kotlinx.io.Source
+import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGMLQuantizationType
 
 public data class LlamaLayerWeights(
@@ -171,6 +172,54 @@ public suspend fun loadLlamaRuntimeWeightsDequantized(
         quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
     )
     val loaded = loader.loadToMap<FP32, Float>(ctx)
+    if (loaded.quantTypes.isNotEmpty()) {
+        error("Unsupported quantized tensors remain after dequant attempt: ${loaded.quantTypes}")
+    }
+    return LlamaWeightMapper.map(loaded)
+}
+
+// ============== Streaming API (for large files >2GB) ==============
+
+/**
+ * Load LLaMA runtime weights using streaming API.
+ * Parses metadata only (~1MB memory), loads tensors on-demand.
+ * Suitable for models of any size (100+ GB) that exceed Java array limits.
+ *
+ * @param ctx Execution context for tensor creation
+ * @param randomAccessProvider Factory that provides RandomAccessSource to the GGUF file
+ * @param quantPolicy How to handle quantized tensors
+ * @param allowQuantized If false, error on encountering quantized tensors
+ */
+public suspend fun loadLlamaRuntimeWeightsStreaming(
+    ctx: ExecutionContext,
+    randomAccessProvider: () -> RandomAccessSource,
+    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    allowQuantized: Boolean = false
+): LlamaRuntimeWeights {
+    val loader = LlamaWeightLoader(
+        randomAccessProvider = randomAccessProvider,
+        quantPolicy = quantPolicy
+    )
+    val loaded = loader.loadToMapStreaming<FP32, Float>(ctx)
+    if (!allowQuantized && loaded.quantTypes.isNotEmpty()) {
+        error("Quantized weights detected (${loaded.quantTypes.size}). Pass allowQuantized=true to consume raw quant tensors (runtime still needs quant support).")
+    }
+    return LlamaWeightMapper.map(loaded)
+}
+
+/**
+ * Load LLaMA runtime weights using streaming API with dequantization.
+ * Suitable for large models >2GB.
+ */
+public suspend fun loadLlamaRuntimeWeightsDequantizedStreaming(
+    ctx: ExecutionContext,
+    randomAccessProvider: () -> RandomAccessSource
+): LlamaRuntimeWeights {
+    val loader = LlamaWeightLoader(
+        randomAccessProvider = randomAccessProvider,
+        quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
+    )
+    val loaded = loader.loadToMapStreaming<FP32, Float>(ctx)
     if (loaded.quantTypes.isNotEmpty()) {
         error("Unsupported quantized tensors remain after dequant attempt: ${loaded.quantTypes}")
     }

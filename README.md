@@ -4,7 +4,7 @@
 
 <img src="docs//SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-**SKaiNET** is a device-first AI framework for Kotlin Multiplatform. Build once in a clean, type-safe DSL and deploy everywhere—from high-performance JVM/Cloud environments to resource-constrained microcontrollers—using our advanced MLIR-based compiler.
+**SKaiNET** is an open-source deep learning framework written in Kotlin, designed with developers in mind to enable the creation modern AI powered applications with ease. 
 
 ### 🌟 Vision
 SKaiNET aims to democratize "Edge AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
@@ -29,9 +29,7 @@ SKaiNET uses a hybrid backend strategy that separates development iteration from
 
 - **Built-in Data Loaders**: `MNIST`, `Fashion-MNIST`, `CIFAR-10`
 - **I/O Formats**: `GGUF`, `ONNX`, `JSON`, `Image` (JPEG, PNG, etc.)
-- **Type-safe Tensors**: Unified API across JVM, JS, and Native
-- **Data Transforms**: Fluent API for data preprocessing, including image resizing, normalization, and tensor conversion.
-- **Transformation DSL**: Compose complex preprocessing pipelines using a type-safe Kotlin DSL.
+- **Transformation DSL**: Compose complex preprocessing pipelines including image resizing, normalization, and tensor conversion, using a type-safe Kotlin DSL.
 
 ```kotlin
 // Data Transformation Pipeline
@@ -154,8 +152,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.3")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.0")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -165,7 +163,6 @@ dependencies {
 - From Kotlin code in apps, libraries, CLIs
 - In Kotlin Notebooks for quick exploration
 - With sample projects to learn patterns
-
 
 ## Quick start
 
@@ -180,15 +177,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.8.3")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.0")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.8.3")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.8.3")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.0")
 }
 ```
 
@@ -198,14 +195,29 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.8.3</version>
+  <version>0.9.0</version>
 </dependency>
 ```
 
-## Samples and notebooks
+## Examples and notebooks
 
-- Sample app: https://github.com/SKaiNET-developers/SKaiNET-samples/tree/feature/MNIST/SinusApproximator
+- [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.9.0 highlights
+
+- **SafeTensors**: Native support for the SafeTensors format for secure and fast model loading.
+- **Generalized Weight Loading**: Improved I/O pipeline with `WeightMapper` and progress tracking.
+- **JVM Vector API**: Optimized tensor kernels for JVM using SIMD instructions.
+- **Llama & GGUF**: Enhanced tokenizer and ingestion logic for Llama-based models.
+
+```kotlin
+// Example: Loading SafeTensors weights
+val loader = SafeTensorsParametersLoader(ctx)
+loader.load("model.safetensors", model)
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## 0.8.3 highlights (with tiny snippets)
 

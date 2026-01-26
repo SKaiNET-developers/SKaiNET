@@ -236,16 +236,13 @@ Current limitations:
 
 | Issue | Status | Workaround |
 |-------|--------|------------|
-| GGUF Q4_0/Q4_K quantized models fail to load | 🐛 Bug | Use Karpathy `.bin` format or F32/F16 GGUF |
 | Large models may OOM on mobile | ⚠️ Limitation | Use smaller quantized models |
 | WASM bundle size is large | ⚠️ Limitation | Use smaller models for browser |
 
 **Tested working:**
 - Karpathy `.bin` format (stories15m, stories42m, stories110m)
 - GGUF F32 tensors
-
-**Needs fixing:**
-- GGUF quantized tensors (Q4_0, Q4_K, etc.) - tensor size calculation bug
+- GGUF quantized tensors (Q4_0, Q4_K, Q8_0, etc.)
 
 ## Roadmap
 

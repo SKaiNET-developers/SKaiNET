@@ -79,6 +79,7 @@ kotlin {
         val wasmJsMain by getting {
             dependencies {
                 implementation(libs.kotlinx.coroutines)
+                implementation(libs.kotlinx.browser)
             }
         }
     }

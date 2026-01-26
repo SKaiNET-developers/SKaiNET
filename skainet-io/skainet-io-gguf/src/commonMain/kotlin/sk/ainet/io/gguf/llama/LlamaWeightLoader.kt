@@ -3,11 +3,14 @@ package sk.ainet.io.gguf.llama
 import kotlinx.io.Source
 import kotlinx.io.buffered
 import sk.ainet.context.ExecutionContext
+import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGMLQuantizationType
 import sk.ainet.io.gguf.GGUFReader
 import sk.ainet.io.gguf.ReaderField
 import sk.ainet.io.gguf.QK_K
 import sk.ainet.io.gguf.ReaderTensor
+import sk.ainet.io.gguf.StreamingGGUFReader
+import sk.ainet.io.gguf.StreamingTensorInfo
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
@@ -59,13 +62,44 @@ public object LlamaTensorNames {
  * naming scheme. Validation covers metadata presence and basic shape consistency for the tensors
  * we materialize.
  */
-public class LlamaWeightLoader(
-    private val sourceProvider: () -> Source,
+public class LlamaWeightLoader private constructor(
+    private val sourceProvider: (() -> Source)?,
+    private val randomAccessProvider: (() -> RandomAccessSource)?,
     private val loadTensorData: Boolean = true,
     private val quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES
     // Note: set loadTensorData=false to only validate metadata; tensors will be materialized
     // lazily when needed.
 ) {
+    /**
+     * Primary constructor for sequential Source-based loading.
+     * Loads entire file into memory - suitable for models under 2GB.
+     */
+    public constructor(
+        sourceProvider: () -> Source,
+        loadTensorData: Boolean = true,
+        quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES
+    ) : this(
+        sourceProvider = sourceProvider,
+        randomAccessProvider = null,
+        loadTensorData = loadTensorData,
+        quantPolicy = quantPolicy
+    )
+
+    /**
+     * Secondary constructor for streaming RandomAccessSource-based loading.
+     * Parses metadata only (~1MB memory) and loads tensors on-demand.
+     * Suitable for models of any size (100+ GB).
+     */
+    public constructor(
+        randomAccessProvider: () -> RandomAccessSource,
+        quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES
+    ) : this(
+        sourceProvider = null,
+        randomAccessProvider = randomAccessProvider,
+        loadTensorData = true,  // Ignored for streaming
+        quantPolicy = quantPolicy
+    )
+
     public enum class QuantPolicy {
         /** Keep quantized payloads as raw bytes (Int8 tensor) with quantized shape. */
         RAW_BYTES,
@@ -286,17 +320,27 @@ public class LlamaWeightLoader(
         internal fun dequantQ8_1(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q8_1")
             val blockSize = 32
-            val bytesPerBlock = 36 // 2 (f16 d) + 2 (f16 s) + 32 (qs)
+            val bytesPerBlock = 40 // 4 (f32 d) + 4 (f32 s) + 32 (qs)
             val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
             repeat(blockCount) {
-                val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
-                val m = halfToFloat((bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF))
-                offset += 4
+                // Read f32 d (little-endian)
+                val dBits = (bytes[offset].toInt() and 0xFF) or
+                        ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+                        ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+                        ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+                val d = Float.fromBits(dBits)
+                // Read f32 s (little-endian) - this is d * sum(qs), used as min offset
+                val sBits = (bytes[offset + 4].toInt() and 0xFF) or
+                        ((bytes[offset + 5].toInt() and 0xFF) shl 8) or
+                        ((bytes[offset + 6].toInt() and 0xFF) shl 16) or
+                        ((bytes[offset + 7].toInt() and 0xFF) shl 24)
+                val s = Float.fromBits(sBits)
+                offset += 8
                 for (j in 0 until 32) {
-                    out[outOff + j] = d * bytes[offset + j].toFloat() + m
+                    out[outOff + j] = d * bytes[offset + j].toFloat()
                 }
                 offset += 32
                 outOff += blockSize
@@ -749,6 +793,45 @@ public class LlamaWeightLoader(
         ctx: ExecutionContext
     ): LlamaWeights<T, V> = loadToMap(ctx, T::class)
 
+    // ============== Streaming API (for large files >2GB) ==============
+
+    /**
+     * Load weights using streaming API - parses metadata only, loads tensors on-demand.
+     * Requires [randomAccessProvider] constructor.
+     */
+    public suspend fun <T : DType, V> loadStreaming(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        onTensorLoaded: (String, Tensor<T, V>) -> Unit
+    ): LlamaModelMetadata {
+        return loadFromStreamingGguf(ctx, dtype, onTensorLoaded, null)
+    }
+
+    public suspend inline fun <reified T : DType, V> loadStreaming(
+        ctx: ExecutionContext,
+        noinline onTensorLoaded: (String, Tensor<T, V>) -> Unit
+    ): LlamaModelMetadata = loadStreaming(ctx, T::class, onTensorLoaded)
+
+    /**
+     * Load weights to map using streaming API.
+     * Requires [randomAccessProvider] constructor.
+     */
+    public suspend fun <T : DType, V> loadToMapStreaming(
+        ctx: ExecutionContext,
+        dtype: KClass<T>
+    ): LlamaWeights<T, V> {
+        val byName = linkedMapOf<String, Tensor<T, V>>()
+        val quantTypes = linkedMapOf<String, GGMLQuantizationType>()
+        val meta = loadFromStreamingGguf(ctx, dtype, { name, tensor -> byName[name] = tensor }) { name, qt ->
+            quantTypes[name] = qt
+        }
+        return LlamaWeights(meta, byName, quantTypes)
+    }
+
+    public suspend inline fun <reified T : DType, V> loadToMapStreaming(
+        ctx: ExecutionContext
+    ): LlamaWeights<T, V> = loadToMapStreaming(ctx, T::class)
+
     private fun <T : DType, V> loadFromGguf(
         ctx: ExecutionContext,
         dtype: KClass<T>,
@@ -758,8 +841,11 @@ public class LlamaWeightLoader(
         require(dtype == FP32::class) {
             "LLaMA GGUF loader currently supports FP32 tensors only (got ${dtype.simpleName})"
         }
+        requireNotNull(sourceProvider) {
+            "Sequential loading requires sourceProvider constructor. Use loadFromStreamingGguf for RandomAccessSource."
+        }
 
-        val reader = sourceProvider().buffered().use { src ->
+        val reader = sourceProvider.invoke().buffered().use { src ->
             GGUFReader(src, loadTensorData = loadTensorData)
         }
 
@@ -794,6 +880,396 @@ public class LlamaWeightLoader(
         }
 
         return metadata
+    }
+
+    /**
+     * Load using streaming API - only parses metadata into memory, loads tensors on-demand.
+     * Suitable for models >2GB that exceed Java array limits.
+     */
+    private fun <T : DType, V> loadFromStreamingGguf(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        onTensorLoaded: (String, Tensor<T, V>) -> Unit,
+        quantCallback: ((String, GGMLQuantizationType) -> Unit)?
+    ): LlamaModelMetadata {
+        require(dtype == FP32::class) {
+            "LLaMA GGUF loader currently supports FP32 tensors only (got ${dtype.simpleName})"
+        }
+        requireNotNull(randomAccessProvider) {
+            "Streaming loading requires randomAccessProvider constructor. Use loadFromGguf for Source."
+        }
+
+        val source = randomAccessProvider.invoke()
+        return StreamingGGUFReader.open(source).use { reader ->
+            val metadata = metadataFromStreamingGguf(reader.fields, reader.tensors)
+            validateMetadata(metadata)
+
+            val required = requiredTensorNames(metadata)
+            val tensorByName = reader.tensors.associateBy { it.name }
+
+            required.forEach { name ->
+                val st = tensorByName[name]
+                    ?: error("Missing required tensor in GGUF payload: $name")
+                validateStreamingTensorShape(name, st, metadata)
+                val tensor: Tensor<T, V> = streamingTensorToTensor(ctx, dtype, reader, st)
+                onTensorLoaded(name, tensor)
+                if (quantPolicy == QuantPolicy.RAW_BYTES && st.tensorType != GGMLQuantizationType.F32) {
+                    quantCallback?.invoke(name, st.tensorType)
+                }
+            }
+
+            // Optional tensors (e.g., precomputed RoPE tables) if present and float32
+            listOf(
+                LlamaTensorNames.ROPE_FREQS_REAL,
+                LlamaTensorNames.ROPE_FREQS_IMAG
+            ).forEach { name ->
+                val st = tensorByName[name]
+                if (st != null && st.tensorType == GGMLQuantizationType.F32) {
+                    val tensor: Tensor<T, V> = streamingTensorToTensor(ctx, dtype, reader, st)
+                    onTensorLoaded(name, tensor)
+                }
+            }
+
+            metadata
+        }
+    }
+
+    /**
+     * Extract metadata from StreamingGGUFReader fields (which are direct values, not ReaderField).
+     */
+    private fun metadataFromStreamingGguf(
+        fields: Map<String, Any?>,
+        tensors: List<StreamingTensorInfo>
+    ): LlamaModelMetadata {
+        val arch = (fields["general.architecture"] as? String) ?: "unknown"
+
+        val embeddingLength = fields["llama.embedding_length"]?.toIntValue()
+            ?: inferEmbeddingFromStreamingTensor(tensors)
+        val contextLength = fields["llama.context_length"]?.toIntValue() ?: 0
+        val blockCount = fields["llama.block_count"]?.toIntValue() ?: 0
+        val headCount = fields["llama.attention.head_count"]?.toIntValue() ?: 0
+        val kvHeadCount = fields["llama.attention.head_count_kv"]?.toIntValue() ?: headCount
+        val feedForwardLength = fields["llama.feed_forward_length"]?.toIntValue() ?: 0
+        val ropeDim = fields["llama.rope.dimension_count"]?.toIntValue()
+        val vocabSize = fields["llama.vocab_size"]?.toIntValue()
+            ?: inferVocabFromStreamingTensor(tensors)
+
+        return LlamaModelMetadata(
+            architecture = arch,
+            embeddingLength = embeddingLength,
+            contextLength = contextLength,
+            blockCount = blockCount,
+            headCount = headCount,
+            kvHeadCount = kvHeadCount,
+            feedForwardLength = feedForwardLength,
+            ropeDimensionCount = ropeDim,
+            vocabSize = vocabSize
+        )
+    }
+
+    private fun Any?.toIntValue(): Int? = when (this) {
+        is Int -> this
+        is UInt -> this.toInt()
+        is Long -> this.toInt()
+        is ULong -> this.toInt()
+        is Short -> this.toInt()
+        is UShort -> this.toInt()
+        is Byte -> this.toInt()
+        is UByte -> this.toInt()
+        else -> null
+    }
+
+    private fun inferEmbeddingFromStreamingTensor(tensors: List<StreamingTensorInfo>): Int {
+        val token = tensors.firstOrNull { it.name == LlamaTensorNames.TOKEN_EMBEDDINGS }
+            ?: error("Cannot infer embedding length without token embeddings tensor")
+        return token.shape.map { it.toInt() }.minOrNull()
+            ?: error("Cannot infer embedding length from tensor shape ${token.shape}")
+    }
+
+    private fun inferVocabFromStreamingTensor(tensors: List<StreamingTensorInfo>): Int {
+        val token = tensors.firstOrNull { it.name == LlamaTensorNames.TOKEN_EMBEDDINGS }
+            ?: error("Cannot infer vocab size without token embeddings tensor")
+        return token.shape.map { it.toInt() }.maxOrNull()
+            ?: error("Cannot infer vocab size from tensor shape ${token.shape}")
+    }
+
+    private fun validateStreamingTensorShape(name: String, tensor: StreamingTensorInfo, metadata: LlamaModelMetadata) {
+        val dims = tensor.shape.map { it.toInt() }
+        when (name) {
+            LlamaTensorNames.TOKEN_EMBEDDINGS, LlamaTensorNames.OUTPUT_WEIGHT -> {
+                require(dims.size == 2 && dims.contains(metadata.embeddingLength)) {
+                    "Tensor $name must be [vocab, dim] shaped; got $dims"
+                }
+            }
+
+            LlamaTensorNames.OUTPUT_NORM -> {
+                require(dims.size == 1 && dims[0] == metadata.embeddingLength) {
+                    "Tensor $name must be [${metadata.embeddingLength}] shaped; got $dims"
+                }
+            }
+
+            LlamaTensorNames.ROPE_FREQS_REAL, LlamaTensorNames.ROPE_FREQS_IMAG -> {
+                val headSize = metadata.embeddingLength / metadata.headCount
+                require(dims.size == 2 && dims[0] == metadata.contextLength && dims[1] == headSize / 2) {
+                    val expectedShape = "[${metadata.contextLength}, ${headSize / 2}]"
+                    "Tensor $name must be [seqLen, headSize/2]=$expectedShape shaped; got $dims"
+                }
+            }
+
+            else -> {
+                when {
+                    name.contains("attn_norm") || name.contains("ffn_norm") -> {
+                        require(dims.size == 1 && dims[0] == metadata.embeddingLength) {
+                            "Tensor $name must be [${metadata.embeddingLength}] shaped; got $dims"
+                        }
+                    }
+
+                    name.contains("attn_q") || name.contains("attn_output") -> {
+                        require(dims.size == 2 && dims.all { it == metadata.embeddingLength }) {
+                            "Tensor $name must be [dim, dim]; got $dims"
+                        }
+                    }
+
+                    name.contains("attn_k") || name.contains("attn_v") -> {
+                        val headSize = metadata.embeddingLength / metadata.headCount
+                        val kvDim = metadata.kvHeadCount * headSize
+                        val expectedProduct = metadata.embeddingLength * kvDim
+                        require(dims.size == 2 && dims.product() == expectedProduct) {
+                            "Tensor $name must have product [dim=${metadata.embeddingLength}]*[kv_dim=$kvDim]=$expectedProduct; got $dims with product ${dims.product()}"
+                        }
+                    }
+
+                    name.contains("ffn_gate") || name.contains("ffn_up") -> {
+                        val expected = metadata.feedForwardLength * metadata.embeddingLength
+                        require(dims.size == 2 && dims.product() == expected) {
+                            "Tensor $name must have product $expected; got $dims"
+                        }
+                    }
+
+                    name.contains("ffn_down") -> {
+                        val expected = metadata.embeddingLength * metadata.feedForwardLength
+                        require(dims.size == 2 && dims.product() == expected) {
+                            "Tensor $name must have product $expected; got $dims"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Convert streaming tensor data to Tensor, with dequantization if configured.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> streamingTensorToTensor(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        reader: StreamingGGUFReader,
+        st: StreamingTensorInfo
+    ): Tensor<T, V> {
+        val shape = Shape(*st.shape.map { it.toInt() }.toIntArray())
+        val bytes = reader.loadTensorData(st)
+
+        return when (st.tensorType) {
+            GGMLQuantizationType.F32 -> {
+                val floats = bytesToFloatArray(bytes)
+                ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+            }
+
+            GGMLQuantizationType.F16,
+            GGMLQuantizationType.BF16 -> {
+                when (quantPolicy) {
+                    QuantPolicy.RAW_BYTES -> {
+                        require(dtype == Int8::class) {
+                            "F16/BF16 tensor ${st.name} requires dtype Int8 with quantPolicy=RAW_BYTES"
+                        }
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
+
+                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                        require(dtype == FP32::class) {
+                            "Dequantizing ${st.tensorType} to FP32 requires dtype FP32"
+                        }
+                        val floats = when (st.tensorType) {
+                            GGMLQuantizationType.F16 -> dequantF16FromBytes(bytes)
+                            GGMLQuantizationType.BF16 -> dequantBF16FromBytes(bytes)
+                            else -> error("Unreachable")
+                        }
+                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                    }
+                }
+            }
+
+            GGMLQuantizationType.I8,
+            GGMLQuantizationType.I16,
+            GGMLQuantizationType.I32 -> error("Native type ${st.tensorType} not yet supported")
+
+            GGMLQuantizationType.Q4_0,
+            GGMLQuantizationType.Q4_1,
+            GGMLQuantizationType.Q5_0,
+            GGMLQuantizationType.Q5_1,
+            GGMLQuantizationType.Q8_0,
+            GGMLQuantizationType.Q8_1,
+            GGMLQuantizationType.Q2_K,
+            GGMLQuantizationType.Q3_K,
+            GGMLQuantizationType.Q4_K,
+            GGMLQuantizationType.Q5_K,
+            GGMLQuantizationType.Q6_K,
+            GGMLQuantizationType.Q8_K,
+            GGMLQuantizationType.IQ4_NL,
+            GGMLQuantizationType.IQ4_XS,
+            GGMLQuantizationType.TQ1_0,
+            GGMLQuantizationType.TQ2_0 -> {
+                when (quantPolicy) {
+                    QuantPolicy.RAW_BYTES -> {
+                        require(dtype == Int8::class) {
+                            "Quantized tensor ${st.name} requires dtype Int8 with quantPolicy=RAW_BYTES"
+                        }
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
+
+                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                        require(dtype == FP32::class) {
+                            "Dequantizing ${st.tensorType} to FP32 requires dtype FP32"
+                        }
+                        val floats = dequantFromBytes(bytes, st.tensorType, st.nElements.toInt())
+                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                    }
+                }
+            }
+
+            GGMLQuantizationType.UNKNOWN -> {
+                // Unknown quantization type - fall back to raw bytes
+                println("WARNING: Tensor '${st.name}' has unknown quantization type (raw value: ${st.rawTypeValue}). Storing as raw bytes.")
+                when (quantPolicy) {
+                    QuantPolicy.RAW_BYTES -> {
+                        require(dtype == Int8::class) {
+                            "Unknown tensor type (raw: ${st.rawTypeValue}) for '${st.name}' requires dtype Int8 with quantPolicy=RAW_BYTES"
+                        }
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
+                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                        // Cannot dequantize unknown type - fall back to raw bytes with warning
+                        println("WARNING: Cannot dequantize unknown type (raw: ${st.rawTypeValue}) for '${st.name}'. Falling back to raw bytes.")
+                        require(dtype == Int8::class) {
+                            "Unknown tensor type cannot be dequantized. Use dtype Int8 or add support for type ${st.rawTypeValue}"
+                        }
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
+                }
+            }
+
+            else -> {
+                // Fallback for any other unhandled types (shouldn't normally reach here)
+                println("WARNING: Unhandled tensor type ${st.tensorType} for '${st.name}'. Storing as raw bytes.")
+                require(dtype == Int8::class) {
+                    "Unhandled tensor type ${st.tensorType} requires dtype Int8"
+                }
+                ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+            }
+        }
+    }
+
+    /**
+     * Convert raw bytes (little-endian) to float array.
+     */
+    private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
+        val out = FloatArray(bytes.size / 4)
+        var i = 0
+        var o = 0
+        while (i < bytes.size) {
+            val bits = (bytes[i].toInt() and 0xFF) or
+                ((bytes[i + 1].toInt() and 0xFF) shl 8) or
+                ((bytes[i + 2].toInt() and 0xFF) shl 16) or
+                ((bytes[i + 3].toInt() and 0xFF) shl 24)
+            out[o] = Float.fromBits(bits)
+            i += 4
+            o++
+        }
+        return out
+    }
+
+    /**
+     * Dequantize F16 bytes to float array.
+     */
+    private fun dequantF16FromBytes(bytes: ByteArray): FloatArray {
+        val out = FloatArray(bytes.size / 2)
+        var i = 0
+        var o = 0
+        while (i < bytes.size) {
+            val b0 = bytes[i].toInt() and 0xFF
+            val b1 = bytes[i + 1].toInt() and 0xFF
+            val half = (b1 shl 8) or b0
+            out[o] = halfToFloat(half)
+            i += 2
+            o++
+        }
+        return out
+    }
+
+    /**
+     * Dequantize BF16 bytes to float array.
+     */
+    private fun dequantBF16FromBytes(bytes: ByteArray): FloatArray {
+        val out = FloatArray(bytes.size / 2)
+        var i = 0
+        var o = 0
+        while (i < bytes.size) {
+            val b0 = bytes[i].toInt() and 0xFF
+            val b1 = bytes[i + 1].toInt() and 0xFF
+            val bits = (b1 shl 24) or (b0 shl 16)
+            out[o] = Float.fromBits(bits)
+            i += 2
+            o++
+        }
+        return out
+    }
+
+    private fun halfToFloat(hbits: Int): Float {
+        val mant = hbits and 0x03FF
+        val exp = hbits and 0x7C00
+        val sign = hbits and 0x8000
+        return when (exp) {
+            0 -> {
+                val v = (mant.toFloat() / 1024.0f) * (2.0f).pow(-14)
+                if (sign != 0) -v else v
+            }
+            0x7C00 -> {
+                val v = if (mant == 0) Float.POSITIVE_INFINITY else Float.NaN
+                if (sign != 0) -v else v
+            }
+            else -> {
+                val v = (1.0f + mant.toFloat() / 1024.0f) * (2.0f).pow((exp shr 10) - 15)
+                if (sign != 0) -v else v
+            }
+        }
+    }
+
+    /**
+     * Dispatch dequantization based on tensor type for byte arrays.
+     */
+    private fun dequantFromBytes(bytes: ByteArray, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
+        // Convert bytes to List<Any> to reuse existing dequant functions
+        val raw: List<Any> = bytes.map { it }
+        return when (tensorType) {
+            GGMLQuantizationType.Q4_0 -> dequantQ4_0(raw, nElems)
+            GGMLQuantizationType.Q4_1 -> dequantQ4_1(raw, nElems)
+            GGMLQuantizationType.Q5_0 -> dequantQ5_0(raw, nElems)
+            GGMLQuantizationType.Q5_1 -> dequantQ5_1(raw, nElems)
+            GGMLQuantizationType.Q8_0 -> dequantQ8_0(raw, nElems)
+            GGMLQuantizationType.Q8_1 -> dequantQ8_1(raw, nElems)
+            GGMLQuantizationType.Q2_K -> dequantQ2K(raw, nElems)
+            GGMLQuantizationType.Q3_K -> dequantQ3K(raw, nElems)
+            GGMLQuantizationType.Q4_K -> dequantQ4K(raw, nElems)
+            GGMLQuantizationType.Q5_K -> dequantQ5K(raw, nElems)
+            GGMLQuantizationType.Q6_K -> dequantQ6K(raw, nElems)
+            GGMLQuantizationType.Q8_K -> dequantQ8K(raw, nElems)
+            GGMLQuantizationType.IQ4_NL -> dequantIQ4NL(raw, nElems)
+            GGMLQuantizationType.IQ4_XS -> dequantIQ4XS(raw, nElems)
+            GGMLQuantizationType.TQ1_0 -> dequantTQ1_0(raw, nElems)
+            GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, nElems)
+            else -> error("Dequantization for $tensorType not implemented")
+        }
     }
 
     private fun metadataFromGguf(
@@ -1083,13 +1559,38 @@ public class LlamaWeightLoader(
                 }
             }
 
-            else -> {
-                // Fallback: keep raw bytes even if DEQUANT policy was requested.
-                if (quantPolicy == QuantPolicy.DEQUANTIZE_TO_FP32) {
-                    // Optionally log/trace; for now, fall back to RAW_BYTES.
+            GGMLQuantizationType.UNKNOWN -> {
+                // Unknown quantization type - fall back to raw bytes
+                println("WARNING: Tensor '${rt.name}' has unknown quantization type (raw value: ${rt.rawTypeValue}). Storing as raw bytes.")
+                when (quantPolicy) {
+                    QuantPolicy.RAW_BYTES -> {
+                        require(dtype == Int8::class) {
+                            "Unknown tensor type (raw: ${rt.rawTypeValue}) for '${rt.name}' requires dtype Int8 with quantPolicy=RAW_BYTES"
+                        }
+                        val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
+                        val bytes: ByteArray = toByteArray(raw, rt.name)
+                        @Suppress("UNCHECKED_CAST")
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
+                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                        // Cannot dequantize unknown type - fall back to raw bytes with warning
+                        println("WARNING: Cannot dequantize unknown type (raw: ${rt.rawTypeValue}) for '${rt.name}'. Falling back to raw bytes.")
+                        require(dtype == Int8::class) {
+                            "Unknown tensor type cannot be dequantized. Use dtype Int8 or add support for type ${rt.rawTypeValue}"
+                        }
+                        val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
+                        val bytes: ByteArray = toByteArray(raw, rt.name)
+                        @Suppress("UNCHECKED_CAST")
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
                 }
+            }
+
+            else -> {
+                // Fallback for any other unhandled types (shouldn't normally reach here)
+                println("WARNING: Unhandled tensor type ${rt.tensorType} for '${rt.name}'. Storing as raw bytes.")
                 require(dtype == Int8::class) {
-                    "Quantized tensor ${rt.name} requires dtype Int8 with quantPolicy=RAW_BYTES; got ${dtype.simpleName}"
+                    "Unhandled tensor type ${rt.tensorType} requires dtype Int8; got ${dtype.simpleName}"
                 }
                 val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                 val bytes: ByteArray = toByteArray(raw, rt.name)
