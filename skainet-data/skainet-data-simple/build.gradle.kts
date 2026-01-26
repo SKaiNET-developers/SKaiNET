@@ -60,36 +60,6 @@ kotlin {
             }
         }
 
-        val iosMain by creating {
-            dependsOn(commonMain)
-            dependencies {
-                implementation(libs.ktor.client.darwin)
-            }
-        }
-        val iosArm64Main by getting {
-            dependsOn(iosMain)
-        }
-        val iosSimulatorArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val macosMain by creating {
-            dependsOn(commonMain)
-        }
-        val macosArm64Main by getting {
-            dependsOn(macosMain)
-        }
-
-        val linuxMain by creating {
-            dependsOn(commonMain)
-        }
-        val linuxX64Main by getting {
-            dependsOn(linuxMain)
-        }
-        val linuxArm64Main by getting {
-            dependsOn(linuxMain)
-        }
-
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.ktor.client.plugins)

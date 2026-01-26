@@ -6,29 +6,31 @@ SKaiNET is a Kotlin Multiplatform deep learning framework with type-safe DSLs fo
 
 ## Architecture Summary
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Application Layer                          │
-│  (KotlinGPT, KLlama, YOLO apps, Sine approximator)             │
-├─────────────────────────────────────────────────────────────────┤
-│                       Language Layer                            │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐│
-│  │ Sequential   │ │ DAG/Graph    │ │ Tensor DSL               ││
-│  │ Network DSL  │ │ DSL          │ │ (shape, init, ops)       ││
-│  └──────────────┘ └──────────────┘ └──────────────────────────┘│
-├─────────────────────────────────────────────────────────────────┤
-│                      Compilation Layer                          │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐│
-│  │ Tape         │ │ Gradient     │ │ Compute Graph            ││
-│  │ Recording    │ │ Computation  │ │ Optimization             ││
-│  └──────────────┘ └──────────────┘ └──────────────────────────┘│
-├─────────────────────────────────────────────────────────────────┤
-│                       Backend Layer                             │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐│
-│  │ CPU Backend  │ │ StableHLO    │ │ C99 Codegen              ││
-│  │ (Vector API) │ │ (MLIR/IREE)  │ │ (Arduino/embedded)       ││
-│  └──────────────┘ └──────────────┘ └──────────────────────────┘│
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A[Application Layer<br/>KotlinGPT, KLlama,<br/>YOLO apps,<br/>Sine approximator]
+
+    subgraph L[Language Layer]
+        L1[Sequential<br/>Network DSL]
+        L2[DAG / Graph DSL]
+        L3[Tensor DSL<br/>shape, init, ops]
+    end
+
+    subgraph C[Compilation Layer]
+        C1[Tape Recording]
+        C2[Gradient Computation]
+        C3[Compute Graph Optimization]
+    end
+
+    subgraph B[Backend Layer]
+        B1[CPU Backend<br/>Vector API]
+        B2[StableHLO<br/>MLIR / IREE]
+        B3[C99 Codegen<br/>Arduino / Embedded]
+    end
+
+    A --> L
+    L --> C
+    C --> B
 ```
 
 ## Key Design Principles
