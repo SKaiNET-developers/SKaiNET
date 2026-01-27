@@ -89,6 +89,9 @@ class GGUFTokenizer private constructor(
             val modelType = fields["tokenizer.ggml.model"]?.scalarString()
             val strategy = detectStrategy(modelType, vocab, debug)
 
+            // Always log the tokenizer strategy
+            println("Tokenizer: ${strategy.type} (model=${modelType ?: "auto-detected"})")
+
             if (debug) {
                 println("DEBUG: BOS=$bosTokenId, EOS=$eosTokenId, UNK=$unkTokenId")
                 println("DEBUG: Tokenizer model type from metadata: ${modelType ?: "(not specified)"}")
@@ -153,6 +156,9 @@ class GGUFTokenizer private constructor(
             // Detect tokenizer type from metadata
             val modelType = fields["tokenizer.ggml.model"]?.toString()
             val strategy = detectStrategy(modelType, vocab, debug)
+
+            // Always log the tokenizer strategy
+            println("Tokenizer: ${strategy.type} (model=${modelType ?: "auto-detected"})")
 
             if (debug) {
                 println("DEBUG: BOS=$bosTokenId, EOS=$eosTokenId, UNK=$unkTokenId")
