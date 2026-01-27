@@ -4,7 +4,7 @@ A simple command-line interface for running LLM models using the SKaiNET KLlama 
 
 ## Building
 
-To build the executable fat JAR, run the following command from the project root:
+To build the executable fat JAR, run the following command from the project root with Java 21 as the default JDK:
 
 ```bash
 ./gradlew :skainet-apps:skainet-kllama-cli:shadowJar
