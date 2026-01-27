@@ -127,12 +127,18 @@ public class LlamaRuntime(
     public fun generate(prompt: IntArray, steps: Int, temperature: Float = 1.0f, onToken: (Int) -> Unit) {
         require(steps > 0) { "steps must be > 0" }
 
-        var token = BOS_TOKEN
+        var token = if (prompt.isNotEmpty()) prompt[0] else BOS_TOKEN
         var pos = 0
         while (pos < steps) {
             val logits = forward(token)
-            val next = if (pos < prompt.size) prompt[pos] else sample(logits, temperature)
-            onToken(next)
+            val next = if (pos + 1 < prompt.size) {
+                prompt[pos + 1]
+            } else {
+                sample(logits, temperature)
+            }
+            if (pos + 1 >= prompt.size) {
+                onToken(next)
+            }
             token = next
             pos++
         }
@@ -179,16 +185,21 @@ public class LlamaRuntime(
     }
 
     private fun matmulNoBias(input: Tensor<FP32, Float>, weight: Tensor<FP32, Float>): Tensor<FP32, Float> {
-        // Detect weight orientation and transpose only if needed
-        // matmul: input[batch, in] x weight[in, out] = output[batch, out]
+        // GGUF: [in, out], Karpathy: [out, in]
+        // matmul: [batch, in] x [in, out] = [batch, out]
         val inDim = input.shape[input.rank - 1]
         val w0 = weight.shape[0]
+        val w1 = weight.shape[1]
+        
         return if (w0 == inDim) {
             // Weight is [in, out] (GGUF format), no transpose needed
             input.matmul(weight)
-        } else {
+        } else if (w1 == inDim) {
             // Weight is [out, in] (Karpathy format), transpose to get [in, out]
             input.matmul(weight.t())
+        } else {
+            // Fallback: try to guess based on other dimension
+            input.matmul(weight)
         }
     }
 

@@ -186,20 +186,22 @@ public class LlamaWeightLoader private constructor(
             val bytes = toByteArray(raw, "Q4_0")
             val blockSize = 32
             val bytesPerBlock = 18 // 2 (f16 scale) + 16 (32 nibbles)
-            // Calculate blockCount from actual bytes, not nElems, to avoid reading past end
             val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
             repeat(blockCount) {
-                val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+                // Using unsigned conversion for the bytes before assembling the 16-bit value
+                val b0 = bytes[offset].toInt() and 0xFF
+                val b1 = bytes[offset + 1].toInt() and 0xFF
+                val d = halfToFloat(b0 or (b1 shl 8))
                 offset += 2
                 for (j in 0 until 16) {
                     val b = bytes[offset + j].toInt() and 0xFF
-                    val lo = b and 0x0F
-                    val hi = b shr 4
-                    out[outOff + j] = (lo - 8) * d
-                    out[outOff + 16 + j] = (hi - 8) * d
+                    val lo = (b and 0x0F) - 8
+                    val hi = (b shr 4) - 8
+                    out[outOff + j] = lo * d
+                    out[outOff + 16 + j] = hi * d
                 }
                 offset += 16
                 outOff += blockSize

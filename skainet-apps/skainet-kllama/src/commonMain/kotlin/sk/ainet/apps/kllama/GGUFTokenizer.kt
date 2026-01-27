@@ -335,17 +335,25 @@ class GGUFTokenizer private constructor(
             val hex = token.substring(3, 5)
             val byte = hex.toIntOrNull(16)
             if (byte != null) {
-                return byteArrayOf(byte.toByte()).decodeToString()
+                // Return as a single char representing the byte. 
+                // Note: this might not handle multi-byte UTF-8 sequences correctly 
+                // if they are split across tokens, but it's better than nothing.
+                return byte.toChar().toString()
             }
         }
+        
+        // GGUF tokens often use different space markers depending on the model/tokenizer type.
+        // LLaMA typically uses ' ' (U+2581) as a prefix for spaces.
+        val spaceMarker = "\u2581"
+        
         // Handle common special tokens
         return when (token) {
             "<s>" -> "" // BOS
             "</s>" -> "" // EOS
             "<unk>" -> "" // Unknown
             "<pad>" -> "" // Padding
-            "▁" -> " " // SentencePiece space marker
-            else -> token.replace("▁", " ") // Replace space markers
+            spaceMarker -> " "
+            else -> token.replace(spaceMarker, " ")
         }
     }
 }
