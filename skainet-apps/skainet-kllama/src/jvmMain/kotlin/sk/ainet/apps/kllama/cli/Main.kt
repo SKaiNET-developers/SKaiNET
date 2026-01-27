@@ -32,28 +32,33 @@ private fun usage(): Nothing {
 
 fun main(args: Array<String>) {
     runBlocking {
-        if (args.size < 2) usage()
+        if (args.isEmpty()) usage()
 
         val firstArg = Path.of(args[0])
         val isGguf = firstArg.extension.lowercase() == "gguf"
         
-        val (modelPath, tokenizerPath, promptIdx) = if (isGguf && args.size >= 2) {
-            // Check if second arg is a file (tokenizer) or the prompt
-            val secondArg = Path.of(args[1])
-            if (secondArg.exists() && !secondArg.extension.isEmpty()) {
-                Triple(firstArg, secondArg, 2)
-            } else {
-                Triple(firstArg, null, 1)
-            }
-        } else if (args.size >= 3) {
-            Triple(firstArg, Path.of(args[1]), 2)
+        var argIdx = 0
+        val modelPath = Path.of(args[argIdx++])
+        
+        var tokenizerPath: Path? = null
+        // If it's NOT a GGUF, we MUST have a tokenizer as second arg
+        if (!isGguf) {
+            if (args.size < 2) usage()
+            tokenizerPath = Path.of(args[argIdx++])
         } else {
-            usage()
+            // If it IS a GGUF, the next arg could be a tokenizer OR the prompt
+            if (args.size > argIdx) {
+                val nextArg = Path.of(args[argIdx])
+                if (nextArg.exists() && (nextArg.extension == "bin" || nextArg.extension == "model")) {
+                    tokenizerPath = nextArg
+                    argIdx++
+                }
+            }
         }
 
-        val prompt = args.getOrNull(promptIdx) ?: usage()
-        val steps = args.getOrNull(promptIdx + 1)?.toIntOrNull() ?: 64
-        val temperature = args.getOrNull(promptIdx + 2)?.toFloatOrNull() ?: 0.8f
+        val prompt = args.getOrNull(argIdx++) ?: usage()
+        val steps = args.getOrNull(argIdx++)?.toIntOrNull() ?: 64
+        val temperature = args.getOrNull(argIdx++)?.toFloatOrNull() ?: 0.8f
 
         if (!modelPath.exists()) error("Model not found: $modelPath")
 
@@ -98,6 +103,7 @@ fun main(args: Array<String>) {
 
         println("Generating $steps tokens with temperature=$temperature...")
         println("---")
+        print(prompt)
 
         val elapsed = measureTime {
             runtime.generate(prompt = promptTokens, steps = steps, temperature = temperature) { id ->
