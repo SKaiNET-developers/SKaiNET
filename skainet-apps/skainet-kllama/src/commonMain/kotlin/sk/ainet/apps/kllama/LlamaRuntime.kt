@@ -117,6 +117,7 @@ public class LlamaRuntime(
         val norm = rmsNorm(x, weights.outputNorm)
         // Use matmulNoBias to handle GGUF [in, out] vs Karpathy [out, in] formats
         val logits = matmulNoBias(norm, weights.outputWeight)
+
         position++
         return logits
     }
@@ -384,6 +385,7 @@ public class LlamaRuntime(
 
     private fun sample(logits: Tensor<FP32, Float>, temperature: Float): Int {
         val buf = logits.expectFloatBuffer()
+
         if (temperature <= 1e-6f) {
             var best = 0
             var bestVal = buf[0]

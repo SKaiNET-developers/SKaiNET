@@ -584,31 +584,39 @@ public class LlamaWeightLoader private constructor(
         internal fun dequantQ6K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q6_K")
             val blockSize = QK_K
-            val bytesPerBlock = 210 // 2 (f16 d) + 16 (scales) + 128 (ql) + 64 (qh)
+            // Q6_K block layout: ql[128] + qh[64] + scales[16] + d[2] = 210 bytes
+            val bytesPerBlock = 210
             val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
             repeat(blockCount) {
+                // Read ql (128 bytes) - lower 4 bits of each 6-bit value
+                val ql = bytes.copyOfRange(offset, offset + 128)
+                offset += 128
+                // Read qh (64 bytes) - upper 2 bits of each 6-bit value
+                val qh = bytes.copyOfRange(offset, offset + 64)
+                offset += 64
+                // Read scales (16 signed int8 values)
+                val scales = bytes.copyOfRange(offset, offset + 16)
+                offset += 16
+                // Read d (f16 scale factor)
                 val d = halfToFloat(
                     (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
                 )
                 offset += 2
-                val scales = bytes.copyOfRange(offset, offset + 16)
-                offset += 16
-                val ql = bytes.copyOfRange(offset, offset + 128)
-                offset += 128
-                val qh = bytes.copyOfRange(offset, offset + 64)
-                offset += 64
+
                 repeat(16) { block ->
-                    val scaleIdx = scales[block].toInt() and 0xFF
-                    val scale = d * (scaleIdx / 127.0f)
+                    // scales are signed int8, multiply directly with d
+                    val sc = scales[block].toInt() // signed int8 -> int
+                    val scale = d * sc
                     repeat(16) { j ->
                         val idx = block * 16 + j
                         val lowByte = ql[idx / 2].toInt() and 0xFF
                         val qLow = if (idx % 2 == 0) lowByte and 0x0F else lowByte ushr 4
                         val qHigh = (qh[idx / 4].toInt() ushr ((idx % 4) * 2)) and 0x03
-                        val q = qLow or (qHigh shl 4)
+                        // Reconstruct 6-bit value (0-63) then convert to signed (-32 to 31)
+                        val q = (qLow or (qHigh shl 4)) - 32
                         out[outOff + idx] = q * scale
                     }
                 }

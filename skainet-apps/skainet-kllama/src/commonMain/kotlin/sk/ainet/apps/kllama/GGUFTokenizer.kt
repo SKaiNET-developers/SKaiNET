@@ -505,7 +505,33 @@ class GGUFTokenizer private constructor(
     }
 
     override fun decode(tokens: IntArray): String {
-        return tokens.joinToString("") { decode(it) }
+        // Accumulate byte tokens and decode them together as UTF-8
+        val result = StringBuilder()
+        val byteBuffer = mutableListOf<Byte>()
+
+        for (tokenId in tokens) {
+            if (tokenId < 0 || tokenId >= vocab.size) continue
+            val token = vocab[tokenId]
+
+            val byteValue = extractByteToken(token)
+            if (byteValue != null) {
+                byteBuffer.add(byteValue)
+            } else {
+                // Flush accumulated bytes as UTF-8
+                if (byteBuffer.isNotEmpty()) {
+                    result.append(byteBuffer.toByteArray().decodeToString())
+                    byteBuffer.clear()
+                }
+                result.append(decodeToken(token))
+            }
+        }
+
+        // Flush remaining bytes
+        if (byteBuffer.isNotEmpty()) {
+            result.append(byteBuffer.toByteArray().decodeToString())
+        }
+
+        return result.toString()
     }
 
     override fun decode(token: Int): String {
@@ -515,17 +541,29 @@ class GGUFTokenizer private constructor(
         return decodeToken(text)
     }
 
-    private fun decodeToken(token: String): String {
-        // Handle byte tokens in <0xXX> format
+    /**
+     * Extract byte value from <0xXX> format token.
+     * Returns null if token is not a byte token.
+     */
+    private fun extractByteToken(token: String): Byte? {
         if (token.startsWith("<0x") && token.endsWith(">") && token.length == 6) {
             val hex = token.substring(3, 5)
-            val byte = hex.toIntOrNull(16)
-            if (byte != null) {
-                // Return as a single char representing the byte.
-                // Note: this might not handle multi-byte UTF-8 sequences correctly
-                // if they are split across tokens, but it's better than nothing.
-                return byte.toChar().toString()
+            val value = hex.toIntOrNull(16)
+            if (value != null) {
+                return value.toByte()
             }
+        }
+        return null
+    }
+
+    private fun decodeToken(token: String): String {
+        // Handle byte tokens in <0xXX> format
+        val byteValue = extractByteToken(token)
+        if (byteValue != null) {
+            // For single-token decode, convert byte to string
+            // Note: This may not handle multi-byte UTF-8 correctly in streaming mode,
+            // but it's the best we can do for single-token decoding
+            return byteArrayOf(byteValue).decodeToString()
         }
 
         // Handle common special tokens
