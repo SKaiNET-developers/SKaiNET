@@ -200,7 +200,7 @@ public class LlamaWeightLoader private constructor(
                     val b = bytes[offset + j].toInt() and 0xFF
                     val lo = (b and 0x0F) - 8
                     val hi = (b shr 4) - 8
-Imrpoev loader                    out[outOff + j] = lo.toFloat() * d
+                    out[outOff + j] = lo.toFloat() * d
                     out[outOff + 16 + j] = hi.toFloat() * d
                 }
                 offset += 16
