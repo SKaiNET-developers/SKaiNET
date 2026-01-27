@@ -110,6 +110,9 @@ GGUF files embed their tokenizer metadata. KLlama extracts vocabulary from the G
 # Build all targets
 ./gradlew :skainet-apps:skainet-kllama:build
 
+# Build optimized JVM Fat JAR (recommended for CLI)
+./gradlew :skainet-apps:skainet-kllama:shadowJar -PbuildFatJar
+
 # Build specific platforms
 ./gradlew :skainet-apps:skainet-kllama:jvmJar                           # JVM JAR
 ./gradlew :skainet-apps:skainet-kllama:linkReleaseExecutableMacosArm64  # macOS ARM64
@@ -135,10 +138,20 @@ Arguments:
 
 ### JVM
 
+#### Running via Gradle (Development)
 ```bash
 ./gradlew :skainet-apps:skainet-kllama:jvmRun \
   --args="stories15m.bin tokenizer.bin 'Once upon a time' 64 0.8"
 ```
+
+#### Running the Fat JAR (Production)
+For best performance, use the Fat JAR with SIMD (Vector API) enabled:
+```bash
+java --add-modules jdk.incubator.vector --enable-preview -Xmx8g \
+  -jar skainet-apps/skainet-kllama/build/libs/kllama-fat.jar \
+  stories15m.bin tokenizer.bin "Once upon a time" 64 0.8
+```
+*Note: Adjust `-Xmx` (heap size) based on your model size (e.g., `-Xmx20g` for larger models).*
 
 ### macOS (Apple Silicon)
 
