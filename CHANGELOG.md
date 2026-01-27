@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.2] - 2026-01-27
+
+### Added
+- **Generative AI Section**: New README section with simple code for GGUF text generation.
+- **Tokenizer Strategies**: Automatic detection of tokenizer type (SentencePiece, BPE, WordPiece) from GGUF metadata.
+- **Improved Token Decoding**: Support for multi-byte UTF-8 character decoding from byte tokens.
+
+### Changed
+- **Llama Runtime**: Rewritten `matmulNoBias` for better performance and support for row-major weights.
+- **GGUF Loading**: Improved dequantization for Q2_K, Q4_K, Q5_K, and Q6_K formats matching llama.cpp logic.
+
+### Fixed
+- **GGUF Storage Order**: Fixed critical bug with column-major storage in GGUF files by implementing proper transposition during loading.
+- **Llama Attention**: Fixed missing attention output projection (wo) in the runtime.
+- **Tokenizer**: Fixed BOS token handling and multi-byte character reconstruction.
+
 ## [0.9.1] - 2026-01-26
 
 ### Added
