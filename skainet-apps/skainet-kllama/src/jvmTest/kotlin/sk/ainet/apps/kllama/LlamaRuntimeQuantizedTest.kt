@@ -343,8 +343,8 @@ class LlamaRuntimeQuantizedTest {
 
         val ones1d = ctx.full<FP32, Float>(Shape(dim), FP32::class, 1f)
         val ones2d = ctx.full<FP32, Float>(Shape(dim, dim), FP32::class, 0.25f)
-        val gateUp = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.1f)
-        val down = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)
+        val gateUp = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.1f)
+        val down = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 0f)
 
@@ -372,12 +372,12 @@ class LlamaRuntimeQuantizedTest {
                 ropeDimensionCount = headSize,
                 vocabSize = vocab
             ),
-            tokenEmbedding = ctx.full(Shape(dim, vocab), FP32::class, 0.2f),
+            tokenEmbedding = ctx.full(Shape(vocab, dim), FP32::class, 0.2f),
             ropeFreqReal = ropeReal,
             ropeFreqImag = ropeImag,
             layers = listOf(layer),
             outputNorm = ones1d,
-            outputWeight = ctx.full(Shape(dim, vocab), FP32::class, 0.3f)
+            outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)
         )
 
         // Use OffheapKvCache
@@ -415,8 +415,8 @@ class LlamaRuntimeQuantizedTest {
 
         val ones1d = ctx.full<FP32, Float>(Shape(dim), FP32::class, 1f)
         val ones2d = ctx.full<FP32, Float>(Shape(dim, dim), FP32::class, 0.1f)
-        val gateUp = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)
-        val down = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)
+        val gateUp = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)
+        val down = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 0f)
 
@@ -444,12 +444,12 @@ class LlamaRuntimeQuantizedTest {
                 ropeDimensionCount = dim,
                 vocabSize = vocab
             ),
-            tokenEmbedding = ctx.full(Shape(dim, vocab), FP32::class, 0.2f),
+            tokenEmbedding = ctx.full(Shape(vocab, dim), FP32::class, 0.2f),
             ropeFreqReal = ropeReal,
             ropeFreqImag = ropeImag,
             layers = listOf(layer),
             outputNorm = ones1d,
-            outputWeight = ctx.full(Shape(dim, vocab), FP32::class, 0.3f)
+            outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)
         )
 
         val kvCache = OffheapKvCache(nLayers = 1, seqLen = seqLen, kvDim = dim)
@@ -459,7 +459,7 @@ class LlamaRuntimeQuantizedTest {
         runtime.generate(intArrayOf(0), steps = 3, temperature = 0f) { emitted += it }
 
         assertEquals(3, emitted.size, "Should emit 3 tokens")
-        assertEquals(3, runtime.currentPosition, "Position should advance to 3")
+        assertEquals(4, runtime.currentPosition, "Position should advance to 4")
 
         // All tokens should be valid indices
         for (token in emitted) {
@@ -478,8 +478,8 @@ class LlamaRuntimeQuantizedTest {
 
         val ones1d = ctx.full<FP32, Float>(Shape(dim), FP32::class, 1f)
         val ones2d = ctx.full<FP32, Float>(Shape(dim, dim), FP32::class, 0.25f)
-        val gateUp = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.1f)
-        val down = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.05f)
+        val gateUp = ctx.full<FP32, Float>(Shape(hidden, dim), FP32::class, 0.1f)
+        val down = ctx.full<FP32, Float>(Shape(dim, hidden), FP32::class, 0.05f)
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 0f)
 
@@ -507,12 +507,12 @@ class LlamaRuntimeQuantizedTest {
                 ropeDimensionCount = dim,
                 vocabSize = vocab
             ),
-            tokenEmbedding = ctx.full(Shape(dim, vocab), FP32::class, 0.2f),
+            tokenEmbedding = ctx.full(Shape(vocab, dim), FP32::class, 0.2f),
             ropeFreqReal = ropeReal,
             ropeFreqImag = ropeImag,
             layers = listOf(layer),
             outputNorm = ones1d,
-            outputWeight = ctx.full(Shape(dim, vocab), FP32::class, 0.3f)
+            outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)
         )
 
         // Run with HeapKvCache

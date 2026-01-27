@@ -12,8 +12,8 @@ KLlama enables you to run LLaMA-architecture language models directly in your Ko
 
 - **Pure Kotlin** - No native bindings or external C/C++ dependencies
 - **Cross-Platform** - Single codebase compiles to JVM, native binaries, and WASM
+- **Karpathy Format** - Full support for llama2.c `.bin` checkpoint format
 - **GGUF Support** - Load quantized models in GGUF format (Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q8_1, and K-quants)
-- **Karpathy Format** - Compatible with llama2.c `.bin` checkpoint format
 - **Streaming Generation** - Token-by-token output with callback API
 - **KV Cache** - Efficient autoregressive generation with key-value caching
 
@@ -26,7 +26,7 @@ KLlama enables you to run LLaMA-architecture language models directly in your Ko
 | Linux (x64) | `linuxX64` | ✅ Ready | Native binary |
 | Linux (ARM64) | `linuxArm64` | ✅ Ready | Native binary |
 | Browser | `wasmJs` | ✅ Ready | WebAssembly |
-| Android | `android` | 🚧 Planned | AAR library |
+| Android | `android` | ✅ Ready | AAR library |
 | iOS | `iosArm64` | 🚧 Planned | Framework |
 
 ## Powered by SKaiNET
@@ -126,11 +126,11 @@ GGUF files embed their tokenizer metadata. KLlama extracts vocabulary from the G
 ### Command Line Usage
 
 ```
-kllama <model-path> <tokenizer-path> <prompt> [steps=64] [temperature=0.8]
+kllama <model> <tokenizer> <prompt> [steps=64] [temperature=0.8]
 
 Arguments:
-  model-path      Path to model file (.gguf or .bin)
-  tokenizer-path  Path to tokenizer.bin file
+  model           Path to model file (.gguf or .bin)
+  tokenizer       Path to tokenizer.bin file (required for .bin, optional for .gguf)
   prompt          Text prompt to start generation
   steps           Number of tokens to generate (default: 64)
   temperature     Sampling temperature, 0=greedy (default: 0.8)
@@ -140,16 +140,27 @@ Arguments:
 
 #### Running via Gradle (Development)
 ```bash
+# Running Karpathy .bin model
 ./gradlew :skainet-apps:skainet-kllama:jvmRun \
   --args="stories15m.bin tokenizer.bin 'Once upon a time' 64 0.8"
+
+# Running GGUF model (embedded tokenizer)
+./gradlew :skainet-apps:skainet-kllama:jvmRun \
+  --args="tinyllama-1.1b-q4.gguf 'Once upon a time' 64 0.8"
 ```
 
 #### Running the Fat JAR (Production)
 For best performance, use the Fat JAR with SIMD (Vector API) enabled:
 ```bash
+# Karpathy .bin model
 java --add-modules jdk.incubator.vector --enable-preview -Xmx8g \
   -jar skainet-apps/skainet-kllama/build/libs/kllama-fat.jar \
   stories15m.bin tokenizer.bin "Once upon a time" 64 0.8
+
+# GGUF model
+java --add-modules jdk.incubator.vector --enable-preview -Xmx8g \
+  -jar skainet-apps/skainet-kllama/build/libs/kllama-fat.jar \
+  tinyllama-1.1b-q4.gguf "Once upon a time" 64 0.8
 ```
 *Note: Adjust `-Xmx` (heap size) based on your model size (e.g., `-Xmx20g` for larger models).*
 

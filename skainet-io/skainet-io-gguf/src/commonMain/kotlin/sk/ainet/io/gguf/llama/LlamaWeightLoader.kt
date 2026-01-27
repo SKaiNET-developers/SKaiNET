@@ -115,6 +115,31 @@ public class LlamaWeightLoader private constructor(
         private fun typeName(value: Any?): String =
             value?.let { it::class.simpleName ?: it::class.toString() } ?: "null"
 
+        /**
+         * Handle column-major to row-major conversion for GGUF tensors.
+         *
+         * GGUF stores 2D tensors in column-major order with shape [in_dim, out_dim].
+         * For a weight matrix W where y = x @ W:
+         * - W[i, j] represents weight from input dimension i to output dimension j
+         * - In column-major, W[i, j] is at data[i + j * in_dim]
+         *
+         * After swapping shape to [out_dim, in_dim] and interpreting as row-major:
+         * - Element at row j, col i is at data[j * in_dim + i]
+         * - This equals i + j * in_dim (addition is commutative)
+         * - So we access W[i, j] as intended
+         *
+         * The data doesn't need to change - only the shape interpretation changes.
+         */
+        @Suppress("UNUSED_PARAMETER")
+        internal fun transposeColumnMajorToRowMajor(
+            data: FloatArray,
+            rows: Int,
+            cols: Int
+        ): FloatArray {
+            // Data layout is unchanged - we just swap the shape dimensions
+            return data
+        }
+
         @OptIn(ExperimentalUnsignedTypes::class)
         private fun toByteArray(raw: List<Any>, tensorName: String): ByteArray {
             val first = raw.firstOrNull()
@@ -186,20 +211,22 @@ public class LlamaWeightLoader private constructor(
             val bytes = toByteArray(raw, "Q4_0")
             val blockSize = 32
             val bytesPerBlock = 18 // 2 (f16 scale) + 16 (32 nibbles)
-            // Calculate blockCount from actual bytes, not nElems, to avoid reading past end
             val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
             repeat(blockCount) {
-                val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+                // Using unsigned conversion for the bytes before assembling the 16-bit value
+                val b0 = bytes[offset].toInt() and 0xFF
+                val b1 = bytes[offset + 1].toInt() and 0xFF
+                val d = halfToFloat(b0 or (b1 shl 8))
                 offset += 2
                 for (j in 0 until 16) {
                     val b = bytes[offset + j].toInt() and 0xFF
-                    val lo = b and 0x0F
-                    val hi = b shr 4
-                    out[outOff + j] = (lo - 8) * d
-                    out[outOff + 16 + j] = (hi - 8) * d
+                    val lo = (b and 0x0F) - 8
+                    val hi = (b shr 4) - 8
+                    out[outOff + j] = lo.toFloat() * d
+                    out[outOff + 16 + j] = hi.toFloat() * d
                 }
                 offset += 16
                 outOff += blockSize
@@ -434,11 +461,12 @@ public class LlamaWeightLoader private constructor(
                     val scaleIdx = (scales[block].toInt() ushr 4) and 0x0F
                     val minIdx = scales[block].toInt() and 0x0F
                     val scale = d * (scaleIdx / 15.0f)
+                    // Q2_K formula: y = d * q - dmin * m (subtraction, not addition)
                     val min = dMin * (minIdx / 15.0f)
                     repeat(16) { j ->
                         val codeByte = qs[block * 4 + j / 4].toInt() and 0xFF
                         val q = (codeByte ushr ((j % 4) * 2)) and 0x03
-                        out[outOff + block * 16 + j] = q * scale + min
+                        out[outOff + block * 16 + j] = q * scale - min
                     }
                 }
                 outOff += blockSize
@@ -488,6 +516,24 @@ public class LlamaWeightLoader private constructor(
             return out
         }
 
+        /**
+         * Helper to extract scale and min indices for Q4_K and Q5_K formats.
+         * Matches llama.cpp's get_scale_min_k4() function.
+         */
+        private fun getScaleMinK4(j: Int, scales: ByteArray): Pair<Int, Int> {
+            return if (j < 4) {
+                val sc = scales[j].toInt() and 0x3F
+                val m = scales[j + 4].toInt() and 0x3F
+                sc to m
+            } else {
+                val sc = ((scales[j + 4].toInt() and 0x0F) or
+                         (((scales[j - 4].toInt() and 0xFF) shr 6) shl 4))
+                val m = (((scales[j + 4].toInt() and 0xFF) shr 4) or
+                        (((scales[j].toInt() and 0xFF) shr 6) shl 4))
+                sc to m
+            }
+        }
+
         internal fun dequantQ4K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q4_K")
             val blockSize = QK_K
@@ -508,25 +554,32 @@ public class LlamaWeightLoader private constructor(
                 offset += 12
                 val qs = bytes.copyOfRange(offset, offset + 128)
                 offset += 128
-                repeat(8) { block ->
-                    val bitPos = block * 12
-                    val bytePos = bitPos / 8
-                    val bitShift = bitPos % 8
-                    val packed =
-                        (scales.getOrElse(bytePos) { 0 }.toInt() and 0xFF) or
-                            ((scales.getOrElse(bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-                            ((scales.getOrElse(bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
-                    val scaleIdx = (packed ushr bitShift) and 0x3F
-                    val minIdx = (packed ushr (bitShift + 6)) and 0x3F
-                    val scale = d * (scaleIdx / 63.0f)
-                    val min = dMin * (minIdx / 63.0f)
-                    repeat(32) { j ->
-                        val codeByte = qs[block * 16 + j / 2].toInt() and 0xFF
-                        val q = if (j % 2 == 0) codeByte and 0x0F else codeByte ushr 4
-                        out[outOff + block * 32 + j] = q * scale + min
+
+                // Process 256 elements in groups of 64 (matching llama.cpp structure)
+                var qOffset = 0
+                var scaleIdx = 0
+                repeat(4) { group ->
+                    // Get scales for this pair of 32-element sub-blocks
+                    val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
+                    val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
+                    val d1 = d * sc1
+                    val min1 = dMin * m1
+                    val d2 = d * sc2
+                    val min2 = dMin * m2
+
+                    // First 32 elements: lower nibbles
+                    for (l in 0 until 32) {
+                        val q = qs[qOffset + l].toInt() and 0x0F
+                        out[outOff++] = d1 * q - min1
                     }
+                    // Next 32 elements: upper nibbles
+                    for (l in 0 until 32) {
+                        val q = (qs[qOffset + l].toInt() and 0xFF) shr 4
+                        out[outOff++] = d2 * q - min2
+                    }
+                    qOffset += 32
+                    scaleIdx += 2
                 }
-                outOff += blockSize
             }
             return out
         }
@@ -553,26 +606,38 @@ public class LlamaWeightLoader private constructor(
                 offset += 32
                 val qs = bytes.copyOfRange(offset, offset + 128)
                 offset += 128
-                repeat(8) { block ->
-                    val bitPos = block * 12
-                    val bytePos = bitPos / 8
-                    val bitShift = bitPos % 8
-                    val packed =
-                        (scales.getOrElse(bytePos) { 0 }.toInt() and 0xFF) or
-                            ((scales.getOrElse(bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-                            ((scales.getOrElse(bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
-                    val scaleIdx = (packed ushr bitShift) and 0x3F
-                    val minIdx = (packed ushr (bitShift + 6)) and 0x3F
-                    val scale = d * (scaleIdx / 63.0f)
-                    val min = dMin * (minIdx / 63.0f)
-                    repeat(32) { j ->
-                        val idx = block * 32 + j
-                        val low = qs[block * 16 + j / 2].toInt() and 0xFF
-                        val qLow = if (j % 2 == 0) low and 0x0F else low ushr 4
-                        val qHigh = (qh[idx / 8].toInt() ushr (idx % 8)) and 0x01
+
+                // Process 256 elements in groups of 64 (matching llama.cpp structure)
+                var qOffset = 0
+                var scaleIdx = 0
+                var outIdx = 0
+                repeat(4) { group ->
+                    val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
+                    val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
+                    val d1 = d * sc1
+                    val min1 = dMin * m1
+                    val d2 = d * sc2
+                    val min2 = dMin * m2
+
+                    // First 32 elements: lower nibbles with high bit from qh
+                    for (l in 0 until 32) {
+                        val idx = outIdx + l
+                        val qLow = qs[qOffset + l].toInt() and 0x0F
+                        val qHigh = ((qh[idx / 8].toInt() and 0xFF) shr (idx % 8)) and 0x01
                         val q = qLow or (qHigh shl 4)
-                        out[outOff + idx] = q * scale + min
+                        out[outOff + idx] = d1 * q - min1
                     }
+                    // Next 32 elements: upper nibbles with high bit from qh
+                    for (l in 0 until 32) {
+                        val idx = outIdx + 32 + l
+                        val qLow = ((qs[qOffset + l].toInt() and 0xFF) shr 4)
+                        val qHigh = ((qh[idx / 8].toInt() and 0xFF) shr (idx % 8)) and 0x01
+                        val q = qLow or (qHigh shl 4)
+                        out[outOff + idx] = d2 * q - min2
+                    }
+                    qOffset += 32
+                    scaleIdx += 2
+                    outIdx += 64
                 }
                 outOff += blockSize
             }
@@ -582,32 +647,68 @@ public class LlamaWeightLoader private constructor(
         internal fun dequantQ6K(raw: List<Any>, nElems: Int): FloatArray {
             val bytes = toByteArray(raw, "Q6_K")
             val blockSize = QK_K
-            val bytesPerBlock = 210 // 2 (f16 d) + 16 (scales) + 128 (ql) + 64 (qh)
+            // Q6_K block layout: ql[128] + qh[64] + scales[16] + d[2] = 210 bytes
+            val bytesPerBlock = 210
             val blockCount = bytes.size / bytesPerBlock
             val out = FloatArray(blockCount * blockSize)
             var offset = 0
             var outOff = 0
             repeat(blockCount) {
+                // Read ql (128 bytes) - lower 4 bits of each 6-bit value
+                val ql = bytes.copyOfRange(offset, offset + 128)
+                offset += 128
+                // Read qh (64 bytes) - upper 2 bits of each 6-bit value
+                val qh = bytes.copyOfRange(offset, offset + 64)
+                offset += 64
+                // Read scales (16 signed int8 values)
+                val scales = bytes.copyOfRange(offset, offset + 16)
+                offset += 16
+                // Read d (f16 scale factor)
                 val d = halfToFloat(
                     (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
                 )
                 offset += 2
-                val scales = bytes.copyOfRange(offset, offset + 16)
-                offset += 16
-                val ql = bytes.copyOfRange(offset, offset + 128)
-                offset += 128
-                val qh = bytes.copyOfRange(offset, offset + 64)
-                offset += 64
-                repeat(16) { block ->
-                    val scaleIdx = scales[block].toInt() and 0xFF
-                    val scale = d * (scaleIdx / 127.0f)
-                    repeat(16) { j ->
-                        val idx = block * 16 + j
-                        val lowByte = ql[idx / 2].toInt() and 0xFF
-                        val qLow = if (idx % 2 == 0) lowByte and 0x0F else lowByte ushr 4
-                        val qHigh = (qh[idx / 4].toInt() ushr ((idx % 4) * 2)) and 0x03
-                        val q = qLow or (qHigh shl 4)
-                        out[outOff + idx] = q * scale
+
+                // Process two 128-element halves (matching llama.cpp layout)
+                // Each half uses 64 bytes of ql, 32 bytes of qh, and 8 scales
+                repeat(2) { half ->
+                    val qlBase = half * 64
+                    val qhBase = half * 32
+                    val scBase = half * 8
+
+                    for (l in 0 until 32) {
+                        val isIdx = l / 16  // 0 for l < 16, 1 for l >= 16
+
+                        // q1: lower nibble of ql[l], qh bits 0-1
+                        val q1Low = ql[qlBase + l].toInt() and 0x0F
+                        val q1High = (qh[qhBase + l].toInt() shr 0) and 0x03
+                        val q1 = (q1Low or (q1High shl 4)) - 32
+
+                        // q2: lower nibble of ql[l+32], qh bits 2-3
+                        val q2Low = ql[qlBase + l + 32].toInt() and 0x0F
+                        val q2High = (qh[qhBase + l].toInt() shr 2) and 0x03
+                        val q2 = (q2Low or (q2High shl 4)) - 32
+
+                        // q3: upper nibble of ql[l], qh bits 4-5
+                        val q3Low = (ql[qlBase + l].toInt() and 0xFF) shr 4
+                        val q3High = (qh[qhBase + l].toInt() shr 4) and 0x03
+                        val q3 = (q3Low or (q3High shl 4)) - 32
+
+                        // q4: upper nibble of ql[l+32], qh bits 6-7
+                        val q4Low = (ql[qlBase + l + 32].toInt() and 0xFF) shr 4
+                        val q4High = (qh[qhBase + l].toInt() shr 6) and 0x03
+                        val q4 = (q4Low or (q4High shl 4)) - 32
+
+                        // Scale indices: isIdx+0, isIdx+2, isIdx+4, isIdx+6
+                        val sc1 = scales[scBase + isIdx + 0].toInt()
+                        val sc2 = scales[scBase + isIdx + 2].toInt()
+                        val sc3 = scales[scBase + isIdx + 4].toInt()
+                        val sc4 = scales[scBase + isIdx + 6].toInt()
+
+                        out[outOff + half * 128 + l + 0] = d * sc1 * q1
+                        out[outOff + half * 128 + l + 32] = d * sc2 * q2
+                        out[outOff + half * 128 + l + 64] = d * sc3 * q3
+                        out[outOff + half * 128 + l + 96] = d * sc4 * q4
                     }
                 }
                 outOff += blockSize
@@ -1073,7 +1174,7 @@ public class LlamaWeightLoader private constructor(
         return when (st.tensorType) {
             GGMLQuantizationType.F32 -> {
                 val floats = bytesToFloatArray(bytes)
-                ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                createFp32Tensor(ctx, dtype, shape, floats)
             }
 
             GGMLQuantizationType.F16,
@@ -1095,7 +1196,7 @@ public class LlamaWeightLoader private constructor(
                             GGMLQuantizationType.BF16 -> dequantBF16FromBytes(bytes)
                             else -> error("Unreachable")
                         }
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        createFp32Tensor(ctx, dtype, shape, floats)
                     }
                 }
             }
@@ -1133,7 +1234,7 @@ public class LlamaWeightLoader private constructor(
                             "Dequantizing ${st.tensorType} to FP32 requires dtype FP32"
                         }
                         val floats = dequantFromBytes(bytes, st.tensorType, st.nElements.toInt())
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        createFp32Tensor(ctx, dtype, shape, floats)
                     }
                 }
             }
@@ -1451,6 +1552,30 @@ public class LlamaWeightLoader private constructor(
 
     private fun List<Int>.product(): Int = fold(1) { acc, v -> acc * v }
 
+    /**
+     * Create an FP32 tensor from float data, transposing 2D tensors from column-major to row-major.
+     * GGUF stores 2D tensors in column-major order, so we transpose them at load time.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> createFp32Tensor(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        originalShape: Shape,
+        data: FloatArray
+    ): Tensor<T, V> {
+        return if (originalShape.rank == 2) {
+            // Transpose 2D tensors from column-major to row-major
+            val rows = originalShape[0]
+            val cols = originalShape[1]
+            val transposed = transposeColumnMajorToRowMajor(data, rows, cols)
+            // Shape is now [cols, rows] after transpose
+            val newShape = Shape(cols, rows)
+            ctx.fromFloatArray<T, Float>(newShape, dtype, transposed) as Tensor<T, V>
+        } else {
+            ctx.fromFloatArray<T, Float>(originalShape, dtype, data) as Tensor<T, V>
+        }
+    }
+
     private fun <T : DType, V> readerTensorToTensor(
         ctx: ExecutionContext,
         dtype: KClass<T>,
@@ -1462,7 +1587,7 @@ public class LlamaWeightLoader private constructor(
             GGMLQuantizationType.F32 -> {
                 @Suppress("UNCHECKED_CAST")
                 val floats = (if (rt.data.isEmpty()) reader.materialize(rt) else rt.data) as List<Float>
-                ctx.fromFloatArray<T, Float>(shape, dtype, floats.toFloatArray()) as Tensor<T, V>
+                createFp32Tensor(ctx, dtype, shape, floats.toFloatArray())
             }
 
             GGMLQuantizationType.F16,
@@ -1492,8 +1617,7 @@ public class LlamaWeightLoader private constructor(
                             GGMLQuantizationType.BF16 -> dequantBF16(raw)
                             else -> error("Unsupported native type ${rt.tensorType}")
                         }
-                        @Suppress("UNCHECKED_CAST")
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        createFp32Tensor(ctx, dtype, shape, floats)
                     }
                 }
             }
@@ -1553,8 +1677,7 @@ public class LlamaWeightLoader private constructor(
                             GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, rt.nElements)
                             else -> error("Dequantization for ${rt.tensorType} not implemented yet")
                         }
-                        @Suppress("UNCHECKED_CAST")
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        createFp32Tensor(ctx, dtype, shape, floats)
                     }
                 }
             }

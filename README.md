@@ -2,7 +2,7 @@
 [![Maven Central](https://img.shields.io/maven-central/v/sk.ainet.core/skainet-lang-core.svg)](https://central.sonatype.com/artifact/sk.ainet.core/skainet-lang-core)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-View%20Docs-blue?logo=readthedocs&logoColor=white)](https://deepwiki.com/SKaiNET-developers/SKaiNET)
 
-<img src="docs//SKaiNET-logo.png" alt="SKaiNET logo" width="150">
+<img src="docs/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
 **SKaiNET** is an open-source deep learning framework written in Kotlin, designed with developers in mind to enable the creation modern AI powered applications with ease. 
 
@@ -152,10 +152,29 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.2")
 }
 // Ready to build & run in ~8 minutes
+```
+
+### SKaiNET is for Generative AI
+
+Generate text with just a few lines of code using any Llama-based GGUF model:
+
+```kotlin
+val ctx = DirectCpuExecutionContext()
+val ingestion = LlamaIngestion(ctx)
+
+// Load model and tokenizer
+val weights = ingestion.load { SystemFileSystem.source(Path("model.gguf")).buffered() }
+val tokenizer = GGUFTokenizer.fromSource(SystemFileSystem.source(Path("model.gguf")).buffered())
+
+// Generate!
+val runtime = LlamaRuntime(ctx, weights)
+runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
+    print(tokenizer.decode(token))
+}
 ```
 
 ## Use it
@@ -177,15 +196,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.2")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.2")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.9.1")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.2")
 }
 ```
 
@@ -195,7 +214,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.9.1</version>
+  <version>0.9.2</version>
 </dependency>
 ```
 
@@ -203,6 +222,13 @@ Maven:
 
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.9.2 highlights
+
+- **SKaiNET for Generative AI**: Simplified API for text generation with Llama GGUF models.
+- **Improved GGUF Loading**: Fixed critical bugs with column-major storage and added support for more quantization formats.
+- **Better Tokenization**: Automatic detection of tokenizer strategies and improved UTF-8 decoding.
+- **Runtime Fixes**: Fixed missing attention output projection in Llama models.
 
 ## 0.9.1 highlights
 

@@ -2,6 +2,10 @@ package sk.ainet.apps.kllama
 
 import kotlinx.io.Source
 import kotlinx.io.buffered
+import sk.ainet.apps.kllama.tokenizer.BPEStrategy
+import sk.ainet.apps.kllama.tokenizer.SentencePieceStrategy
+import sk.ainet.apps.kllama.tokenizer.UnknownStrategy
+import sk.ainet.apps.kllama.tokenizer.WordPieceStrategy
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGUFReader
 import sk.ainet.io.gguf.ReaderField
@@ -10,13 +14,17 @@ import sk.ainet.io.gguf.StreamingGGUFReader
 /**
  * Tokenizer that extracts vocabulary from GGUF file metadata.
  * Supports decoding (token ID -> string) and basic BPE encoding (string -> token IDs).
+ *
+ * Automatically detects tokenizer type (SentencePiece, BPE, WordPiece) from GGUF
+ * metadata and uses the appropriate preprocessing strategy.
  */
 class GGUFTokenizer private constructor(
     private val vocab: List<String>,
     private val scores: FloatArray,
     private val bosTokenId: Int,
     private val eosTokenId: Int,
-    private val unkTokenId: Int
+    private val unkTokenId: Int,
+    private val strategy: TokenizerStrategy
 ) : Tokenizer {
 
     companion object {
@@ -77,11 +85,20 @@ class GGUFTokenizer private constructor(
             val eosTokenId = fields["tokenizer.ggml.eos_token_id"]?.scalarInt() ?: DEFAULT_EOS_TOKEN_ID
             val unkTokenId = fields["tokenizer.ggml.unknown_token_id"]?.scalarInt() ?: DEFAULT_UNK_TOKEN_ID
 
+            // Detect tokenizer type from metadata
+            val modelType = fields["tokenizer.ggml.model"]?.scalarString()
+            val strategy = detectStrategy(modelType, vocab, debug)
+
+            // Always log the tokenizer strategy
+            println("Tokenizer: ${strategy.type} (model=${modelType ?: "auto-detected"})")
+
             if (debug) {
                 println("DEBUG: BOS=$bosTokenId, EOS=$eosTokenId, UNK=$unkTokenId")
+                println("DEBUG: Tokenizer model type from metadata: ${modelType ?: "(not specified)"}")
+                println("DEBUG: Using tokenizer strategy: ${strategy.type}")
             }
 
-            return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId)
+            return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId, strategy)
         }
 
         /**
@@ -136,11 +153,88 @@ class GGUFTokenizer private constructor(
             val eosTokenId = fields["tokenizer.ggml.eos_token_id"]?.toIntValue() ?: DEFAULT_EOS_TOKEN_ID
             val unkTokenId = fields["tokenizer.ggml.unknown_token_id"]?.toIntValue() ?: DEFAULT_UNK_TOKEN_ID
 
+            // Detect tokenizer type from metadata
+            val modelType = fields["tokenizer.ggml.model"]?.toString()
+            val strategy = detectStrategy(modelType, vocab, debug)
+
+            // Always log the tokenizer strategy
+            println("Tokenizer: ${strategy.type} (model=${modelType ?: "auto-detected"})")
+
             if (debug) {
                 println("DEBUG: BOS=$bosTokenId, EOS=$eosTokenId, UNK=$unkTokenId")
+                println("DEBUG: Tokenizer model type from metadata: ${modelType ?: "(not specified)"}")
+                println("DEBUG: Using tokenizer strategy: ${strategy.type}")
             }
 
-            return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId)
+            return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId, strategy)
+        }
+
+        /**
+         * Detect the tokenizer strategy based on GGUF metadata and vocabulary inspection.
+         */
+        private fun detectStrategy(
+            modelType: String?,
+            vocab: List<String>,
+            debug: Boolean
+        ): TokenizerStrategy {
+            // First, try to detect from explicit model type in metadata
+            val fromMetadata = when (modelType?.lowercase()) {
+                "llama", "sentencepiece" -> SentencePieceStrategy
+                "gpt2", "bpe" -> BPEStrategy
+                "bert", "wordpiece" -> WordPieceStrategy
+                else -> null
+            }
+
+            if (fromMetadata != null) {
+                if (debug) {
+                    println("DEBUG: Detected tokenizer type from metadata: ${fromMetadata.type}")
+                }
+                return fromMetadata
+            }
+
+            // Fallback: inspect vocabulary for characteristic markers
+            val fromVocab = detectFromVocab(vocab)
+            if (debug) {
+                println("DEBUG: Detected tokenizer type from vocab inspection: ${fromVocab.type}")
+            }
+            return fromVocab
+        }
+
+        /**
+         * Detect tokenizer type by inspecting vocabulary for characteristic markers.
+         */
+        private fun detectFromVocab(vocab: List<String>): TokenizerStrategy {
+            val sentencePieceMarker = "\u2581" // ▁
+            val bpeMarker = "\u0120" // Ġ
+            val wordPieceMarker = "##"
+
+            var sentencePieceCount = 0
+            var bpeCount = 0
+            var wordPieceCount = 0
+
+            // Sample first 1000 tokens (or all if less)
+            val sampleSize = minOf(vocab.size, 1000)
+            for (i in 0 until sampleSize) {
+                val token = vocab[i]
+                when {
+                    token.contains(sentencePieceMarker) -> sentencePieceCount++
+                    token.contains(bpeMarker) -> bpeCount++
+                    token.startsWith(wordPieceMarker) -> wordPieceCount++
+                }
+            }
+
+            // Return strategy based on which marker is most prevalent
+            return when {
+                sentencePieceCount >= bpeCount && sentencePieceCount >= wordPieceCount && sentencePieceCount > 0 ->
+                    SentencePieceStrategy
+                bpeCount > sentencePieceCount && bpeCount >= wordPieceCount ->
+                    BPEStrategy
+                wordPieceCount > sentencePieceCount && wordPieceCount > bpeCount ->
+                    WordPieceStrategy
+                else ->
+                    // Default to SentencePiece/Unknown since most GGUF models use it
+                    UnknownStrategy
+            }
         }
 
         /**
@@ -239,9 +333,27 @@ class GGUFTokenizer private constructor(
                 else -> 0
             }
         }
+
+        private fun ReaderField.scalarString(): String? {
+            val idx = data.firstOrNull() ?: return null
+            val part = parts.getOrNull(idx) ?: return null
+            // Handle bytes to string conversion
+            val bytes = (part as? List<*>)?.mapNotNull { value ->
+                when (value) {
+                    is UByte -> value.toByte()
+                    is Byte -> value
+                    is Number -> value.toInt().toByte()
+                    else -> null
+                }
+            } ?: return null
+            return bytes.toByteArray().decodeToString()
+        }
     }
 
     val vocabSize: Int get() = vocab.size
+
+    /** The detected tokenizer type/strategy in use */
+    val tokenizerType: TokenizerType get() = strategy.type
 
     // Build reverse lookup for encoding
     private val tokenToId: Map<String, Int> by lazy {
@@ -257,13 +369,25 @@ class GGUFTokenizer private constructor(
     override fun encode(text: String): IntArray {
         if (text.isEmpty()) return intArrayOf()
 
-        // Simple BPE encoding:
-        // 1. Start with UTF-8 bytes as initial tokens
-        // 2. Greedily merge pairs that exist in vocab with highest score
+        // Use strategy-specific preprocessing
+        val preprocessed = strategy.preprocess(text)
 
-        // First, convert text to a list of single-char or byte tokens
+        // Handle WordPiece differently - it splits on whitespace first
+        if (strategy.type == TokenizerType.WORDPIECE) {
+            return encodeWordPiece(text)
+        }
+
+        // Standard BPE encoding for SentencePiece and GPT-2 style tokenizers
+        return encodeBPE(preprocessed)
+    }
+
+    /**
+     * Standard BPE encoding used by SentencePiece and GPT-2 style tokenizers.
+     */
+    private fun encodeBPE(preprocessed: String): IntArray {
+        // Convert text to a list of single-char tokens
         val tokens = mutableListOf<String>()
-        for (char in text) {
+        for (char in preprocessed) {
             tokens.add(char.toString())
         }
 
@@ -303,6 +427,68 @@ class GGUFTokenizer private constructor(
         }.toIntArray()
     }
 
+    /**
+     * WordPiece encoding - splits on whitespace first, then applies subword tokenization.
+     */
+    private fun encodeWordPiece(text: String): IntArray {
+        val result = mutableListOf<Int>()
+        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+
+        for ((wordIndex, word) in words.withIndex()) {
+            // Add space token between words (if not first word)
+            if (wordIndex > 0) {
+                tokenToId[" "]?.let { result.add(it) }
+            }
+
+            // Try to find the word in vocab
+            val wordId = tokenToId[word]
+            if (wordId != null) {
+                result.add(wordId)
+                continue
+            }
+
+            // Break into subwords
+            var start = 0
+            var foundAny = false
+            while (start < word.length) {
+                var end = word.length
+                var found = false
+
+                while (start < end) {
+                    val substr = if (start == 0) {
+                        word.substring(start, end)
+                    } else {
+                        "##" + word.substring(start, end)
+                    }
+
+                    val id = tokenToId[substr]
+                    if (id != null) {
+                        result.add(id)
+                        start = end
+                        found = true
+                        foundAny = true
+                        break
+                    }
+                    end--
+                }
+
+                if (!found) {
+                    // Character not found, use UNK or byte fallback
+                    if (start < word.length) {
+                        result.add(findFallbackToken(word[start].toString()))
+                        start++
+                    }
+                }
+            }
+
+            if (!foundAny && word.isNotEmpty()) {
+                result.add(unkTokenId)
+            }
+        }
+
+        return result.toIntArray()
+    }
+
     private fun findFallbackToken(token: String): Int {
         // Try byte fallback tokens (common in LLaMA tokenizers)
         if (token.length == 1) {
@@ -319,7 +505,33 @@ class GGUFTokenizer private constructor(
     }
 
     override fun decode(tokens: IntArray): String {
-        return tokens.joinToString("") { decode(it) }
+        // Accumulate byte tokens and decode them together as UTF-8
+        val result = StringBuilder()
+        val byteBuffer = mutableListOf<Byte>()
+
+        for (tokenId in tokens) {
+            if (tokenId < 0 || tokenId >= vocab.size) continue
+            val token = vocab[tokenId]
+
+            val byteValue = extractByteToken(token)
+            if (byteValue != null) {
+                byteBuffer.add(byteValue)
+            } else {
+                // Flush accumulated bytes as UTF-8
+                if (byteBuffer.isNotEmpty()) {
+                    result.append(byteBuffer.toByteArray().decodeToString())
+                    byteBuffer.clear()
+                }
+                result.append(decodeToken(token))
+            }
+        }
+
+        // Flush remaining bytes
+        if (byteBuffer.isNotEmpty()) {
+            result.append(byteBuffer.toByteArray().decodeToString())
+        }
+
+        return result.toString()
     }
 
     override fun decode(token: Int): String {
@@ -329,23 +541,39 @@ class GGUFTokenizer private constructor(
         return decodeToken(text)
     }
 
-    private fun decodeToken(token: String): String {
-        // Handle byte tokens in <0xXX> format
+    /**
+     * Extract byte value from <0xXX> format token.
+     * Returns null if token is not a byte token.
+     */
+    private fun extractByteToken(token: String): Byte? {
         if (token.startsWith("<0x") && token.endsWith(">") && token.length == 6) {
             val hex = token.substring(3, 5)
-            val byte = hex.toIntOrNull(16)
-            if (byte != null) {
-                return byteArrayOf(byte.toByte()).decodeToString()
+            val value = hex.toIntOrNull(16)
+            if (value != null) {
+                return value.toByte()
             }
         }
+        return null
+    }
+
+    private fun decodeToken(token: String): String {
+        // Handle byte tokens in <0xXX> format
+        val byteValue = extractByteToken(token)
+        if (byteValue != null) {
+            // For single-token decode, convert byte to string
+            // Note: This may not handle multi-byte UTF-8 correctly in streaming mode,
+            // but it's the best we can do for single-token decoding
+            return byteArrayOf(byteValue).decodeToString()
+        }
+
         // Handle common special tokens
         return when (token) {
             "<s>" -> "" // BOS
             "</s>" -> "" // EOS
             "<unk>" -> "" // Unknown
             "<pad>" -> "" // Padding
-            "▁" -> " " // SentencePiece space marker
-            else -> token.replace("▁", " ") // Replace space markers
+            strategy.spaceMarker -> " "
+            else -> strategy.postprocess(token)
         }
     }
 }

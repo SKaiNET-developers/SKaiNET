@@ -1,3 +1,7 @@
+# models
+*.gguf
+*.onnx
+
 local.properties
 .gradle
 .gradle*

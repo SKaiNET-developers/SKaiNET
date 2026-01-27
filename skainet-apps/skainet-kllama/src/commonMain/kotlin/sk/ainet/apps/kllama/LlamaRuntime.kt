@@ -87,8 +87,8 @@ public class LlamaRuntime(
     private val embedding = Embedding(
         numEmbeddings = vocabSize,
         embeddingDim = dim,
-        // GGUF stores embeddings as [dim, vocab], transpose to [vocab, dim]
-        initWeight = weights.tokenEmbedding.t(),
+        // After transpose at load time, embeddings are already [vocab, dim]
+        initWeight = weights.tokenEmbedding,
         name = "token_embd"
     )
 
@@ -115,34 +115,54 @@ public class LlamaRuntime(
         }
 
         val norm = rmsNorm(x, weights.outputNorm)
-        // Use matmulNoBias to handle GGUF [in, out] vs Karpathy [out, in] formats
         val logits = matmulNoBias(norm, weights.outputWeight)
+
         position++
         return logits
     }
 
     /**
      * Greedy/temperature sampling loop. Consumes the prompt and streams generated token ids.
+     * Automatically prepends BOS token if the prompt doesn't start with it.
      */
     public fun generate(prompt: IntArray, steps: Int, temperature: Float = 1.0f, onToken: (Int) -> Unit) {
         require(steps > 0) { "steps must be > 0" }
 
-        var token = BOS_TOKEN
+        // Prepend BOS token if not already present
+        val fullPrompt = if (prompt.isNotEmpty() && prompt[0] != BOS_TOKEN) {
+            intArrayOf(BOS_TOKEN) + prompt
+        } else if (prompt.isEmpty()) {
+            intArrayOf(BOS_TOKEN)
+        } else {
+            prompt
+        }
+
+        var token = fullPrompt[0]
         var pos = 0
-        while (pos < steps) {
+        var generatedCount = 0
+        while (generatedCount < steps) {
             val logits = forward(token)
-            val next = if (pos < prompt.size) prompt[pos] else sample(logits, temperature)
-            onToken(next)
+            val next = if (pos + 1 < fullPrompt.size) {
+                fullPrompt[pos + 1]
+            } else {
+                sample(logits, temperature)
+            }
+            // Only emit tokens after the prompt (excluding BOS)
+            if (pos + 1 >= fullPrompt.size) {
+                onToken(next)
+                generatedCount++
+            }
             token = next
             pos++
         }
     }
 
     private fun runLayer(layerIdx: Int, layer: LlamaLayerWeights, input: Tensor<FP32, Float>): Tensor<FP32, Float> {
-        var x = input
+        val x = input
 
         // Self-attention with GQA support
         val attnNorm = rmsNorm(x, layer.attnNorm)
+
         val q = matmulNoBias(attnNorm, layer.wq)
         val k = matmulNoBias(attnNorm, layer.wk)
         val v = matmulNoBias(attnNorm, layer.wv)
@@ -155,18 +175,22 @@ public class LlamaRuntime(
         applyRopeGqa(qHeads, kHeads, position)
         cacheKvGqa(layerIdx, kHeads, vHeads, position)
 
-        val attnOut = attentionGqa(layerIdx, qHeads, position)
-        val attnTensor = ctx.fromFloatArray<FP32, Float>(Shape(1, dim), FP32::class, attnOut)
-        x = x + attnTensor
+        val attnOutRaw = attentionGqa(layerIdx, qHeads, position)
+
+        // Apply output projection (wo)
+        val attnTensorRaw = ctx.fromFloatArray<FP32, Float>(Shape(1, dim), FP32::class, attnOutRaw)
+        val attnOut = matmulNoBias(attnTensorRaw, layer.wo)
+
+        val afterAttn = x + attnOut
 
         // Feed-forward
-        val ffnNorm = rmsNorm(x, layer.ffnNorm)
+        val ffnNorm = rmsNorm(afterAttn, layer.ffnNorm)
         val gate = matmulNoBias(ffnNorm, layer.ffnGate).silu()
         val up = matmulNoBias(ffnNorm, layer.ffnUp)
         val fused = gate * up
         val ffnOut = matmulNoBias(fused, layer.ffnDown)
 
-        return x + ffnOut
+        return afterAttn + ffnOut
     }
 
     private fun rmsNorm(x: Tensor<FP32, Float>, weight: Tensor<FP32, Float>): Tensor<FP32, Float> {
@@ -178,18 +202,41 @@ public class LlamaRuntime(
         return scaled * w
     }
 
+    /**
+     * Matrix multiplication for row-major weights (after transpose at load time).
+     * After transposing GGUF column-major to row-major, weights have shape [out_dim, in_dim].
+     *
+     * For matmul y = x * W^T where:
+     * - x has shape [1, in_dim]
+     * - W has shape [out_dim, in_dim] (row-major)
+     * - y has shape [1, out_dim]
+     * - y[j] = sum(x[i] * W[j, i] for i in 0..in_dim-1)
+     *        = sum(x[i] * data[j * in_dim + i] for i in 0..in_dim-1)
+     */
     private fun matmulNoBias(input: Tensor<FP32, Float>, weight: Tensor<FP32, Float>): Tensor<FP32, Float> {
-        // Detect weight orientation and transpose only if needed
-        // matmul: input[batch, in] x weight[in, out] = output[batch, out]
+        val inputBuf = input.expectFloatBuffer()
+        val weightBuf = weight.expectFloatBuffer()
+
         val inDim = input.shape[input.rank - 1]
-        val w0 = weight.shape[0]
-        return if (w0 == inDim) {
-            // Weight is [in, out] (GGUF format), no transpose needed
-            input.matmul(weight)
-        } else {
-            // Weight is [out, in] (Karpathy format), transpose to get [in, out]
-            input.matmul(weight.t())
+        val outDim = weight.shape[0]  // After transpose: [out_dim, in_dim]
+        val weightInDim = weight.shape[1]  // Should equal inDim
+
+        require(inDim == weightInDim) {
+            "Input dimension $inDim doesn't match weight dimension $weightInDim (weight shape: ${weight.shape})"
         }
+
+        val outputBuf = FloatArray(outDim)
+
+        // Row-major after transpose: weight[j, i] at index j * weightInDim + i
+        for (j in 0 until outDim) {
+            var sum = 0f
+            for (i in 0 until inDim) {
+                sum += inputBuf[i] * weightBuf[j * weightInDim + i]
+            }
+            outputBuf[j] = sum
+        }
+
+        return ctx.fromFloatArray<FP32, Float>(Shape(1, outDim), FP32::class, outputBuf)
     }
 
     private fun applyRope(q: Tensor<FP32, Float>, k: Tensor<FP32, Float>, pos: Int) {
@@ -373,6 +420,7 @@ public class LlamaRuntime(
 
     private fun sample(logits: Tensor<FP32, Float>, temperature: Float): Int {
         val buf = logits.expectFloatBuffer()
+
         if (temperature <= 1e-6f) {
             var best = 0
             var bestVal = buf[0]

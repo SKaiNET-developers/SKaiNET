@@ -70,9 +70,9 @@ public class MNISTLoaderJvm(config: MNISTLoaderConfig) : MNISTLoaderCommon(confi
 
             // Configure timeout for large files
             install(HttpTimeout) {
-                requestTimeoutMillis = 60000 // 60 seconds
+                requestTimeoutMillis = 300000 // 5 minutes
                 connectTimeoutMillis = 60000 // 60 seconds
-                socketTimeoutMillis = 60000 // 60 seconds
+                socketTimeoutMillis = 300000 // 5 minutes
             }
         }
 
