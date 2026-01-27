@@ -152,8 +152,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.1")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -177,15 +177,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.1")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.1")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.9.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.0")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.9.1")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.1")
 }
 ```
 
@@ -195,7 +195,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.9.0</version>
+  <version>0.9.1</version>
 </dependency>
 ```
 
@@ -204,7 +204,7 @@ Maven:
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
 
-## 0.9.0 highlights
+## 0.9.1 highlights
 
 - **SafeTensors**: Native support for the SafeTensors format for secure and fast model loading.
 - **Generalized Weight Loading**: Improved I/O pipeline with `WeightMapper` and progress tracking.

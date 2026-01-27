@@ -1,7 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -9,13 +8,13 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
-    alias(libs.plugins.shadow)
 }
 
 kotlin {
     jvmToolchain(21)
 
     androidTarget {
+        publishLibraryVariants("release")
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -97,43 +96,14 @@ kotlin {
             implementation(libs.kotlinx.browser)
         }
 
-        val commonMain by getting
-
         val nativeMain by creating {
-            dependsOn(commonMain)
+            dependsOn(commonMain.get())
         }
-
-        val linuxMain by creating {
-            dependsOn(nativeMain)
-        }
-
-        val iosMain by creating {
-            dependsOn(nativeMain)
-        }
-
-        val macosMain by creating {
-            dependsOn(nativeMain)
-        }
-
-        val iosArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val iosSimulatorArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val macosArm64Main by getting {
-            dependsOn(macosMain)
-        }
-
-        val linuxX64Main by getting {
-            dependsOn(linuxMain)
-        }
-
-        val linuxArm64Main by getting {
-            dependsOn(linuxMain)
-        }
+        val linuxX64Main by getting { dependsOn(nativeMain) }
+        val linuxArm64Main by getting { dependsOn(nativeMain) }
+        val macosArm64Main by getting { dependsOn(nativeMain) }
+        val iosArm64Main by getting { dependsOn(nativeMain) }
+        val iosSimulatorArm64Main by getting { dependsOn(nativeMain) }
     }
 }
 
@@ -159,25 +129,3 @@ android {
     }
 }
 
-// Shadow JAR configuration for JVM fat JAR
-tasks.register<ShadowJar>("shadowJar") {
-    archiveBaseName.set("kllama")
-    archiveClassifier.set("all")
-    archiveVersion.set("")
-
-    manifest {
-        attributes(
-            "Main-Class" to "sk.ainet.apps.kllama.cli.MainKt",
-            "Add-Opens" to "java.base/jdk.internal.misc",
-            "Multi-Release" to "true"
-        )
-    }
-
-    from(kotlin.jvm().compilations.getByName("main").output)
-    configurations = listOf(project.configurations.getByName("jvmRuntimeClasspath"))
-
-    // Merge service files for proper SPI support
-    mergeServiceFiles()
-
-    dependsOn("jvmJar")
-}

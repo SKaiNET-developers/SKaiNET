@@ -1,0 +1,588 @@
+# SKaiNET AI Steering Guide
+
+## Overview
+
+SKaiNET is a Kotlin Multiplatform deep learning framework with type-safe DSLs for tensor operations, neural network definition, and training. It supports JVM, Native, and JS targets with a focus on compile-time safety and ergonomic APIs.
+
+## Architecture Summary
+
+```mermaid
+flowchart TB
+    A[Application Layer<br/>KotlinGPT, KLlama,<br/>YOLO apps,<br/>Sine approximator]
+
+    subgraph L[Language Layer]
+        L1[Sequential<br/>Network DSL]
+        L2[DAG / Graph DSL]
+        L3[Tensor DSL<br/>shape, init, ops]
+    end
+
+    subgraph C[Compilation Layer]
+        C1[Tape Recording]
+        C2[Gradient Computation]
+        C3[Compute Graph Optimization]
+    end
+
+    subgraph B[Backend Layer]
+        B1[CPU Backend<br/>Vector API]
+        B2[StableHLO<br/>MLIR / IREE]
+        B3[C99 Codegen<br/>Arduino / Embedded]
+    end
+
+    A --> L
+    L --> C
+    C --> B
+```
+
+## Key Design Principles
+
+1. **Type-Safe Tensors**: `Tensor<T: DType, V>` enforces dtype at compile time
+2. **Context-Based Execution**: Operations flow through `ExecutionContext`
+3. **DSL-First Design**: Multiple DSLs for different abstraction levels
+4. **Composition over Inheritance**: Tensors compose data + operations
+5. **Recording for Autograd**: Tape-based automatic differentiation
+
+---
+
+## 1. Execution Contexts
+
+### DirectCpuExecutionContext (Inference)
+Use for inference and evaluation without gradient recording:
+
+```kotlin
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.Phase
+
+// Default context (EVAL phase)
+val ctx = DirectCpuExecutionContext()
+
+// Explicit training phase (for batch norm behavior)
+val trainCtx = DirectCpuExecutionContext(phase = Phase.TRAIN)
+```
+
+### DefaultGraphExecutionContext (Training)
+Use for training with gradient computation:
+
+```kotlin
+import sk.ainet.context.Phase
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.lang.graph.DefaultGradientTape
+import sk.ainet.lang.graph.DefaultGraphExecutionContext
+
+fun createTrainCtx(): DefaultGraphExecutionContext {
+    val baseCtx = DirectCpuExecutionContext()
+    return DefaultGraphExecutionContext(
+        baseOps = baseCtx.ops,
+        phase = Phase.TRAIN,
+        createTapeFactory = { _ -> DefaultGradientTape(true) }
+    )
+}
+```
+
+**CRITICAL**: Tensors created from the training context use recording ops. Create tensors from `ctx` (not a separate `baseCtx`) when gradients are needed:
+
+```kotlin
+// CORRECT - tensor uses recording ops
+val x = ctx.fromFloatArray<FP32, Float>(Shape(2, 1), FP32::class, floatArrayOf(1f, 2f))
+
+// WRONG - tensor uses non-recording ops, gradients won't flow
+val baseCtx = DirectCpuExecutionContext()
+val x = baseCtx.fromFloatArray<FP32, Float>(Shape(2, 1), FP32::class, floatArrayOf(1f, 2f))
+```
+
+---
+
+## 2. Tensor Creation DSL
+
+### Using `computation` Block
+```kotlin
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.execute.context.computation
+import sk.ainet.execute.context.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext()
+computation(ctx) {
+    // Create tensor with explicit initialization
+    val a = tensor<FP32, Float> {
+        shape(3) { init { idx -> (idx[0] + 1).toFloat() } }
+    } // [1, 2, 3]
+
+    // Create zeros/ones
+    val zeros = tensor<FP32, Float> { shape(2, 2) { zeros() } }
+    val ones = tensor<FP32, Float> { shape(2, 2) { ones() } }
+
+    // Create from array
+    val data = tensor<FP32, Float> {
+        shape(2, 3) { fromArray(floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)) }
+    }
+
+    // Random initialization
+    val randn = tensor<FP32, Float> { shape(4, 4) { randn(std = 0.5f) } }
+}
+```
+
+### Using `data` Block
+```kotlin
+import sk.ainet.context.data
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val inputTensor = data<FP32, Float>(ctx) {
+    tensor<FP32, Float> {
+        shape(batchSize, features) {
+            fromArray(floatArrayOf(...))
+        }
+    }
+}
+```
+
+### Direct Context Methods
+```kotlin
+val t1 = ctx.fromFloatArray<FP32, Float>(Shape(2, 3), FP32::class, floatArrayOf(...))
+val t2 = ctx.zeros<FP32, Float>(Shape(4, 4), FP32::class)
+val t3 = ctx.ones<FP32, Float>(Shape(3, 3), FP32::class)
+val t4 = ctx.full<FP32, Float>(Shape(2, 2), FP32::class, 5.0f)
+```
+
+---
+
+## 3. Tensor Operations
+
+### Operator Overloads
+```kotlin
+import sk.ainet.lang.tensor.plus
+import sk.ainet.lang.tensor.minus
+import sk.ainet.lang.tensor.times
+import sk.ainet.lang.tensor.div
+
+val c = a + b      // Element-wise add
+val d = a - b      // Element-wise subtract
+val e = a * b      // Element-wise multiply
+val f = a / b      // Element-wise divide
+```
+
+### Context Operations
+```kotlin
+// Matrix multiplication
+val result = ctx.ops.matmul(a, b)
+
+// Activations
+val relu = ctx.ops.relu(x)
+val sigmoid = ctx.ops.sigmoid(x)
+val softmax = ctx.ops.softmax(x, dim = 1)
+
+// Reductions
+val mean = ctx.ops.mean(x, dim = null)  // Full reduction
+val sum = ctx.ops.sum(x, dim = 0)       // Along axis
+
+// Reshaping
+val reshaped = ctx.ops.reshape(x, Shape(1, 3, 1, 1))
+val squeezed = ctx.ops.squeeze(x, dim = 0)
+val unsqueezed = ctx.ops.unsqueeze(x, dim = 2)
+```
+
+### Extension Functions
+```kotlin
+import sk.ainet.lang.tensor.relu
+import sk.ainet.lang.tensor.cosineDistance
+
+val activated = tensor.relu()
+val dist = a.cosineDistance(b)
+```
+
+---
+
+## 4. Sequential Network DSL
+
+### Basic Network Definition
+```kotlin
+import sk.ainet.lang.nn.dsl.sequential
+import sk.ainet.lang.types.FP32
+
+val model = sequential<FP32, Float>(ctx) {
+    input(784)                           // Input dimension
+    dense(128) {                         // Hidden layer
+        weights { randn(std = 0.5f) }    // Xavier-like init
+    }
+    activation { it.relu() }             // Activation
+    dense(10)                            // Output layer
+}
+
+// Forward pass
+val output = model.forward(inputTensor, ctx)
+```
+
+### Full Network with Options
+```kotlin
+import sk.ainet.lang.nn.definition
+import sk.ainet.lang.nn.network
+
+val model = definition<FP32, Float> {
+    network(ctx) {
+        input(1, "input")
+
+        dense(16, "hidden-1") {
+            weights { fromArray(pretrainedWeights) }
+            bias { fromArray(pretrainedBias) }
+            activation = { tensor -> with(tensor) { relu() } }
+        }
+        activation("relu-1") { tensor -> with(tensor) { relu() } }
+
+        dense(16, "hidden-2") {
+            weights { randn(std = 0.1f) }
+        }
+        activation("relu-2") { tensor -> with(tensor) { relu() } }
+
+        dense(1, "output") {
+            // Linear output (no activation)
+        }
+    }
+}
+```
+
+---
+
+## 5. DAG/Graph DSL
+
+For complex architectures with skip connections, multi-input/output:
+
+```kotlin
+import sk.ainet.lang.dag.*
+import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.UpsampleMode
+import sk.ainet.lang.types.FP32
+
+val program = dag {
+    val input = input<FP32>("input", TensorSpec("input", listOf(1, 3, 640, 640), "FP32"))
+
+    // Parameters
+    val w1 = parameter<FP32, Float>("w1") { shape(16, 3, 3, 3) { ones() } }
+    val b1 = constant<FP32, Float>("b1") { shape(16) { zeros() } }
+
+    // Convolution layers
+    val c1 = conv2d(input, w1, b1, stride = 2 to 2, padding = 1 to 1)
+
+    val w2 = parameter<FP32, Float>("w2") { shape(32, 16, 3, 3) { ones() } }
+    val b2 = constant<FP32, Float>("b2") { shape(32) { zeros() } }
+    val c2 = conv2d(c1, w2, b2, stride = 2 to 2, padding = 1 to 1)
+
+    // Upsample
+    val up = upsample2d(c2, scale = 2 to 2, mode = UpsampleMode.Nearest)
+
+    // Head
+    val wHead = parameter<FP32, Float>("w_head") { shape(3, 32, 1, 1) { ones() } }
+    val bHead = constant<FP32, Float>("b_head") { shape(3) { zeros() } }
+    val head = conv2d(up, wHead, bHead, stride = 1 to 1, padding = 0 to 0)
+
+    output(c2, head)  // Multiple outputs
+}
+
+// Convert to compute graph
+val graph = program.toComputeGraph()
+```
+
+---
+
+## 6. Training Pipeline
+
+### Using `trainStep` Function
+```kotlin
+import sk.ainet.lang.nn.trainStep
+import sk.ainet.lang.nn.loss.MSELoss
+import sk.ainet.lang.nn.optim.sgd
+
+val ctx = createTrainCtx()
+val loss = MSELoss()
+val optimizer = sgd(lr = 0.1)
+
+// Register parameters
+model.trainableParameters().forEach { optimizer.addParameter(it) }
+
+// Training loop
+for (epoch in 1..100) {
+    val lossValue = trainStep(model, loss, optimizer, ctx, x, y)
+    println("Epoch $epoch: Loss = ${lossValue.data.get()}")
+}
+```
+
+### Using Training DSL
+```kotlin
+import sk.ainet.lang.nn.dsl.training
+import sk.ainet.lang.nn.loss.MSELoss
+import sk.ainet.lang.nn.optim.sgd
+
+val runner = training<FP32, Float> {
+    model { myModel }
+    loss { MSELoss() }
+    optimizer {
+        sgd(lr = 0.01).apply {
+            myModel.trainableParameters().forEach { addParameter(it) }
+        }
+    }
+}
+
+// Training loop
+for (epoch in 1..100) {
+    val loss = runner.step(ctx, inputs, targets)
+    println("Epoch $epoch: Loss = ${loss.data.get()}")
+}
+```
+
+### Manual Recording and Backward
+```kotlin
+val ctx = createTrainCtx()
+val aTensor = ctx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, floatArrayOf(1f, 0f, 0f))
+    .withRequiresGrad()
+
+// Forward with recording
+val (tape, distance) = ctx.record {
+    aTensor.cosineDistance(bTensor)
+}
+
+// Backward pass
+tape.computeGradients(
+    targets = listOf(distance),
+    sources = listOf(aTensor)
+)
+
+// Access gradients
+println("Gradient: ${aTensor.grad}")
+
+// Optimizer step
+val optimizer = sgd(lr = 0.5)
+optimizer.addParameter(ModuleParameter.WeightParameter("a", aTensor, true))
+optimizer.step()
+optimizer.zeroGrad()
+```
+
+---
+
+## 7. Loss Functions
+
+```kotlin
+import sk.ainet.lang.nn.loss.*
+
+// Regression
+val mse = MSELoss()
+val mae = MAELoss()
+val huber = HuberLoss(delta = 1.0f)
+val logCosh = LogCoshLoss()
+val poisson = PoissonLoss(logInput = true)
+
+// Classification
+val ce = CrossEntropyLoss()               // Sparse labels (indices)
+val catCe = CategoricalCrossEntropyLoss() // Same as above
+val bce = BinaryCrossEntropyLoss()        // Binary (probabilities)
+val bceLogits = BCEWithLogitsLoss()       // Binary (logits, numerically stable)
+
+// Margin-based
+val hinge = HingeLoss(margin = 1.0f)
+val squaredHinge = SquaredHingeLoss(margin = 1.0f)
+
+// Usage
+val lossValue = mse.forward(predictions, targets, ctx, reduction = Reduction.MEAN)
+```
+
+---
+
+## 8. Optimizers
+
+```kotlin
+import sk.ainet.lang.nn.optim.sgd
+import sk.ainet.lang.nn.optim.adam
+
+// SGD with momentum and weight decay
+val sgdOptim = sgd(lr = 0.01, momentum = 0.9, weightDecay = 0.0001)
+
+// Adam
+val adamOptim = adam(lr = 0.001, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8)
+
+// Register parameters
+model.trainableParameters().forEach { param ->
+    sgdOptim.addParameter(param, applyWeightDecay = true)
+}
+
+// Training step
+sgdOptim.step()
+sgdOptim.zeroGrad()
+```
+
+---
+
+## 9. Data Types (DType)
+
+```kotlin
+import sk.ainet.lang.types.*
+
+// Floating point
+FP64::class  // Double
+FP32::class  // Float (default)
+FP16::class  // Half precision
+BF16::class  // BFloat16
+
+// Integer
+Int64::class
+Int32::class
+Int16::class
+Int8::class
+
+// Unsigned
+UInt64::class
+UInt32::class
+UInt8::class
+
+// Quantized
+Int4::class    // 4-bit integer
+Ternary::class // Ternary quantization
+```
+
+---
+
+## 10. Gradient Requirements
+
+```kotlin
+import sk.ainet.lang.tensor.withRequiresGrad
+
+// Mark tensor for gradient computation
+val x = ctx.fromFloatArray<FP32, Float>(shape, FP32::class, data)
+    .withRequiresGrad()
+
+// Or via gradState
+x.gradState.requiresGrad = true
+
+// Accumulate gradient manually
+x.accumulateGrad(gradTensor)
+
+// Access gradient
+val grad = x.grad
+
+// Zero gradient
+x.zeroGrad()
+```
+
+---
+
+## 11. Model I/O
+
+### SafeTensors
+```kotlin
+import sk.ainet.io.safetensors.SafeTensorsParametersLoader
+
+val loader = SafeTensorsParametersLoader(filePath)
+loader.load<FP32, Float>(ctx, FP32::class) { name, tensor ->
+    // Handle each loaded tensor
+    model.loadParameter(name, tensor)
+}
+```
+
+### GGUF (Llama models)
+```kotlin
+import sk.ainet.io.gguf.GgufParametersLoader
+
+val loader = GgufParametersLoader(modelPath)
+// Supports quantized weights (Q4_K, Q8_0, etc.)
+```
+
+---
+
+## 12. Common Patterns
+
+### Sine Approximation Example
+```kotlin
+val ctx = createTrainCtx()
+
+// Create model
+val model = sequential<FP32, Float>(ctx) {
+    input(1)
+    dense(16) { weights { randn(std = 0.5f) } }
+    activation { it.relu() }
+    dense(16) { weights { randn(std = 0.5f) } }
+    activation { it.relu() }
+    dense(1)
+}
+
+// Setup training
+val runner = training<FP32, Float> {
+    model { model }
+    loss { MSELoss() }
+    optimizer {
+        sgd(lr = 0.05).apply {
+            model.trainableParameters().forEach { addParameter(it) }
+        }
+    }
+}
+
+// Generate data
+val xValues = FloatArray(batchSize) { i -> (i.toFloat() / (batchSize - 1)) * (PI.toFloat() / 2f) }
+val yValues = FloatArray(batchSize) { i -> sin(xValues[i].toDouble()).toFloat() }
+
+val inputs = ctx.fromFloatArray<FP32, Float>(Shape(batchSize, 1), FP32::class, xValues)
+val targets = ctx.fromFloatArray<FP32, Float>(Shape(batchSize, 1), FP32::class, yValues)
+
+// Train
+repeat(100) { epoch ->
+    val loss = runner.step(ctx, inputs, targets)
+    if (epoch % 10 == 0) println("Epoch $epoch: ${loss.data.get()}")
+}
+```
+
+### Custom Module
+```kotlin
+class MyModule(private val ctx: ExecutionContext) : Module<FP32, Float>() {
+    override val name = "my_module"
+    override val modules: List<Module<FP32, Float>> = emptyList()
+
+    private val w = ctx.fromFloatArray<FP32, Float>(Shape(10, 5), FP32::class, ...)
+        .withRequiresGrad()
+
+    override val params = listOf(
+        ModuleParameter.WeightParameter("w", w, true)
+    )
+
+    override fun onForward(input: Tensor<FP32, Float>, ctx: ExecutionContext): Tensor<FP32, Float> {
+        return ctx.ops.matmul(input, w)
+    }
+}
+```
+
+---
+
+## 13. Key Files Reference
+
+| Component | Path |
+|-----------|------|
+| ExecutionContext | `skainet-lang-core/.../context/ExecutionContext.kt` |
+| Module Base | `skainet-lang-core/.../nn/Module.kt` |
+| Sequential DSL | `skainet-lang-core/.../nn/dsl/NetworkBuilder.kt` |
+| Graph DSL | `skainet-lang-dag/.../dag/GraphDsl.kt` |
+| Tensor Ops | `skainet-lang-core/.../tensor/ops/TensorOps.kt` |
+| CPU Backend | `skainet-backend-cpu/.../ops/DefaultCpuOps.kt` |
+| Training Runner | `skainet-lang-core/.../nn/TrainingRunner.kt` |
+| Loss Functions | `skainet-lang-core/.../nn/loss/*.kt` |
+| Optimizers | `skainet-lang-core/.../nn/optim/*.kt` |
+| Gradient Tape | `skainet-compile-core/.../tape/ExecutionTape.kt` |
+
+---
+
+## 14. Gotchas and Best Practices
+
+1. **Always create tensors from training context** when gradients are needed
+2. **Use `ctx.ops.*` for operations** inside `record {}` blocks
+3. **Call `optimizer.zeroGrad()`** after each `step()`
+4. **Set `requiresGrad = true`** on parameters before backward pass
+5. **Shape convention**: `[batch, features]` for dense, `[N, C, H, W]` for conv
+6. **Broadcasting**: Follows NumPy rules, trailing dimensions must match
+7. **Memory**: Large tensors should be created with appropriate backend support
+
+---
+
+## 15. Module Structure
+
+```
+skainet-lang/           # Core DSLs and type system
+skainet-compile/        # Tape recording, graph compilation
+skainet-backends/       # CPU (and future GPU) implementations
+skainet-data/           # Dataset and transform APIs
+skainet-io/             # SafeTensors, GGUF, ONNX loaders
+skainet-apps/           # Example applications
+```

@@ -1,5 +1,5 @@
 [versions]
-agp = "8.13.0"
+agp = "8.12.0"
 jacksonDatabind = "2.21.0"
 jsonSchemaValidator = "3.0.0"
 jsonSchemaValidatorVersion = "0.5.3"
@@ -9,8 +9,8 @@ kotlinxCoroutines = "1.10.2"
 kotlinBrowser = "0.5.0"
 android-minSdk = "24"
 android-compileSdk = "36"
-kotlinxSerializationJson = "1.10.0"
-ktorClientCore = "3.4.0"
+kotlinxSerializationJson = "1.9.0"
+ktorClientCore = "3.1.1"
 ktorClientPlugins = "3.1.1"
 logbackClassic = "1.5.25"
 kover = "0.9.4"
@@ -75,7 +75,7 @@ androidLibrary = { id = "com.android.library", version.ref = "agp" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 jetbrainsKotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.36.0" }
+vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.35.0" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

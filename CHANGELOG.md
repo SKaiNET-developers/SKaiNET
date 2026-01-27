@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.0] - 2026-01-26
+## [0.9.1] - 2026-01-26
 
 ### Added
 - **SafeTensors Support**: Initial implementation of `skainet-io-safetensors` for reading SafeTensors format.

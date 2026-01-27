@@ -70,3 +70,5 @@ include("skainet-test:skainet-test-groundtruth")
 // ====== APPS
 include("skainet-apps:skainet-tensor-tools")
 include("skainet-apps:skainet-kllama")
+include("skainet-apps:skainet-kllama-cli")
+include("skainet-io:skainet-io-safetensors")
