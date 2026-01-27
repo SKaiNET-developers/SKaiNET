@@ -1,5 +1,5 @@
 plugins {
-    id("java")
+    kotlin("jvm")
     alias(libs.plugins.shadow)
 }
 
