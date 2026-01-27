@@ -141,28 +141,31 @@ class LlamaQuantDequantTest {
 
     @Test
     fun `dequant Q4_K first block uses scale only`() {
-        val raw = ByteArray(4 + 12 + 128) { 0x00 }
+        val raw = ByteArray(144) { 0x00 }
         // d = 1.0, dmin = 0.0
         raw[0] = 0x00; raw[1] = 0x3C; raw[2] = 0x00; raw[3] = 0x00
-        // block 0: scale idx 63, min idx 0 -> scales bits 0..5 set
-        raw[4] = 0x3F
-        // block 0 codes = 15 -> bytes 0xFF for first 16 bytes (32 vals)
-        repeat(16) { raw[16 + it] = 0xFF.toByte() }
+        // block 0: sc=1, m=0 (from getScaleMinK4 logic)
+        // Group 0 uses scales[0] for sc1, scales[1] for sc2
+        raw[4] = 0x01
+        raw[5] = 0x01
+        // block 0 codes = 15 -> bytes 0xFF for first 32 bytes of qs (64 vals)
+        repeat(32) { raw[16 + it] = 0xFF.toByte() }
         val out = LlamaWeightLoader.dequantQ4K(raw.toList(), 256)
-        val expected = FloatArray(256) { if (it < 32) 15f else 0f }
+        val expected = FloatArray(256) { if (it < 64) 15f else 0f }
         assertContentEquals(expected.toList(), out.toList())
     }
 
     @Test
     fun `dequant Q5_K picks high bit`() {
-        val raw = ByteArray(4 + 12 + 32 + 128) { 0x00 }
+        val raw = ByteArray(176) { 0x00 }
         // d = 1.0, dmin = 0.0
         raw[0] = 0x00; raw[1] = 0x3C; raw[2] = 0x00; raw[3] = 0x00
-        // block 0: scale idx 63, min idx 0
-        raw[4] = 0x3F
+        // block 0: sc=1, m=0
+        raw[4] = 0x01
+        raw[5] = 0x01
         // qh high bits set for first 32 weights
         repeat(4) { raw[16 + it] = 0xFF.toByte() }
-        // qs low nibble zero
+        // qs low nibbles zero
         val out = LlamaWeightLoader.dequantQ5K(raw.toList(), 256)
         val expected = FloatArray(256) { if (it < 32) 16f else 0f }
         assertContentEquals(expected.toList(), out.toList())
@@ -170,15 +173,37 @@ class LlamaQuantDequantTest {
 
     @Test
     fun `dequant Q6_K combines low and high bits`() {
-        val raw = ByteArray(2 + 16 + 128 + 64) { 0x00 }
+        val raw = ByteArray(210) { 0x00 }
         // d = 1.0
-        raw[0] = 0x00; raw[1] = 0x3C
-        // block 0 scale idx 127 -> scale 1.0
-        raw[2] = 0x7F
-        // ql: two values per byte, both 1 -> 0x11 for first 8 bytes (16 vals)
-        repeat(8) { raw[18 + it] = 0x11.toByte() }
+        raw[208] = 0x00; raw[209] = 0x3C
+        // scales at offset 192
+        // Both halves (128 elements each) should have scale=1 for all groups
+        repeat(16) { raw[192 + it] = 0x01 }
+
+        // ql: offset 0. 0x21 -> becomes (1|2<<4)-32 = 33-32 = 1.
+        repeat(128) { raw[it] = 0x21.toByte() }
+        // qh[0] bits 0-1 = 0 (00), 2-3 = 0, 4-5 = 0, 6-7 = 0 -> 0x00
+        // wait, if ql = 0x21, qLow=1, qHigh=2.
+        // Actually, if ql=0x21, then:
+        // q1Low = ql[l] & 0x0F = 1
+        // q3Low = ql[l] >> 4 = 2
+        // q2Low = ql[l+32] & 0x0F = 1
+        // q4Low = ql[l+32] >> 4 = 2
+        // We need (qLow | qHigh << 4) = 33.
+        // For q1: q1Low=1, so q1High=2. qh bits 0-1 = 2.
+        // For q2: q2Low=1, so q2High=2. qh bits 2-3 = 2.
+        // For q3: q3Low=2, so q3High=? (2 | q3High<<4) = 33 -> 31/16 not integer.
+        // Let's use simpler: qLow=1, qHigh=2 -> 33.
+        // q1Low=1, q1High=2.
+        // q2Low=1, q2High=2.
+        // q3Low=1, q3High=2.
+        // q4Low=1, q4High=2.
+        // So ql all 0x11, qh all 0xAA.
+        repeat(128) { raw[it] = 0x11.toByte() }
+        repeat(64) { raw[128 + it] = 0xAA.toByte() }
+
         val out = LlamaWeightLoader.dequantQ6K(raw.toList(), 256)
-        val expected = FloatArray(256) { if (it < 16) 1f else 0f }
+        val expected = FloatArray(256) { 1f }
         assertContentEquals(expected.toList(), out.toList())
     }
 

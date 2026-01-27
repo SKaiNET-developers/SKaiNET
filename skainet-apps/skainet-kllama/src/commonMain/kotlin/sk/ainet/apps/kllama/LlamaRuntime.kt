@@ -139,7 +139,8 @@ public class LlamaRuntime(
 
         var token = fullPrompt[0]
         var pos = 0
-        while (pos < steps) {
+        var generatedCount = 0
+        while (generatedCount < steps) {
             val logits = forward(token)
             val next = if (pos + 1 < fullPrompt.size) {
                 fullPrompt[pos + 1]
@@ -149,6 +150,7 @@ public class LlamaRuntime(
             // Only emit tokens after the prompt (excluding BOS)
             if (pos + 1 >= fullPrompt.size) {
                 onToken(next)
+                generatedCount++
             }
             token = next
             pos++
