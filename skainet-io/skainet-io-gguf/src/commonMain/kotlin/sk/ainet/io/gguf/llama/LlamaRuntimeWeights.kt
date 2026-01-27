@@ -62,15 +62,15 @@ public object LlamaWeightMapper {
             requireShape(Shape(size), label, tensorName)
 
         val tokenEmbedding = get(LlamaTensorNames.TOKEN_EMBEDDINGS)
-        // GGUF stores token embeddings as [embedding_dim, vocab_size]
-        tokenEmbedding.require2D(metadata.embeddingLength, metadata.vocabSize, "token embedding", LlamaTensorNames.TOKEN_EMBEDDINGS)
+        // After transpose: [vocab_size, embedding_dim] (row-major, standard for embedding lookup)
+        tokenEmbedding.require2D(metadata.vocabSize, metadata.embeddingLength, "token embedding", LlamaTensorNames.TOKEN_EMBEDDINGS)
 
         val outputNorm = get(LlamaTensorNames.OUTPUT_NORM)
         outputNorm.require1D(metadata.embeddingLength, "output norm", LlamaTensorNames.OUTPUT_NORM)
 
         val outputWeight = get(LlamaTensorNames.OUTPUT_WEIGHT)
-        // GGUF stores output weight as [embedding_dim, vocab_size]
-        outputWeight.require2D(metadata.embeddingLength, metadata.vocabSize, "output weight", LlamaTensorNames.OUTPUT_WEIGHT)
+        // After transpose: [vocab_size, embedding_dim] (row-major)
+        outputWeight.require2D(metadata.vocabSize, metadata.embeddingLength, "output weight", LlamaTensorNames.OUTPUT_WEIGHT)
 
         val ropeReal = weights.tensors[LlamaTensorNames.ROPE_FREQS_REAL]?.also {
             it.requireShape(Shape(metadata.contextLength, headSize / 2), "rope.freq_cis_real", LlamaTensorNames.ROPE_FREQS_REAL)
@@ -87,33 +87,35 @@ public object LlamaWeightMapper {
                 require1D(metadata.embeddingLength, "blk.$layer.attn_norm.weight", LlamaTensorNames.attnNorm(layer))
             }
             val wq = get(LlamaTensorNames.attnQ(layer)).apply {
+                // After transpose: [dim, dim] (symmetric, so unchanged)
                 require2D(metadata.embeddingLength, metadata.embeddingLength, "blk.$layer.attn_q.weight", LlamaTensorNames.attnQ(layer))
             }
             val wk = get(LlamaTensorNames.attnK(layer)).apply {
-                // GQA: K projection stored as [dim, kv_dim] in GGUF
-                require2D(metadata.embeddingLength, kvDim, "blk.$layer.attn_k.weight", LlamaTensorNames.attnK(layer))
+                // After transpose: [kv_dim, dim] (was [dim, kv_dim] in GGUF)
+                require2D(kvDim, metadata.embeddingLength, "blk.$layer.attn_k.weight", LlamaTensorNames.attnK(layer))
             }
             val wv = get(LlamaTensorNames.attnV(layer)).apply {
-                // GQA: V projection stored as [dim, kv_dim] in GGUF
-                require2D(metadata.embeddingLength, kvDim, "blk.$layer.attn_v.weight", LlamaTensorNames.attnV(layer))
+                // After transpose: [kv_dim, dim] (was [dim, kv_dim] in GGUF)
+                require2D(kvDim, metadata.embeddingLength, "blk.$layer.attn_v.weight", LlamaTensorNames.attnV(layer))
             }
             val wo = get(LlamaTensorNames.attnOut(layer)).apply {
+                // After transpose: [dim, dim] (symmetric, so unchanged)
                 require2D(metadata.embeddingLength, metadata.embeddingLength, "blk.$layer.attn_output.weight", LlamaTensorNames.attnOut(layer))
             }
             val ffnNorm = get(LlamaTensorNames.ffnNorm(layer)).apply {
                 require1D(metadata.embeddingLength, "blk.$layer.ffn_norm.weight", LlamaTensorNames.ffnNorm(layer))
             }
             val ffnGate = get(LlamaTensorNames.ffnGate(layer)).apply {
-                // GGUF stores as [dim, ff_dim]
-                require2D(metadata.embeddingLength, metadata.feedForwardLength, "blk.$layer.ffn_gate.weight", LlamaTensorNames.ffnGate(layer))
+                // After transpose: [ff_dim, dim] (was [dim, ff_dim] in GGUF)
+                require2D(metadata.feedForwardLength, metadata.embeddingLength, "blk.$layer.ffn_gate.weight", LlamaTensorNames.ffnGate(layer))
             }
             val ffnDown = get(LlamaTensorNames.ffnDown(layer)).apply {
-                // GGUF stores as [ff_dim, dim]
-                require2D(metadata.feedForwardLength, metadata.embeddingLength, "blk.$layer.ffn_down.weight", LlamaTensorNames.ffnDown(layer))
+                // After transpose: [dim, ff_dim] (was [ff_dim, dim] in GGUF)
+                require2D(metadata.embeddingLength, metadata.feedForwardLength, "blk.$layer.ffn_down.weight", LlamaTensorNames.ffnDown(layer))
             }
             val ffnUp = get(LlamaTensorNames.ffnUp(layer)).apply {
-                // GGUF stores as [dim, ff_dim]
-                require2D(metadata.embeddingLength, metadata.feedForwardLength, "blk.$layer.ffn_up.weight", LlamaTensorNames.ffnUp(layer))
+                // After transpose: [ff_dim, dim] (was [dim, ff_dim] in GGUF)
+                require2D(metadata.feedForwardLength, metadata.embeddingLength, "blk.$layer.ffn_up.weight", LlamaTensorNames.ffnUp(layer))
             }
             LlamaLayerWeights(
                 attnNorm = attnNorm,
