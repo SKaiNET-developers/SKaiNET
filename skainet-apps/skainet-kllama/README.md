@@ -26,7 +26,7 @@ KLlama enables you to run LLaMA-architecture language models directly in your Ko
 | Linux (x64) | `linuxX64` | ✅ Ready | Native binary |
 | Linux (ARM64) | `linuxArm64` | ✅ Ready | Native binary |
 | Browser | `wasmJs` | ✅ Ready | WebAssembly |
-| Android | `android` | 🚧 Planned | AAR library |
+| Android | `android` | ✅ Ready | AAR library |
 | iOS | `iosArm64` | 🚧 Planned | Framework |
 
 ## Powered by SKaiNET
