@@ -88,7 +88,8 @@ public class LlamaRuntime(
         numEmbeddings = vocabSize,
         embeddingDim = dim,
         // GGUF stores embeddings as [dim, vocab], transpose to [vocab, dim]
-        initWeight = weights.tokenEmbedding.t(),
+        // But let's check: if it was already [vocab, dim], t() would make it [dim, vocab]
+        initWeight = if (weights.tokenEmbedding.shape[0] == dim) weights.tokenEmbedding.t() else weights.tokenEmbedding,
         name = "token_embd"
     )
 
@@ -191,14 +192,14 @@ public class LlamaRuntime(
         val w0 = weight.shape[0]
         val w1 = weight.shape[1]
         
-        return if (w0 == inDim) {
-            // Weight is [in, out] (GGUF format), no transpose needed
-            input.matmul(weight)
-        } else if (w1 == inDim) {
-            // Weight is [out, in] (Karpathy format), transpose to get [in, out]
+        return if (w1 == inDim) {
+            // Weight is [out, in], no transpose needed for our matmul which expects [out, in] internally?
+            // Wait, let's check our matmul's expectations.
             input.matmul(weight.t())
+        } else if (w0 == inDim) {
+            // Weight is [in, out]
+            input.matmul(weight)
         } else {
-            // Fallback: try to guess based on other dimension
             input.matmul(weight)
         }
     }
