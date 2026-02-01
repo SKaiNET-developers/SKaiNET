@@ -2,32 +2,34 @@ package sk.ainet.io.gguf.llama
 
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
 import sk.ainet.context.ExecutionContext
 import kotlinx.io.Source
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGMLQuantizationType
+import kotlin.reflect.KClass
 
-public data class LlamaLayerWeights(
-    val attnNorm: Tensor<FP32, Float>,
-    val wq: Tensor<FP32, Float>,
-    val wk: Tensor<FP32, Float>,
-    val wv: Tensor<FP32, Float>,
-    val wo: Tensor<FP32, Float>,
-    val ffnNorm: Tensor<FP32, Float>,
-    val ffnGate: Tensor<FP32, Float>,
-    val ffnDown: Tensor<FP32, Float>,
-    val ffnUp: Tensor<FP32, Float>
+public data class LlamaLayerWeights<T : DType>(
+    val attnNorm: Tensor<T, Float>,
+    val wq: Tensor<T, Float>,
+    val wk: Tensor<T, Float>,
+    val wv: Tensor<T, Float>,
+    val wo: Tensor<T, Float>,
+    val ffnNorm: Tensor<T, Float>,
+    val ffnGate: Tensor<T, Float>,
+    val ffnDown: Tensor<T, Float>,
+    val ffnUp: Tensor<T, Float>
 )
 
-public data class LlamaRuntimeWeights(
+public data class LlamaRuntimeWeights<T : DType>(
     val metadata: LlamaModelMetadata,
-    val tokenEmbedding: Tensor<FP32, Float>,
-    val ropeFreqReal: Tensor<FP32, Float>?,
-    val ropeFreqImag: Tensor<FP32, Float>?,
-    val layers: List<LlamaLayerWeights>,
-    val outputNorm: Tensor<FP32, Float>,
-    val outputWeight: Tensor<FP32, Float>,
+    val tokenEmbedding: Tensor<T, Float>,
+    val ropeFreqReal: Tensor<T, Float>?,
+    val ropeFreqImag: Tensor<T, Float>?,
+    val layers: List<LlamaLayerWeights<T>>,
+    val outputNorm: Tensor<T, Float>,
+    val outputWeight: Tensor<T, Float>,
     val quantTypes: Map<String, GGMLQuantizationType> = emptyMap()
 )
 
@@ -37,14 +39,14 @@ public data class LlamaRuntimeWeights(
  */
 public object LlamaWeightMapper {
 
-    public fun map(weights: LlamaWeights<FP32, Float>): LlamaRuntimeWeights {
+    public fun <T : DType> map(weights: LlamaWeights<T, Float>): LlamaRuntimeWeights<T> {
         val metadata = weights.metadata
         val headSize = metadata.embeddingLength / metadata.headCount
         require(headSize * metadata.headCount == metadata.embeddingLength) {
             "headSize is not divisible: dim=${metadata.embeddingLength} heads=${metadata.headCount}"
         }
 
-        fun get(name: String): Tensor<FP32, Float> =
+        fun get(name: String): Tensor<T, Float> =
             weights.tensors[name] ?: error("Missing tensor: $name")
         fun isQuant(name: String): Boolean = weights.quantTypes[name] != null
 
@@ -145,40 +147,56 @@ public object LlamaWeightMapper {
 /**
  * Convenience loader: reads weights from GGUF source, maps them into runtime structure.
  */
-public suspend fun loadLlamaRuntimeWeights(
+public suspend fun <T : DType> loadLlamaRuntimeWeights(
     ctx: ExecutionContext,
     sourceProvider: () -> Source,
+    dtype: KClass<T>,
     quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
-): LlamaRuntimeWeights {
+): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
         sourceProvider = sourceProvider,
         quantPolicy = quantPolicy
     )
-    val loaded = loader.loadToMap<FP32, Float>(ctx)
+    val loaded = loader.loadToMap<T, Float>(ctx, dtype)
     if (!allowQuantized && loaded.quantTypes.isNotEmpty()) {
         error("Quantized weights detected (${loaded.quantTypes.size}). Pass allowQuantized=true to consume raw quant tensors (runtime still needs quant support).")
     }
     return LlamaWeightMapper.map(loaded)
 }
 
+/** Backward-compatible overload defaulting to FP32. */
+public suspend fun loadLlamaRuntimeWeights(
+    ctx: ExecutionContext,
+    sourceProvider: () -> Source,
+    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    allowQuantized: Boolean = false
+): LlamaRuntimeWeights<FP32> = loadLlamaRuntimeWeights(ctx, sourceProvider, FP32::class, quantPolicy, allowQuantized)
+
 /**
  * Convenience helper to force dequantization to FP32 (where supported) and fail if any unsupported quant types remain.
  */
-public suspend fun loadLlamaRuntimeWeightsDequantized(
+public suspend fun <T : DType> loadLlamaRuntimeWeightsDequantized(
     ctx: ExecutionContext,
-    sourceProvider: () -> Source
-): LlamaRuntimeWeights {
+    sourceProvider: () -> Source,
+    dtype: KClass<T>
+): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
         sourceProvider = sourceProvider,
         quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
     )
-    val loaded = loader.loadToMap<FP32, Float>(ctx)
+    val loaded = loader.loadToMap<T, Float>(ctx, dtype)
     if (loaded.quantTypes.isNotEmpty()) {
         error("Unsupported quantized tensors remain after dequant attempt: ${loaded.quantTypes}")
     }
     return LlamaWeightMapper.map(loaded)
 }
+
+/** Backward-compatible overload defaulting to FP32. */
+public suspend fun loadLlamaRuntimeWeightsDequantized(
+    ctx: ExecutionContext,
+    sourceProvider: () -> Source
+): LlamaRuntimeWeights<FP32> = loadLlamaRuntimeWeightsDequantized(ctx, sourceProvider, FP32::class)
 
 // ============== Streaming API (for large files >2GB) ==============
 
@@ -192,38 +210,54 @@ public suspend fun loadLlamaRuntimeWeightsDequantized(
  * @param quantPolicy How to handle quantized tensors
  * @param allowQuantized If false, error on encountering quantized tensors
  */
-public suspend fun loadLlamaRuntimeWeightsStreaming(
+public suspend fun <T : DType> loadLlamaRuntimeWeightsStreaming(
     ctx: ExecutionContext,
     randomAccessProvider: () -> RandomAccessSource,
+    dtype: KClass<T>,
     quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
-): LlamaRuntimeWeights {
+): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
         randomAccessProvider = randomAccessProvider,
         quantPolicy = quantPolicy
     )
-    val loaded = loader.loadToMapStreaming<FP32, Float>(ctx)
+    val loaded = loader.loadToMapStreaming<T, Float>(ctx, dtype)
     if (!allowQuantized && loaded.quantTypes.isNotEmpty()) {
         error("Quantized weights detected (${loaded.quantTypes.size}). Pass allowQuantized=true to consume raw quant tensors (runtime still needs quant support).")
     }
     return LlamaWeightMapper.map(loaded)
 }
 
+/** Backward-compatible overload defaulting to FP32. */
+public suspend fun loadLlamaRuntimeWeightsStreaming(
+    ctx: ExecutionContext,
+    randomAccessProvider: () -> RandomAccessSource,
+    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    allowQuantized: Boolean = false
+): LlamaRuntimeWeights<FP32> = loadLlamaRuntimeWeightsStreaming(ctx, randomAccessProvider, FP32::class, quantPolicy, allowQuantized)
+
 /**
  * Load LLaMA runtime weights using streaming API with dequantization.
  * Suitable for large models >2GB.
  */
-public suspend fun loadLlamaRuntimeWeightsDequantizedStreaming(
+public suspend fun <T : DType> loadLlamaRuntimeWeightsDequantizedStreaming(
     ctx: ExecutionContext,
-    randomAccessProvider: () -> RandomAccessSource
-): LlamaRuntimeWeights {
+    randomAccessProvider: () -> RandomAccessSource,
+    dtype: KClass<T>
+): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
         randomAccessProvider = randomAccessProvider,
         quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
     )
-    val loaded = loader.loadToMapStreaming<FP32, Float>(ctx)
+    val loaded = loader.loadToMapStreaming<T, Float>(ctx, dtype)
     if (loaded.quantTypes.isNotEmpty()) {
         error("Unsupported quantized tensors remain after dequant attempt: ${loaded.quantTypes}")
     }
     return LlamaWeightMapper.map(loaded)
 }
+
+/** Backward-compatible overload defaulting to FP32. */
+public suspend fun loadLlamaRuntimeWeightsDequantizedStreaming(
+    ctx: ExecutionContext,
+    randomAccessProvider: () -> RandomAccessSource
+): LlamaRuntimeWeights<FP32> = loadLlamaRuntimeWeightsDequantizedStreaming(ctx, randomAccessProvider, FP32::class)

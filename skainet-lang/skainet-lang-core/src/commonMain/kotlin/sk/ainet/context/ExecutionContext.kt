@@ -21,6 +21,17 @@ public interface ExecutionContext {
 
     public val tensorDataFactory: TensorDataFactory
 
+    // Execution observers for tracing/benchmarking
+    public val observers: ExecutionObserverRegistry
+
+    public fun registerObserver(observer: ExecutionObserver) {
+        observers.register(observer)
+    }
+
+    public fun unregisterObserver(observer: ExecutionObserver) {
+        observers.unregister(observer)
+    }
+
     public fun <T : DType, V> full(shape: Shape, dtype: KClass<T>, value: Number): Tensor<T, V> {
         val data = tensorDataFactory.full<T, V>(shape, dtype, value)
         return fromData(data, dtype)

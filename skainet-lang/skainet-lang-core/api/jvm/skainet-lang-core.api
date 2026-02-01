@@ -1,3 +1,183 @@
+public final class sk/ainet/benchmark/BenchmarkCase {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;IILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Lkotlin/jvm/functions/Function1;
+	public final fun component6 ()Lkotlin/jvm/functions/Function1;
+	public final fun component7 ()Lkotlin/jvm/functions/Function1;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;IILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)Lsk/ainet/benchmark/BenchmarkCase;
+	public static synthetic fun copy$default (Lsk/ainet/benchmark/BenchmarkCase;Ljava/lang/String;Ljava/lang/String;IILkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkCase;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getExecute ()Lkotlin/jvm/functions/Function1;
+	public final fun getIterations ()I
+	public final fun getName ()Ljava/lang/String;
+	public final fun getSetup ()Lkotlin/jvm/functions/Function1;
+	public final fun getTeardown ()Lkotlin/jvm/functions/Function1;
+	public final fun getWarmupIterations ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/benchmark/BenchmarkCaseBuilder {
+	public final fun description (Ljava/lang/String;)V
+	public final fun iterations (I)V
+	public final fun run (Lkotlin/jvm/functions/Function1;)V
+	public final fun setup (Lkotlin/jvm/functions/Function1;)V
+	public final fun teardown (Lkotlin/jvm/functions/Function1;)V
+	public final fun warmup (I)V
+}
+
+public final class sk/ainet/benchmark/BenchmarkCaseResult {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;IIJJLsk/ainet/benchmark/LatencySummary;Lsk/ainet/benchmark/MemorySummary;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5-UwyO8pc ()J
+	public final fun component6-UwyO8pc ()J
+	public final fun component7 ()Lsk/ainet/benchmark/LatencySummary;
+	public final fun component8 ()Lsk/ainet/benchmark/MemorySummary;
+	public final fun copy-77cDFVw (Ljava/lang/String;Ljava/lang/String;IIJJLsk/ainet/benchmark/LatencySummary;Lsk/ainet/benchmark/MemorySummary;)Lsk/ainet/benchmark/BenchmarkCaseResult;
+	public static synthetic fun copy-77cDFVw$default (Lsk/ainet/benchmark/BenchmarkCaseResult;Ljava/lang/String;Ljava/lang/String;IIJJLsk/ainet/benchmark/LatencySummary;Lsk/ainet/benchmark/MemorySummary;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkCaseResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getDurationPerIteration-UwyO8pc ()J
+	public final fun getIterations ()I
+	public final fun getLatency ()Lsk/ainet/benchmark/LatencySummary;
+	public final fun getMemory ()Lsk/ainet/benchmark/MemorySummary;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getTotalDuration-UwyO8pc ()J
+	public final fun getWarmupIterations ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface annotation class sk/ainet/benchmark/BenchmarkDsl : java/lang/annotation/Annotation {
+}
+
+public final class sk/ainet/benchmark/BenchmarkDslKt {
+	public static final fun benchmarkSuite (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/benchmark/BenchmarkSuite;
+}
+
+public final class sk/ainet/benchmark/BenchmarkExecutionScope {
+	public final fun clearStorage ()V
+	public final fun getContext ()Lsk/ainet/context/ExecutionContext;
+	public final fun recall (Ljava/lang/String;)Ljava/lang/Object;
+	public final fun remember (Ljava/lang/String;Ljava/lang/Object;)V
+}
+
+public final class sk/ainet/benchmark/BenchmarkMetric : java/lang/Enum {
+	public static final field LATENCY Lsk/ainet/benchmark/BenchmarkMetric;
+	public static final field MEMORY Lsk/ainet/benchmark/BenchmarkMetric;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/benchmark/BenchmarkMetric;
+	public static fun values ()[Lsk/ainet/benchmark/BenchmarkMetric;
+}
+
+public final class sk/ainet/benchmark/BenchmarkMetricsBuilder {
+	public final fun latency ()V
+	public final fun memory ()V
+}
+
+public final class sk/ainet/benchmark/BenchmarkRegistryKt {
+	public static final fun runSlicingBenchmarks (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;)Lsk/ainet/benchmark/BenchmarkSuiteResult;
+	public static synthetic fun runSlicingBenchmarks$default (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuiteResult;
+}
+
+public final class sk/ainet/benchmark/BenchmarkRunner {
+	public static final field INSTANCE Lsk/ainet/benchmark/BenchmarkRunner;
+	public final fun runSuite (Lsk/ainet/benchmark/BenchmarkSuite;)Lsk/ainet/benchmark/BenchmarkSuiteResult;
+}
+
+public final class sk/ainet/benchmark/BenchmarkSuite {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Set;Lkotlin/jvm/functions/Function0;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/Set;
+	public final fun component4 ()Lkotlin/jvm/functions/Function0;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/Set;Lkotlin/jvm/functions/Function0;Ljava/util/List;)Lsk/ainet/benchmark/BenchmarkSuite;
+	public static synthetic fun copy$default (Lsk/ainet/benchmark/BenchmarkSuite;Ljava/lang/String;Ljava/lang/String;Ljava/util/Set;Lkotlin/jvm/functions/Function0;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuite;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCases ()Ljava/util/List;
+	public final fun getContextFactory ()Lkotlin/jvm/functions/Function0;
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getMetrics ()Ljava/util/Set;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/benchmark/BenchmarkSuiteBuilder {
+	public final fun case (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun context (Lkotlin/jvm/functions/Function0;)V
+	public final fun description (Ljava/lang/String;)V
+	public final fun metrics (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class sk/ainet/benchmark/BenchmarkSuiteResult {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Set;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/Set;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/Set;Ljava/util/List;)Lsk/ainet/benchmark/BenchmarkSuiteResult;
+	public static synthetic fun copy$default (Lsk/ainet/benchmark/BenchmarkSuiteResult;Ljava/lang/String;Ljava/lang/String;Ljava/util/Set;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuiteResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCases ()Ljava/util/List;
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getMetrics ()Ljava/util/Set;
+	public final fun getSuiteName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun prettyPrint ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/benchmark/BenchmarkSuites {
+	public static final field INSTANCE Lsk/ainet/benchmark/BenchmarkSuites;
+	public final fun slicing (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;)Lsk/ainet/benchmark/BenchmarkSuite;
+	public static synthetic fun slicing$default (Lsk/ainet/benchmark/BenchmarkSuites;Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuite;
+}
+
+public final class sk/ainet/benchmark/LatencySummary {
+	public synthetic fun <init> (Ljava/util/List;JJILjava/util/Map;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2-UwyO8pc ()J
+	public final fun component3-UwyO8pc ()J
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/util/Map;
+	public final fun copy-jKevqZI (Ljava/util/List;JJILjava/util/Map;)Lsk/ainet/benchmark/LatencySummary;
+	public static synthetic fun copy-jKevqZI$default (Lsk/ainet/benchmark/LatencySummary;Ljava/util/List;JJILjava/util/Map;ILjava/lang/Object;)Lsk/ainet/benchmark/LatencySummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAverageDuration-UwyO8pc ()J
+	public final fun getCount ()I
+	public final fun getMeasurements ()Ljava/util/List;
+	public final fun getTotalDuration-UwyO8pc ()J
+	public final fun getTotalsByOp ()Ljava/util/Map;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/benchmark/MemorySummary {
+	public fun <init> (Ljava/util/List;JJLjava/lang/Double;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/Double;
+	public final fun copy (Ljava/util/List;JJLjava/lang/Double;)Lsk/ainet/benchmark/MemorySummary;
+	public static synthetic fun copy$default (Lsk/ainet/benchmark/MemorySummary;Ljava/util/List;JJLjava/lang/Double;ILjava/lang/Object;)Lsk/ainet/benchmark/MemorySummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLastUsedBytes ()J
+	public final fun getPeakUsedBytes ()J
+	public final fun getSamples ()Ljava/util/List;
+	public final fun getUsagePercent ()Ljava/lang/Double;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface annotation class sk/ainet/context/ContextDsl : java/lang/annotation/Annotation {
 }
 
@@ -24,10 +204,13 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -41,10 +224,13 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public abstract fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public abstract fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public abstract fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public abstract fun getPhase ()Lsk/ainet/context/Phase;
 	public abstract fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -57,7 +243,32 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/ExecutionContext;)Z
 	public static fun ones (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun registerObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun unregisterObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun zeros (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public abstract interface class sk/ainet/context/ExecutionObserver {
+	public fun onOpEnd (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Object;)V
+	public fun onOpError (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Throwable;)V
+	public fun onOpStart (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/util/List;)V
+	public fun onTensorMaterialized (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
+}
+
+public final class sk/ainet/context/ExecutionObserver$DefaultImpls {
+	public static fun onOpEnd (Lsk/ainet/context/ExecutionObserver;Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Object;)V
+	public static fun onOpError (Lsk/ainet/context/ExecutionObserver;Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Throwable;)V
+	public static fun onOpStart (Lsk/ainet/context/ExecutionObserver;Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/util/List;)V
+	public static fun onTensorMaterialized (Lsk/ainet/context/ExecutionObserver;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
+}
+
+public final class sk/ainet/context/ExecutionObserverRegistry {
+	public fun <init> ()V
+	public final fun clear ()V
+	public final fun notifyOp (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/util/List;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public final fun notifyTensorMaterialized (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
+	public final fun register (Lsk/ainet/context/ExecutionObserver;)V
+	public final fun unregister (Lsk/ainet/context/ExecutionObserver;)V
 }
 
 public final class sk/ainet/context/ExecutionStats {
@@ -123,16 +334,30 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/context/PhaseScopesKt {
 	public static final fun eval (Lsk/ainet/context/ExecutionContext;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
 	public static final fun train (Lsk/ainet/context/ExecutionContext;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+}
+
+public abstract interface class sk/ainet/context/ResettableExecutionObserver : sk/ainet/context/ExecutionObserver {
+	public abstract fun reset ()V
+}
+
+public final class sk/ainet/context/ResettableExecutionObserver$DefaultImpls {
+	public static fun onOpEnd (Lsk/ainet/context/ResettableExecutionObserver;Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Object;)V
+	public static fun onOpError (Lsk/ainet/context/ResettableExecutionObserver;Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Throwable;)V
+	public static fun onOpStart (Lsk/ainet/context/ResettableExecutionObserver;Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/util/List;)V
+	public static fun onTensorMaterialized (Lsk/ainet/context/ResettableExecutionObserver;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
 }
 
 public abstract interface class sk/ainet/context/TrainingExecutionContext : sk/ainet/context/ExecutionContext {
@@ -150,7 +375,59 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/TrainingExecutionContext;)Z
 	public static fun ones (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun registerObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun unregisterObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun zeros (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/context/observers/LatencyExecutionObserver : sk/ainet/context/ExecutionObserver, sk/ainet/context/ResettableExecutionObserver {
+	public fun <init> ()V
+	public fun onOpEnd (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Object;)V
+	public fun onOpError (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Throwable;)V
+	public fun onOpStart (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/util/List;)V
+	public fun onTensorMaterialized (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun reset ()V
+	public final fun results ()Ljava/util/List;
+}
+
+public final class sk/ainet/context/observers/LatencyMeasurement {
+	public synthetic fun <init> (Ljava/lang/String;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2-UwyO8pc ()J
+	public final fun copy-HG0u8IE (Ljava/lang/String;J)Lsk/ainet/context/observers/LatencyMeasurement;
+	public static synthetic fun copy-HG0u8IE$default (Lsk/ainet/context/observers/LatencyMeasurement;Ljava/lang/String;JILjava/lang/Object;)Lsk/ainet/context/observers/LatencyMeasurement;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDuration-UwyO8pc ()J
+	public final fun getOpName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/context/observers/MemorySample {
+	public fun <init> (Ljava/lang/String;JJD)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()D
+	public final fun copy (Ljava/lang/String;JJD)Lsk/ainet/context/observers/MemorySample;
+	public static synthetic fun copy$default (Lsk/ainet/context/observers/MemorySample;Ljava/lang/String;JJDILjava/lang/Object;)Lsk/ainet/context/observers/MemorySample;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOpName ()Ljava/lang/String;
+	public final fun getTotalBytes ()J
+	public final fun getUsagePercentage ()D
+	public final fun getUsedBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/context/observers/MemorySnapshotObserver : sk/ainet/context/ExecutionObserver, sk/ainet/context/ResettableExecutionObserver {
+	public fun <init> ()V
+	public fun onOpEnd (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Object;)V
+	public fun onOpError (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/lang/Throwable;)V
+	public fun onOpStart (Lsk/ainet/context/ExecutionContext;Ljava/lang/String;Ljava/util/List;)V
+	public fun onTensorMaterialized (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun reset ()V
+	public final fun results ()Ljava/util/List;
 }
 
 public final class sk/ainet/lang/nn/AvgPool2d : sk/ainet/lang/nn/Module {
@@ -268,10 +545,13 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -542,6 +822,8 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
 	public static fun ones (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun registerObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun unregisterObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun zeros (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -2127,18 +2409,18 @@ public final class sk/ainet/lang/tensor/VoidOpsTensor : sk/ainet/lang/tensor/Ten
 	public fun zeroGrad ()V
 }
 
-public final class sk/ainet/lang/tensor/benchmark/BenchmarkConfig {
+public final class sk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig {
 	public fun <init> ()V
-	public fun <init> (IILjava/util/List;Z)V
-	public synthetic fun <init> (IILjava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IILjava/util/List;I)V
+	public synthetic fun <init> (IILjava/util/List;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component2 ()I
 	public final fun component3 ()Ljava/util/List;
-	public final fun component4 ()Z
-	public final fun copy (IILjava/util/List;Z)Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;IILjava/util/List;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;
+	public final fun component4 ()I
+	public final fun copy (IILjava/util/List;I)Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;IILjava/util/List;IILjava/lang/Object;)Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getIncludeMemoryBenchmarks ()Z
+	public final fun getAccessSamples ()I
 	public final fun getIterations ()I
 	public final fun getTensorShapes ()Ljava/util/List;
 	public final fun getWarmupIterations ()I
@@ -2146,43 +2428,9 @@ public final class sk/ainet/lang/tensor/benchmark/BenchmarkConfig {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class sk/ainet/lang/tensor/benchmark/BenchmarkReporter {
-	public fun <init> ()V
-	public final fun compareResults (Ljava/util/List;Ljava/util/List;)Ljava/lang/String;
-	public final fun generateReport (Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;
-	public static synthetic fun generateReport$default (Lsk/ainet/lang/tensor/benchmark/BenchmarkReporter;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/tensor/benchmark/BenchmarkResult {
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Double;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Double;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun component3 ()Ljava/lang/String;
-	public final fun component4-UwyO8pc ()J
-	public final fun component5 ()Ljava/lang/Long;
-	public final fun component6 ()Ljava/lang/Double;
-	public final fun copy-gwCluXo (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Double;)Lsk/ainet/lang/tensor/benchmark/BenchmarkResult;
-	public static synthetic fun copy-gwCluXo$default (Lsk/ainet/lang/tensor/benchmark/BenchmarkResult;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Double;ILjava/lang/Object;)Lsk/ainet/lang/tensor/benchmark/BenchmarkResult;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getDuration-UwyO8pc ()J
-	public final fun getMemoryUsage ()Ljava/lang/Long;
-	public final fun getOperationType ()Ljava/lang/String;
-	public final fun getSlicePattern ()Ljava/lang/String;
-	public final fun getTensorSize ()Ljava/lang/String;
-	public final fun getThroughput ()Ljava/lang/Double;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/tensor/benchmark/SlicingBenchmarkSuite {
-	public fun <init> ()V
-	public final fun benchmarkAccessPatterns (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;)Ljava/util/List;
-	public static synthetic fun benchmarkAccessPatterns$default (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkSuite;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;ILjava/lang/Object;)Ljava/util/List;
-	public final fun benchmarkMLScenarios (Lkotlin/jvm/functions/Function1;Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;)Ljava/util/List;
-	public static synthetic fun benchmarkMLScenarios$default (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkSuite;Lkotlin/jvm/functions/Function1;Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;ILjava/lang/Object;)Ljava/util/List;
-	public final fun benchmarkViewVsCopy (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;)Ljava/util/List;
-	public static synthetic fun benchmarkViewVsCopy$default (Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkSuite;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/benchmark/BenchmarkConfig;ILjava/lang/Object;)Ljava/util/List;
+public final class sk/ainet/lang/tensor/benchmark/SlicingBenchmarksKt {
+	public static final fun slicingBenchmarkSuite (Ljava/lang/String;Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;)Lsk/ainet/benchmark/BenchmarkSuite;
+	public static synthetic fun slicingBenchmarkSuite$default (Ljava/lang/String;Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuite;
 }
 
 public final class sk/ainet/lang/tensor/data/DenseFloatArrayTensorData : sk/ainet/lang/tensor/data/FloatArrayTensorData {

@@ -136,6 +136,7 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/KspTensorOps;
 	public synthetic fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
@@ -145,11 +146,13 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public final fun record (Lkotlin/jvm/functions/Function1;)Lkotlin/Pair;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun resetExecutionStats ()V
 	public fun startRecording ()V
 	public synthetic fun stopRecording ()Ljava/lang/Object;
 	public fun stopRecording ()Lsk/ainet/tape/ExecutionTape;
 	public final fun stopRecordingAndGet ()Lsk/ainet/tape/ExecutionTape;
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -343,6 +346,8 @@ public final class sk/ainet/lang/graph/exec/GraphExecutionContext$DefaultImpls {
 	public static fun getInTraining (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Z
 	public static fun isRecording (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Z
 	public static fun ones (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun registerObserver (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun unregisterObserver (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun zeros (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 

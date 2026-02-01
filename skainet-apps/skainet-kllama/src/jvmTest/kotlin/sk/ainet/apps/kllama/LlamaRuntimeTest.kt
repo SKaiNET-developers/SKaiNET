@@ -34,7 +34,7 @@ class LlamaRuntimeTest {
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 0f)
 
-        val layer = LlamaLayerWeights(
+        val layer = LlamaLayerWeights<FP32>(
             attnNorm = ones1d,
             wq = ones2d,
             wk = ones2d,
@@ -46,7 +46,7 @@ class LlamaRuntimeTest {
             ffnUp = gateUp
         )
 
-        val weights = LlamaRuntimeWeights(
+        val weights = LlamaRuntimeWeights<FP32>(
             metadata = LlamaModelMetadata(
                 architecture = "llama",
                 embeddingLength = dim,
@@ -66,7 +66,7 @@ class LlamaRuntimeTest {
             outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)     // [vocab, dim]
         )
 
-        val runtime = LlamaRuntime(ctx, weights)
+        val runtime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class), FP32::class)
         val logits = runtime.forward(0)
 
         assertEquals(Shape(1, vocab), logits.shape)
@@ -89,7 +89,7 @@ class LlamaRuntimeTest {
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 0f)
 
-        val layer = LlamaLayerWeights(
+        val layer = LlamaLayerWeights<FP32>(
             attnNorm = ones1d,
             wq = ones2d,
             wk = ones2d,
@@ -101,7 +101,7 @@ class LlamaRuntimeTest {
             ffnUp = gateUp
         )
 
-        val weights = LlamaRuntimeWeights(
+        val weights = LlamaRuntimeWeights<FP32>(
             metadata = LlamaModelMetadata(
                 architecture = "llama",
                 embeddingLength = dim,
@@ -121,7 +121,7 @@ class LlamaRuntimeTest {
             outputWeight = ctx.full(Shape(vocab, dim), FP32::class, 0.3f)     // [vocab, dim]
         )
 
-        val runtime = LlamaRuntime(ctx, weights)
+        val runtime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class), FP32::class)
         val emitted = mutableListOf<Int>()
         runtime.generate(intArrayOf(0), steps = 3, temperature = 0f) { emitted += it }
 

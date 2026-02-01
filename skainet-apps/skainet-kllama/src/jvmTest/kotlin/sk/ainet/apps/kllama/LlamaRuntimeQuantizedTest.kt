@@ -348,7 +348,7 @@ class LlamaRuntimeQuantizedTest {
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, headSize / 2), FP32::class, 0f)
 
-        val layer = LlamaLayerWeights(
+        val layer = LlamaLayerWeights<FP32>(
             attnNorm = ones1d,
             wq = ones2d,
             wk = ones2d,
@@ -360,7 +360,7 @@ class LlamaRuntimeQuantizedTest {
             ffnUp = gateUp
         )
 
-        val weights = LlamaRuntimeWeights(
+        val weights = LlamaRuntimeWeights<FP32>(
             metadata = LlamaModelMetadata(
                 architecture = "llama",
                 embeddingLength = dim,
@@ -387,7 +387,7 @@ class LlamaRuntimeQuantizedTest {
             kvDim = dim  // kvDim = kvHeadCount * headSize = 1 * 4 = 4
         )
 
-        val runtime = LlamaRuntime(ctx, weights, kvCache)
+        val runtime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class, kvCache), FP32::class)
         val logits = runtime.forward(0)
 
         assertEquals(Shape(1, vocab), logits.shape)
@@ -420,7 +420,7 @@ class LlamaRuntimeQuantizedTest {
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 0f)
 
-        val layer = LlamaLayerWeights(
+        val layer = LlamaLayerWeights<FP32>(
             attnNorm = ones1d,
             wq = ones2d,
             wk = ones2d,
@@ -432,7 +432,7 @@ class LlamaRuntimeQuantizedTest {
             ffnUp = gateUp
         )
 
-        val weights = LlamaRuntimeWeights(
+        val weights = LlamaRuntimeWeights<FP32>(
             metadata = LlamaModelMetadata(
                 architecture = "llama",
                 embeddingLength = dim,
@@ -453,7 +453,7 @@ class LlamaRuntimeQuantizedTest {
         )
 
         val kvCache = OffheapKvCache(nLayers = 1, seqLen = seqLen, kvDim = dim)
-        val runtime = LlamaRuntime(ctx, weights, kvCache)
+        val runtime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class, kvCache), FP32::class)
 
         val emitted = mutableListOf<Int>()
         runtime.generate(intArrayOf(0), steps = 3, temperature = 0f) { emitted += it }
@@ -483,7 +483,7 @@ class LlamaRuntimeQuantizedTest {
         val ropeReal = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 1f)
         val ropeImag = ctx.full<FP32, Float>(Shape(seqLen, dim / 2), FP32::class, 0f)
 
-        val layer = LlamaLayerWeights(
+        val layer = LlamaLayerWeights<FP32>(
             attnNorm = ones1d,
             wq = ones2d,
             wk = ones2d,
@@ -495,7 +495,7 @@ class LlamaRuntimeQuantizedTest {
             ffnUp = gateUp
         )
 
-        val weights = LlamaRuntimeWeights(
+        val weights = LlamaRuntimeWeights<FP32>(
             metadata = LlamaModelMetadata(
                 architecture = "llama",
                 embeddingLength = dim,
@@ -517,12 +517,12 @@ class LlamaRuntimeQuantizedTest {
 
         // Run with HeapKvCache
         val heapCache = HeapKvCache(nLayers = 1, seqLen = seqLen, kvDim = dim)
-        val heapRuntime = LlamaRuntime(ctx, weights, heapCache)
+        val heapRuntime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class, heapCache), FP32::class)
         val heapLogits = heapRuntime.forward(0)
 
         // Run with OffheapKvCache
         val offheapCache = OffheapKvCache(nLayers = 1, seqLen = seqLen, kvDim = dim)
-        val offheapRuntime = LlamaRuntime(ctx, weights, offheapCache)
+        val offheapRuntime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class, offheapCache), FP32::class)
         val offheapLogits = offheapRuntime.forward(0)
 
         // Compare results

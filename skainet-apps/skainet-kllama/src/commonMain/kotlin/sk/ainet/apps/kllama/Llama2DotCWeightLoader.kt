@@ -18,7 +18,7 @@ import sk.ainet.lang.types.FP32
  */
 public object Llama2DotCWeightLoader {
 
-    public fun load(ctx: ExecutionContext, source: Source): LlamaRuntimeWeights {
+    public fun load(ctx: ExecutionContext, source: Source): LlamaRuntimeWeights<FP32> {
         val dim = source.readIntLe()
         val hiddenDim = source.readIntLe()
         val nLayers = source.readIntLe()

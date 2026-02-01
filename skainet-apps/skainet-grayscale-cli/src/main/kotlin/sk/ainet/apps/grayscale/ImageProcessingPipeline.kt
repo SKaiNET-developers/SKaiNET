@@ -708,7 +708,8 @@ data class ProcessingConfiguration(
     val modelType: GrayscaleModelType,
     val useGpu: Boolean = false,
     val verbose: Boolean = false,
-    val overwriteExisting: Boolean = false
+    val overwriteExisting: Boolean = false,
+    val backendType: BackendType = BackendType.CPU
 )
 
 /**

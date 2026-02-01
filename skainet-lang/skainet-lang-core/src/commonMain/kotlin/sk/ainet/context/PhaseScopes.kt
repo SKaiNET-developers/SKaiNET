@@ -9,6 +9,7 @@ public class PhaseOverridingExecutionContext(
 ) : ExecutionContext {
     override val ops: sk.ainet.lang.tensor.ops.TensorOps get() = base.ops
     override val tensorDataFactory: sk.ainet.lang.tensor.data.TensorDataFactory get() = base.tensorDataFactory
+    override val observers: ExecutionObserverRegistry get() = base.observers
     override val hooks: sk.ainet.lang.nn.hooks.ForwardHooks? get() = base.hooks
     override val memoryInfo: MemoryInfo get() = base.memoryInfo
     override val executionStats: ExecutionStats get() = base.executionStats

@@ -22,6 +22,7 @@ includeBuild("build-logic")
 
 // ====== LANG
 include("skainet-lang:skainet-lang-core")
+include("skainet-lang:skainet-lang-audio")
 include("skainet-lang:skainet-lang-models")
 include("skainet-lang:skainet-lang-ksp-annotations")
 include("skainet-lang:skainet-lang-ksp-processor")
@@ -56,6 +57,7 @@ include("skainet-io:skainet-io-core")
 include("skainet-io:skainet-io-gguf")
 include("skainet-io:skainet-io-image")
 include("skainet-io:skainet-io-onnx")
+include("skainet-io:skainet-io-wav")
 
 // ====== models
 include("skainet-models:skainet-model-yolo")
@@ -68,6 +70,7 @@ include("skainet-models:skainet-model-yolo")
 include("skainet-test:skainet-test-groundtruth")
 
 // ====== APPS
+include("skainet-apps:skainet-grayscale-cli")
 include("skainet-apps:skainet-tensor-tools")
 include("skainet-apps:skainet-kllama")
 include("skainet-apps:skainet-kllama-cli")

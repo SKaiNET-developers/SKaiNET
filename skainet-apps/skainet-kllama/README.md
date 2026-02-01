@@ -243,25 +243,43 @@ dependencies {
 }
 ```
 
+## Execution Backends
+
+KLlama supports multiple execution backends for different performance profiles:
+
+| Backend | Platform | Description |
+|---------|----------|-------------|
+| JVM CPU (Default) | JVM | Pure Kotlin loops, baseline CPU execution |
+| JVM Vector API | JVM | SIMD-accelerated via Java Vector API (JDK 21+) |
+| Native CPU | macOS/Linux | Kotlin/Native CPU execution |
+| Native MLX | macOS ARM64 | GPU-accelerated via Apple MLX framework |
+
+### Backend Selection
+
+**JVM Vector API** (enabled by default on JDK 21+):
+```bash
+# Disable Vector API to use scalar CPU
+export SKAINET_CPU_VECTOR_ENABLED=false
+java -jar kllama-all.jar model.gguf "prompt"
+
+# Enable Vector API (default)
+export SKAINET_CPU_VECTOR_ENABLED=true
+java --enable-preview --add-modules jdk.incubator.vector -jar kllama-all.jar model.gguf "prompt"
+```
+
+
 ## Performance Notes
 
 | Platform | Notes |
 |----------|-------|
-| JVM | Uses Vector API (incubator) for SIMD - fastest |
-| Native | Pure Kotlin loops - good performance |
+| JVM Vector API | SIMD-accelerated, best JVM performance |
+| JVM CPU | Scalar loops, baseline JVM |
+| Native CPU | Pure Kotlin loops |
 | WASM | Single-threaded browser execution - slowest |
 
 Current limitations:
 - All weights dequantized to FP32 at load time
-- No GPU acceleration (CPU only)
 - Single-token generation (no batching)
-
-## Known Issues
-
-| Issue | Status | Workaround |
-|-------|--------|------------|
-| Large models may OOM on mobile | ⚠️ Limitation | Use smaller quantized models |
-| WASM bundle size is large | ⚠️ Limitation | Use smaller models for browser |
 
 **Tested working:**
 - Karpathy `.bin` format (stories15m, stories42m, stories110m)
@@ -274,7 +292,7 @@ Current limitations:
 - [ ] Top-k / Top-p sampling
 - [ ] Android app with UI
 - [ ] iOS app with SwiftUI
-- [ ] Metal acceleration (Apple)
+- [x] MLX acceleration (Apple Silicon GPU)
 - [ ] Batch inference for prompt processing
 
 ## License
