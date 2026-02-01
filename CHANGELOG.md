@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.1] - 2026-02-01
+
+### Added
+- **Benchmarking DSL**: New `BenchmarkDsl` and `BenchmarkRunner` for measuring model performance and latency.
+- **Execution Observers**: Added `ExecutionObserver` API with `LatencyExecutionObserver` and `MemorySnapshotObserver` for profiling.
+- **New Layers**: Added `RMSNormalization` layer support.
+- **KLlama Enhancements**: Improved weight loading and initial support for GPU-accelerated attention (experimental).
+
+### Changed
+- Refactored `ExecutionContext` to support execution observers and better phase management.
+- Updated KLlama runtime with improved ingestion and benchmarking utilities.
+
 ## [0.9.2] - 2026-01-27
 
 ### Added
