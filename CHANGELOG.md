@@ -1,9 +1,8 @@
 # Changelog
 
-## [0.10.0] - 2026-02-01
+## [0.10.1] - 2026-02-01
 
 ### Added
-- **Audio Processing**: Initial support for WAV file reading and MFCC (Mel-frequency cepstral coefficients) extraction in `skainet-lang-audio`.
 - **Benchmarking DSL**: New `BenchmarkDsl` and `BenchmarkRunner` for measuring model performance and latency.
 - **Execution Observers**: Added `ExecutionObserver` API with `LatencyExecutionObserver` and `MemorySnapshotObserver` for profiling.
 - **New Layers**: Added `RMSNormalization` layer support.
