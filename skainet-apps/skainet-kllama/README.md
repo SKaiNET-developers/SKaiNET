@@ -1,307 +1,144 @@
-# KLlama
+# KLlama Getting Started Guide
 
-**Pure Kotlin LLaMA Inference Runtime powered by SKaiNET**
+Welcome to **KLlama**, the pure Kotlin LLaMA inference runtime. This guide will help you get started with the CLI and show you how to embed LLaMA models directly into your own Kotlin applications using **SKaiNET 0.9.2**.
 
-KLlama is a Kotlin Multiplatform implementation of LLaMA model inference that runs on JVM, native platforms (macOS, Linux), and WebAssembly - all from a single codebase. No JNI bindings, no llama.cpp dependency, just pure Kotlin.
+⚠️ **Early Stage Development**: The whole project is in early development. While it supports various formats and quantizations, you may encounter edge cases. We appreciate your feedback and bug reports!
 
-## What is KLlama?
+## 🚀 Quick Start with CLI
 
-KLlama enables you to run LLaMA-architecture language models directly in your Kotlin applications across multiple platforms. It's built on top of [SKaiNET](https://github.com/anthropics/skainet), a device-first AI framework for Kotlin Multiplatform.
+The CLI is the fastest way to test your LLaMA models on your machine.
 
-### Key Features
+### Building
 
-- **Pure Kotlin** - No native bindings or external C/C++ dependencies
-- **Cross-Platform** - Single codebase compiles to JVM, native binaries, and WASM
-- **Karpathy Format** - Full support for llama2.c `.bin` checkpoint format
-- **GGUF Support** - Load quantized models in GGUF format (Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q8_1, and K-quants)
-- **Streaming Generation** - Token-by-token output with callback API
-- **KV Cache** - Efficient autoregressive generation with key-value caching
-
-## Supported Platforms
-
-| Platform | Target | Status | Output |
-|----------|--------|--------|--------|
-| JVM | `jvm` | ✅ Ready | JAR / Run with `java` |
-| macOS (Apple Silicon) | `macosArm64` | ✅ Ready | Native binary |
-| Linux (x64) | `linuxX64` | ✅ Ready | Native binary |
-| Linux (ARM64) | `linuxArm64` | ✅ Ready | Native binary |
-| Browser | `wasmJs` | ✅ Ready | WebAssembly |
-| Android | `android` | ✅ Ready | AAR library |
-| iOS | `iosArm64` | 🚧 Planned | Framework |
-
-## Powered by SKaiNET
-
-KLlama leverages SKaiNET's core components:
-
-- **skainet-lang-core** - Type-safe tensor DSL and operations
-- **skainet-backend-cpu** - CPU execution backend with SIMD support (JVM)
-- **skainet-io-gguf** - GGUF model format parser and quantization handling
-
-SKaiNET provides the foundational tensor operations, memory management, and cross-platform abstractions that make KLlama possible.
-
-## Getting Models
-
-### Recommended: Karpathy's TinyStories Models
-
-Small models perfect for testing and development:
+To build the executable fat JAR, run the following command from the project root with Java 21+ as the default JDK:
 
 ```bash
-# Stories 15M (~60MB) - Fastest, good for testing
-curl -L -o stories15m.bin \
-  "https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin"
-
-# Stories 42M (~167MB) - Better quality
-curl -L -o stories42m.bin \
-  "https://huggingface.co/karpathy/tinyllamas/resolve/main/stories42M.bin"
-
-# Stories 110M (~438MB) - Best quality in this series
-curl -L -o stories110m.bin \
-  "https://huggingface.co/karpathy/tinyllamas/resolve/main/stories110M.bin"
+./gradlew :skainet-apps:skainet-kllama-cli:shadowJar
 ```
 
-### GGUF Models
+The JAR will be located at: `skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar`
 
-For production use, GGUF models offer better compression via quantization:
+### Running
+
+KLlama leverages the **Java Vector API** for high-performance CPU inference. You must enable it via JVM flags:
 
 ```bash
-# TinyLlama 1.1B Q4_K_M (~670MB)
-curl -L -o tinyllama-1.1b-q4.gguf \
-  "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-
-# TinyLlama 1.1B Q8_0 (~1.2GB) - Higher quality
-curl -L -o tinyllama-1.1b-q8.gguf \
-  "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q8_0.gguf"
+java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar <model_path> [tokenizer_path] "<prompt>"
 ```
 
-### Model Sources
+*   **`<model_path>`**: Path to `.gguf` or `.bin` (Karpathy) model.
+*   **`[tokenizer_path]`**: Required for `.bin` models. Optional for `.gguf` if the tokenizer is embedded.
+*   **`"<prompt>"`**: Your text prompt.
 
-| Source | Models | Format | Notes |
-|--------|--------|--------|-------|
-| [karpathy/tinyllamas](https://huggingface.co/karpathy/tinyllamas) | Stories 15M/42M/110M | `.bin` | Tiny models for testing |
-| [TheBloke](https://huggingface.co/TheBloke) | Many LLaMA variants | `.gguf` | Quantized models |
-| [Qwen](https://huggingface.co/Qwen) | Qwen2 0.5B-72B | `.gguf` | Official GGUF releases |
-
-## Getting Tokenizers
-
-### For Karpathy `.bin` Models
-
-The tokenizer must match the model's vocabulary:
-
+**Example (GGUF with embedded tokenizer):**
 ```bash
-# Standard LLaMA tokenizer (32K vocab) - for stories15m/42m/110m
-curl -L -o tokenizer.bin \
-  "https://github.com/karpathy/llama2.c/raw/master/tokenizer.bin"
+java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar tinyllama-1.1b-q4.gguf "Once upon a time"
 ```
 
-### For GGUF Models
-
-GGUF files embed their tokenizer metadata. KLlama extracts vocabulary from the GGUF file automatically, but you still need a tokenizer.bin for BPE encoding. Use the LLaMA tokenizer above, or convert from the model's original tokenizer.
-
-## Building
-
-### Prerequisites
-
-- JDK 21 or later
-- Gradle 8.x
-
-### Build Commands
-
-```bash
-# Build all targets
-./gradlew :skainet-apps:skainet-kllama:build
-
-# Build optimized JVM Fat JAR (recommended for CLI)
-./gradlew :skainet-apps:skainet-kllama:shadowJar -PbuildFatJar
-
-# Build specific platforms
-./gradlew :skainet-apps:skainet-kllama:jvmJar                           # JVM JAR
-./gradlew :skainet-apps:skainet-kllama:linkReleaseExecutableMacosArm64  # macOS ARM64
-./gradlew :skainet-apps:skainet-kllama:linkReleaseExecutableLinuxX64    # Linux x64
-./gradlew :skainet-apps:skainet-kllama:linkReleaseExecutableLinuxArm64  # Linux ARM64
-./gradlew :skainet-apps:skainet-kllama:wasmJsBrowserDistribution        # WASM/Browser
-```
-
-## Running
-
-### Command Line Usage
-
-```
-kllama <model> <tokenizer> <prompt> [steps=64] [temperature=0.8]
-
-Arguments:
-  model           Path to model file (.gguf or .bin)
-  tokenizer       Path to tokenizer.bin file (required for .bin, optional for .gguf)
-  prompt          Text prompt to start generation
-  steps           Number of tokens to generate (default: 64)
-  temperature     Sampling temperature, 0=greedy (default: 0.8)
-```
-
-### JVM
-
-#### Running via Gradle (Development)
-```bash
-# Running Karpathy .bin model
-./gradlew :skainet-apps:skainet-kllama:jvmRun \
-  --args="stories15m.bin tokenizer.bin 'Once upon a time' 64 0.8"
-
-# Running GGUF model (embedded tokenizer)
-./gradlew :skainet-apps:skainet-kllama:jvmRun \
-  --args="tinyllama-1.1b-q4.gguf 'Once upon a time' 64 0.8"
-```
-
-#### Running the Fat JAR (Production)
-For best performance, use the Fat JAR with SIMD (Vector API) enabled:
-```bash
-# Karpathy .bin model
-java --add-modules jdk.incubator.vector --enable-preview -Xmx8g \
-  -jar skainet-apps/skainet-kllama/build/libs/kllama-fat.jar \
-  stories15m.bin tokenizer.bin "Once upon a time" 64 0.8
-
-# GGUF model
-java --add-modules jdk.incubator.vector --enable-preview -Xmx8g \
-  -jar skainet-apps/skainet-kllama/build/libs/kllama-fat.jar \
-  tinyllama-1.1b-q4.gguf "Once upon a time" 64 0.8
-```
-*Note: Adjust `-Xmx` (heap size) based on your model size (e.g., `-Xmx20g` for larger models).*
-
-### macOS (Apple Silicon)
-
-```bash
-./skainet-apps/skainet-kllama/build/bin/macosArm64/releaseExecutable/kllama.kexe \
-  stories15m.bin tokenizer.bin "Once upon a time" 64 0.8
-```
-
-### Linux
-
-```bash
-./skainet-apps/skainet-kllama/build/bin/linuxX64/releaseExecutable/kllama.kexe \
-  stories15m.bin tokenizer.bin "Once upon a time" 64 0.8
-```
-
-### Browser (WASM)
-
-```bash
-# Build distribution
-./gradlew :skainet-apps:skainet-kllama:wasmJsBrowserDistribution
-
-# Serve locally
-cd skainet-apps/skainet-kllama/build/dist/wasmJs/productionExecutable
-python3 -m http.server 8080
-# Open http://localhost:8080
-```
-
-For WASM, place model files in `src/wasmJsMain/resources/models/`.
-
-## Example Output
-
-```
-$ ./kllama.kexe stories15m.bin tokenizer.bin "Once upon a time" 64 0.8
-Loading model from stories15m.bin...
-Loading tokenizer from tokenizer.bin...
-Generating 64 tokens with temperature=0.8...
 ---
-Once upon a time, there was a little girl named Lily. She loved to play
-outside in the sunshine. One day, she found a beautiful butterfly in the
-garden. The butterfly had pretty colors on its wings.
+
+### Running
+
+```bash
+./skainet-apps/skainet-kllama/build/bin/macosArm64/releaseExecutable/kllama.kexe <model_path> "<prompt>" [steps] [temperature] [--backend=cpu]
+```
+
+**Options:**
+*   `--backend=mlx` - Use MLX GPU backend (default on macOS)
+*   `--backend=cpu` - Use CPU backend
+*   `--list-backends` - Show available backends and exit
+
+**Example:**
+```bash
+# Fall back to CPU backend
+./kllama.kexe tinyllama-1.1b.gguf "Once upon a time" --backend=cpu
+
+# List available backends
+./kllama.kexe --list-backends
+# Output: Available: cpu
+```
+
 ---
-tok/s: 45.2
-```
 
-## Architecture
+## 🛠 Embedding KLlama in Your App
 
-```
-sk.ainet.apps.kllama/
-├── LlamaRuntime.kt       # Core inference: attention, FFN, sampling
-├── LlamaIngestion.kt     # Model loading facade
-├── LlamaLoadConfig.kt    # Configuration for loading
-├── Tokenizer.kt          # Tokenizer interface
-├── TokenizerImpl.kt      # BPE tokenizer implementation
-├── TokenizerUtils.kt     # Binary tokenizer loader
-└── cli/
-    └── Main.kt           # CLI entry point (per-platform)
-```
+You can easily integrate KLlama into any Kotlin project.
 
-### Runtime Components
+### 1. Add Dependencies
 
-- **RMSNorm** - Root Mean Square Layer Normalization
-- **RoPE** - Rotary Position Embeddings
-- **Multi-Head Attention** - With KV cache for efficient generation
-- **SwiGLU FFN** - Feed-forward network with SiLU activation
-- **Temperature Sampling** - Greedy or stochastic token selection
-
-## Standalone Extraction
-
-KLlama is designed to be extractable as a standalone application. The core dependencies are:
+Add the following to your `build.gradle.kts` (ensure you are using version `0.9.2`):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet:skainet-lang-core:$version")
-    implementation("sk.ainet:skainet-backend-cpu:$version")
-    implementation("sk.ainet:skainet-io-gguf:$version")
-    implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.5.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    implementation("sk.ainet.apps:skainet-kllama:0.9.2")
+    // For JVM SIMD support
+    implementation("sk.ainet.core:skainet-backend-cpu:0.9.2")
 }
 ```
 
-## Execution Backends
+### 2. Basic Usage
 
-KLlama supports multiple execution backends for different performance profiles:
+Here is a minimal example of how to load a GGUF model and generate text:
 
-| Backend | Platform | Description |
-|---------|----------|-------------|
-| JVM CPU (Default) | JVM | Pure Kotlin loops, baseline CPU execution |
-| JVM Vector API | JVM | SIMD-accelerated via Java Vector API (JDK 21+) |
-| Native CPU | macOS/Linux | Kotlin/Native CPU execution |
-| Native MLX | macOS ARM64 | GPU-accelerated via Apple MLX framework |
+```kotlin
+import sk.ainet.apps.kllama.*
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.io.JvmRandomAccessSource
+import kotlinx.coroutines.runBlocking
 
-### Backend Selection
+fun main() = runBlocking {
+    val modelPath = "path/to/model.gguf"
+    val ctx = DirectCpuExecutionContext()
 
-**JVM Vector API** (enabled by default on JDK 21+):
-```bash
-# Disable Vector API to use scalar CPU
-export SKAINET_CPU_VECTOR_ENABLED=false
-java -jar kllama-all.jar model.gguf "prompt"
+    // 1. Load the model (supports GGUF quantization via on-the-fly dequantization)
+    val ingestion = LlamaIngestion(ctx)
+    val runtimeWeights = ingestion.loadStreaming {
+        JvmRandomAccessSource.open(modelPath)
+    }
 
-# Enable Vector API (default)
-export SKAINET_CPU_VECTOR_ENABLED=true
-java --enable-preview --add-modules jdk.incubator.vector -jar kllama-all.jar model.gguf "prompt"
+    // 2. Initialize the runtime and tokenizer
+    val runtime = LlamaRuntime(ctx, runtimeWeights)
+    val tokenizer = JvmRandomAccessSource.open(modelPath).use { source ->
+        GGUFTokenizer.fromRandomAccessSource(source)
+    }
+
+    // 3. Generate text
+    val prompt = "The capital of France is"
+    val promptTokens = tokenizer.encode(prompt)
+    
+    println("Response:")
+    runtime.generate(promptTokens, steps = 32) { tokenId ->
+        print(tokenizer.decode(tokenId))
+    }
+}
 ```
 
+---
 
-## Performance Notes
+## 📦 Supported Formats & Quantization
 
-| Platform | Notes |
-|----------|-------|
-| JVM Vector API | SIMD-accelerated, best JVM performance |
-| JVM CPU | Scalar loops, baseline JVM |
-| Native CPU | Pure Kotlin loops |
-| WASM | Single-threaded browser execution - slowest |
+KLlama is designed to be flexible with model formats:
 
-Current limitations:
-- All weights dequantized to FP32 at load time
-- Single-token generation (no batching)
+*   **GGUF**: Full support for loading GGUF models.
+*   **Quantization**: Supports **Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q8_1, and K-quants (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K)**.
+    *   *Note: Currently, quantized weights are dequantized to FP32 during loading for maximum compatibility across platforms.*
+*   **Karpathy .bin**: Legacy support for llama2.c format.
 
-**Tested working:**
-- Karpathy `.bin` format (stories15m, stories42m, stories110m)
-- GGUF F32 tensors
-- GGUF quantized tensors (Q4_0, Q4_K, Q8_0, etc.)
+---
 
-## Roadmap
+## 🐛 Reporting Bugs
 
-- [ ] Quantized inference (skip dequantization)
-- [ ] Top-k / Top-p sampling
-- [ ] Android app with UI
-- [ ] iOS app with SwiftUI
-- [x] MLX acceleration (Apple Silicon GPU)
-- [ ] Batch inference for prompt processing
+Since we are in early development, your bug reports are invaluable. If you encounter an issue:
 
-## License
+1.  **Check the model**: Tell us the exact model name and where you downloaded it (e.g., "TinyLlama-1.1B-Chat-v1.0-GGUF").
+2.  **Provide a Stack Trace**: If the app crashes, please include the full exception stack trace.
+3.  **Environment**: Mention your OS, Architecture (Intel/Apple Silicon), and Java version.
 
-Part of the SKaiNET project. See repository root for license information.
+Report issues on our [GitHub Issue Tracker](https://github.com/anthropics/skainet/issues).
 
-## Links
+---
 
-- [SKaiNET](https://github.com/anthropics/skainet) - Parent framework
-- [llama2.c](https://github.com/karpathy/llama2.c) - Inspiration and tokenizer source
-- [GGUF Format](https://github.com/ggerganov/ggml/blob/master/docs/gguf.md) - Model format specification
-- [TinyLlamas](https://huggingface.co/karpathy/tinyllamas) - Small test models
+## 💡 Pro Tip: Performance
+For the best performance on JVM, always run with:
+`--enable-preview --add-modules jdk.incubator.vector`
+This enables SIMD instructions, which can significantly speed up tensor operations.
