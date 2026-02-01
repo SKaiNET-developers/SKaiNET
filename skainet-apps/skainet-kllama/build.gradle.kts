@@ -21,18 +21,6 @@ kotlin {
         }
     }
 
-    iosArm64()
-    iosSimulatorArm64()
-
-    macosArm64 {
-        binaries {
-            executable {
-                entryPoint = "sk.ainet.apps.kllama.cli.main"
-                baseName = "kllama"
-            }
-        }
-    }
-
     linuxX64 {
         binaries {
             executable {
@@ -102,11 +90,9 @@ kotlin {
         val nativeMain by creating {
             dependsOn(commonMain.get())
         }
-        val linuxX64Main by getting { dependsOn(nativeMain) }
-        val linuxArm64Main by getting { dependsOn(nativeMain) }
-        val macosArm64Main by getting { dependsOn(nativeMain) }
-        val iosArm64Main by getting { dependsOn(nativeMain) }
-        val iosSimulatorArm64Main by getting { dependsOn(nativeMain) }
+        val linuxMain by creating { dependsOn(nativeMain) }
+        val linuxX64Main by getting { dependsOn(linuxMain) }
+        val linuxArm64Main by getting { dependsOn(linuxMain) }
     }
 }
 

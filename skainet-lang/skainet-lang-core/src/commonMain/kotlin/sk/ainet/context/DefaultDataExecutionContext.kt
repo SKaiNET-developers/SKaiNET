@@ -18,10 +18,14 @@ public class DefaultDataExecutionContext(
 
     override val ops: TensorOps
         get() = voidOps
+    private val observerRegistry = ExecutionObserverRegistry()
+    override val observers: ExecutionObserverRegistry
+        get() = observerRegistry
 
     override val hooks: sk.ainet.lang.nn.hooks.ForwardHooks?
         get() = _hooks
-    
+
+
     override val memoryInfo: MemoryInfo
         get() = emptyMemoryInfo()
 

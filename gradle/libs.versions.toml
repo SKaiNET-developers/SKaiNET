@@ -24,6 +24,7 @@ kotlinxCli = "0.3.6"
 kotlinxBenchmark = "0.4.15"
 kotlinxIo = "0.8.2"
 pbandk = "0.16.0"
+kotest = "5.9.1"
 
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }
@@ -68,7 +69,9 @@ dokka-test-utils = { module = "org.jetbrains.dokka:dokka-test-utils", version.re
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logbackClassic" }
 optimumcode-json-schema-validator = { module = "io.github.optimumcode:json-schema-validator", version.ref = "jsonSchemaValidatorVersion" }
 pbandk-runtime = { module = "pro.streem.pbandk:pbandk-runtime", version.ref = "pbandk" }
-
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest" }
 
 [plugins]
 androidLibrary = { id = "com.android.library", version.ref = "agp" }

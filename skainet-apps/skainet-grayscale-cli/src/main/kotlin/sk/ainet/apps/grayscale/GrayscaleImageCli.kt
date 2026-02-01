@@ -100,8 +100,38 @@ public class GrayscaleImageCli {
             fullName = "verbose",
             description = "Enable verbose output"
         ).default(false)
-        
+
+        val backend by parser.option(
+            ArgType.String,
+            fullName = "backend",
+            description = "Execution backend: cpu, jvm-simd, hlo-export (default: cpu)"
+        ).default("cpu")
+
+        val hloOutput by parser.option(
+            ArgType.String,
+            fullName = "hlo-output",
+            description = "Output path for StableHLO MLIR (required with --backend=hlo-export)"
+        )
+
         parser.parse(args)
+
+        // Parse backend type
+        val backendType = try {
+            BackendType.fromString(backend)
+        } catch (e: IllegalArgumentException) {
+            throw GrayscaleCliError.ApplicationError.InvalidArguments(
+                issue = e.message ?: "Invalid backend",
+                validOptions = BackendType.values().map { it.name.lowercase() }
+            )
+        }
+
+        // Validate HLO export requirements
+        if (backendType == BackendType.HLO_EXPORT && hloOutput == null) {
+            throw GrayscaleCliError.ApplicationError.InvalidArguments(
+                issue = "HLO export backend requires --hlo-output path",
+                validOptions = listOf("Provide --hlo-output=<path.mlir>")
+            )
+        }
         
         // Validate input path
         validateInputPath(input)
@@ -117,8 +147,10 @@ public class GrayscaleImageCli {
             outputPath = finalOutputPath,
             modelType = model,
             batchMode = batch,
-            useGpu = true, // Default to GPU if available
-            verbose = verbose
+            useGpu = false, // GPU handled via backend selection now
+            verbose = verbose,
+            backendType = backendType,
+            hloOutputPath = hloOutput
         )
     }
     
@@ -224,18 +256,45 @@ public class GrayscaleImageCli {
     
     private suspend fun processImages(config: CliConfiguration) {
         val startTime = System.currentTimeMillis()
-        
-        // Create processing configuration
+
+        // Initialize backend
+        val backendManager = BackendManager()
+        val backendResult = backendManager.createBackend(
+            backendType = config.backendType,
+            verbose = config.verbose,
+            hloOutputPath = config.hloOutputPath
+        )
+
+        when (backendResult) {
+            is BackendResult.Failed -> {
+                throw GrayscaleCliError.ExecutionError.ProcessingFailed(
+                    operation = "backend initialization",
+                    details = backendResult.reason,
+                    cause = backendResult.cause
+                )
+            }
+            is BackendResult.HloExportMode -> {
+                // Handle HLO export mode
+                processHloExport(config, backendResult, backendManager, startTime)
+                return
+            }
+            is BackendResult.Ready -> {
+                // Continue with normal processing
+            }
+        }
+
+        // Create processing configuration with the selected backend
         val processingConfig = ProcessingConfiguration(
             modelType = config.modelType,
             useGpu = config.useGpu,
             verbose = config.verbose,
-            overwriteExisting = true // Default to overwrite for CLI usage
+            overwriteExisting = true, // Default to overwrite for CLI usage
+            backendType = config.backendType
         )
-        
+
         // Initialize processing pipeline
         val pipeline = ImageProcessingPipeline()
-        
+
         try {
             if (config.batchMode) {
                 // Process batch of images
@@ -249,6 +308,104 @@ public class GrayscaleImageCli {
         } catch (e: Exception) {
             throw GrayscaleCliError.ApplicationError.UnexpectedError(
                 operation = "image processing",
+                details = e.message ?: "Unknown error",
+                cause = e
+            )
+        }
+    }
+
+    /**
+     * Handles HLO export mode - traces model execution and exports to StableHLO MLIR.
+     */
+    private suspend fun processHloExport(
+        config: CliConfiguration,
+        hloMode: BackendResult.HloExportMode,
+        backendManager: BackendManager,
+        startTime: Long
+    ) {
+        val logger = Logger(verbose = config.verbose)
+
+        logger.header(config = mapOf(
+            "Input" to config.inputPath,
+            "HLO Output" to hloMode.outputPath,
+            "Model" to config.modelType,
+            "Backend" to config.backendType.displayName
+        ))
+
+        logger.info("Tracing model operations for HLO export...")
+
+        try {
+            // Load sample image for tracing
+            val imageLoader = ImageLoader()
+            val loadedImage = imageLoader.loadImage(config.inputPath)
+
+            // Create a tracing execution context
+            val tracingCtx = hloMode.tracingContext
+
+            // Record the model execution
+            val (tape, _) = tracingCtx.record {
+                // Create model with tracing context
+                val modelFactory = ModelFactory()
+                val modelInstance = when (config.modelType) {
+                    GrayscaleModelType.RGB2GRAYSCALE -> {
+                        val model = sk.ainet.lang.model.compute.Rgb2GrayScale()
+                        GrayscaleModelInstance.FP32Model(model, this)
+                    }
+                    GrayscaleModelType.RGB2GRAYSCALE_MATMUL -> {
+                        val model = sk.ainet.lang.model.compute.Rgb2GrayScaleMatMul(this)
+                        GrayscaleModelInstance.FP16Model(model, this)
+                    }
+                }
+
+                // Convert image to tensor and run model
+                val inputTensor = imageLoader.imageToTensor(loadedImage, this)
+
+                when (modelInstance) {
+                    is GrayscaleModelInstance.FP32Model -> {
+                        val module = modelInstance.model.create(this)
+                        @Suppress("UNCHECKED_CAST")
+                        modelInstance.model.calculate(
+                            module = module,
+                            inputValue = inputTensor as sk.ainet.lang.tensor.Tensor<sk.ainet.lang.types.FP32, Float>,
+                            executionContext = this
+                        ) { _, _, _ -> }
+                    }
+                    is GrayscaleModelInstance.FP16Model -> {
+                        val module = modelInstance.model.create(this)
+                        @Suppress("UNCHECKED_CAST")
+                        val fp16Tensor = this.ops.convert(
+                            inputTensor as sk.ainet.lang.tensor.Tensor<sk.ainet.lang.types.FP32, Float>,
+                            sk.ainet.lang.types.FP16
+                        )
+                        modelInstance.model.calculate(
+                            module = module,
+                            inputValue = fp16Tensor,
+                            executionContext = this
+                        ) { _, _, _ -> }
+                    }
+                }
+            }
+
+            // Export tape to HLO
+            if (tape is sk.ainet.lang.graph.DefaultExecutionTape) {
+                val functionName = "grayscale_${config.modelType.name.lowercase()}"
+                backendManager.exportToHlo(tape, functionName, hloMode.outputPath)
+
+                val totalTime = System.currentTimeMillis() - startTime
+                logger.success("HLO export completed!")
+                logger.timing("Total execution", totalTime)
+            } else {
+                throw GrayscaleCliError.ExecutionError.ProcessingFailed(
+                    operation = "HLO export",
+                    details = "Failed to capture execution tape",
+                    cause = null
+                )
+            }
+        } catch (e: GrayscaleCliError) {
+            throw e
+        } catch (e: Exception) {
+            throw GrayscaleCliError.ExecutionError.ProcessingFailed(
+                operation = "HLO export",
                 details = e.message ?: "Unknown error",
                 cause = e
             )
@@ -271,7 +428,7 @@ public class GrayscaleImageCli {
             "Input" to config.inputPath,
             "Output" to outputPath,
             "Model" to config.modelType,
-            "GPU" to config.useGpu
+            "Backend" to config.backendType.displayName
         ))
         
         logger.info("Processing single image...")
@@ -324,7 +481,7 @@ public class GrayscaleImageCli {
             "Input directory" to config.inputPath,
             "Output directory" to outputDirectory,
             "Model" to config.modelType,
-            "GPU" to config.useGpu
+            "Backend" to config.backendType.displayName
         ))
         
         logger.info("Starting batch processing...")
@@ -381,7 +538,9 @@ public data class CliConfiguration(
     val modelType: GrayscaleModelType,
     val batchMode: Boolean,
     val useGpu: Boolean,
-    val verbose: Boolean
+    val verbose: Boolean,
+    val backendType: BackendType = BackendType.CPU,
+    val hloOutputPath: String? = null
 )
 
 /**

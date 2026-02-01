@@ -1,0 +1,61 @@
+public abstract interface class sk/ainet/lang/audio/AudioBackend {
+	public abstract fun mfcc (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/audio/MfccConfig;Lsk/ainet/lang/audio/AudioPlan;)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun mfcc$default (Lsk/ainet/lang/audio/AudioBackend;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/audio/MfccConfig;Lsk/ainet/lang/audio/AudioPlan;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/audio/AudioBackend$DefaultImpls {
+	public static synthetic fun mfcc$default (Lsk/ainet/lang/audio/AudioBackend;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/audio/MfccConfig;Lsk/ainet/lang/audio/AudioPlan;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/audio/AudioPlan {
+	public static final field Companion Lsk/ainet/lang/audio/AudioPlan$Companion;
+	public final fun getConfig ()Lsk/ainet/lang/audio/MfccConfig;
+	public final fun getDctMatrix ()[F
+	public final fun getHannWindow ()[F
+	public final fun getMelFilterbank ()[F
+}
+
+public final class sk/ainet/lang/audio/AudioPlan$Companion {
+	public final fun build (Lsk/ainet/lang/audio/MfccConfig;)Lsk/ainet/lang/audio/AudioPlan;
+}
+
+public final class sk/ainet/lang/audio/MfccConfig {
+	public fun <init> (IIIIIIFZZI)V
+	public synthetic fun <init> (IIIIIIFZZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component10 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()F
+	public final fun component8 ()Z
+	public final fun component9 ()Z
+	public final fun copy (IIIIIIFZZI)Lsk/ainet/lang/audio/MfccConfig;
+	public static synthetic fun copy$default (Lsk/ainet/lang/audio/MfccConfig;IIIIIIFZZIILjava/lang/Object;)Lsk/ainet/lang/audio/MfccConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoeffs ()I
+	public final fun getDeltaWindow ()I
+	public final fun getDeltas ()Z
+	public final fun getFftSize ()I
+	public final fun getFrameSize ()I
+	public final fun getHopSize ()I
+	public final fun getIncludeEnergy ()Z
+	public final fun getMelBands ()I
+	public final fun getPreEmphasis ()F
+	public final fun getSampleRate ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/audio/MfccKt {
+	public static final fun mfcc (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/audio/MfccConfig;Lsk/ainet/lang/audio/AudioPlan;Lsk/ainet/lang/audio/AudioBackend;)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun mfcc$default (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/audio/MfccConfig;Lsk/ainet/lang/audio/AudioPlan;Lsk/ainet/lang/audio/AudioBackend;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/audio/ReferenceAudioBackend : sk/ainet/lang/audio/AudioBackend {
+	public static final field INSTANCE Lsk/ainet/lang/audio/ReferenceAudioBackend;
+	public fun mfcc (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/audio/MfccConfig;Lsk/ainet/lang/audio/AudioPlan;)Lsk/ainet/lang/tensor/Tensor;
+}
+

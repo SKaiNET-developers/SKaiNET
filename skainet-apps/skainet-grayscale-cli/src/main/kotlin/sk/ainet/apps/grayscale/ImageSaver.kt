@@ -203,17 +203,51 @@ class ImageSaver {
     
     /**
      * Converts a FP32 tensor back to a platform image.
-     * For now, this will need to convert to FP16 first since argbToPlatformImage only accepts FP16.
-     * 
+     * Directly creates a BufferedImage from FP32 tensor data.
+     * Uses TYPE_INT_RGB for better compatibility with JPEG format.
+     *
      * @param tensor The tensor to convert (supports both grayscale and RGB)
      * @param context The execution context for tensor operations
      * @return PlatformBitmapImage ready for saving
      */
     private fun tensorToImageFP32(tensor: Tensor<FP32, Float>, context: ExecutionContext): PlatformBitmapImage {
         return try {
-            // TODO: For now, we'll need to convert FP32 to FP16 or implement FP32 support in argbToPlatformImage
-            // This is a temporary workaround - in a real implementation we'd need proper conversion
-            throw ImageSaveException("FP32 tensor to image conversion not yet implemented - use FP16 tensors")
+            val shape = tensor.data.shape
+            val channels = shape[1]
+            val height = shape[2]
+            val width = shape[3]
+
+            val pixels = IntArray(width * height)
+            var i = 0
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    val rgb = when (channels) {
+                        1 -> {
+                            // Grayscale: replicate value across R, G, B
+                            val v = tensor.data[0, 0, y, x].toInt().coerceIn(0, 255)
+                            (v shl 16) or (v shl 8) or v
+                        }
+                        3 -> {
+                            // RGB
+                            val r = tensor.data[0, 0, y, x].toInt().coerceIn(0, 255)
+                            val g = tensor.data[0, 1, y, x].toInt().coerceIn(0, 255)
+                            val b = tensor.data[0, 2, y, x].toInt().coerceIn(0, 255)
+                            (r shl 16) or (g shl 8) or b
+                        }
+                        else -> {
+                            // Default: treat as grayscale using first channel
+                            val v = tensor.data[0, 0, y, x].toInt().coerceIn(0, 255)
+                            (v shl 16) or (v shl 8) or v
+                        }
+                    }
+                    pixels[i++] = rgb
+                }
+            }
+
+            // Use TYPE_INT_RGB for better JPEG compatibility (no alpha channel)
+            val out = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
+            out.setRGB(0, 0, width, height, pixels, 0, width)
+            out
         } catch (e: Exception) {
             throw ImageSaveException("Error converting FP32 tensor to image", e)
         }

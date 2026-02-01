@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":skainet-lang:skainet-lang-models"))
     implementation(project(":skainet-io:skainet-io-image"))
     implementation(project(":skainet-compile:skainet-compile-hlo"))
+    implementation(project(":skainet-compile:skainet-compile-dag"))
     implementation(project(":skainet-backends:skainet-backend-cpu"))
 
     testImplementation(kotlin("test"))

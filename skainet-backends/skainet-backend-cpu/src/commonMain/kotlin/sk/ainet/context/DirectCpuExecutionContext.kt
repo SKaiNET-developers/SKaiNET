@@ -10,6 +10,7 @@ public class DirectCpuExecutionContext(
     override val phase: Phase = Phase.EVAL,
     private val _hooks: sk.ainet.lang.nn.hooks.ForwardHooks? = null,
 ) : ExecutionContext {
+    private val observerRegistry = ExecutionObserverRegistry()
     private val _memoryInfo = MemoryInfo(
         totalMemory = 0,
         usedMemory = 0,
@@ -21,6 +22,8 @@ public class DirectCpuExecutionContext(
     private val opsFactory = platformDefaultCpuOpsFactory()
     override val memoryInfo: MemoryInfo
         get() = _memoryInfo
+    override val observers: ExecutionObserverRegistry
+        get() = observerRegistry
 
     override val ops: TensorOps
         get() = opsFactory(tensorDataFactory)

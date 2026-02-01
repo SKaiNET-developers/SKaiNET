@@ -5,11 +5,13 @@ import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.kllama.Tokenizer
 import sk.ainet.apps.kllama.LlamaRuntime
+import sk.ainet.apps.kllama.CpuAttentionBackend
 import sk.ainet.apps.kllama.Llama2DotCWeightLoader
 import sk.ainet.apps.kllama.TokenizerUtils
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.lang.types.FP32
 import kotlinx.io.buffered
 import kotlinx.io.asSource
 import java.io.FileInputStream
@@ -65,8 +67,9 @@ fun main(args: Array<String>) {
         val ctx = DirectCpuExecutionContext()
         
         val runtimeWeights = if (isGguf) {
-            val ingestion = LlamaIngestion(
+            val ingestion = LlamaIngestion<FP32>(
                 ctx = ctx,
+                dtype = FP32::class,
                 config = LlamaLoadConfig(
                     quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
                     allowQuantized = false
@@ -83,7 +86,8 @@ fun main(args: Array<String>) {
             }
         }
 
-        val runtime = LlamaRuntime(ctx, runtimeWeights)
+        val backend = CpuAttentionBackend<FP32>(ctx, runtimeWeights, FP32::class)
+        val runtime = LlamaRuntime<FP32>(ctx, runtimeWeights, backend, FP32::class)
 
         val tokenizer: Tokenizer = if (isGguf && tokenizerPath == null) {
             println("Loading embedded GGUF tokenizer...")

@@ -14,6 +14,7 @@ import sk.ainet.io.gguf.StreamingTensorInfo
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int8
 import kotlin.math.pow
@@ -939,8 +940,8 @@ public class LlamaWeightLoader private constructor(
         onTensorLoaded: (String, Tensor<T, V>) -> Unit,
         quantCallback: ((String, GGMLQuantizationType) -> Unit)?
     ): LlamaModelMetadata {
-        require(dtype == FP32::class) {
-            "LLaMA GGUF loader currently supports FP32 tensors only (got ${dtype.simpleName})"
+        require(dtype == FP32::class || dtype == FP16::class) {
+            "LLaMA GGUF loader supports FP32 and FP16 tensors (got ${dtype.simpleName})"
         }
         requireNotNull(sourceProvider) {
             "Sequential loading requires sourceProvider constructor. Use loadFromStreamingGguf for RandomAccessSource."
@@ -993,8 +994,8 @@ public class LlamaWeightLoader private constructor(
         onTensorLoaded: (String, Tensor<T, V>) -> Unit,
         quantCallback: ((String, GGMLQuantizationType) -> Unit)?
     ): LlamaModelMetadata {
-        require(dtype == FP32::class) {
-            "LLaMA GGUF loader currently supports FP32 tensors only (got ${dtype.simpleName})"
+        require(dtype == FP32::class || dtype == FP16::class) {
+            "LLaMA GGUF loader supports FP32 and FP16 tensors (got ${dtype.simpleName})"
         }
         requireNotNull(randomAccessProvider) {
             "Streaming loading requires randomAccessProvider constructor. Use loadFromGguf for Source."
@@ -1174,7 +1175,7 @@ public class LlamaWeightLoader private constructor(
         return when (st.tensorType) {
             GGMLQuantizationType.F32 -> {
                 val floats = bytesToFloatArray(bytes)
-                createFp32Tensor(ctx, dtype, shape, floats)
+                createTensor(ctx, dtype, shape, floats)
             }
 
             GGMLQuantizationType.F16,
@@ -1188,15 +1189,15 @@ public class LlamaWeightLoader private constructor(
                     }
 
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
-                        require(dtype == FP32::class) {
-                            "Dequantizing ${st.tensorType} to FP32 requires dtype FP32"
+                        require(dtype == FP32::class || dtype == FP16::class) {
+                            "Dequantizing ${st.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
                         }
                         val floats = when (st.tensorType) {
                             GGMLQuantizationType.F16 -> dequantF16FromBytes(bytes)
                             GGMLQuantizationType.BF16 -> dequantBF16FromBytes(bytes)
                             else -> error("Unreachable")
                         }
-                        createFp32Tensor(ctx, dtype, shape, floats)
+                        createTensor(ctx, dtype, shape, floats)
                     }
                 }
             }
@@ -1230,11 +1231,11 @@ public class LlamaWeightLoader private constructor(
                     }
 
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
-                        require(dtype == FP32::class) {
-                            "Dequantizing ${st.tensorType} to FP32 requires dtype FP32"
+                        require(dtype == FP32::class || dtype == FP16::class) {
+                            "Dequantizing ${st.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
                         }
                         val floats = dequantFromBytes(bytes, st.tensorType, st.nElements.toInt())
-                        createFp32Tensor(ctx, dtype, shape, floats)
+                        createTensor(ctx, dtype, shape, floats)
                     }
                 }
             }
@@ -1553,11 +1554,12 @@ public class LlamaWeightLoader private constructor(
     private fun List<Int>.product(): Int = fold(1) { acc, v -> acc * v }
 
     /**
-     * Create an FP32 tensor from float data, transposing 2D tensors from column-major to row-major.
+     * Create a tensor from float data, transposing 2D tensors from column-major to row-major.
      * GGUF stores 2D tensors in column-major order, so we transpose them at load time.
+     * The dtype parameter determines the GPU storage format (FP32 or FP16).
      */
     @Suppress("UNCHECKED_CAST")
-    private fun <T : DType, V> createFp32Tensor(
+    private fun <T : DType, V> createTensor(
         ctx: ExecutionContext,
         dtype: KClass<T>,
         originalShape: Shape,
@@ -1587,7 +1589,7 @@ public class LlamaWeightLoader private constructor(
             GGMLQuantizationType.F32 -> {
                 @Suppress("UNCHECKED_CAST")
                 val floats = (if (rt.data.isEmpty()) reader.materialize(rt) else rt.data) as List<Float>
-                createFp32Tensor(ctx, dtype, shape, floats.toFloatArray())
+                createTensor(ctx, dtype, shape, floats.toFloatArray())
             }
 
             GGMLQuantizationType.F16,
@@ -1608,8 +1610,8 @@ public class LlamaWeightLoader private constructor(
                     }
 
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
-                        require(dtype == FP32::class) {
-                            "Dequantizing ${rt.tensorType} to FP32 requires dtype FP32; got ${dtype.simpleName}"
+                        require(dtype == FP32::class || dtype == FP16::class) {
+                            "Dequantizing ${rt.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
                         }
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                         val floats = when (rt.tensorType) {
@@ -1617,7 +1619,7 @@ public class LlamaWeightLoader private constructor(
                             GGMLQuantizationType.BF16 -> dequantBF16(raw)
                             else -> error("Unsupported native type ${rt.tensorType}")
                         }
-                        createFp32Tensor(ctx, dtype, shape, floats)
+                        createTensor(ctx, dtype, shape, floats)
                     }
                 }
             }
@@ -1654,8 +1656,8 @@ public class LlamaWeightLoader private constructor(
                     }
 
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
-                        require(dtype == FP32::class) {
-                            "Dequantizing ${rt.tensorType} to FP32 requires dtype FP32; got ${dtype.simpleName}"
+                        require(dtype == FP32::class || dtype == FP16::class) {
+                            "Dequantizing ${rt.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
                         }
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                         val floats = when (rt.tensorType) {
@@ -1677,7 +1679,7 @@ public class LlamaWeightLoader private constructor(
                             GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, rt.nElements)
                             else -> error("Dequantization for ${rt.tensorType} not implemented yet")
                         }
-                        createFp32Tensor(ctx, dtype, shape, floats)
+                        createTensor(ctx, dtype, shape, floats)
                     }
                 }
             }

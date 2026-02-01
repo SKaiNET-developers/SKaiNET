@@ -243,18 +243,139 @@ dependencies {
 }
 ```
 
+## Execution Backends
+
+KLlama supports multiple execution backends for different performance profiles:
+
+| Backend | Platform | Description |
+|---------|----------|-------------|
+| JVM CPU (Default) | JVM | Pure Kotlin loops, baseline CPU execution |
+| JVM Vector API | JVM | SIMD-accelerated via Java Vector API (JDK 21+) |
+| Native CPU | macOS/Linux | Kotlin/Native CPU execution |
+| Native MLX | macOS ARM64 | GPU-accelerated via Apple MLX framework |
+
+### Backend Selection
+
+**JVM Vector API** (enabled by default on JDK 21+):
+```bash
+# Disable Vector API to use scalar CPU
+export SKAINET_CPU_VECTOR_ENABLED=false
+java -jar kllama-all.jar model.gguf "prompt"
+
+# Enable Vector API (default)
+export SKAINET_CPU_VECTOR_ENABLED=true
+java --enable-preview --add-modules jdk.incubator.vector -jar kllama-all.jar model.gguf "prompt"
+```
+
+**Native MLX** (macOS Apple Silicon):
+```bash
+# Run with MLX GPU acceleration
+./kllama.kexe model.gguf "prompt" --backend mlx
+
+# Run with CPU only
+./kllama.kexe model.gguf "prompt" --backend cpu
+```
+
+### MLX Backend Setup
+
+The MLX backend provides GPU acceleration on Apple Silicon Macs using Apple's [MLX framework](https://github.com/ml-explore/mlx).
+
+#### Prerequisites
+
+1. **macOS with Apple Silicon** (M1/M2/M3/M4)
+2. **MLX installed** via Homebrew or from source
+
+#### Install MLX via Homebrew (Recommended)
+
+```bash
+brew install mlx
+```
+
+This installs MLX to `/opt/homebrew/opt/mlx` which is auto-detected.
+
+#### Install MLX from Source
+
+```bash
+git clone https://github.com/ml-explore/mlx.git
+cd mlx
+export MLX_PREFIX="$HOME/.local/mlx"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${MLX_PREFIX}"
+cmake --build build --config Release
+cmake --install build
+export MLX_ROOT=$MLX_PREFIX
+```
+
+#### Building with MLX
+
+```bash
+# Set MLX_ROOT if not using Homebrew default location
+export MLX_ROOT=/opt/homebrew/opt/mlx
+
+# Verify MLX is detected
+ls $MLX_ROOT/include/mlx/mlx.h
+
+# Build native executable with MLX support
+./gradlew :skainet-apps:skainet-kllama:linkReleaseExecutableMacosArm64
+```
+
 ## Performance Notes
 
 | Platform | Notes |
 |----------|-------|
-| JVM | Uses Vector API (incubator) for SIMD - fastest |
-| Native | Pure Kotlin loops - good performance |
+| JVM Vector API | SIMD-accelerated, best JVM performance |
+| JVM CPU | Scalar loops, baseline JVM |
+| Native MLX | GPU-accelerated on Apple Silicon - fastest |
+| Native CPU | Pure Kotlin loops |
 | WASM | Single-threaded browser execution - slowest |
 
 Current limitations:
 - All weights dequantized to FP32 at load time
-- No GPU acceleration (CPU only)
 - Single-token generation (no batching)
+
+## Benchmarking
+
+A benchmark script is provided to compare performance across all backends:
+
+```bash
+# Run benchmark with your model
+./benchmark.sh path/to/model.gguf
+
+# Custom prompt and token count
+./benchmark.sh model.gguf "Hello world" 128
+
+# Skip rebuild (if already built)
+SKIP_BUILD=true ./benchmark.sh model.gguf
+```
+
+### Sample Output
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║                    Benchmark Results                         ║
+╚══════════════════════════════════════════════════════════════╝
+
+Model: tinyllama-1.1b-q8.gguf
+Prompt: "Once upon a time"
+Steps: 64
+Runs: 3
+
+Backend                       tok/s         Speedup
+------------------------- --------------- ---------------
+JVM CPU (Scalar)                   12.5             1.0x
+JVM Vector API                     28.3            2.26x
+Native CPU                         15.2            1.22x
+Native MLX                         89.4            7.15x
+
+Benchmark complete!
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MLX_ROOT` | Path to MLX installation | `/opt/homebrew/opt/mlx` |
+| `SKIP_BUILD` | Skip build step if set to `true` | `false` |
+| `SKAINET_CPU_VECTOR_ENABLED` | Enable JVM Vector API | `true` |
 
 ## Known Issues
 
@@ -274,7 +395,7 @@ Current limitations:
 - [ ] Top-k / Top-p sampling
 - [ ] Android app with UI
 - [ ] iOS app with SwiftUI
-- [ ] Metal acceleration (Apple)
+- [x] MLX acceleration (Apple Silicon GPU)
 - [ ] Batch inference for prompt processing
 
 ## License

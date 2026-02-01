@@ -14,6 +14,7 @@ import org.khronos.webgl.DataView
 import org.w3c.fetch.Response
 import kotlin.js.Promise
 import sk.ainet.apps.kllama.LlamaRuntime
+import sk.ainet.apps.kllama.LlamaRuntimeInterface
 import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
@@ -53,7 +54,8 @@ fun main() {
     }
 }
 
-private suspend fun loadRuntimeAndTokenizer(path: String): Pair<LlamaRuntime, Tokenizer> {
+@Suppress("UNCHECKED_CAST")
+private suspend fun loadRuntimeAndTokenizer(path: String): Pair<LlamaRuntimeInterface<*>, Tokenizer> {
     val resp: Response = (window.fetch(path) as Promise<Response>).await()
     if (!resp.ok) error("Failed to fetch model: ${resp.statusText}")
     // On Wasm, use arrayBuffer() and feed bytes into a kotlinx-io Buffer as Source
@@ -80,5 +82,6 @@ private suspend fun loadRuntimeAndTokenizer(path: String): Pair<LlamaRuntime, To
     val source2: Source = (buffer2 as RawSource).buffered()
     val tokenizer = GGUFTokenizer.fromSource(source2)
 
-    return LlamaRuntime(ctx, weights) to tokenizer
+    val backend = sk.ainet.apps.kllama.CpuAttentionBackend(ctx, weights, sk.ainet.lang.types.FP32::class)
+    return LlamaRuntime(ctx, weights, backend, sk.ainet.lang.types.FP32::class) to tokenizer
 }

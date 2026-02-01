@@ -7,6 +7,8 @@ import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeightsStreaming
+import sk.ainet.lang.types.DType
+import kotlin.reflect.KClass
 
 /**
  * Thin facade around the GGUF loader that sets sensible defaults for the KLLama app.
@@ -17,10 +19,12 @@ public data class LlamaLoadConfig(
     val allowQuantized: Boolean = false
 )
 
-public class LlamaIngestion(
+public class LlamaIngestion<T : DType>(
     private val ctx: ExecutionContext,
+    private val dtype: KClass<T>,
     private val config: LlamaLoadConfig = LlamaLoadConfig()
 ) {
+
     /**
      * Load LLaMA runtime weights from the provided GGUF source.
      * Uses sequential loading - loads entire file into memory.
@@ -29,10 +33,11 @@ public class LlamaIngestion(
      * @throws IllegalStateException if metadata/tensors are missing or quantized tensors are present
      * when [config.allowQuantized] is false.
      */
-    public suspend fun load(sourceProvider: () -> Source): LlamaRuntimeWeights {
+    public suspend fun load(sourceProvider: () -> Source): LlamaRuntimeWeights<T> {
         return loadLlamaRuntimeWeights(
             ctx = ctx,
             sourceProvider = sourceProvider,
+            dtype = dtype,
             quantPolicy = config.quantPolicy,
             allowQuantized = config.allowQuantized
         )
@@ -47,10 +52,11 @@ public class LlamaIngestion(
      * @throws IllegalStateException if metadata/tensors are missing or quantized tensors are present
      * when [config.allowQuantized] is false.
      */
-    public suspend fun loadStreaming(randomAccessProvider: () -> RandomAccessSource): LlamaRuntimeWeights {
+    public suspend fun loadStreaming(randomAccessProvider: () -> RandomAccessSource): LlamaRuntimeWeights<T> {
         return loadLlamaRuntimeWeightsStreaming(
             ctx = ctx,
             randomAccessProvider = randomAccessProvider,
+            dtype = dtype,
             quantPolicy = config.quantPolicy,
             allowQuantized = config.allowQuantized
         )
