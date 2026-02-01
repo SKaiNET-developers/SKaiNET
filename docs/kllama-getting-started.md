@@ -37,6 +37,29 @@ java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skain
 
 ---
 
+### Running
+
+```bash
+./skainet-apps/skainet-kllama/build/bin/macosArm64/releaseExecutable/kllama.kexe <model_path> "<prompt>" [steps] [temperature] [--backend=cpu]
+```
+
+**Options:**
+*   `--backend=mlx` - Use MLX GPU backend (default on macOS)
+*   `--backend=cpu` - Use CPU backend
+*   `--list-backends` - Show available backends and exit
+
+**Example:**
+```bash
+# Fall back to CPU backend
+./kllama.kexe tinyllama-1.1b.gguf "Once upon a time" --backend=cpu
+
+# List available backends
+./kllama.kexe --list-backends
+# Output: Available: cpu
+```
+
+---
+
 ## 🛠 Embedding KLlama in Your App
 
 You can easily integrate KLlama into any Kotlin project.

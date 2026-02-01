@@ -24,7 +24,7 @@ import sk.ainet.lang.types.FP32
 import kotlin.reflect.KClass
 
 private fun usage(): Nothing {
-    println("Usage: kllama <model> [tokenizer] <prompt> [steps=64] [temperature=0.8] [--backend=mlx|cpu] [--gpu-opt] [--dtype=fp16|fp32]")
+    println("Usage: kllama <model> [tokenizer] <prompt> [steps=64] [temperature=0.8] [--backend=cpu] [--gpu-opt] [--dtype=fp16|fp32]")
     println("  <model>         Path to .gguf or .bin model")
     println("  <tokenizer>     Path to tokenizer.bin (required for .bin, optional for .gguf)")
     println("  <prompt>        Text prompt")
@@ -130,16 +130,8 @@ private suspend fun <T : DType> runInference(
         createGraphAccelerator(ctx, runtimeWeights, dtype, 1e-5f)
     } else null
 
-    val runtime: LlamaRuntimeInterface<T> = if (useGpuOpt) {
-        val bridge = createGpuTensorBridge(ctx, dtype)
-            ?: error("GPU-optimized runtime requires MLX or Metal backend")
-        println("Using GPU-native runtime (zero-sync attention, dtype=${dtype.simpleName})")
-        val gpuBackend = GpuAttentionBackend<T>(ctx, bridge, runtimeWeights, dtype)
-        LlamaRuntime<T>(ctx, runtimeWeights, gpuBackend, dtype, graphAccelerator = graphAccelerator)
-    } else {
-        val cpuBackend = CpuAttentionBackend<T>(ctx, runtimeWeights, dtype)
-        LlamaRuntime<T>(ctx, runtimeWeights, cpuBackend, dtype, graphAccelerator = graphAccelerator)
-    }
+    val cpuBackend = CpuAttentionBackend<T>(ctx, runtimeWeights, dtype)
+    LlamaRuntime<T>(ctx, runtimeWeights, cpuBackend, dtype, graphAccelerator = graphAccelerator)
 
     val tokenizer: Tokenizer = if (isGguf && tokenizerPathStr == null) {
         println("Loading embedded GGUF tokenizer...")

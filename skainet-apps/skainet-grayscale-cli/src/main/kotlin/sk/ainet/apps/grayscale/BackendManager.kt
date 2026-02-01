@@ -68,7 +68,6 @@ public sealed class BackendResult {
  * - JVM-SIMD: JVM with Vector API SIMD (Java 21+ with --add-modules jdk.incubator.vector)
  * - HLO-Export: Exports compute graph to StableHLO MLIR for external compilation
  *
- * Note: MLX backend is available in native macOS builds (skainet-keyword-spotter).
  */
 public class BackendManager {
 
@@ -247,6 +246,5 @@ public class BackendManager {
         appendLine("Notes:")
         appendLine("  - JVM-SIMD requires Java 21+ and --add-modules jdk.incubator.vector")
         appendLine("  - HLO-Export generates StableHLO MLIR for external compilers (IREE, XLA)")
-        appendLine("  - MLX backend available in native macOS builds (skainet-keyword-spotter)")
     }
 }
