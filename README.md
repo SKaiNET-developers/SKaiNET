@@ -153,8 +153,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.2")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.10.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.10.0")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -197,15 +197,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.9.2")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.10.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.10.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.10.0")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.9.2")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.9.2")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.10.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.10.0")
 }
 ```
 
@@ -215,7 +215,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.9.2</version>
+  <version>0.10.0</version>
 </dependency>
 ```
 
@@ -223,6 +223,12 @@ Maven:
 
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.10.0 highlights
+
+- **Benchmarking & Profiling**: New `BenchmarkDsl` and `ExecutionObserver` for detailed performance analysis.
+- **RMSNormalization**: Added support for RMSNorm layer, commonly used in modern LLMs.
+- **KLlama Improvements**: Better weight loading and experimental GPU acceleration.
 
 ## 0.9.2 highlights
 
