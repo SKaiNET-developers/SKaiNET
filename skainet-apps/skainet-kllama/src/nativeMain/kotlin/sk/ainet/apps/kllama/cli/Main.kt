@@ -131,7 +131,7 @@ private suspend fun <T : DType> runInference(
     } else null
 
     val cpuBackend = CpuAttentionBackend<T>(ctx, runtimeWeights, dtype)
-    LlamaRuntime<T>(ctx, runtimeWeights, cpuBackend, dtype, graphAccelerator = graphAccelerator)
+    val runtime = LlamaRuntime<T>(ctx, runtimeWeights, cpuBackend, dtype, graphAccelerator = graphAccelerator)
 
     val tokenizer: Tokenizer = if (isGguf && tokenizerPathStr == null) {
         println("Loading embedded GGUF tokenizer...")
