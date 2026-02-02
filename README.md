@@ -430,9 +430,9 @@ skainet(ctx) {
 ```
 
 ### 🗺️ Roadmap
-- **Q1 2026**: Full StableHLO coverage for Vision & NLP ops.
-- **Q2 2026**: K2 Compiler Plugin for implicit context propagation.
-- **Q3 2026**: IREE-based WebGPU backend for high-performance browser AI.
+- **Q1 2026**: Comprehensive documentation.
+- **Q2 2026**: Reference-based validation of the correctness of computations.
+- **Q3 2026**: Support for agentic AI.
 - **Q4 2026**: Federated learning support for multi-device training.
 
 ### 🤝 Join the Community
