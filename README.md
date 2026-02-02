@@ -8,7 +8,7 @@
 **SKaiNET** is an open-source deep learning framework written in Kotlin, designed with developers in mind to enable the creation modern AI powered applications with ease. 
 
 ### 🌟 Vision
-SKaiNET aims to democratize "Edge AI/ on device AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
+SKaiNET aims to democratize "Edge AI / On-device AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
 
 > [!IMPORTANT]
 > **About the name**
