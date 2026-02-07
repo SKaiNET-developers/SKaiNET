@@ -151,6 +151,43 @@ public interface TensorOps {
     @Diff
     public fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V>
 
+    /** Element-wise absolute value: |x| */
+    @Diff
+    public fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /** Element-wise sign: -1 for negative, 0 for zero, +1 for positive. Non-differentiable. */
+    public fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /** Element-wise clamp: min(max(x, minVal), maxVal) */
+    @Diff
+    public fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V>
+
+    // Slice operations
+
+    /** Extract a sub-tensor along dimension [dim] starting at [start] with the given [length]. */
+    @Diff
+    public fun <T : DType, V> narrow(tensor: Tensor<T, V>, dim: Int, start: Int, length: Int): Tensor<T, V>
+
+    // Padding operations
+
+    /** Zero-pad a 4D tensor [N, C, H, W] on the spatial dimensions. */
+    @Diff
+    public fun <T : DType, V> pad2d(tensor: Tensor<T, V>, padLeft: Int, padRight: Int, padTop: Int, padBottom: Int): Tensor<T, V>
+
+    // Unfold (im2col) operations
+
+    /** Extract sliding windows of size [size] along dimension [dim] with stride [step].
+     *  Result has one extra dimension appended containing the window elements. */
+    public fun <T : DType, V> unfold(tensor: Tensor<T, V>, dim: Int, size: Int, step: Int): Tensor<T, V>
+
+    // Comparison operations (return mask tensors with 1.0 where true, 0.0 where false)
+
+    /** Element-wise less than: x < value → 1.0, else 0.0 */
+    public fun <T : DType, V> lt(tensor: Tensor<T, V>, value: Float): Tensor<T, V>
+
+    /** Element-wise greater than or equal: x >= value → 1.0, else 0.0 */
+    public fun <T : DType, V> ge(tensor: Tensor<T, V>, value: Float): Tensor<T, V>
+
     // Matrix utilities
     public fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int = 0): Tensor<T, V>
 
