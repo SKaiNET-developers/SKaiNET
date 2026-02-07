@@ -176,6 +176,14 @@ public open class DefaultExecutionTape(
                     "sum" -> listOf(ops.sum(typedInputs[0], params["dim"] as? Int))
                     "mean" -> listOf(ops.mean(typedInputs[0], params["dim"] as? Int))
                     "concat" -> listOf(ops.concat(typedInputs, params["dim"] as Int))
+                    "abs" -> listOf(ops.abs(typedInputs[0]))
+                    "sign" -> listOf(ops.sign(typedInputs[0]))
+                    "clamp" -> listOf(ops.clamp(typedInputs[0], params["minVal"] as Float, params["maxVal"] as Float))
+                    "lt" -> listOf(ops.lt(typedInputs[0], params["value"] as Float))
+                    "ge" -> listOf(ops.ge(typedInputs[0], params["value"] as Float))
+                    "narrow" -> listOf(ops.narrow(typedInputs[0], params["dim"] as Int, params["start"] as Int, params["length"] as Int))
+                    "pad2d" -> listOf(ops.pad2d(typedInputs[0], params["padLeft"] as Int, params["padRight"] as Int, params["padTop"] as Int, params["padBottom"] as Int))
+                    "unfold" -> listOf(ops.unfold(typedInputs[0], params["dim"] as Int, params["size"] as Int, params["step"] as Int))
                     else -> op.operation.execute(typedInputs)
                 } as List<Tensor<T, V>>
                 result
@@ -758,6 +766,52 @@ public class DefaultGradientTape(
         return listOf(gradX)
     }
 
+    override fun absBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d|x|/dx = sign(x) (0 at x=0 by convention)
+        return listOf(absGrad(upstream, inputs[0]))
+    }
+
+    override fun clampBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val minVal = (attributes["minVal"] as? Float) ?: Float.NEGATIVE_INFINITY
+        val maxVal = (attributes["maxVal"] as? Float) ?: Float.POSITIVE_INFINITY
+        return listOf(clampGrad(upstream, inputs[0], minVal, maxVal))
+    }
+
+    override fun narrowBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward of narrow: scatter upstream gradient into a zeros tensor at the sliced position
+        val input = inputs[0]
+        val dim = attributes["dim"] as Int
+        val start = attributes["start"] as Int
+        val actualDim = if (dim < 0) input.shape.rank + dim else dim
+        val gradOut = zerosLike(input)
+        val dims = upstream.shape.dimensions
+        val idx = IntArray(dims.size)
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                val dstIdx = idx.copyOf()
+                dstIdx[actualDim] = dstIdx[actualDim] + start
+                gradOut.data.set(*dstIdx, value = upstream.data.get(*idx))
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return listOf(gradOut)
+    }
+
+    override fun pad2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward of pad2d: extract the non-padded region from upstream gradient
+        val input = inputs[0]
+        val padTop = attributes["padTop"] as Int
+        val padLeft = attributes["padLeft"] as Int
+        // narrow is the inverse of pad: extract the original region
+        val ops = input.ops
+        return listOf(ops.narrow(ops.narrow(upstream, 2, padTop, input.shape.dimensions[2]), 3, padLeft, input.shape.dimensions[3]))
+    }
+
     private fun buildBackwardFromTrace(
         trace: OpTrace,
         inputs: List<Tensor<DType, Any>>,
@@ -790,6 +844,10 @@ public class DefaultGradientTape(
             "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
             "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
             "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
+            "abs" -> BackwardOp(inputs, output) { upstream -> absBackward(upstream, output, inputs, trace.attributes) }
+            "clamp" -> BackwardOp(inputs, output) { upstream -> clampBackward(upstream, output, inputs, trace.attributes) }
+            "narrow" -> BackwardOp(inputs, output) { upstream -> narrowBackward(upstream, output, inputs, trace.attributes) }
+            "pad2d" -> BackwardOp(inputs, output) { upstream -> pad2dBackward(upstream, output, inputs, trace.attributes) }
             "conv1d" -> BackwardOp(inputs, output) { upstream -> conv1dBackward(upstream, output, inputs, trace.attributes) }
             "conv2d" -> BackwardOp(inputs, output) { upstream -> conv2dBackward(upstream, output, inputs, trace.attributes) }
             "conv3d" -> BackwardOp(inputs, output) { upstream -> conv3dBackward(upstream, output, inputs, trace.attributes) }
@@ -797,7 +855,17 @@ public class DefaultGradientTape(
             "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
             "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }
             "split" -> BackwardOp(inputs, output) { upstream -> splitBackward(upstream, output, inputs, trace.attributes) }
-            else -> null
+            else -> {
+                // Support custom backward functions passed via trace attributes
+                @Suppress("UNCHECKED_CAST")
+                val customBackward = trace.attributes["_backwardFn"]
+                    as? (Tensor<DType, Any>, Tensor<DType, Any>, List<Tensor<DType, Any>>, Map<String, Any?>) -> List<Tensor<DType, Any>?>
+                if (customBackward != null) {
+                    BackwardOp(inputs, output) { upstream -> customBackward(upstream, output, inputs, trace.attributes) }
+                } else {
+                    null
+                }
+            }
         }
     }
 
@@ -1057,6 +1125,69 @@ public class DefaultGradientTape(
                 }
                 @Suppress("UNCHECKED_CAST")
                 gradOut.data.set(*idx, value = grad as V)
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return gradOut
+    }
+
+    private fun <T : DType, V> absGrad(upstream: Tensor<T, V>, input: Tensor<T, V>): Tensor<T, V> {
+        val matchedUpstream = matchShape(upstream, input)
+        val gradOut = zerosLike(input)
+        val dims = input.shape.dimensions
+        val idx = IntArray(dims.size)
+
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                val v = input.data.get(*idx)
+                val g = matchedUpstream.data.get(*idx) ?: return
+                // sign(x): +1 for positive, -1 for negative, 0 at zero
+                val grad: Any = when (v) {
+                    is Float -> if (v > 0.0f) g else if (v < 0.0f) -(g as Float) else 0.0f
+                    is Double -> if (v > 0.0) g else if (v < 0.0) -(g as Double) else 0.0
+                    is Int -> if (v > 0) g else if (v < 0) -(g as Int) else 0
+                    is Number -> if (v.toDouble() > 0.0) g else if (v.toDouble() < 0.0) -(g as Number).toFloat() else 0.0f
+                    else -> g
+                }
+                @Suppress("UNCHECKED_CAST")
+                gradOut.data.set(*idx, value = grad as V)
+                return
+            }
+            for (i in 0 until dims[pos]) {
+                idx[pos] = i
+                fill(pos + 1)
+            }
+        }
+        fill(0)
+        return gradOut
+    }
+
+    private fun <T : DType, V> clampGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
+        val matchedUpstream = matchShape(upstream, input)
+        val gradOut = zerosLike(input)
+        val dims = input.shape.dimensions
+        val idx = IntArray(dims.size)
+
+        fun fill(pos: Int) {
+            if (pos == dims.size) {
+                val v = input.data.get(*idx)
+                val vf = when (v) {
+                    is Float -> v
+                    is Double -> v.toFloat()
+                    is Int -> v.toFloat()
+                    is Number -> v.toFloat()
+                    else -> return
+                }
+                // Gradient passes through only where input is within [minVal, maxVal]
+                if (vf >= minVal && vf <= maxVal) {
+                    val g = matchedUpstream.data.get(*idx)
+                    gradOut.data.set(*idx, value = g)
+                }
                 return
             }
             for (i in 0 until dims[pos]) {
