@@ -1,6 +1,6 @@
 # KLlama Getting Started Guide
 
-Welcome to **KLlama**, the pure Kotlin LLaMA inference runtime. This guide will help you get started with the CLI and show you how to embed LLaMA models directly into your own Kotlin applications using **SKaiNET 0.9.2**.
+Welcome to **KLlama**, the pure Kotlin LLaMA inference runtime. This guide will help you get started with the CLI and show you how to embed LLaMA models directly into your own Kotlin applications using **SKaiNET 0.11.0**.
 
 ⚠️ **Early Stage Development**: The whole project is in early development. While it supports various formats and quantizations, you may encounter edge cases. We appreciate your feedback and bug reports!
 
@@ -66,13 +66,13 @@ You can easily integrate KLlama into any Kotlin project.
 
 ### 1. Add Dependencies
 
-Add the following to your `build.gradle.kts` (ensure you are using version `0.9.2`):
+Add the following to your `build.gradle.kts` (ensure you are using version `0.11.0`):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.apps:skainet-kllama:0.9.2")
+    implementation("sk.ainet.apps:skainet-kllama:0.11.0")
     // For JVM SIMD support
-    implementation("sk.ainet.core:skainet-backend-cpu:0.9.2")
+    implementation("sk.ainet.core:skainet-backend-cpu:0.11.0")
 }
 ```
 
@@ -111,6 +111,29 @@ fun main() = runBlocking {
         print(tokenizer.decode(tokenId))
     }
 }
+```
+
+### 3. Custom Backend Integration (Advanced)
+
+KLlama is hardware-agnostic by design. If you are developing a project that uses a specialized hardware backend (e.g., `mxl-backend`), you can inject your own implementations into the `LlamaRuntime`:
+
+1.  **`AttentionBackend`**: Implement this interface to provide custom RoPE application and KV cache management for your hardware.
+2.  **`GraphAccelerator`**: (Optional) Implement this to provide fused operations (like RMSNorm + QKV matmuls) to bypass individual operator calls and reduce synchronization overhead.
+
+**Example: Injecting a custom backend**
+
+```kotlin
+val mxlCtx = MxlExecutionContext() 
+val customBackend = MxlAttentionBackend(mxlCtx, weights)
+val mxlAccelerator = MxlGraphAccelerator(mxlCtx)
+
+val runtime = LlamaRuntime(
+    ctx = mxlCtx,
+    weights = runtimeWeights,
+    attentionBackend = customBackend,
+    dtype = FP32::class,
+    graphAccelerator = mxlAccelerator 
+)
 ```
 
 ---

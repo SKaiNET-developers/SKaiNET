@@ -39,6 +39,15 @@ kotlin {
         }
     }
 
+    macosArm64 {
+        binaries {
+            executable {
+                entryPoint = "sk.ainet.apps.kllama.cli.main"
+                baseName = "kllama"
+            }
+        }
+    }
+
     jvm()
 
     js {
@@ -91,8 +100,10 @@ kotlin {
             dependsOn(commonMain.get())
         }
         val linuxMain by creating { dependsOn(nativeMain) }
+        val macosMain by creating { dependsOn(nativeMain) }
         val linuxX64Main by getting { dependsOn(linuxMain) }
         val linuxArm64Main by getting { dependsOn(linuxMain) }
+        val macosArm64Main by getting { dependsOn(macosMain) }
     }
 }
 

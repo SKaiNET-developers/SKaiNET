@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.11.0] - 2026-02-08
+
+### Added
+- **TinyFoA Support**: Implemented missing operators (`abs`, `sign`, `clamp`, `lt`, `ge`, `narrow`, `pad2d`, `unfold`) to support TinyFoA (AAAI 2025) training pipeline for memory-efficient on-device learning.
+- **Multi-platform KLlama**: Added macOS target support for the KLlama runtime.
+- **Custom Backend Documentation**: Added detailed guide and examples for injecting custom backends into KLlama.
+
+### Fixed
+- Improved robustness of TinyFoA operations with comprehensive unit tests.
+
 ## [0.10.1] - 2026-02-01
 
 ### Added
