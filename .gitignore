@@ -9,6 +9,9 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 .kotlin
 
+.kiro/
+.claude/
+
 ## antora
 _public
 .cache

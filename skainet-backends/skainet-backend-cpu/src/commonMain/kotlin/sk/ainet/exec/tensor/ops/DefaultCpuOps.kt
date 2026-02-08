@@ -1960,6 +1960,194 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         return newTensor(outData, tensor.dtype, tensor)
     }
 
+    // ---- TinyFoA ops: abs, sign, clamp, lt, ge ----
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-abs")
+    override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    kotlin.math.abs(v) as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    val v = tensor.data.get(*idx) as Int
+                    @Suppress("UNCHECKED_CAST")
+                    kotlin.math.abs(v) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for abs: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-sign")
+    override fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v > 0f) 1f else if (v < 0f) -1f else 0f) as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    val v = tensor.data.get(*idx) as Int
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v > 0) 1 else if (v < 0) -1 else 0) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for sign: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-clamp")
+    override fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
+        require(minVal <= maxVal) { "clamp: minVal ($minVal) must be <= maxVal ($maxVal)" }
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    v.coerceIn(minVal, maxVal) as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    val v = tensor.data.get(*idx) as Int
+                    @Suppress("UNCHECKED_CAST")
+                    v.coerceIn(minVal.toInt(), maxVal.toInt()) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for clamp: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-lt")
+    override fun <T : DType, V> lt(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v < value) 1f else 0f) as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    val v = tensor.data.get(*idx) as Int
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v < value.toInt()) 1 else 0) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for lt: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-ge")
+    override fun <T : DType, V> ge(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val v = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v >= value) 1f else 0f) as V
+                }
+                sk.ainet.lang.types.Int32::class -> {
+                    val v = tensor.data.get(*idx) as Int
+                    @Suppress("UNCHECKED_CAST")
+                    (if (v >= value.toInt()) 1 else 0) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for ge: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    // ---- narrow, pad2d, unfold ----
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-narrow")
+    override fun <T : DType, V> narrow(tensor: Tensor<T, V>, dim: Int, start: Int, length: Int): Tensor<T, V> {
+        val actualDim = if (dim < 0) tensor.shape.rank + dim else dim
+        require(actualDim in 0 until tensor.shape.rank) { "narrow dim $dim out of bounds for rank ${tensor.shape.rank}" }
+        require(start >= 0 && start + length <= tensor.shape.dimensions[actualDim]) {
+            "narrow: start=$start length=$length exceeds dim size ${tensor.shape.dimensions[actualDim]}"
+        }
+        val resultDims = tensor.shape.dimensions.copyOf()
+        resultDims[actualDim] = length
+        val outShape = Shape(resultDims)
+        val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { idx ->
+            val srcIdx = idx.copyOf()
+            srcIdx[actualDim] = srcIdx[actualDim] + start
+            tensor.data.get(*srcIdx)
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-pad2d")
+    override fun <T : DType, V> pad2d(tensor: Tensor<T, V>, padLeft: Int, padRight: Int, padTop: Int, padBottom: Int): Tensor<T, V> {
+        require(tensor.shape.rank == 4) { "pad2d requires 4D tensor [N,C,H,W], got rank ${tensor.shape.rank}" }
+        val (n, c, h, w) = tensor.shape.dimensions.toList()
+        val newH = h + padTop + padBottom
+        val newW = w + padLeft + padRight
+        val outShape = Shape(n, c, newH, newW)
+        val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { idx ->
+            val srcRow = idx[2] - padTop
+            val srcCol = idx[3] - padLeft
+            if (srcRow in 0 until h && srcCol in 0 until w) {
+                tensor.data.get(idx[0], idx[1], srcRow, srcCol)
+            } else {
+                // Zero padding
+                when (tensor.dtype) {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                        @Suppress("UNCHECKED_CAST") (0f as V)
+                    }
+                    sk.ainet.lang.types.Int32::class -> {
+                        @Suppress("UNCHECKED_CAST") (0 as V)
+                    }
+                    else -> throw IllegalArgumentException("Unsupported dtype for pad2d: ${tensor.dtype}")
+                }
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-unfold")
+    override fun <T : DType, V> unfold(tensor: Tensor<T, V>, dim: Int, size: Int, step: Int): Tensor<T, V> {
+        val actualDim = if (dim < 0) tensor.shape.rank + dim else dim
+        require(actualDim in 0 until tensor.shape.rank) { "unfold dim $dim out of bounds for rank ${tensor.shape.rank}" }
+        val dimSize = tensor.shape.dimensions[actualDim]
+        require(size <= dimSize) { "unfold size $size > dim size $dimSize" }
+        val numWindows = (dimSize - size) / step + 1
+        val resultDims = IntArray(tensor.shape.rank + 1)
+        for (i in 0 until tensor.shape.rank) {
+            resultDims[i] = if (i == actualDim) numWindows else tensor.shape.dimensions[i]
+        }
+        resultDims[tensor.shape.rank] = size
+        val outShape = Shape(resultDims)
+        val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { idx ->
+            // idx has rank+1 dimensions. Last dimension is the window element index.
+            val windowIdx = idx[tensor.shape.rank]
+            val srcIdx = IntArray(tensor.shape.rank)
+            for (i in 0 until tensor.shape.rank) {
+                srcIdx[i] = if (i == actualDim) {
+                    idx[i] * step + windowIdx
+                } else {
+                    idx[i]
+                }
+            }
+            tensor.data.get(*srcIdx)
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
     @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-convert")
     override fun <TFrom : DType, TTo : DType, V> convert(

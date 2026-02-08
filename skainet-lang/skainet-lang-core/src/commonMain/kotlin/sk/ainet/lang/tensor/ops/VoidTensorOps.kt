@@ -349,6 +349,67 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> lt(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> ge(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> narrow(tensor: Tensor<T, V>, dim: Int, start: Int, length: Int): Tensor<T, V> {
+        val actualDim = if (dim < 0) tensor.shape.rank + dim else dim
+        require(actualDim in 0 until tensor.shape.rank) { "narrow dim $dim out of bounds for rank ${tensor.shape.rank}" }
+        require(start >= 0 && start + length <= tensor.shape.dimensions[actualDim]) {
+            "narrow: start=$start length=$length exceeds dim size ${tensor.shape.dimensions[actualDim]}"
+        }
+        val resultDims = tensor.shape.dimensions.copyOf()
+        resultDims[actualDim] = length
+        val resultData = dataFactory.zeros<T, V>(Shape(resultDims), tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> pad2d(tensor: Tensor<T, V>, padLeft: Int, padRight: Int, padTop: Int, padBottom: Int): Tensor<T, V> {
+        require(tensor.shape.rank == 4) { "pad2d requires 4D tensor [N,C,H,W], got rank ${tensor.shape.rank}" }
+        val dims = tensor.shape.dimensions.copyOf()
+        dims[2] = dims[2] + padTop + padBottom
+        dims[3] = dims[3] + padLeft + padRight
+        val resultData = dataFactory.zeros<T, V>(Shape(dims), tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> unfold(tensor: Tensor<T, V>, dim: Int, size: Int, step: Int): Tensor<T, V> {
+        val actualDim = if (dim < 0) tensor.shape.rank + dim else dim
+        require(actualDim in 0 until tensor.shape.rank) { "unfold dim $dim out of bounds for rank ${tensor.shape.rank}" }
+        val dimSize = tensor.shape.dimensions[actualDim]
+        require(size <= dimSize) { "unfold size $size > dim size $dimSize" }
+        val numWindows = (dimSize - size) / step + 1
+        val resultDims = IntArray(tensor.shape.rank + 1)
+        for (i in 0 until tensor.shape.rank) {
+            resultDims[i] = if (i == actualDim) numWindows else tensor.shape.dimensions[i]
+        }
+        resultDims[tensor.shape.rank] = size
+        val resultData = dataFactory.zeros<T, V>(Shape(resultDims), tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
     override fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int): Tensor<T, V> {
         // tril preserves shape
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
