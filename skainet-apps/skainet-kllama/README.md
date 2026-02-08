@@ -113,6 +113,29 @@ fun main() = runBlocking {
 }
 ```
 
+### 3. Custom Backend Integration (Advanced)
+
+KLlama is hardware-agnostic by design. If you are developing a project that uses a specialized hardware backend (e.g., `mxl-backend`), you can inject your own implementations into the `LlamaRuntime`:
+
+1.  **`AttentionBackend`**: Implement this interface to provide custom RoPE application and KV cache management for your hardware.
+2.  **`GraphAccelerator`**: (Optional) Implement this to provide fused operations (like RMSNorm + QKV matmuls) to bypass individual operator calls and reduce synchronization overhead.
+
+**Example: Injecting a custom backend**
+
+```kotlin
+val mxlCtx = MxlExecutionContext() 
+val customBackend = MxlAttentionBackend(mxlCtx, weights)
+val mxlAccelerator = MxlGraphAccelerator(mxlCtx)
+
+val runtime = LlamaRuntime(
+    ctx = mxlCtx,
+    weights = runtimeWeights,
+    attentionBackend = customBackend,
+    dtype = FP32::class,
+    graphAccelerator = mxlAccelerator 
+)
+```
+
 ---
 
 ## 📦 Supported Formats & Quantization
