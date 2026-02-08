@@ -153,8 +153,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.10.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.10.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.11.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.11.0")
 }
 // Ready to build & run in ~8 minutes
 ```
@@ -197,15 +197,15 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.10.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.10.1")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.11.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.11.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.10.1")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.11.0")
 
     // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.10.1")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.10.1")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.11.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.11.0")
 }
 ```
 
@@ -215,7 +215,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.10.1</version>
+  <version>0.11.0</version>
 </dependency>
 ```
 
@@ -223,6 +223,12 @@ Maven:
 
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.11.0 highlights
+
+- **TinyFoA (AAAI 2025)**: Implemented missing operators to support TinyFoA training pipeline for memory-efficient on-device learning.
+- **Multi-platform KLlama**: Added macOS target support for the KLlama runtime.
+- **Custom Backend Documentation**: Added detailed guide and examples for injecting custom backends into KLlama.
 
 ## 0.10.1 highlights
 
