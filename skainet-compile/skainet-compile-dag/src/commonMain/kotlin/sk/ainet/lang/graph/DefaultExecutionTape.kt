@@ -368,6 +368,20 @@ public class DefaultGradientTape(
 ) : DefaultExecutionTape(), GradientTape, DifferentiableTensorOps<DType, Any> {
 
     private val watchedTensors = mutableSetOf<String>() // Using string IDs for simplicity
+
+    /**
+     * When > 0, recordTrace() skips recording backward ops.
+     * Used by CustomFunction to prevent internal ops from being recorded
+     * (the custom backward handles the entire gradient computation).
+     */
+    private var suppressCount: Int = 0
+
+    /** Suppress recording of backward ops (internal ops won't be tracked). */
+    public fun suppressRecording() { suppressCount++ }
+
+    /** Resume recording of backward ops. */
+    public fun resumeRecording() { suppressCount-- }
+
     private data class BackwardOp<T : DType, V>(
         val inputs: List<Tensor<T, V>>,
         val output: Tensor<T, V>,
@@ -395,15 +409,11 @@ public class DefaultGradientTape(
                 gradMap[ref.id] = seeded
             }
 
-            backwardOps.asReversed().forEachIndexed { index, op ->
+            backwardOps.asReversed().forEach { op ->
                 val outRef = session.refOf(op.output)
                 @Suppress("UNCHECKED_CAST")
-                val upstream = gradMap[outRef.id] as Tensor<DType, Any>?
-                
-                if (upstream == null) {
-                    return@forEachIndexed
-                }
-                
+                val upstream = gradMap[outRef.id] as Tensor<DType, Any>? ?: return@forEach
+
                 @Suppress("UNCHECKED_CAST")
                 val castOp = op as BackwardOp<DType, Any>
                 val inputGrads = castOp.backward(upstream)
@@ -481,6 +491,7 @@ public class DefaultGradientTape(
 
     override fun recordTrace(trace: OpTrace) {
         if (!isRecording || _recordingStrategy is sk.ainet.tape.NoOpRecordingStrategy) return
+        if (suppressCount > 0) return
         
         // Ensure tensors in trace are registered in our session
         // This is crucial for computeGradients to find them using its own session
@@ -539,12 +550,12 @@ public class DefaultGradientTape(
         listOf(matchShape(upstream, inputs[0]))
 
     override fun mulScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        val b = (attributes["b"] as? Number) ?: 1.0
+        val b = attrAsNumber(attributes, "b", 1.0)
         return listOf(matchShape(upstream.ops.mulScalar(upstream, b), inputs[0]))
     }
 
     override fun divScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        val b = (attributes["b"] as? Number) ?: 1.0
+        val b = attrAsNumber(attributes, "b", 1.0)
         return listOf(matchShape(upstream.ops.divScalar(upstream, b), inputs[0]))
     }
 
@@ -552,7 +563,7 @@ public class DefaultGradientTape(
         listOf(matchShape(upstream.ops.mulScalar(upstream, -1), inputs[0]))
 
     override fun rdivScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        val a = (attributes["a"] as? Number) ?: 1.0
+        val a = attrAsNumber(attributes, "a", 1.0)
         val bSquared = upstream.ops.multiply(inputs[0], inputs[0])
         val gbRaw = upstream.ops.mulScalar(upstream, a).let { tmp -> upstream.ops.divide(tmp, bSquared) }
         val gb = matchShape(upstream.ops.mulScalar(gbRaw, -1), inputs[0])
@@ -982,9 +993,8 @@ public class DefaultGradientTape(
         for (idx in targetDims.indices.reversed()) {
             if (targetDims[idx] == 1 && g.shape.dimensions.size > idx && g.shape.dimensions[idx] != 1) {
                 g = g.ops.sum(g, idx)
-                val dims = g.shape.dimensions.toMutableList()
-                dims[idx] = 1
-                g = g.ops.reshape(g, Shape(*dims.toIntArray()))
+                // sum() squeezes the dim, so unsqueeze it back to restore rank
+                g = g.ops.unsqueeze(g, idx)
             }
         }
         return g
@@ -1197,6 +1207,18 @@ public class DefaultGradientTape(
         }
         fill(0)
         return gradOut
+    }
+
+    /**
+     * Parse an attribute value as a Number, handling both Number and String types.
+     * KSP-generated ops store scalar attributes via `.toString()`, so they arrive as Strings.
+     */
+    private fun attrAsNumber(attributes: Map<String, Any?>, key: String, default: Number = 1.0): Number {
+        return when (val raw = attributes[key]) {
+            is Number -> raw
+            is String -> raw.toDoubleOrNull() ?: default
+            else -> default
+        }
     }
 
     private fun <T : DType, V> expTensor(logTensor: Tensor<T, V>): Tensor<T, V> {

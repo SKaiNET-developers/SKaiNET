@@ -64,4 +64,14 @@ public open class TraceSession {
     public fun refsOf(tensors: List<Tensor<*, *>>): List<TensorRef> {
         return tensors.map { refOf(it) }
     }
+
+    /**
+     * Clear all cached tensor references. Call between training batches
+     * to prevent memory accumulation from intermediate tensors.
+     * Tensors will be re-registered on the next forward pass.
+     */
+    public fun clear() {
+        tensorToRef.clear()
+        refToId.clear()
+    }
 }
