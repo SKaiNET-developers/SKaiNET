@@ -166,8 +166,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.11.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.11.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.12.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.12.0")
 }
 // Ready to build & run in ~8 minutes
 ```
