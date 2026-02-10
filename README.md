@@ -5,7 +5,19 @@
 
 <img src="docs/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-**SKaiNET** is an open-source deep learning framework written in Kotlin, designed with developers in mind to enable the creation modern AI powered applications with ease. 
+**SKaiNET** is an open-source deep learning framework written in Kotlin, designed with developers in mind to enable the creation of modern AI-powered applications with ease. 
+
+### Is SKaiNET an LLM?
+
+SKaiNET is **not** an LLM (Large Language Model) itself, but a **deep learning framework** and **runtime** that can run LLMs. Think of it as the engine (like PyTorch or llama.cpp) rather than the model (like GPT-4 or Llama-3). 
+
+Key points:
+- **Framework**: Provides the building blocks (tensors, operators, layers, autograd) to build any neural network.
+- **Runtime**: Specifically optimized to run models like **Llama**, **Gemma**, and **BERT** efficiently on-device (Edge AI).
+- **Multi-platform**: Runs on JVM, Android, iOS, and Native (macOS/Linux/Windows).
+- **Type-safe**: Leverages Kotlin's type system to ensure tensor shapes and types are correct at compile-time.
+
+---
 
 ### 🌟 Vision
 SKaiNET aims to democratize "Edge AI / On-device AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
@@ -29,7 +41,8 @@ SKaiNET uses a hybrid backend strategy that separates development iteration from
 ### SKaiNET is Data
 
 - **Built-in Data Loaders**: `MNIST`, `Fashion-MNIST`, `CIFAR-10`
-- **I/O Formats**: `GGUF`, `ONNX`, `JSON`, `Image` (JPEG, PNG, etc.)
+- **I/O Formats**: `GGUF`, `ONNX`, `SafeTensors`, `JSON`, `Image` (JPEG, PNG, etc.)
+- **Models**: `Llama` (via KLlama), `Gemma`, `BERT` (via KBert)
 - **Transformation DSL**: Compose complex preprocessing pipelines including image resizing, normalization, and tensor conversion, using a type-safe Kotlin DSL.
 
 ```kotlin
@@ -197,15 +210,20 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.11.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.11.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.12.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.12.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.11.0")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.12.0")
 
-    // Optional I/O (e.g., GGUF loader, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.11.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.11.0")
+    // Optional I/O (e.g., GGUF loader, SafeTensors, JSON)
+    implementation("sk.ainet.core:SKaiNET-io-core:0.12.0")
+    implementation("sk.ainet.io:skainet-io-safetensors:0.12.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.12.0")
+
+    // Apps & Runtimes
+    implementation("sk.ainet.apps:skainet-llm:0.12.0") // Llama runtime
+    implementation("sk.ainet.apps:skainet-bert:0.12.0") // BERT runtime
 }
 ```
 
@@ -215,7 +233,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.11.0</version>
+  <version>0.12.0</version>
 </dependency>
 ```
 
@@ -223,6 +241,18 @@ Maven:
 
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.12.0 highlights
+
+- **BERT Support (KBert)**: Pure Kotlin implementation for BERT-based models and Sentence-Transformers.
+- **SafeTensors weight loading**: Fast and secure loading of modern model weights.
+- **WordPiece Tokenizer**: Native implementation for BERT-style tokenization.
+
+```kotlin
+// Example: Generating embeddings with KBert
+val runtime = BertRuntime(ctx, weights, FP32::class)
+val emb = runtime.encode(inputIds, attentionMask, tokenTypeIds)
+```
 
 ## 0.11.0 highlights
 

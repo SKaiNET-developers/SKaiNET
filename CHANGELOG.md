@@ -1,11 +1,18 @@
 # Changelog
 
+## [0.12.0] - 2026-02-10
+
+### Added
+- **BERT Support**: Full support for BERT-based models with `SafeTensors` weight loading.
+- **kbert-cli**: New CLI tool for running BERT inference, supporting text encoding and cosine similarity computation.
+- **WordPiece Tokenizer**: Implementation of WordPiece tokenizer for BERT models.
+
 ## [0.11.0] - 2026-02-08
 
 ### Added
 - **TinyFoA Support**: Implemented missing operators (`abs`, `sign`, `clamp`, `lt`, `ge`, `narrow`, `pad2d`, `unfold`) to support TinyFoA (AAAI 2025) training pipeline for memory-efficient on-device learning.
 - **Multi-platform KLlama**: Added macOS target support for the KLlama runtime.
-- **Custom Backend Documentation**: Added detailed guide and examples for injecting custom backends into KLlama.
+- **Custom Backends Documentation**: Added detailed guide and examples for injecting custom backends into KLlama.
 
 ### Fixed
 - Improved robustness of TinyFoA operations with comprehensive unit tests.
