@@ -7,16 +7,6 @@
 
 **SKaiNET** is an open-source deep learning framework written in Kotlin, designed with developers in mind to enable the creation of modern AI-powered applications with ease. 
 
-### Is SKaiNET an LLM?
-
-SKaiNET is **not** an LLM (Large Language Model) itself, but a **deep learning framework** and **runtime** that can run LLMs. Think of it as the engine (like PyTorch or llama.cpp) rather than the model (like GPT-4 or Llama-3). 
-
-Key points:
-- **Framework**: Provides the building blocks (tensors, operators, layers, autograd) to build any neural network.
-- **Runtime**: Specifically optimized to run models like **Llama**, **Gemma**, and **BERT** efficiently on-device (Edge AI).
-- **Multi-platform**: Runs on JVM, Android, iOS, and Native (macOS/Linux/Windows).
-- **Type-safe**: Leverages Kotlin's type system to ensure tensor shapes and types are correct at compile-time.
-
 ---
 
 ### 🌟 Vision
@@ -172,7 +162,7 @@ dependencies {
 // Ready to build & run in ~8 minutes
 ```
 
-### SKaiNET is for Generative AI
+### SKaiNET is for LLMs
 
 Generate text with just a few lines of code using any Llama-based GGUF model:
 
