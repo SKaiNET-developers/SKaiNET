@@ -37,7 +37,20 @@ java --enable-preview --add-modules jdk.incubator.vector \
   -jar skainet-apps/skainet-kbert-cli/build/libs/kbert-all.jar ./models/all-MiniLM-L6-v2 "The cat sits on the mat" "A feline rests on a rug"
 ```
 
-Output includes embedding dimension, first few values, and (if second text provided) cosine similarity.
+### 🍃 LEAF Model Showcase
+
+The CLI specifically supports a showcase of the **LEAF** (mdbr-leaf-ir) model defaults. If you don't provide a `config.json` in the model directory, KBert defaults to the LEAF architecture configuration (`MDBR_LEAF_IR_CONFIG`).
+
+This implementation is inspired by and based on the **Jlama** LEAF example:
+[LeafModelExample.java (Jlama)](https://github.com/T-Lind/Jlama/blob/8a73a67c79c96711b36240c8650073f951fd3c22/jlama-core/src/main/java/com/github/tjake/jlama/examples/LeafModelExample.java)
+
+To run the LEAF showcase:
+1. Download the [MongoDB/mdbr-leaf-ir](https://huggingface.co/MongoDB/mdbr-leaf-ir) model files (`model.safetensors`, `vocab.txt`).
+2. Run the CLI pointing to that directory (without `config.json`):
+```bash
+java --enable-preview --add-modules jdk.incubator.vector \
+  -jar skainet-apps/skainet-kbert-cli/build/libs/kbert-all.jar ./path/to/mdbr-leaf-ir "Query text"
+```
 
 ---
 
