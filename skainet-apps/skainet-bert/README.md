@@ -1,6 +1,6 @@
 # KBert Getting Started Guide
 
-Welcome to **KBert**, the pure Kotlin BERT/Sentence-Transformer embedding runtime. This guide will help you get started with the CLI and show you how to embed BERT-based models directly into your Kotlin applications using **SKaiNET 0.11.0**.
+Welcome to **KBert**, the pure Kotlin BERT/Sentence-Transformer embedding runtime. This guide will help you get started with the CLI and show you how to embed BERT-based models directly into your Kotlin applications using **SKaiNET 0.12.0**.
 
 ⚠️ Early Stage Development: The project is under active development. While it already works for several common Sentence-Transformer/BERT layouts, there may be edge cases. Please report issues with exact model details and logs.
 
@@ -60,15 +60,15 @@ You can integrate KBert in any Kotlin project.
 
 ### 1. Add Dependencies
 
-Add the following to your `build.gradle.kts` (ensure you are using version `0.11.0`):
+Add the following to your `build.gradle.kts` (ensure you are using version `0.12.0`):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.apps:skainet-bert:0.11.0")
+    implementation("sk.ainet.apps:skainet-bert:0.12.0")
     // For CPU SIMD-accelerated ops
-    implementation("sk.ainet.core:skainet-backend-cpu:0.11.0")
+    implementation("sk.ainet.core:skainet-backend-cpu:0.12.0")
     // For loading SafeTensors files
-    implementation("sk.ainet.io:skainet-io-safetensors:0.11.0")
+    implementation("sk.ainet.io:skainet-io-safetensors:0.12.0")
 }
 ```
 

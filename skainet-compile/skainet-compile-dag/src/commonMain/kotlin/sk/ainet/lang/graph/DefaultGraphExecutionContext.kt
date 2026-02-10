@@ -108,6 +108,16 @@ public class DefaultGraphExecutionContext(
         return _session
     }
 
+    /**
+     * Clear cached tensor references from the trace session.
+     * Call between training batches to prevent memory accumulation.
+     */
+    public fun clearSession() {
+        if (::_session.isInitialized) {
+            _session.clear()
+        }
+    }
+
     override val observers: ExecutionObserverRegistry
         get() = observerRegistry
 
