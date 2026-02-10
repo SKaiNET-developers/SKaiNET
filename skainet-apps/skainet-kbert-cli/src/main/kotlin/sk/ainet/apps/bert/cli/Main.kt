@@ -96,7 +96,7 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun resolveModelFile(modelDir: Path): Path {
+internal fun resolveModelFile(modelDir: Path): Path {
     val candidates = listOf("model.safetensors", "pytorch_model.safetensors")
     for (name in candidates) {
         val p = modelDir.resolve(name)
@@ -109,47 +109,50 @@ private fun resolveModelFile(modelDir: Path): Path {
     error("No .safetensors file found in $modelDir")
 }
 
-private fun detectConfig(modelDir: Path): BertModelConfig {
+internal fun detectConfig(modelDir: Path): BertModelConfig {
     val configPath = modelDir.resolve("config.json")
     if (!configPath.exists()) {
         println("No config.json found, using MDBR_LEAF_IR_CONFIG defaults")
         return MDBR_LEAF_IR_CONFIG
     }
     val json = configPath.readText()
-    return parseConfigJson(json)
+    // Check 2_Dense/config.json for projection dim (sentence-transformers layout)
+    val denseConfigPath = modelDir.resolve("2_Dense/config.json")
+    val denseJson = if (denseConfigPath.exists()) denseConfigPath.readText() else null
+    return parseConfigJson(json, denseJson)
 }
 
-private fun parseConfigJson(json: String): BertModelConfig {
-    fun extractInt(key: String, default: Int): Int {
+internal fun parseConfigJson(json: String, denseJson: String? = null): BertModelConfig {
+    fun extractInt(source: String, key: String, default: Int): Int {
         val pattern = Regex("\"$key\"\\s*:\\s*(\\d+)")
-        return pattern.find(json)?.groupValues?.get(1)?.toIntOrNull() ?: default
+        return pattern.find(source)?.groupValues?.get(1)?.toIntOrNull() ?: default
     }
-    fun extractDouble(key: String, default: Double): Double {
+    fun extractDouble(source: String, key: String, default: Double): Double {
         val pattern = Regex("\"$key\"\\s*:\\s*([\\d.eE\\-+]+)")
-        return pattern.find(json)?.groupValues?.get(1)?.toDoubleOrNull() ?: default
+        return pattern.find(source)?.groupValues?.get(1)?.toDoubleOrNull() ?: default
     }
 
-    // Check sentence_transformers config for projection dim
-    val projDim = run {
-        val stConfigPath = json // This is the main config; check for separate sentence_transformers config
-        // projection_dim is typically in 2_Dense/config.json — try to extract from modules_json
-        extractInt("out_features", 0).let { if (it > 0) it else null }
+    // Projection dim comes from 2_Dense/config.json (sentence-transformers layout)
+    val projDim = if (denseJson != null) {
+        extractInt(denseJson, "out_features", 0).let { if (it > 0) it else null }
+    } else {
+        null
     }
 
     return BertModelConfig(
-        vocabSize = extractInt("vocab_size", 30522),
-        hiddenSize = extractInt("hidden_size", 384),
-        numHiddenLayers = extractInt("num_hidden_layers", 6),
-        numAttentionHeads = extractInt("num_attention_heads", 12),
-        intermediateSize = extractInt("intermediate_size", 1536),
-        maxPositionEmbeddings = extractInt("max_position_embeddings", 512),
-        typeVocabSize = extractInt("type_vocab_size", 2),
-        layerNormEps = extractDouble("layer_norm_eps", 1e-12),
+        vocabSize = extractInt(json, "vocab_size", 30522),
+        hiddenSize = extractInt(json, "hidden_size", 384),
+        numHiddenLayers = extractInt(json, "num_hidden_layers", 6),
+        numAttentionHeads = extractInt(json, "num_attention_heads", 12),
+        intermediateSize = extractInt(json, "intermediate_size", 1536),
+        maxPositionEmbeddings = extractInt(json, "max_position_embeddings", 512),
+        typeVocabSize = extractInt(json, "type_vocab_size", 2),
+        layerNormEps = extractDouble(json, "layer_norm_eps", 1e-12),
         projectionDim = projDim
     )
 }
 
-private fun cosineSimilarity(a: List<Float>, b: List<Float>): Float {
+internal fun cosineSimilarity(a: List<Float>, b: List<Float>): Float {
     require(a.size == b.size) { "Vectors must have same dimension" }
     var dot = 0f
     var normA = 0f
@@ -163,7 +166,7 @@ private fun cosineSimilarity(a: List<Float>, b: List<Float>): Float {
     return if (denom > 0f) dot / denom else 0f
 }
 
-private fun <T : DType> Tensor<T, Float>.expectFloatBuffer(): List<Float> {
+internal fun <T : DType> Tensor<T, Float>.expectFloatBuffer(): List<Float> {
     val data = this.data
     if (data is FloatArrayTensorData<*>) return data.buffer.toList()
     return data.copyToFloatArray().toList()

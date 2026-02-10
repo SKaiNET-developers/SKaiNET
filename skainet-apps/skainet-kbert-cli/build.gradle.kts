@@ -12,7 +12,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines)
 }
 
-tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
+tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
     archiveBaseName.set("kbert")
     archiveClassifier.set("all")
     archiveVersion.set("")
@@ -20,6 +20,24 @@ tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
     manifest {
         attributes(
             "Main-Class" to "sk.ainet.apps.bert.cli.MainKt",
+            "Add-Opens" to "java.base/jdk.internal.misc",
+            "Multi-Release" to "true"
+        )
+    }
+
+    mergeServiceFiles()
+}
+
+tasks.register<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJarDemo") {
+    archiveBaseName.set("kbert-demo")
+    archiveClassifier.set("all")
+    archiveVersion.set("")
+    from(sourceSets.main.get().output)
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+
+    manifest {
+        attributes(
+            "Main-Class" to "sk.ainet.apps.bert.cli.DemoKt",
             "Add-Opens" to "java.base/jdk.internal.misc",
             "Multi-Release" to "true"
         )
