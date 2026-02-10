@@ -9,7 +9,7 @@ import sk.ainet.apps.kllama.CpuAttentionBackend
 import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
-import sk.ainet.apps.kllama.Tokenizer
+import sk.ainet.apps.llm.Tokenizer
 import sk.ainet.apps.kllama.GpuAttentionBackend
 import sk.ainet.apps.kllama.LlamaRuntime
 import sk.ainet.apps.kllama.LlamaRuntimeInterface

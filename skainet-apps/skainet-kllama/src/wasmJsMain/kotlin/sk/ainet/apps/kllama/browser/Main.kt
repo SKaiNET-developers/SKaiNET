@@ -19,7 +19,7 @@ import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
-import sk.ainet.apps.kllama.Tokenizer
+import sk.ainet.apps.llm.Tokenizer
 
 private val scope = MainScope()
 

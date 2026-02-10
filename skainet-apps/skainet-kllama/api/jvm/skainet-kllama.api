@@ -1,9 +1,22 @@
-public final class sk/ainet/apps/kllama/GGUFTokenizer : sk/ainet/apps/kllama/Tokenizer {
+public abstract interface class sk/ainet/apps/kllama/AttentionBackend {
+	public abstract fun attention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun reset ()V
+}
+
+public final class sk/ainet/apps/kllama/CpuAttentionBackend : sk/ainet/apps/kllama/AttentionBackend {
+	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lkotlin/reflect/KClass;Lsk/ainet/apps/kllama/KvCache;F)V
+	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lkotlin/reflect/KClass;Lsk/ainet/apps/kllama/KvCache;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun attention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
+	public fun reset ()V
+}
+
+public final class sk/ainet/apps/kllama/GGUFTokenizer : sk/ainet/apps/llm/Tokenizer {
 	public static final field Companion Lsk/ainet/apps/kllama/GGUFTokenizer$Companion;
-	public synthetic fun <init> (Ljava/util/List;[FIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/util/List;[FIIILsk/ainet/apps/llm/TokenizerStrategy;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun decode (I)Ljava/lang/String;
 	public fun decode ([I)Ljava/lang/String;
 	public fun encode (Ljava/lang/String;)[I
+	public final fun getTokenizerType ()Lsk/ainet/apps/llm/TokenizerType;
 	public final fun getVocabSize ()I
 }
 
@@ -14,6 +27,40 @@ public final class sk/ainet/apps/kllama/GGUFTokenizer$Companion {
 	public static synthetic fun fromRandomAccessSource$default (Lsk/ainet/apps/kllama/GGUFTokenizer$Companion;Lsk/ainet/io/RandomAccessSource;ZILjava/lang/Object;)Lsk/ainet/apps/kllama/GGUFTokenizer;
 	public final fun fromSource (Lkotlinx/io/Source;Z)Lsk/ainet/apps/kllama/GGUFTokenizer;
 	public static synthetic fun fromSource$default (Lsk/ainet/apps/kllama/GGUFTokenizer$Companion;Lkotlinx/io/Source;ZILjava/lang/Object;)Lsk/ainet/apps/kllama/GGUFTokenizer;
+}
+
+public final class sk/ainet/apps/kllama/GpuAttentionBackend : sk/ainet/apps/kllama/AttentionBackend {
+	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/apps/kllama/GpuTensorBridge;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lkotlin/reflect/KClass;F)V
+	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/apps/kllama/GpuTensorBridge;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lkotlin/reflect/KClass;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun attention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
+	public fun reset ()V
+}
+
+public abstract interface class sk/ainet/apps/kllama/GpuTensorBridge {
+	public abstract fun concat (Ljava/util/List;I)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun slice (Lsk/ainet/lang/tensor/Tensor;[I[I[I)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun sliceUpdate (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;[I[I[I)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public abstract interface class sk/ainet/apps/kllama/GraphAccelerator {
+	public abstract fun close ()V
+	public abstract fun runFFN (ILsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun runQKV (ILsk/ainet/lang/tensor/Tensor;)Lsk/ainet/apps/kllama/GraphAccelerator$QKVResult;
+}
+
+public final class sk/ainet/apps/kllama/GraphAccelerator$QKVResult {
+	public fun <init> (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
+	public final fun component1 ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun component2 ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun component3 ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun copy (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/apps/kllama/GraphAccelerator$QKVResult;
+	public static synthetic fun copy$default (Lsk/ainet/apps/kllama/GraphAccelerator$QKVResult;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ILjava/lang/Object;)Lsk/ainet/apps/kllama/GraphAccelerator$QKVResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getK ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun getQ ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun getV ()Lsk/ainet/lang/tensor/Tensor;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class sk/ainet/apps/kllama/HeapKvCache : sk/ainet/apps/kllama/KvCache {
@@ -43,9 +90,14 @@ public final class sk/ainet/apps/kllama/KvCacheJvmKt {
 	public static final fun createOptimalKvCache (III)Lsk/ainet/apps/kllama/KvCache;
 }
 
+public final class sk/ainet/apps/kllama/Llama2DotCWeightLoader {
+	public static final field INSTANCE Lsk/ainet/apps/kllama/Llama2DotCWeightLoader;
+	public final fun load (Lsk/ainet/context/ExecutionContext;Lkotlinx/io/Source;)Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;
+}
+
 public final class sk/ainet/apps/kllama/LlamaIngestion {
-	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/apps/kllama/LlamaLoadConfig;)V
-	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/apps/kllama/LlamaLoadConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;Lsk/ainet/apps/kllama/LlamaLoadConfig;)V
+	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;Lsk/ainet/apps/kllama/LlamaLoadConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun load (Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun loadStreaming (Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
@@ -65,18 +117,27 @@ public final class sk/ainet/apps/kllama/LlamaLoadConfig {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class sk/ainet/apps/kllama/LlamaRuntime {
+public final class sk/ainet/apps/kllama/LlamaRuntime : sk/ainet/apps/kllama/LlamaRuntimeInterface {
 	public static final field BOS_TOKEN I
-	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;FFLkotlin/random/Random;)V
-	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;FFLkotlin/random/Random;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lsk/ainet/apps/kllama/KvCache;FFLkotlin/random/Random;)V
-	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lsk/ainet/apps/kllama/KvCache;FFLkotlin/random/Random;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun forward (I)Lsk/ainet/lang/tensor/Tensor;
-	public final fun generate ([IIFLkotlin/jvm/functions/Function1;)V
-	public static synthetic fun generate$default (Lsk/ainet/apps/kllama/LlamaRuntime;[IIFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
-	public final fun getCurrentPosition ()I
+	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lsk/ainet/apps/kllama/AttentionBackend;Lkotlin/reflect/KClass;FLkotlin/random/Random;Lsk/ainet/apps/kllama/GraphAccelerator;)V
+	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;Lsk/ainet/apps/kllama/AttentionBackend;Lkotlin/reflect/KClass;FLkotlin/random/Random;Lsk/ainet/apps/kllama/GraphAccelerator;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun forward (I)Lsk/ainet/lang/tensor/Tensor;
+	public fun generate ([IIFLkotlin/jvm/functions/Function1;)V
+	public fun getCurrentPosition ()I
 	public final fun getWeights ()Lsk/ainet/io/gguf/llama/LlamaRuntimeWeights;
-	public final fun reset ()V
+	public fun reset ()V
+}
+
+public abstract interface class sk/ainet/apps/kllama/LlamaRuntimeInterface {
+	public abstract fun forward (I)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun generate ([IIFLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun generate$default (Lsk/ainet/apps/kllama/LlamaRuntimeInterface;[IIFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun getCurrentPosition ()I
+	public abstract fun reset ()V
+}
+
+public final class sk/ainet/apps/kllama/LlamaRuntimeInterface$DefaultImpls {
+	public static synthetic fun generate$default (Lsk/ainet/apps/kllama/LlamaRuntimeInterface;[IIFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 }
 
 public final class sk/ainet/apps/kllama/OffheapKvCache : java/lang/AutoCloseable, sk/ainet/apps/kllama/KvCache {
@@ -122,13 +183,7 @@ public final class sk/ainet/apps/kllama/OffheapKvCache$MemoryStats {
 	public fun toString ()Ljava/lang/String;
 }
 
-public abstract interface class sk/ainet/apps/kllama/Tokenizer {
-	public abstract fun decode (I)Ljava/lang/String;
-	public abstract fun decode ([I)Ljava/lang/String;
-	public abstract fun encode (Ljava/lang/String;)[I
-}
-
-public final class sk/ainet/apps/kllama/TokenizerImpl : sk/ainet/apps/kllama/Tokenizer {
+public final class sk/ainet/apps/kllama/TokenizerImpl : sk/ainet/apps/llm/Tokenizer {
 	public fun <init> ([Ljava/lang/String;[F)V
 	public fun decode (I)Ljava/lang/String;
 	public fun decode ([I)Ljava/lang/String;
@@ -141,7 +196,7 @@ public final class sk/ainet/apps/kllama/TokenizerUtils {
 }
 
 public final class sk/ainet/apps/kllama/TokenizerUtils$Companion {
-	public final fun buildTokenizer (Lkotlinx/io/Source;I)Lsk/ainet/apps/kllama/Tokenizer;
+	public final fun buildTokenizer (Lkotlinx/io/Source;I)Lsk/ainet/apps/llm/Tokenizer;
 }
 
 public final class sk/ainet/apps/kllama/cli/MainKt {

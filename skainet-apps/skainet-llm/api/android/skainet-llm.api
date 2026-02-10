@@ -1,0 +1,55 @@
+public abstract interface class sk/ainet/apps/llm/Tokenizer {
+	public abstract fun decode (I)Ljava/lang/String;
+	public abstract fun decode ([I)Ljava/lang/String;
+	public abstract fun encode (Ljava/lang/String;)[I
+}
+
+public abstract interface class sk/ainet/apps/llm/TokenizerStrategy {
+	public abstract fun getSpaceMarker ()Ljava/lang/String;
+	public abstract fun getType ()Lsk/ainet/apps/llm/TokenizerType;
+	public abstract fun postprocess (Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun preprocess (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/apps/llm/TokenizerType : java/lang/Enum {
+	public static final field BPE Lsk/ainet/apps/llm/TokenizerType;
+	public static final field SENTENCEPIECE Lsk/ainet/apps/llm/TokenizerType;
+	public static final field UNKNOWN Lsk/ainet/apps/llm/TokenizerType;
+	public static final field WORDPIECE Lsk/ainet/apps/llm/TokenizerType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/apps/llm/TokenizerType;
+	public static fun values ()[Lsk/ainet/apps/llm/TokenizerType;
+}
+
+public final class sk/ainet/apps/llm/tokenizer/BPEStrategy : sk/ainet/apps/llm/TokenizerStrategy {
+	public static final field INSTANCE Lsk/ainet/apps/llm/tokenizer/BPEStrategy;
+	public fun getSpaceMarker ()Ljava/lang/String;
+	public fun getType ()Lsk/ainet/apps/llm/TokenizerType;
+	public fun postprocess (Ljava/lang/String;)Ljava/lang/String;
+	public fun preprocess (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/apps/llm/tokenizer/SentencePieceStrategy : sk/ainet/apps/llm/TokenizerStrategy {
+	public static final field INSTANCE Lsk/ainet/apps/llm/tokenizer/SentencePieceStrategy;
+	public fun getSpaceMarker ()Ljava/lang/String;
+	public fun getType ()Lsk/ainet/apps/llm/TokenizerType;
+	public fun postprocess (Ljava/lang/String;)Ljava/lang/String;
+	public fun preprocess (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/apps/llm/tokenizer/UnknownStrategy : sk/ainet/apps/llm/TokenizerStrategy {
+	public static final field INSTANCE Lsk/ainet/apps/llm/tokenizer/UnknownStrategy;
+	public fun getSpaceMarker ()Ljava/lang/String;
+	public fun getType ()Lsk/ainet/apps/llm/TokenizerType;
+	public fun postprocess (Ljava/lang/String;)Ljava/lang/String;
+	public fun preprocess (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/apps/llm/tokenizer/WordPieceStrategy : sk/ainet/apps/llm/TokenizerStrategy {
+	public static final field INSTANCE Lsk/ainet/apps/llm/tokenizer/WordPieceStrategy;
+	public fun getSpaceMarker ()Ljava/lang/String;
+	public fun getType ()Lsk/ainet/apps/llm/TokenizerType;
+	public fun postprocess (Ljava/lang/String;)Ljava/lang/String;
+	public fun preprocess (Ljava/lang/String;)Ljava/lang/String;
+}
+
