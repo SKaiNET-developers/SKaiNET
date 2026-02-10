@@ -21,32 +21,9 @@ kotlin {
         }
     }
 
-    linuxX64 {
-        binaries {
-            executable {
-                entryPoint = "sk.ainet.apps.kllama.cli.main"
-                baseName = "kllama"
-            }
-        }
-    }
-
-    linuxArm64 {
-        binaries {
-            executable {
-                entryPoint = "sk.ainet.apps.kllama.cli.main"
-                baseName = "kllama"
-            }
-        }
-    }
-
-    macosArm64 {
-        binaries {
-            executable {
-                entryPoint = "sk.ainet.apps.kllama.cli.main"
-                baseName = "kllama"
-            }
-        }
-    }
+    linuxX64()
+    linuxArm64()
+    macosArm64()
 
     jvm()
 
@@ -57,54 +34,31 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
-        binaries.executable()
     }
 
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":skainet-apps:skainet-llm"))
+            api(project(":skainet-apps:skainet-llm"))
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-compile:skainet-compile-core"))
             implementation(project(":skainet-backends:skainet-backend-cpu"))
             implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
             implementation(project(":skainet-io:skainet-io-core"))
-            implementation(project(":skainet-io:skainet-io-gguf"))
-            implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.coroutines)
-
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
-            implementation(project(":skainet-lang:skainet-lang-models"))
-            implementation(project(":skainet-io:skainet-io-gguf"))
         }
 
-        val jvmMain by getting
         val jvmTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
+                implementation(project(":skainet-io:skainet-io-safetensors"))
             }
         }
-        // val androidMain by getting
-        if (!project.hasProperty("buildFatJar")) {
-            val androidMain by getting
-        }
-        val wasmJsMain by getting
-        wasmJsMain.dependencies {
-            implementation(libs.kotlinx.browser)
-        }
-
-        val nativeMain by creating {
-            dependsOn(commonMain.get())
-        }
-        val linuxMain by creating { dependsOn(nativeMain) }
-        val macosMain by creating { dependsOn(nativeMain) }
-        val linuxX64Main by getting { dependsOn(linuxMain) }
-        val linuxArm64Main by getting { dependsOn(linuxMain) }
-        val macosArm64Main by getting { dependsOn(macosMain) }
     }
 }
 
@@ -116,9 +70,8 @@ tasks.withType<JavaExec>().configureEach {
     jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
 }
 
-
 android {
-    namespace = "sk.ainet.apps.kllama"
+    namespace = "sk.ainet.apps.bert"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {

@@ -1,5 +1,7 @@
 package sk.ainet.apps.kllama
 
+import sk.ainet.apps.llm.Tokenizer
+
 class TokenizerImpl(
     private val vocab: Array<String?>,
     private val vocabScores: FloatArray,

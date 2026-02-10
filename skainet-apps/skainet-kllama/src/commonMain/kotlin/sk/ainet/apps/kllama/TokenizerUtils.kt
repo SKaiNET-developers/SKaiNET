@@ -1,5 +1,6 @@
 package sk.ainet.apps.kllama
 
+import sk.ainet.apps.llm.Tokenizer
 import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readFloatLe

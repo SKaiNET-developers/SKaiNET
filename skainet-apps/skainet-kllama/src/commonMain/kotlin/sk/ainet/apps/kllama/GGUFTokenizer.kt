@@ -2,10 +2,13 @@ package sk.ainet.apps.kllama
 
 import kotlinx.io.Source
 import kotlinx.io.buffered
-import sk.ainet.apps.kllama.tokenizer.BPEStrategy
-import sk.ainet.apps.kllama.tokenizer.SentencePieceStrategy
-import sk.ainet.apps.kllama.tokenizer.UnknownStrategy
-import sk.ainet.apps.kllama.tokenizer.WordPieceStrategy
+import sk.ainet.apps.llm.Tokenizer
+import sk.ainet.apps.llm.TokenizerStrategy
+import sk.ainet.apps.llm.TokenizerType
+import sk.ainet.apps.llm.tokenizer.BPEStrategy
+import sk.ainet.apps.llm.tokenizer.SentencePieceStrategy
+import sk.ainet.apps.llm.tokenizer.UnknownStrategy
+import sk.ainet.apps.llm.tokenizer.WordPieceStrategy
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGUFReader
 import sk.ainet.io.gguf.ReaderField

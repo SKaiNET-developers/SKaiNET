@@ -3,7 +3,7 @@ package sk.ainet.apps.kllama.cli
 import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
-import sk.ainet.apps.kllama.Tokenizer
+import sk.ainet.apps.llm.Tokenizer
 import sk.ainet.apps.kllama.LlamaRuntime
 import sk.ainet.apps.kllama.CpuAttentionBackend
 import sk.ainet.apps.kllama.Llama2DotCWeightLoader
