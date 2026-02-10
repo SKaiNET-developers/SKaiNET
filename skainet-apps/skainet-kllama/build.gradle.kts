@@ -85,6 +85,7 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
+                implementation(project(":skainet-io:skainet-io-safetensors"))
             }
         }
         // val androidMain by getting
