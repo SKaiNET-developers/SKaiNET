@@ -23,16 +23,19 @@ The JAR will be located at: `skainet-apps/skainet-kllama-cli/build/libs/kllama-a
 KLlama leverages the **Java Vector API** for high-performance CPU inference. You must enable it via JVM flags:
 
 ```bash
-java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar <model_path> [tokenizer_path] "<prompt>"
+java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar -m <model_path> [-t <tokenizer_path>] [-s <steps>] [-k <temperature>] [-p <system_prompt>] "<prompt>"
 ```
 
 *   **`<model_path>`**: Path to `.gguf` or `.bin` (Karpathy) model.
 *   **`[tokenizer_path]`**: Required for `.bin` models. Optional for `.gguf` if the tokenizer is embedded.
+*   **`[steps]`**: Optional generation step count (default: `64`).
+*   **`[temperature]`**: Optional sampling temperature (default: `0.8`).
+*   **`[system_prompt]`**: Optional system prompt prepended as context.
 *   **`"<prompt>"`**: Your text prompt.
 
 **Example (GGUF with embedded tokenizer):**
 ```bash
-java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar tinyllama-1.1b-q4.gguf "Once upon a time"
+java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar -m tinyllama-1.1b-q4.gguf -s 96 -k 0.7 -p "You are concise" "Once upon a time"
 ```
 
 ---

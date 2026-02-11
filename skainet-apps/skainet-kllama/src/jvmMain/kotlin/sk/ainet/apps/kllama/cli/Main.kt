@@ -14,53 +14,162 @@ import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.lang.types.FP32
 import kotlinx.io.buffered
 import kotlinx.io.asSource
-import java.io.FileInputStream
-import java.io.InputStream
 import kotlin.io.path.inputStream
 import java.nio.file.Path
+import java.nio.file.Files
 import kotlin.io.path.exists
 import kotlin.io.path.extension
 import kotlin.system.exitProcess
 import kotlin.time.measureTime
 import kotlinx.coroutines.runBlocking
 
-private fun usage(): Nothing {
-    println("Usage: kllama <model> <tokenizer> <prompt> [steps=64] [temperature=0.8]")
-    println("  <model>      Path to .gguf or .bin model")
-    println("  <tokenizer>  Path to tokenizer.bin (required for .bin models, optional for .gguf)")
-    println("  <prompt>     Text prompt")
-    exitProcess(1)
+private data class CliArgs(
+    val modelPath: Path,
+    val tokenizerPath: Path?,
+    val prompt: String,
+    val systemPrompt: String?,
+    val steps: Int,
+    val temperature: Float
+)
+
+private fun usage(errorMessage: String? = null): Nothing {
+    if (errorMessage != null) {
+        System.err.println("Error: $errorMessage")
+        System.err.println()
+    }
+
+    println("Usage: kllama -m <model> [-t <tokenizer>] [-s <steps>] [-k <temperature>] [-p <systemprompt>] <prompt>")
+    println("  -m, --model         Path to .gguf or .bin model (required)")
+    println("  -t, --tokenizer     Path to tokenizer.bin (required for .bin models, optional for .gguf)")
+    println("  -s, --steps         Generation steps (default: 64)")
+    println("  -k, --temperature   Sampling temperature (default: 0.8)")
+    println("  -p, --systemprompt  Optional system prompt prepended to user prompt")
+    println("  -h, --help          Show this help")
+    println()
+    println("Example:")
+    println("  kllama -m model.gguf -s 96 -k 0.7 -p \"You are concise\" \"Hallo\"")
+    exitProcess(if (errorMessage == null) 0 else 1)
+}
+
+private fun parseArgs(args: Array<String>): CliArgs {
+    if (args.isEmpty()) usage("Missing arguments.")
+
+    var model: String? = null
+    var tokenizer: String? = null
+    var steps = 64
+    var temperature = 0.8f
+    var systemPrompt: String? = null
+    var prompt: String? = null
+
+    var idx = 0
+    while (idx < args.size) {
+        val arg = args[idx]
+
+        fun nextValue(option: String): String {
+            if (idx + 1 >= args.size) usage("Missing value for $option.")
+            return args[++idx]
+        }
+
+        when {
+            arg == "-h" || arg == "--help" -> usage()
+            arg == "-m" || arg == "--model" -> model = nextValue(arg)
+            arg.startsWith("--model=") -> model = arg.substringAfter("=")
+            arg == "-t" || arg == "--tokenizer" -> tokenizer = nextValue(arg)
+            arg.startsWith("--tokenizer=") -> tokenizer = arg.substringAfter("=")
+            arg == "-s" || arg == "--steps" -> {
+                val value = nextValue(arg)
+                steps = value.toIntOrNull() ?: usage("Invalid steps value '$value'. Expected integer.")
+            }
+            arg.startsWith("--steps=") -> {
+                val value = arg.substringAfter("=")
+                steps = value.toIntOrNull() ?: usage("Invalid steps value '$value'. Expected integer.")
+            }
+            arg == "-k" || arg == "--temperature" -> {
+                val value = nextValue(arg)
+                temperature = value.toFloatOrNull() ?: usage("Invalid temperature '$value'. Expected float.")
+            }
+            arg.startsWith("--temperature=") -> {
+                val value = arg.substringAfter("=")
+                temperature = value.toFloatOrNull() ?: usage("Invalid temperature '$value'. Expected float.")
+            }
+            arg == "-p" || arg == "--systemprompt" -> systemPrompt = nextValue(arg)
+            arg.startsWith("--systemprompt=") -> systemPrompt = arg.substringAfter("=")
+            arg.startsWith("-") -> usage("Unknown option '$arg'.")
+            else -> {
+                if (prompt != null) usage("Multiple prompts provided. Prompt must be a single positional argument.")
+                prompt = arg
+            }
+        }
+
+        idx++
+    }
+
+    val modelPath = model?.let(Path::of) ?: usage("Model is required (-m/--model).")
+    val tokenizerPath = tokenizer?.let(Path::of)
+    val promptText = prompt ?: usage("Prompt is required as a positional argument.")
+
+    return CliArgs(
+        modelPath = modelPath,
+        tokenizerPath = tokenizerPath,
+        prompt = promptText,
+        systemPrompt = systemPrompt,
+        steps = steps,
+        temperature = temperature
+    )
+}
+
+private fun buildEffectivePrompt(prompt: String, systemPrompt: String?): String {
+    if (systemPrompt.isNullOrBlank()) return prompt
+    return "System: ${systemPrompt.trim()}\n\nUser: $prompt\n\nAssistant:"
+}
+
+private fun resolveModelPath(candidate: Path): Path {
+    if (!candidate.exists()) error("Model not found: $candidate")
+    if (!Files.isDirectory(candidate)) return candidate
+
+    val modelCandidates = mutableListOf<Path>()
+    Files.list(candidate).use { stream ->
+        stream.forEach { entry ->
+            if (!Files.isRegularFile(entry)) return@forEach
+            val ext = entry.extension.lowercase()
+            if (ext == "gguf" || ext == "bin") {
+                modelCandidates.add(entry)
+            }
+        }
+    }
+
+    when {
+        modelCandidates.isEmpty() -> {
+            error("No .gguf or .bin model found in directory: $candidate")
+        }
+        modelCandidates.size > 1 -> {
+            val choices = modelCandidates.sortedBy { it.fileName.toString() }.joinToString(", ")
+            error("Multiple model files found in directory. Use -m with an exact file path: $choices")
+        }
+        else -> {
+            val resolved = modelCandidates.single()
+            println("Resolved model file: $resolved")
+            return resolved
+        }
+    }
 }
 
 fun main(args: Array<String>) {
     runBlocking {
-        if (args.isEmpty()) usage()
-
-        val firstArg = Path.of(args[0])
-        val isGguf = firstArg.extension.lowercase() == "gguf"
-        
-        var argIdx = 0
-        val modelPath = Path.of(args[argIdx++])
-        
-        var tokenizerPath: Path? = null
-        // If it's NOT a GGUF, we MUST have a tokenizer as second arg
-        if (!isGguf) {
-            if (args.size < 2) usage()
-            tokenizerPath = Path.of(args[argIdx++])
-        } else {
-            // If it IS a GGUF, the next arg could be a tokenizer OR the prompt
-            if (args.size > argIdx) {
-                val nextArg = Path.of(args[argIdx])
-                if (nextArg.exists() && (nextArg.extension == "bin" || nextArg.extension == "model")) {
-                    tokenizerPath = nextArg
-                    argIdx++
-                }
-            }
+        val cliArgs = parseArgs(args)
+        val modelPath = resolveModelPath(cliArgs.modelPath)
+        val modelExt = modelPath.extension.lowercase()
+        if (modelExt == "safetensors") {
+            error("SafeTensors (.safetensors) is not supported by KLlama CLI yet. Use GGUF or llama2.c .bin.")
         }
-
-        val prompt = args.getOrNull(argIdx++) ?: usage()
-        val steps = args.getOrNull(argIdx++)?.toIntOrNull() ?: 64
-        val temperature = args.getOrNull(argIdx++)?.toFloatOrNull() ?: 0.8f
+        val isGguf = modelExt == "gguf"
+        if (!isGguf && modelExt.isNotEmpty() && modelExt != "bin") {
+            error("Unsupported model format '.$modelExt'. Expected .gguf or .bin (llama2.c).")
+        }
+        val tokenizerPath = cliArgs.tokenizerPath
+        if (!isGguf && tokenizerPath == null) {
+            error("Tokenizer path required for .bin models. Use -t/--tokenizer.")
+        }
 
         if (!modelPath.exists()) error("Model not found: $modelPath")
 
@@ -103,19 +212,23 @@ fun main(args: Array<String>) {
             }
         }
 
-        val promptTokens = tokenizer.encode(prompt)
+        val effectivePrompt = buildEffectivePrompt(cliArgs.prompt, cliArgs.systemPrompt)
+        val promptTokens = tokenizer.encode(effectivePrompt)
 
-        println("Generating $steps tokens with temperature=$temperature...")
+        if (!cliArgs.systemPrompt.isNullOrBlank()) {
+            println("Using system prompt.")
+        }
+        println("Generating ${cliArgs.steps} tokens with temperature=${cliArgs.temperature}...")
         println("---")
-        print(prompt)
+        print(cliArgs.prompt)
 
         val elapsed = measureTime {
-            runtime.generate(prompt = promptTokens, steps = steps, temperature = temperature) { id ->
+            runtime.generate(prompt = promptTokens, steps = cliArgs.steps, temperature = cliArgs.temperature) { id ->
                 print(tokenizer.decode(id))
             }
         }.inWholeMilliseconds
 
-        val tokPerSec = steps / elapsed.toDouble() * 1000
+        val tokPerSec = cliArgs.steps / elapsed.toDouble() * 1000
         println("\n---")
         println("tok/s: $tokPerSec")
     }
