@@ -70,13 +70,98 @@ val config = Gemma3nConfig(
 )
 ```
 
+## CLI Tool
+
+The `kgemma` CLI provides a simple way to run Gemma 3n models from the command line.
+
+### Building
+
+```bash
+# Build JVM version
+./gradlew :skainet-apps:skainet-kgemma:jvmJar
+
+# Build native Linux executable
+./gradlew :skainet-apps:skainet-kgemma:linuxX64Binaries
+
+# Build native macOS executable
+./gradlew :skainet-apps:skainet-kgemma:macosArm64Binaries
+```
+
+### Running
+
+**JVM (recommended for development):**
+```bash
+./gradlew :skainet-apps:skainet-kgemma:jvmRun \
+    --args='<model-path> "<prompt>" [steps] [temperature]'
+```
+
+**Native executable:**
+```bash
+./build/bin/linuxX64/releaseExecutable/kgemma \
+    <model-path> "<prompt>" [steps] [temperature]
+```
+
+### Arguments
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `model-path` | Yes | - | Path to model (GGUF file, SafeTensors directory, or index.json) |
+| `prompt` | Yes | - | Text prompt to complete |
+| `steps` | No | 64 | Number of tokens to generate |
+| `temperature` | No | 0.8 | Sampling temperature (0.0 = greedy, higher = more random) |
+| `--tokenizer=path` | No | auto | Path to tokenizer (GGUF file or auto-detected tokenizer.json) |
+
+### Supported Model Formats
+
+| Format | Path Example | Tokenizer |
+|--------|--------------|-----------|
+| GGUF | `model.gguf` | Embedded in GGUF |
+| SafeTensors (directory) | `models/` | Auto-loads `tokenizer.json` from directory |
+| SafeTensors (index) | `model.safetensors.index.json` | Auto-loads `tokenizer.json` from same directory |
+
+### Examples
+
+**GGUF model:**
+```bash
+./gradlew :skainet-apps:skainet-kgemma:jvmRun \
+    --args='models/gemma-3n-E2B-it-Q8_0.gguf "Hello, how are you?" 32 0.7'
+```
+
+**HuggingFace SafeTensors model:**
+```bash
+# Download model
+huggingface-cli download google/gemma-3n-E2B-it --local-dir models/
+
+# Run (tokenizer.json auto-detected)
+./gradlew :skainet-apps:skainet-kgemma:jvmRun \
+    --args='models/ "The meaning of life is" 64'
+```
+
+**With explicit tokenizer:**
+```bash
+./gradlew :skainet-apps:skainet-kgemma:jvmRun \
+    --args='models/ "Hello" 32 --tokenizer=tokenizer.gguf'
+```
+
+### Memory Requirements
+
+| Model | Minimum RAM |
+|-------|-------------|
+| Gemma 3n E2B (FP32) | 16 GB |
+| Gemma 3n E2B (Q8) | 8 GB |
+
+The JVM version automatically allocates 24GB heap. For native builds, ensure sufficient system RAM.
+
 ## Model Download
 
 ```bash
-# E2B model (~4GB Q8 quantized)
+# GGUF format (~4GB Q8 quantized)
 huggingface-cli download ggml-org/gemma-3n-E2B-it-GGUF \
     gemma-3n-E2B-it-Q8_0.gguf \
     --local-dir models/
+
+# SafeTensors format (original HuggingFace)
+huggingface-cli download google/gemma-3n-E2B-it --local-dir models/
 ```
 
 ## Module Structure
@@ -99,21 +184,29 @@ skainet-kgemma/
 ## Dependencies
 
 The module depends on:
-- `skainet-llm` - Tokenizer interface
+- `skainet-llm` - Tokenizer interface and HuggingFace BPE tokenizer
 - `skainet-lang-core` - Tensor operations
 - `skainet-compile-core` - Graph compilation
 - `skainet-backend-cpu` - CPU execution context
 - `skainet-io-gguf` - GGUF file parsing and weight loading
+- `skainet-io-safetensors` - HuggingFace SafeTensors format support
 
 ## Implementation Status
 
 ### Phase 1: Core Text Inference ✅
 - [x] Module structure and build configuration
-- [x] Gemma3n weight loader
+- [x] Gemma3n weight loader (GGUF)
 - [x] Gemma3nConfig data class
 - [x] Gemma3nRuntime with GELU activation
 - [x] Hybrid attention backend
 - [x] KV cache with layer sharing
+- [x] CLI tool with JVM and native targets
+
+### Phase 1.5: HuggingFace Support ✅
+- [x] SafeTensors weight loader (sharded)
+- [x] HuggingFace config.json parser
+- [x] HuggingFace tokenizer.json loader (BPE)
+- [x] Auto-detection of model format
 
 ### Phase 2: Optimizations (Planned)
 - [ ] Off-heap KV cache for JVM
