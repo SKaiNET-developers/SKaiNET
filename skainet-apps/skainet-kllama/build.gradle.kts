@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -71,6 +72,7 @@ kotlin {
             implementation(project(":skainet-io:skainet-io-gguf"))
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.coroutines)
+            implementation(libs.kotlinx.serialization.json)
 
         }
 
