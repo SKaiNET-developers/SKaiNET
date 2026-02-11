@@ -1,4 +1,4 @@
-package sk.ainet.apps.kllama
+package sk.ainet.apps.kllama.agent
 
 import kotlin.math.exp
 import kotlin.random.Random
@@ -7,22 +7,9 @@ import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.DType
 
 /**
- * Result of EOS-aware generation.
- *
- * @param tokens The generated token IDs (excluding the prompt).
- * @param text The decoded text (if a tokenizer was provided).
- * @param stoppedByEos True if generation stopped because EOS was emitted.
- */
-public data class GenerateResult(
-    val tokens: List<Int>,
-    val text: String,
-    val stoppedByEos: Boolean
-)
-
-/**
  * Generate tokens until an EOS token is produced or [maxTokens] is reached.
  *
- * Unlike [LlamaRuntimeInterface.generate], this function:
+ * Unlike batch generation, this function:
  * - Stops when the model emits [eosTokenId]
  * - Does NOT prepend BOS automatically (the caller is responsible for encoding the
  *   full prompt including special tokens via the chat template)
@@ -36,7 +23,7 @@ public data class GenerateResult(
  * @param onToken Optional callback invoked for each generated token.
  * @param decode Optional function to decode a token ID to a string.
  */
-public fun <T : DType> LlamaRuntimeInterface<T>.generateUntilStop(
+public fun <T : DType> InferenceRuntime<T>.generateUntilStop(
     prompt: IntArray,
     maxTokens: Int,
     eosTokenId: Int,

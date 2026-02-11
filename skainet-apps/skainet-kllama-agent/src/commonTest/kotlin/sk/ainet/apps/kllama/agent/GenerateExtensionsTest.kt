@@ -1,4 +1,4 @@
-package sk.ainet.apps.kllama
+package sk.ainet.apps.kllama.agent
 
 import kotlin.random.Random
 import kotlin.test.Test
@@ -64,8 +64,7 @@ class GenerateExtensionsTest {
     fun generateUntilStopRespectsEos() {
         val eosTokenId = 2
         var callCount = 0
-        val fakeRuntime = object : LlamaRuntimeInterface<FP32> {
-            override val currentPosition: Int get() = callCount
+        val fakeRuntime = object : InferenceRuntime<FP32> {
             override fun reset() { callCount = 0 }
             override fun forward(tokenId: Int): Tensor<FP32, Float> {
                 callCount++
@@ -74,9 +73,6 @@ class GenerateExtensionsTest {
                 } else {
                     createFP32Tensor(FloatArray(10) { if (it == eosTokenId) 10.0f else 0.0f })
                 }
-            }
-            override fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
-                error("Not used in this test")
             }
         }
 
@@ -94,14 +90,10 @@ class GenerateExtensionsTest {
 
     @Test
     fun generateUntilStopRespectsMaxTokens() {
-        val fakeRuntime = object : LlamaRuntimeInterface<FP32> {
-            override val currentPosition: Int get() = 0
+        val fakeRuntime = object : InferenceRuntime<FP32> {
             override fun reset() {}
             override fun forward(tokenId: Int): Tensor<FP32, Float> {
                 return createFP32Tensor(FloatArray(10) { if (it == 7) 10.0f else 0.0f })
-            }
-            override fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
-                error("Not used in this test")
             }
         }
 

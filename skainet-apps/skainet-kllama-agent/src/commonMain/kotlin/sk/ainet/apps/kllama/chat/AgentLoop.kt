@@ -1,9 +1,9 @@
 package sk.ainet.apps.kllama.chat
 
 import kotlin.random.Random
-import sk.ainet.apps.kllama.GenerateResult
-import sk.ainet.apps.kllama.LlamaRuntimeInterface
-import sk.ainet.apps.kllama.generateUntilStop
+import sk.ainet.apps.kllama.agent.GenerateResult
+import sk.ainet.apps.kllama.agent.InferenceRuntime
+import sk.ainet.apps.kllama.agent.generateUntilStop
 import sk.ainet.lang.types.DType
 
 /**
@@ -52,7 +52,7 @@ public interface AgentListener {
  * 5. Repeats until no tool calls are found or [AgentConfig.maxToolRounds] is reached
  *
  * @param T The DType of the model weights.
- * @param runtime The LLaMA runtime for inference.
+ * @param runtime The inference runtime for token generation.
  * @param template The chat template for formatting prompts.
  * @param toolRegistry Registry of available tools.
  * @param eosTokenId The EOS token ID used to detect generation completion.
@@ -60,7 +60,7 @@ public interface AgentListener {
  * @param decode Function to decode a token ID to a string fragment.
  */
 public class AgentLoop<T : DType>(
-    private val runtime: LlamaRuntimeInterface<T>,
+    private val runtime: InferenceRuntime<T>,
     private val template: ChatTemplate,
     private val toolRegistry: ToolRegistry,
     private val eosTokenId: Int,
