@@ -6,6 +6,7 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.gemma.Gemma3nRuntimeWeights
 import sk.ainet.io.gguf.gemma.Gemma3nWeightLoader
 import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeights
+import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeightsFromSafeTensors
 import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeightsStreaming
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
@@ -99,6 +100,34 @@ public class Gemma3nIngestion<T : DType>(
      */
     public suspend fun loadRuntimeStreaming(randomAccessProvider: () -> RandomAccessSource): Gemma3nRuntime<T> {
         val weights = loadStreaming(randomAccessProvider)
+        val config = Gemma3nConfig.fromMetadata(weights.metadata)
+        val kvCache = createOptimalGemma3nKvCache(config, weights.metadata.contextLength)
+        val attentionBackend = Gemma3nAttentionBackend(ctx, weights, dtype, config, kvCache)
+        return Gemma3nRuntime(ctx, weights, attentionBackend, dtype, config)
+    }
+
+    // ========== SafeTensors Loading ==========
+
+    /**
+     * Load Gemma 3n runtime weights from HuggingFace SafeTensors format.
+     *
+     * Supports sharded models with multiple .safetensors files.
+     *
+     * @param indexPath Path to model.safetensors.index.json
+     * @return Loaded runtime weights
+     */
+    public suspend fun loadFromSafeTensors(indexPath: String): Gemma3nRuntimeWeights<T> {
+        return loadGemma3nRuntimeWeightsFromSafeTensors(ctx, indexPath, dtype)
+    }
+
+    /**
+     * Load weights from SafeTensors and create a complete Gemma 3n runtime.
+     *
+     * @param indexPath Path to model.safetensors.index.json
+     * @return Fully initialized Gemma3nRuntime
+     */
+    public suspend fun loadRuntimeFromSafeTensors(indexPath: String): Gemma3nRuntime<T> {
+        val weights = loadFromSafeTensors(indexPath)
         val config = Gemma3nConfig.fromMetadata(weights.metadata)
         val kvCache = createOptimalGemma3nKvCache(config, weights.metadata.contextLength)
         val attentionBackend = Gemma3nAttentionBackend(ctx, weights, dtype, config, kvCache)

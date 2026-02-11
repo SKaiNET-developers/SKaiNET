@@ -384,7 +384,7 @@ public sealed class SafeTensorsShardException(
 /**
  * Read a text file. Platform-specific implementation.
  */
-internal expect fun readTextFile(path: String): String?
+public expect fun readTextFile(path: String): String?
 
 /**
  * Get current time in milliseconds.

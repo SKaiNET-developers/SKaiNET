@@ -48,7 +48,11 @@ kotlin {
         }
     }
 
-    jvm()
+    jvm {
+        mainRun {
+            mainClass.set("sk.ainet.apps.kgemma.cli.MainKt")
+        }
+    }
 
     js {
         browser()
@@ -69,6 +73,7 @@ kotlin {
             implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
             implementation(project(":skainet-io:skainet-io-core"))
             implementation(project(":skainet-io:skainet-io-gguf"))
+            implementation(project(":skainet-io:skainet-io-safetensors"))
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.coroutines)
         }
@@ -79,7 +84,11 @@ kotlin {
             implementation(project(":skainet-io:skainet-io-gguf"))
         }
 
-        val jvmMain by getting
+        val jvmMain by getting {
+            dependencies {
+                implementation(project(":skainet-apps:skainet-kllama"))
+            }
+        }
         val jvmTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
@@ -112,6 +121,8 @@ tasks.withType<Test>().configureEach {
 
 tasks.withType<JavaExec>().configureEach {
     jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
+    minHeapSize = "4g"
+    maxHeapSize = "24g"
 }
 
 
