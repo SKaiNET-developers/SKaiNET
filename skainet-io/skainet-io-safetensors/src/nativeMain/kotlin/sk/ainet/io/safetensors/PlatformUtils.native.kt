@@ -8,7 +8,7 @@ import kotlin.time.TimeSource
  * For sharded models, the index file reading should be done through
  * the existing RandomAccessSource mechanism.
  */
-internal actual fun readTextFile(path: String): String? {
+public actual fun readTextFile(path: String): String? {
     // Native file reading requires platform-specific implementation
     // For now, return null - callers should use RandomAccessSource
     return null
