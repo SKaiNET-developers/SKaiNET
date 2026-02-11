@@ -118,9 +118,21 @@ private fun parseArgs(args: Array<String>): CliArgs {
     )
 }
 
+private const val DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant. Answer concisely."
+
 private fun buildEffectivePrompt(prompt: String, systemPrompt: String?): String {
-    if (systemPrompt.isNullOrBlank()) return prompt
-    return "System: ${systemPrompt.trim()}\n\nUser: $prompt\n\nAssistant:"
+    val resolvedSystemPrompt = systemPrompt?.trim().takeUnless { it.isNullOrEmpty() } ?: DEFAULT_SYSTEM_PROMPT
+    val userPrompt = prompt.trim()
+
+    return buildString {
+        append("<|system|>\n")
+        append(resolvedSystemPrompt)
+        append('\n')
+        append("<|user|>\n")
+        append(userPrompt)
+        append('\n')
+        append("<|assistant|>")
+    }
 }
 
 private fun resolveModelPath(candidate: Path): Path {
@@ -215,7 +227,9 @@ fun main(args: Array<String>) {
         val effectivePrompt = buildEffectivePrompt(cliArgs.prompt, cliArgs.systemPrompt)
         val promptTokens = tokenizer.encode(effectivePrompt)
 
-        if (!cliArgs.systemPrompt.isNullOrBlank()) {
+        if (cliArgs.systemPrompt.isNullOrBlank()) {
+            println("Using default system prompt.")
+        } else {
             println("Using system prompt.")
         }
         println("Generating ${cliArgs.steps} tokens with temperature=${cliArgs.temperature}...")
