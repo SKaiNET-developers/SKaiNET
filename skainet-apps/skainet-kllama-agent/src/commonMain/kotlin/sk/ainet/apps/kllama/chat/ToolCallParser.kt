@@ -14,10 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 public object ToolCallParser {
 
-    private val hermesPattern = Regex(
-        """<tool_call>\s*(\{.*?\})\s*</tool_call>""",
-        RegexOption.DOT_MATCHES_ALL
-    )
+    private val hermesPattern = Regex("""<tool_call>\s*(\{[\s\S]*?\})\s*</tool_call>""")
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -28,7 +25,13 @@ public object ToolCallParser {
      */
     public fun parse(text: String): List<ToolCall> {
         // Try Hermes-style <tool_call> tags first
-        val hermesMatches = hermesPattern.findAll(text).toList()
+        val hermesMatches = buildList {
+            var match = hermesPattern.find(text)
+            while (match != null) {
+                add(match)
+                match = hermesPattern.find(text, match.range.last + 1)
+            }
+        }
         if (hermesMatches.isNotEmpty()) {
             return hermesMatches.mapNotNull { match ->
                 parseJsonToolCall(match.groupValues[1])
