@@ -32,6 +32,7 @@ private data class CliArgs(
     val temperature: Float,
     val chatMode: Boolean,
     val agentMode: Boolean,
+    val demoMode: Boolean,
     val templateName: String
 )
 
@@ -41,7 +42,7 @@ private fun usage(errorMessage: String? = null): Nothing {
         System.err.println()
     }
 
-    println("Usage: kllama -m <model> [-t <tokenizer>] [-s <steps>] [-k <temperature>] [-p <systemprompt>] [--chat] [--agent] [--template=NAME] <prompt>")
+    println("Usage: kllama -m <model> [-t <tokenizer>] [-s <steps>] [-k <temperature>] [-p <systemprompt>] [--chat] [--agent] [--demo] [--template=NAME] <prompt>")
     println("  -m, --model         Path to .gguf or .bin model (required)")
     println("  -t, --tokenizer     Path to tokenizer.bin (required for .bin models, optional for .gguf)")
     println("  -s, --steps         Generation steps (default: 64)")
@@ -49,6 +50,7 @@ private fun usage(errorMessage: String? = null): Nothing {
     println("  -p, --systemprompt  Optional system prompt prepended to user prompt")
     println("  --chat              Interactive chat mode")
     println("  --agent             Interactive agent mode with tool calling")
+    println("  --demo              Tool calling demo with file listing and calculator")
     println("  --template=NAME     Chat template: llama3 (default) or chatml")
     println("  -h, --help          Show this help")
     println()
@@ -56,6 +58,7 @@ private fun usage(errorMessage: String? = null): Nothing {
     println("  kllama -m model.gguf -s 96 -k 0.7 -p \"You are concise\" \"Hallo\"")
     println("  kllama -m model.gguf --chat")
     println("  kllama -m model.gguf --agent --template=chatml")
+    println("  kllama -m model.gguf --demo")
     exitProcess(if (errorMessage == null) 0 else 1)
 }
 
@@ -70,6 +73,7 @@ private fun parseArgs(args: Array<String>): CliArgs {
     var prompt: String? = null
     var chatMode = false
     var agentMode = false
+    var demoMode = false
     var templateName = "llama3"
 
     var idx = 0
@@ -107,6 +111,7 @@ private fun parseArgs(args: Array<String>): CliArgs {
             arg.startsWith("--systemprompt=") -> systemPrompt = arg.substringAfter("=")
             arg == "--chat" -> chatMode = true
             arg == "--agent" -> agentMode = true
+            arg == "--demo" -> demoMode = true
             arg.startsWith("--template=") -> templateName = arg.substringAfter("=")
             arg.startsWith("-") -> usage("Unknown option '$arg'.")
             else -> {
@@ -121,9 +126,9 @@ private fun parseArgs(args: Array<String>): CliArgs {
     val modelPath = model?.let(Path::of) ?: usage("Model is required (-m/--model).")
     val tokenizerPath = tokenizer?.let(Path::of)
 
-    // In chat/agent mode, prompt is optional
-    if (!chatMode && !agentMode && prompt == null) {
-        usage("Prompt is required as a positional argument (or use --chat/--agent mode).")
+    // In chat/agent/demo mode, prompt is optional
+    if (!chatMode && !agentMode && !demoMode && prompt == null) {
+        usage("Prompt is required as a positional argument (or use --chat/--agent/--demo mode).")
     }
 
     return CliArgs(
@@ -135,6 +140,7 @@ private fun parseArgs(args: Array<String>): CliArgs {
         temperature = temperature,
         chatMode = chatMode,
         agentMode = agentMode,
+        demoMode = demoMode,
         templateName = templateName
     )
 }
@@ -245,15 +251,23 @@ fun main(args: Array<String>) {
             }
         }
 
-        // Dispatch to chat/agent mode
-        if (cliArgs.chatMode || cliArgs.agentMode) {
+        // Dispatch to chat/agent/demo mode
+        if (cliArgs.chatMode || cliArgs.agentMode || cliArgs.demoMode) {
             val ggufTokenizer = tokenizer as? GGUFTokenizer
-                ?: error("Chat/agent modes require a GGUF model with embedded tokenizer")
-            val agentCli = AgentCli(runtime, ggufTokenizer, cliArgs.templateName)
-            if (cliArgs.agentMode) {
-                agentCli.runAgent(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
-            } else {
-                agentCli.runChat(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                ?: error("Chat/agent/demo modes require a GGUF model with embedded tokenizer")
+            when {
+                cliArgs.demoMode -> {
+                    val demo = ToolCallingDemo(runtime, ggufTokenizer, cliArgs.templateName)
+                    demo.run(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                }
+                cliArgs.agentMode -> {
+                    val agentCli = AgentCli(runtime, ggufTokenizer, cliArgs.templateName)
+                    agentCli.runAgent(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                }
+                else -> {
+                    val agentCli = AgentCli(runtime, ggufTokenizer, cliArgs.templateName)
+                    agentCli.runChat(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                }
             }
             return@runBlocking
         }
