@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -62,6 +63,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":skainet-apps:skainet-kllama-agent"))
             implementation(project(":skainet-apps:skainet-llm"))
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-compile:skainet-compile-core"))
@@ -71,6 +73,7 @@ kotlin {
             implementation(project(":skainet-io:skainet-io-gguf"))
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.coroutines)
+            implementation(libs.kotlinx.serialization.json)
 
         }
 

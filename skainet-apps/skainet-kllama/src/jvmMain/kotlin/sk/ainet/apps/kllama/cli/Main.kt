@@ -26,10 +26,14 @@ import kotlinx.coroutines.runBlocking
 private data class CliArgs(
     val modelPath: Path,
     val tokenizerPath: Path?,
-    val prompt: String,
+    val prompt: String?,
     val systemPrompt: String?,
     val steps: Int,
-    val temperature: Float
+    val temperature: Float,
+    val chatMode: Boolean,
+    val agentMode: Boolean,
+    val demoMode: Boolean,
+    val templateName: String
 )
 
 private fun usage(errorMessage: String? = null): Nothing {
@@ -38,16 +42,23 @@ private fun usage(errorMessage: String? = null): Nothing {
         System.err.println()
     }
 
-    println("Usage: kllama -m <model> [-t <tokenizer>] [-s <steps>] [-k <temperature>] [-p <systemprompt>] <prompt>")
+    println("Usage: kllama -m <model> [-t <tokenizer>] [-s <steps>] [-k <temperature>] [-p <systemprompt>] [--chat] [--agent] [--demo] [--template=NAME] <prompt>")
     println("  -m, --model         Path to .gguf or .bin model (required)")
     println("  -t, --tokenizer     Path to tokenizer.bin (required for .bin models, optional for .gguf)")
     println("  -s, --steps         Generation steps (default: 64)")
     println("  -k, --temperature   Sampling temperature (default: 0.8)")
     println("  -p, --systemprompt  Optional system prompt prepended to user prompt")
+    println("  --chat              Interactive chat mode")
+    println("  --agent             Interactive agent mode with tool calling")
+    println("  --demo              Tool calling demo with file listing and calculator")
+    println("  --template=NAME     Chat template: llama3 (default) or chatml")
     println("  -h, --help          Show this help")
     println()
     println("Example:")
     println("  kllama -m model.gguf -s 96 -k 0.7 -p \"You are concise\" \"Hallo\"")
+    println("  kllama -m model.gguf --chat")
+    println("  kllama -m model.gguf --agent --template=chatml")
+    println("  kllama -m model.gguf --demo")
     exitProcess(if (errorMessage == null) 0 else 1)
 }
 
@@ -60,6 +71,10 @@ private fun parseArgs(args: Array<String>): CliArgs {
     var temperature = 0.8f
     var systemPrompt: String? = null
     var prompt: String? = null
+    var chatMode = false
+    var agentMode = false
+    var demoMode = false
+    var templateName = "llama3"
 
     var idx = 0
     while (idx < args.size) {
@@ -94,6 +109,10 @@ private fun parseArgs(args: Array<String>): CliArgs {
             }
             arg == "-p" || arg == "--systemprompt" -> systemPrompt = nextValue(arg)
             arg.startsWith("--systemprompt=") -> systemPrompt = arg.substringAfter("=")
+            arg == "--chat" -> chatMode = true
+            arg == "--agent" -> agentMode = true
+            arg == "--demo" -> demoMode = true
+            arg.startsWith("--template=") -> templateName = arg.substringAfter("=")
             arg.startsWith("-") -> usage("Unknown option '$arg'.")
             else -> {
                 if (prompt != null) usage("Multiple prompts provided. Prompt must be a single positional argument.")
@@ -106,15 +125,23 @@ private fun parseArgs(args: Array<String>): CliArgs {
 
     val modelPath = model?.let(Path::of) ?: usage("Model is required (-m/--model).")
     val tokenizerPath = tokenizer?.let(Path::of)
-    val promptText = prompt ?: usage("Prompt is required as a positional argument.")
+
+    // In chat/agent/demo mode, prompt is optional
+    if (!chatMode && !agentMode && !demoMode && prompt == null) {
+        usage("Prompt is required as a positional argument (or use --chat/--agent/--demo mode).")
+    }
 
     return CliArgs(
         modelPath = modelPath,
         tokenizerPath = tokenizerPath,
-        prompt = promptText,
+        prompt = prompt,
         systemPrompt = systemPrompt,
         steps = steps,
-        temperature = temperature
+        temperature = temperature,
+        chatMode = chatMode,
+        agentMode = agentMode,
+        demoMode = demoMode,
+        templateName = templateName
     )
 }
 
@@ -186,7 +213,7 @@ fun main(args: Array<String>) {
         if (!modelPath.exists()) error("Model not found: $modelPath")
 
         val ctx = DirectCpuExecutionContext()
-        
+
         val runtimeWeights = if (isGguf) {
             val ingestion = LlamaIngestion<FP32>(
                 ctx = ctx,
@@ -224,7 +251,30 @@ fun main(args: Array<String>) {
             }
         }
 
-        val effectivePrompt = buildEffectivePrompt(cliArgs.prompt, cliArgs.systemPrompt)
+        // Dispatch to chat/agent/demo mode
+        if (cliArgs.chatMode || cliArgs.agentMode || cliArgs.demoMode) {
+            val ggufTokenizer = tokenizer as? GGUFTokenizer
+                ?: error("Chat/agent/demo modes require a GGUF model with embedded tokenizer")
+            when {
+                cliArgs.demoMode -> {
+                    val demo = ToolCallingDemo(runtime, ggufTokenizer, cliArgs.templateName)
+                    demo.run(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                }
+                cliArgs.agentMode -> {
+                    val agentCli = AgentCli(runtime, ggufTokenizer, cliArgs.templateName)
+                    agentCli.runAgent(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                }
+                else -> {
+                    val agentCli = AgentCli(runtime, ggufTokenizer, cliArgs.templateName)
+                    agentCli.runChat(maxTokens = cliArgs.steps, temperature = cliArgs.temperature)
+                }
+            }
+            return@runBlocking
+        }
+
+        // Standard generation mode
+        val promptText = cliArgs.prompt ?: error("Prompt is required for standard generation mode.")
+        val effectivePrompt = buildEffectivePrompt(promptText, cliArgs.systemPrompt)
         val promptTokens = tokenizer.encode(effectivePrompt)
 
         if (cliArgs.systemPrompt.isNullOrBlank()) {
@@ -234,7 +284,7 @@ fun main(args: Array<String>) {
         }
         println("Generating ${cliArgs.steps} tokens with temperature=${cliArgs.temperature}...")
         println("---")
-        print(cliArgs.prompt)
+        print(promptText)
 
         val elapsed = measureTime {
             runtime.generate(prompt = promptTokens, steps = cliArgs.steps, temperature = cliArgs.temperature) { id ->

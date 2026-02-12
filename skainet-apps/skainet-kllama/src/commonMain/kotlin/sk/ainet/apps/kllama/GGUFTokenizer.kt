@@ -358,6 +358,12 @@ class GGUFTokenizer private constructor(
     /** The detected tokenizer type/strategy in use */
     val tokenizerType: TokenizerType get() = strategy.type
 
+    /** The BOS (beginning of sentence) token ID */
+    val bosId: Int get() = bosTokenId
+
+    /** The EOS (end of sentence) token ID */
+    val eosId: Int get() = eosTokenId
+
     // Build reverse lookup for encoding
     private val tokenToId: Map<String, Int> by lazy {
         vocab.mapIndexed { idx, token -> token to idx }.toMap()

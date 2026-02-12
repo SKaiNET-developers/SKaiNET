@@ -16,6 +16,8 @@ public final class sk/ainet/apps/kllama/GGUFTokenizer : sk/ainet/apps/llm/Tokeni
 	public fun decode (I)Ljava/lang/String;
 	public fun decode ([I)Ljava/lang/String;
 	public fun encode (Ljava/lang/String;)[I
+	public final fun getBosId ()I
+	public final fun getEosId ()I
 	public final fun getTokenizerType ()Lsk/ainet/apps/llm/TokenizerType;
 	public final fun getVocabSize ()I
 }
@@ -128,12 +130,10 @@ public final class sk/ainet/apps/kllama/LlamaRuntime : sk/ainet/apps/kllama/Llam
 	public fun reset ()V
 }
 
-public abstract interface class sk/ainet/apps/kllama/LlamaRuntimeInterface {
-	public abstract fun forward (I)Lsk/ainet/lang/tensor/Tensor;
+public abstract interface class sk/ainet/apps/kllama/LlamaRuntimeInterface : sk/ainet/apps/kllama/agent/InferenceRuntime {
 	public abstract fun generate ([IIFLkotlin/jvm/functions/Function1;)V
 	public static synthetic fun generate$default (Lsk/ainet/apps/kllama/LlamaRuntimeInterface;[IIFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public abstract fun getCurrentPosition ()I
-	public abstract fun reset ()V
 }
 
 public final class sk/ainet/apps/kllama/LlamaRuntimeInterface$DefaultImpls {
