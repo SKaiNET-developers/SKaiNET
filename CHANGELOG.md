@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0] - 2026-02-12
+
+### Added
+- **Tool Calling**: Added support for tool calling in KLlama, including a new `skainet-kllama-agent` module.
+- **Gemma 3n Support**: New `skainet-kgemma` module for Google's Gemma 3n E2B multimodal models.
+- **Extended SafeTensors Support**: Added SafeTensors weight loading support for both KLlama CLI and Gemma models.
+- **HuggingFace Tokenizer**: Initial support for HuggingFace-style tokenizers in Gemma models.
+
+### Changed
+- **Named Arguments**: Refactored various internal APIs to use named arguments for better optional parameter support.
+- **System Prompt Handling**: Improved system prompt formatting and handling in agentic workflows.
+
 ## [0.12.0] - 2026-02-10
 
 ### Added

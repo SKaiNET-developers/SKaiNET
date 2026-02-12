@@ -5,6 +5,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
+    alias(libs.plugins.vanniktech.mavenPublish)
+    alias(libs.plugins.kover)
+    alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.kotlinSerialization)
 }
 

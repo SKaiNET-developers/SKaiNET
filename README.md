@@ -156,10 +156,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.12.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.12.0")
-}
-// Ready to build & run in ~8 minutes
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.13.0")
 ```
 
 ### SKaiNET is for LLMs
@@ -200,20 +198,20 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.12.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.12.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.13.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.12.0")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.13.0")
 
     // Optional I/O (e.g., GGUF loader, SafeTensors, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.12.0")
-    implementation("sk.ainet.io:skainet-io-safetensors:0.12.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.12.0")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.13.0")
+    implementation("sk.ainet.io:skainet-io-safetensors:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.13.0")
 
     // Apps & Runtimes
-    implementation("sk.ainet.apps:skainet-llm:0.12.0") // Llama runtime
-    implementation("sk.ainet.apps:skainet-bert:0.12.0") // BERT runtime
+    implementation("sk.ainet.apps:skainet-llm:0.13.0") // Llama runtime
+    implementation("sk.ainet.apps:skainet-bert:0.13.0") // BERT runtime
 }
 ```
 
@@ -223,7 +221,7 @@ Maven:
 <dependency>
   <groupId>sk.ainet.core</groupId>
   <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.12.0</version>
+  <version>0.13.0</version>
 </dependency>
 ```
 
@@ -231,6 +229,18 @@ Maven:
 
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.13.0 highlights
+
+- **Agentic AI & Tool Calling**: New `skainet-kllama-agent` module with support for function calling and tool use.
+- **Gemma 3n Support (KGemma)**: Support for Google's newest Gemma 3n models, including SafeTensors and HuggingFace tokenizer support.
+- **Enhanced SafeTensors**: Unified loading support for SafeTensors across multiple runtimes.
+
+```kotlin
+// Example: KLlama tool calling
+val agent = KLlamaAgent(llama, tools = listOf(WeatherTool()))
+val response = agent.chat("What's the weather like in London?")
+```
 
 ## 0.12.0 highlights
 
