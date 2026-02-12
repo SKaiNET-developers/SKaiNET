@@ -1,6 +1,7 @@
 # models
 *.gguf
 *.onnx
+model-371/
 
 local.properties
 .gradle

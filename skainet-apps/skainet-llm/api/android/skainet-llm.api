@@ -29,6 +29,20 @@ public final class sk/ainet/apps/llm/tokenizer/BPEStrategy : sk/ainet/apps/llm/T
 	public fun preprocess (Ljava/lang/String;)Ljava/lang/String;
 }
 
+public final class sk/ainet/apps/llm/tokenizer/HuggingFaceBPETokenizer : sk/ainet/apps/llm/Tokenizer {
+	public static final field Companion Lsk/ainet/apps/llm/tokenizer/HuggingFaceBPETokenizer$Companion;
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/Map;[FIIIZZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode (I)Ljava/lang/String;
+	public fun decode ([I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public final fun getVocabSize ()I
+}
+
+public final class sk/ainet/apps/llm/tokenizer/HuggingFaceBPETokenizer$Companion {
+	public final fun fromJson (Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/apps/llm/tokenizer/HuggingFaceBPETokenizer;
+	public static synthetic fun fromJson$default (Lsk/ainet/apps/llm/tokenizer/HuggingFaceBPETokenizer$Companion;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/apps/llm/tokenizer/HuggingFaceBPETokenizer;
+}
+
 public final class sk/ainet/apps/llm/tokenizer/SentencePieceStrategy : sk/ainet/apps/llm/TokenizerStrategy {
 	public static final field INSTANCE Lsk/ainet/apps/llm/tokenizer/SentencePieceStrategy;
 	public fun getSpaceMarker ()Ljava/lang/String;

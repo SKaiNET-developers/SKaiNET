@@ -1,6 +1,7 @@
 package sk.ainet.apps.kllama.cli
 
 import sk.ainet.apps.kllama.GGUFTokenizer
+import sk.ainet.apps.kllama.LlamaConfigParser
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.llm.Tokenizer
@@ -19,9 +20,13 @@ import java.nio.file.Path
 import java.nio.file.Files
 import kotlin.io.path.exists
 import kotlin.io.path.extension
+import kotlin.io.path.isDirectory
+import kotlin.io.path.readText
 import kotlin.system.exitProcess
 import kotlin.time.measureTime
 import kotlinx.coroutines.runBlocking
+
+private enum class ModelFormat { GGUF, SAFETENSORS, BIN }
 
 private data class CliArgs(
     val modelPath: Path,
@@ -43,8 +48,8 @@ private fun usage(errorMessage: String? = null): Nothing {
     }
 
     println("Usage: kllama -m <model> [-t <tokenizer>] [-s <steps>] [-k <temperature>] [-p <systemprompt>] [--chat] [--agent] [--demo] [--template=NAME] <prompt>")
-    println("  -m, --model         Path to .gguf or .bin model (required)")
-    println("  -t, --tokenizer     Path to tokenizer.bin (required for .bin models, optional for .gguf)")
+    println("  -m, --model         Path to .gguf, .safetensors, .bin model, or HuggingFace directory (required)")
+    println("  -t, --tokenizer     Path to tokenizer (auto-detected for .gguf and .safetensors)")
     println("  -s, --steps         Generation steps (default: 64)")
     println("  -k, --temperature   Sampling temperature (default: 0.8)")
     println("  -p, --systemprompt  Optional system prompt prepended to user prompt")
@@ -166,6 +171,10 @@ private fun resolveModelPath(candidate: Path): Path {
     if (!candidate.exists()) error("Model not found: $candidate")
     if (!Files.isDirectory(candidate)) return candidate
 
+    // If directory contains model.safetensors, return directory for SafeTensors loading
+    val safetensorsModel = candidate.resolve("model.safetensors")
+    if (safetensorsModel.exists()) return candidate
+
     val modelCandidates = mutableListOf<Path>()
     Files.list(candidate).use { stream ->
         stream.forEach { entry ->
@@ -179,7 +188,7 @@ private fun resolveModelPath(candidate: Path): Path {
 
     when {
         modelCandidates.isEmpty() -> {
-            error("No .gguf or .bin model found in directory: $candidate")
+            error("No .gguf, .safetensors, or .bin model found in directory: $candidate")
         }
         modelCandidates.size > 1 -> {
             val choices = modelCandidates.sortedBy { it.fileName.toString() }.joinToString(", ")
@@ -193,20 +202,49 @@ private fun resolveModelPath(candidate: Path): Path {
     }
 }
 
+/**
+ * Detect model format from the given path.
+ * Supports: .gguf, .safetensors, .bin files, and directories containing model.safetensors.
+ */
+private fun detectFormat(path: Path): ModelFormat {
+    if (path.isDirectory()) {
+        // Check for safetensors model in directory
+        val st = path.resolve("model.safetensors")
+        if (st.exists()) return ModelFormat.SAFETENSORS
+        val gguf = path.toFile().listFiles()?.firstOrNull { it.extension == "gguf" }
+        if (gguf != null) return ModelFormat.GGUF
+        error("Directory $path does not contain model.safetensors or .gguf file")
+    }
+    return when (path.extension.lowercase()) {
+        "gguf" -> ModelFormat.GGUF
+        "safetensors" -> ModelFormat.SAFETENSORS
+        else -> ModelFormat.BIN
+    }
+}
+
+/**
+ * Resolve model directory: if path is a file, return its parent; if directory, return it.
+ */
+private fun resolveModelDir(path: Path): Path =
+    if (path.isDirectory()) path else path.parent ?: path
+
 fun main(args: Array<String>) {
     runBlocking {
         val cliArgs = parseArgs(args)
         val modelPath = resolveModelPath(cliArgs.modelPath)
-        val modelExt = modelPath.extension.lowercase()
-        if (modelExt == "safetensors") {
-            error("SafeTensors (.safetensors) is not supported by KLlama CLI yet. Use GGUF or llama2.c .bin.")
+        val format = detectFormat(modelPath)
+
+        // Resolve tokenizer: use explicit -t if provided, auto-discover for SafeTensors
+        val tokenizerPath: Path? = when {
+            cliArgs.tokenizerPath != null -> cliArgs.tokenizerPath
+            format == ModelFormat.SAFETENSORS -> {
+                val modelDir = resolveModelDir(modelPath)
+                val autoTokenizer = modelDir.resolve("tokenizer.json")
+                if (autoTokenizer.exists()) autoTokenizer else null
+            }
+            else -> null
         }
-        val isGguf = modelExt == "gguf"
-        if (!isGguf && modelExt.isNotEmpty() && modelExt != "bin") {
-            error("Unsupported model format '.$modelExt'. Expected .gguf or .bin (llama2.c).")
-        }
-        val tokenizerPath = cliArgs.tokenizerPath
-        if (!isGguf && tokenizerPath == null) {
+        if (format == ModelFormat.BIN && tokenizerPath == null) {
             error("Tokenizer path required for .bin models. Use -t/--tokenizer.")
         }
 
@@ -214,40 +252,78 @@ fun main(args: Array<String>) {
 
         val ctx = DirectCpuExecutionContext()
 
-        val runtimeWeights = if (isGguf) {
-            val ingestion = LlamaIngestion<FP32>(
-                ctx = ctx,
-                dtype = FP32::class,
-                config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
-                    allowQuantized = false
+        val runtimeWeights = when (format) {
+            ModelFormat.GGUF -> {
+                val ingestion = LlamaIngestion<FP32>(
+                    ctx = ctx,
+                    dtype = FP32::class,
+                    config = LlamaLoadConfig(
+                        quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+                        allowQuantized = false
+                    )
                 )
-            )
-            println("Loading GGUF model from $modelPath (streaming mode)...")
-            ingestion.loadStreaming {
-                JvmRandomAccessSource.open(modelPath.toString())
+                println("Loading GGUF model from $modelPath (streaming mode)...")
+                ingestion.loadStreaming {
+                    JvmRandomAccessSource.open(modelPath.toString())
+                }
             }
-        } else {
-            println("Loading Karpathy .bin model from $modelPath...")
-            modelPath.inputStream().use { input ->
-                Llama2DotCWeightLoader.load(ctx, input.asSource().buffered())
+            ModelFormat.SAFETENSORS -> {
+                val modelDir = resolveModelDir(modelPath)
+                val safetensorsFile = if (modelPath.isDirectory()) {
+                    modelDir.resolve("model.safetensors")
+                } else {
+                    modelPath
+                }
+                val configFile = modelDir.resolve("config.json")
+                if (!configFile.exists()) error("config.json not found in $modelDir")
+
+                println("Loading SafeTensors model from $safetensorsFile...")
+                val configJson = configFile.readText()
+                val metadata = LlamaConfigParser.parse(configJson)
+                val tiedEmbeddings = LlamaConfigParser.isTiedEmbeddings(configJson)
+                println("  Architecture: ${metadata.architecture}, layers=${metadata.blockCount}, " +
+                    "dim=${metadata.embeddingLength}, heads=${metadata.headCount}, " +
+                    "kvHeads=${metadata.kvHeadCount}, vocab=${metadata.vocabSize}")
+                if (tiedEmbeddings) println("  Tied word embeddings: output.weight = embed_tokens.weight")
+
+                val ingestion = LlamaIngestion<FP32>(ctx = ctx, dtype = FP32::class)
+                ingestion.loadSafeTensors(
+                    randomAccessProvider = { JvmRandomAccessSource.open(safetensorsFile.toString()) },
+                    metadata = metadata,
+                    tiedEmbeddings = tiedEmbeddings
+                )
+            }
+            ModelFormat.BIN -> {
+                println("Loading Karpathy .bin model from $modelPath...")
+                modelPath.inputStream().use { input ->
+                    Llama2DotCWeightLoader.load(ctx, input.asSource().buffered())
+                }
             }
         }
 
         val backend = CpuAttentionBackend<FP32>(ctx, runtimeWeights, FP32::class)
         val runtime = LlamaRuntime<FP32>(ctx, runtimeWeights, backend, FP32::class)
 
-        val tokenizer: Tokenizer = if (isGguf && tokenizerPath == null) {
-            println("Loading embedded GGUF tokenizer...")
-            JvmRandomAccessSource.open(modelPath.toString()).use { source ->
-                GGUFTokenizer.fromRandomAccessSource(source)
+        val tokenizer: Tokenizer = when {
+            format == ModelFormat.SAFETENSORS -> {
+                val tPath = tokenizerPath ?: error("tokenizer.json not found for SafeTensors model")
+                if (!tPath.exists()) error("Tokenizer not found: $tPath")
+                println("Loading tokenizer from $tPath...")
+                GGUFTokenizer.fromTokenizerJson(tPath.readText())
             }
-        } else {
-            val tPath = tokenizerPath ?: error("Tokenizer path required for .bin models")
-            if (!tPath.exists()) error("Tokenizer not found: $tPath")
-            println("Loading tokenizer from $tPath...")
-            tPath.inputStream().use { input ->
-                TokenizerUtils.buildTokenizer(input.asSource().buffered(), runtimeWeights.metadata.vocabSize)
+            format == ModelFormat.GGUF && tokenizerPath == null -> {
+                println("Loading embedded GGUF tokenizer...")
+                JvmRandomAccessSource.open(modelPath.toString()).use { source ->
+                    GGUFTokenizer.fromRandomAccessSource(source)
+                }
+            }
+            else -> {
+                val tPath = tokenizerPath ?: error("Tokenizer path required for .bin models")
+                if (!tPath.exists()) error("Tokenizer not found: $tPath")
+                println("Loading tokenizer from $tPath...")
+                tPath.inputStream().use { input ->
+                    TokenizerUtils.buildTokenizer(input.asSource().buffered(), runtimeWeights.metadata.vocabSize)
+                }
             }
         }
 

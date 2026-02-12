@@ -71,6 +71,7 @@ kotlin {
             implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
             implementation(project(":skainet-io:skainet-io-core"))
             implementation(project(":skainet-io:skainet-io-gguf"))
+            implementation(project(":skainet-io:skainet-io-safetensors"))
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.coroutines)
             implementation(libs.kotlinx.serialization.json)

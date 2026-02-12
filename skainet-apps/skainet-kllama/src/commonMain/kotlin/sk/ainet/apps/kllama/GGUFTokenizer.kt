@@ -36,6 +36,169 @@ class GGUFTokenizer private constructor(
         private const val DEFAULT_UNK_TOKEN_ID = 0
 
         /**
+         * Create a tokenizer from a HuggingFace tokenizer.json string.
+         *
+         * Parses the "model.vocab" and "model.merges" sections to build
+         * a BPE tokenizer compatible with LLaMA 3 models.
+         * Also reads "added_tokens" for BOS/EOS token IDs.
+         */
+        fun fromTokenizerJson(json: String, debug: Boolean = false): GGUFTokenizer {
+            // --- Parse vocab: {"token": id, ...} → List<String> indexed by id ---
+            val vocabStart = json.indexOf("\"vocab\"")
+            if (vocabStart < 0) error("tokenizer.json: no \"vocab\" section found")
+            val vocabBraceStart = json.indexOf('{', vocabStart + 7)
+            if (vocabBraceStart < 0) error("tokenizer.json: malformed vocab section")
+            val vocabBraceEnd = findMatchingBrace(json, vocabBraceStart)
+
+            val vocabMap = mutableMapOf<String, Int>()
+            val vocabContent = json.substring(vocabBraceStart + 1, vocabBraceEnd)
+            val vocabPattern = Regex("\"((?:[^\"\\\\]|\\\\.)*)\"\\s*:\\s*(\\d+)")
+            for (match in vocabPattern.findAll(vocabContent)) {
+                val token = unescapeJsonString(match.groupValues[1])
+                val id = match.groupValues[2].toInt()
+                vocabMap[token] = id
+            }
+
+            if (debug) println("DEBUG: Parsed ${vocabMap.size} vocab entries")
+
+            // Build vocab list indexed by id
+            val maxId = vocabMap.values.maxOrNull() ?: 0
+
+            // --- Parse added_tokens for special tokens and to extend vocab ---
+            var bosTokenId = DEFAULT_BOS_TOKEN_ID
+            var eosTokenId = DEFAULT_EOS_TOKEN_ID
+            var unkTokenId = DEFAULT_UNK_TOKEN_ID
+
+            val addedTokensStart = json.indexOf("\"added_tokens\"")
+            if (addedTokensStart >= 0) {
+                val arrStart = json.indexOf('[', addedTokensStart)
+                if (arrStart >= 0) {
+                    val arrEnd = findMatchingBracket(json, arrStart)
+                    val addedContent = json.substring(arrStart, arrEnd + 1)
+                    val idPattern = Regex("\"id\"\\s*:\\s*(\\d+)")
+                    val contentPattern = Regex("\"content\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
+                    // Parse each added token object
+                    val objPattern = Regex("\\{[^}]+\\}")
+                    for (objMatch in objPattern.findAll(addedContent)) {
+                        val obj = objMatch.value
+                        val idMatch = idPattern.find(obj)
+                        val contentMatch = contentPattern.find(obj)
+                        if (idMatch != null && contentMatch != null) {
+                            val id = idMatch.groupValues[1].toInt()
+                            val content = unescapeJsonString(contentMatch.groupValues[1])
+                            vocabMap[content] = id
+                            when {
+                                content.contains("begin_of_text") || content == "<s>" -> bosTokenId = id
+                                content.contains("end_of_text") || content == "</s>" -> eosTokenId = id
+                                content == "<unk>" -> unkTokenId = id
+                            }
+                        }
+                    }
+                }
+            }
+
+            val totalVocabSize = maxOf(maxId + 1, (vocabMap.values.maxOrNull() ?: 0) + 1)
+            val vocab = MutableList(totalVocabSize) { "<unk>" }
+            for ((token, id) in vocabMap) {
+                if (id < vocab.size) vocab[id] = token
+            }
+
+            if (debug) println("DEBUG: Total vocab size = ${vocab.size}, BOS=$bosTokenId, EOS=$eosTokenId")
+
+            // --- Parse merges: ["tok1 tok2", ...] → scores (earlier merge = higher score) ---
+            val scores = FloatArray(vocab.size) { 0f }
+            val mergesStart = json.indexOf("\"merges\"")
+            if (mergesStart >= 0) {
+                val mergesArrStart = json.indexOf('[', mergesStart)
+                if (mergesArrStart >= 0) {
+                    val mergesArrEnd = findMatchingBracket(json, mergesArrStart)
+                    val mergesContent = json.substring(mergesArrStart + 1, mergesArrEnd)
+                    val mergePattern = Regex("\"((?:[^\"\\\\]|\\\\.)*)\"")
+                    var mergeRank = 0
+                    for (match in mergePattern.findAll(mergesContent)) {
+                        val merge = unescapeJsonString(match.groupValues[1])
+                        val parts = merge.split(' ', limit = 2)
+                        if (parts.size == 2) {
+                            val merged = parts[0] + parts[1]
+                            val mergedId = vocabMap[merged]
+                            if (mergedId != null && mergedId < scores.size) {
+                                // Higher score = higher merge priority (earlier in list)
+                                scores[mergedId] = (1_000_000 - mergeRank).toFloat()
+                            }
+                            mergeRank++
+                        }
+                    }
+                    if (debug) println("DEBUG: Parsed $mergeRank merges")
+                }
+            }
+
+            val strategy = BPEStrategy
+            println("Tokenizer: BPE (from tokenizer.json, vocab=${vocab.size})")
+
+            return GGUFTokenizer(vocab, scores, bosTokenId, eosTokenId, unkTokenId, strategy)
+        }
+
+        private fun findMatchingBrace(s: String, start: Int): Int {
+            var depth = 0
+            var inStr = false
+            var i = start
+            while (i < s.length) {
+                val c = s[i]
+                when {
+                    inStr -> { if (c == '"') inStr = false; if (c == '\\') i++ }
+                    c == '"' -> inStr = true
+                    c == '{' -> depth++
+                    c == '}' -> { depth--; if (depth == 0) return i }
+                }
+                i++
+            }
+            return s.length - 1
+        }
+
+        private fun findMatchingBracket(s: String, start: Int): Int {
+            var depth = 0
+            var inStr = false
+            var i = start
+            while (i < s.length) {
+                val c = s[i]
+                when {
+                    inStr -> { if (c == '"') inStr = false; if (c == '\\') i++ }
+                    c == '"' -> inStr = true
+                    c == '[' -> depth++
+                    c == ']' -> { depth--; if (depth == 0) return i }
+                }
+                i++
+            }
+            return s.length - 1
+        }
+
+        private fun unescapeJsonString(s: String): String {
+            val sb = StringBuilder()
+            var i = 0
+            while (i < s.length) {
+                if (s[i] == '\\' && i + 1 < s.length) {
+                    when (s[i + 1]) {
+                        '"' -> { sb.append('"'); i += 2 }
+                        '\\' -> { sb.append('\\'); i += 2 }
+                        '/' -> { sb.append('/'); i += 2 }
+                        'n' -> { sb.append('\n'); i += 2 }
+                        'r' -> { sb.append('\r'); i += 2 }
+                        't' -> { sb.append('\t'); i += 2 }
+                        'u' -> {
+                            if (i + 5 < s.length) {
+                                val cp = s.substring(i + 2, i + 6).toInt(16)
+                                sb.append(cp.toChar())
+                                i += 6
+                            } else { sb.append(s[i]); i++ }
+                        }
+                        else -> { sb.append(s[i]); i++ }
+                    }
+                } else { sb.append(s[i]); i++ }
+            }
+            return sb.toString()
+        }
+
+        /**
          * Create a tokenizer by reading GGUF metadata from a source.
          * Only reads metadata (not tensor data) for efficiency.
          */
