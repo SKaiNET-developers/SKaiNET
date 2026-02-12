@@ -45,6 +45,9 @@ public object DTypeMapping {
         DataType.UINT32 -> UInt32
         DataType.UINT16 -> UInt16
         DataType.UINT8 -> UInt8
+        // Quantized types
+        DataType.QUANT4 -> Int4  // Best approximation
+        DataType.QUANT8 -> Int8  // Best approximation
         // Types without direct SKaiNET mapping
         DataType.BOOL -> null  // Could map to Int8 but semantically different
         DataType.STRING -> null
@@ -134,6 +137,8 @@ public object DTypeMapping {
         DataType.UINT32 -> UInt32 to false
         DataType.UINT16 -> UInt16 to false
         DataType.UINT8 -> UInt8 to false
+        DataType.QUANT4 -> Int4 to true  // Lossy: needs dequantization
+        DataType.QUANT8 -> Int8 to true  // Lossy: needs dequantization
         DataType.BOOL -> Int8 to true  // Lossy: bool -> int8
         DataType.STRING -> null
         DataType.UNKNOWN -> null

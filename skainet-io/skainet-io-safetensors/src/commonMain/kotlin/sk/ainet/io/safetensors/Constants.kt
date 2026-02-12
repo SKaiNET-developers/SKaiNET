@@ -38,7 +38,11 @@ object SafeTensorsDataTypes {
     const val F32 = "F32"
     const val F64 = "F64"
 
-    /** Size in bytes for each data type */
+    // Non-standard quantized types used by some frameworks (e.g. TinyFoA)
+    const val Q4 = "Q4"
+    const val Q8 = "Q8"
+
+    /** Size in bytes for each data type. Quantized types use half-byte packing. */
     val SIZES: Map<String, Int> = mapOf(
         BOOL to 1,
         U8 to 1,
@@ -53,6 +57,7 @@ object SafeTensorsDataTypes {
         BF16 to 2,
         F32 to 4,
         F64 to 8
+        // Q4/Q8 sizes are not fixed per-element; computed from data_offsets
     )
 
     /** Get size in bytes for a dtype, returns null for unknown types */

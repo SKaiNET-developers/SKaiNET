@@ -3,6 +3,7 @@ package sk.ainet.apps.kllama
 import kotlinx.io.Source
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.gguf.llama.LlamaModelMetadata
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
@@ -60,5 +61,27 @@ public class LlamaIngestion<T : DType>(
             quantPolicy = config.quantPolicy,
             allowQuantized = config.allowQuantized
         )
+    }
+
+    /**
+     * Load LLaMA runtime weights from a HuggingFace SafeTensors file.
+     * Handles Q4+qb dequantization, BF16→FP32, name mapping, and tied embeddings.
+     *
+     * @param randomAccessProvider Factory that provides RandomAccessSource to the .safetensors file
+     * @param metadata Model metadata parsed from config.json via [LlamaConfigParser]
+     * @param tiedEmbeddings Whether output weight is tied to token embeddings
+     */
+    public fun loadSafeTensors(
+        randomAccessProvider: () -> RandomAccessSource,
+        metadata: LlamaModelMetadata,
+        tiedEmbeddings: Boolean = false
+    ): LlamaRuntimeWeights<T> {
+        val loader = LlamaSafeTensorsLoader(
+            ctx = ctx,
+            dtype = dtype,
+            metadata = metadata,
+            tiedEmbeddings = tiedEmbeddings
+        )
+        return loader.load(randomAccessProvider)
     }
 }
