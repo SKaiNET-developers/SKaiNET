@@ -12,6 +12,7 @@ import sk.ainet.apps.kllama.TokenizerUtils
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
 import kotlinx.io.buffered
 import kotlinx.io.asSource
@@ -250,7 +251,8 @@ fun main(args: Array<String>) {
 
         if (!modelPath.exists()) error("Model not found: $modelPath")
 
-        val ctx = DirectCpuExecutionContext()
+        val memSegFactory = MemorySegmentTensorDataFactory()
+        val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
 
         val runtimeWeights = when (format) {
             ModelFormat.GGUF -> {
