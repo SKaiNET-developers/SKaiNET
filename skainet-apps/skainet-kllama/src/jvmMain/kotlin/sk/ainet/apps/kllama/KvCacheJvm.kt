@@ -3,10 +3,17 @@ package sk.ainet.apps.kllama
 /**
  * JVM implementation of createOptimalKvCache.
  *
- * On JVM, we use OffheapKvCache wrapped in a KvCache interface to reduce GC pressure.
+ * For large context windows (> 2048 positions), uses PagedKvCache which lazily
+ * allocates MemorySegment pages to avoid pre-allocating the full context.
+ * For smaller contexts, uses OffheapKvCache with direct ByteBuffers.
  */
 public actual fun createOptimalKvCache(nLayers: Int, seqLen: Int, kvDim: Int): KvCache {
-    return OffheapKvCacheAdapter(OffheapKvCache(nLayers, seqLen, kvDim))
+    val pagedThreshold = 2048
+    return if (seqLen > pagedThreshold) {
+        PagedKvCache(nLayers, seqLen, kvDim)
+    } else {
+        OffheapKvCacheAdapter(OffheapKvCache(nLayers, seqLen, kvDim))
+    }
 }
 
 /**

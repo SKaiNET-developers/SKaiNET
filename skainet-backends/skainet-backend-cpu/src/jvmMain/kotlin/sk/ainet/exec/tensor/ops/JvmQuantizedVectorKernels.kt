@@ -4,6 +4,9 @@ import jdk.incubator.vector.ByteVector
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorOperators
 import jdk.incubator.vector.VectorSpecies
+import java.lang.foreign.MemorySegment
+import java.lang.foreign.ValueLayout
+import java.nio.ByteOrder
 
 /**
  * JVM Vector API kernels for quantized tensor operations.
@@ -303,5 +306,278 @@ internal object JvmQuantizedVectorKernels {
 
     private fun ByteArray.getOrElse(index: Int, default: () -> Byte): Byte {
         return if (index in indices) this[index] else default()
+    }
+
+    // -----------------------------------------------------------------------
+    // MemorySegment-based Q4 kernels (F32 activations x Q4 packed weights)
+    // -----------------------------------------------------------------------
+
+    private val JAVA_BYTE_LE: ValueLayout.OfByte = ValueLayout.JAVA_BYTE
+    private val JAVA_FLOAT_LE: ValueLayout.OfFloat =
+        ValueLayout.JAVA_FLOAT.withOrder(ByteOrder.LITTLE_ENDIAN)
+
+    /**
+     * Q4_0 dot-product for a single block of 32 elements stored in a MemorySegment.
+     *
+     * Q4_0 block layout: 2 bytes f16 scale + 16 bytes packed nibbles (32 values).
+     * Each byte packs two 4-bit codes: lo nibble = first, hi nibble = second.
+     *
+     * Uses the preferred vector species (AVX-256 gives 8-wide, AVX-512 gives 16-wide).
+     */
+    fun dotQ4_0BlockMemSeg(
+        input: FloatArray,
+        inputOffset: Int,
+        weightSeg: MemorySegment,
+        blockByteOffset: Long,
+    ): Float {
+        val blockSize = 32
+        val scaleOffset = blockByteOffset
+        val codesOffset = blockByteOffset + 2
+
+        // Read f16 scale
+        val b0 = weightSeg.get(JAVA_BYTE_LE, scaleOffset).toInt() and 0xFF
+        val b1 = weightSeg.get(JAVA_BYTE_LE, scaleOffset + 1).toInt() and 0xFF
+        val scale = halfToFloat((b1 shl 8) or b0)
+
+        val floatStep = floatSpecies.length()
+        var sum = 0f
+        var idx = 0
+
+        if (floatStep <= blockSize) {
+            val loopBound = floatSpecies.loopBound(blockSize)
+            while (idx < loopBound) {
+                val inputVec = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+                // Unpack nibbles into floats
+                val codeFloats = FloatArray(floatStep)
+                for (i in 0 until floatStep) {
+                    val elemIdx = idx + i
+                    val packedByte = weightSeg.get(JAVA_BYTE_LE, codesOffset + (elemIdx / 2).toLong()).toInt() and 0xFF
+                    // Subtract 8 to center codes around zero (Q4_0 convention)
+                    codeFloats[i] = (if (elemIdx % 2 == 0) (packedByte and 0x0F) else (packedByte ushr 4)).toFloat() - 8f
+                }
+                val codeVec = FloatVector.fromArray(floatSpecies, codeFloats, 0)
+                sum += inputVec.mul(codeVec).reduceLanes(VectorOperators.ADD)
+                idx += floatStep
+            }
+        }
+
+        // Scalar tail
+        while (idx < blockSize) {
+            val packedByte = weightSeg.get(JAVA_BYTE_LE, codesOffset + (idx / 2).toLong()).toInt() and 0xFF
+            val code = (if (idx % 2 == 0) (packedByte and 0x0F) else (packedByte ushr 4)).toFloat() - 8f
+            sum += input[inputOffset + idx] * code
+            idx++
+        }
+
+        return sum * scale
+    }
+
+    /**
+     * F32 x Q4_0 matrix-vector multiply using MemorySegment for packed Q4 weights.
+     *
+     * @param input FP32 activation vector [inputDim]
+     * @param weightSeg MemorySegment containing packed Q4_0 weight data
+     * @param weightByteOffset starting byte offset into weightSeg
+     * @param inputDim input dimension (must be multiple of 32)
+     * @param outputDim output dimension
+     * @param output output float array
+     * @param outputOffset starting index in output
+     */
+    fun matmulF32Q4_0MemSeg(
+        input: FloatArray,
+        weightSeg: MemorySegment,
+        weightByteOffset: Long,
+        inputDim: Int,
+        outputDim: Int,
+        output: FloatArray,
+        outputOffset: Int = 0,
+    ) {
+        val blockSize = 32
+        val bytesPerBlock = 18L // 2 bytes scale + 16 bytes codes
+        val blocksPerRow = (inputDim + blockSize - 1) / blockSize
+
+        for (o in 0 until outputDim) {
+            var acc = 0f
+            for (blockIdx in 0 until blocksPerRow) {
+                val blockOff = weightByteOffset +
+                    (blockIdx.toLong() * outputDim + o) * bytesPerBlock
+                val inputStart = blockIdx * blockSize
+                acc += dotQ4_0BlockMemSeg(input, inputStart, weightSeg, blockOff)
+            }
+            output[outputOffset + o] = acc
+        }
+    }
+
+    /**
+     * F32 x Q4_K matrix-vector multiply using MemorySegment for packed Q4_K weights.
+     * Same block structure as matmulQ4_KVec but reads from MemorySegment.
+     */
+    fun matmulF32Q4_KMemSeg(
+        input: FloatArray,
+        weightSeg: MemorySegment,
+        weightByteOffset: Long,
+        inputDim: Int,
+        outputDim: Int,
+        output: FloatArray,
+        outputOffset: Int = 0,
+    ) {
+        val blockSize = 256
+        val subBlockSize = 32
+        val subBlocksPerBlock = 8
+        val bytesPerBlock = 144L
+        val blocksPerRow = (inputDim + blockSize - 1) / blockSize
+
+        for (o in 0 until outputDim) {
+            var acc = 0f
+
+            for (blockIdx in 0 until blocksPerRow) {
+                val blockOff = weightByteOffset +
+                    (blockIdx.toLong() * outputDim + o) * bytesPerBlock
+
+                // Read f16 d and dMin
+                val dBits = (weightSeg.get(JAVA_BYTE_LE, blockOff + 1).toInt() and 0xFF shl 8) or
+                    (weightSeg.get(JAVA_BYTE_LE, blockOff).toInt() and 0xFF)
+                val dMinBits = (weightSeg.get(JAVA_BYTE_LE, blockOff + 3).toInt() and 0xFF shl 8) or
+                    (weightSeg.get(JAVA_BYTE_LE, blockOff + 2).toInt() and 0xFF)
+                val d = halfToFloat(dBits)
+                val dMin = halfToFloat(dMinBits)
+
+                val scalesOff = blockOff + 4
+                val codesOff = blockOff + 16
+
+                for (sb in 0 until subBlocksPerBlock) {
+                    val bitPos = sb * 12
+                    val bytePos = bitPos / 8
+                    val bitShift = bitPos % 8
+
+                    val b0 = weightSeg.get(JAVA_BYTE_LE, scalesOff + bytePos).toInt() and 0xFF
+                    val b1 = if (bytePos + 1 < 12) weightSeg.get(JAVA_BYTE_LE, scalesOff + bytePos + 1).toInt() and 0xFF else 0
+                    val b2 = if (bytePos + 2 < 12) weightSeg.get(JAVA_BYTE_LE, scalesOff + bytePos + 2).toInt() and 0xFF else 0
+                    val packed = b0 or (b1 shl 8) or (b2 shl 16)
+
+                    val scaleIdx = (packed ushr bitShift) and 0x3F
+                    val minIdx = (packed ushr (bitShift + 6)) and 0x3F
+
+                    val scale = d * (scaleIdx / 63.0f)
+                    val min = dMin * (minIdx / 63.0f)
+
+                    val inputStart = blockIdx * blockSize + sb * subBlockSize
+                    val qsStart = codesOff + sb * 16L
+
+                    if (inputStart < inputDim) {
+                        acc += dotQ4_KSubBlockMemSeg(input, inputStart, weightSeg, qsStart, scale, min)
+                    }
+                }
+            }
+
+            output[outputOffset + o] = acc
+        }
+    }
+
+    /**
+     * Q4_K sub-block dot product reading codes from MemorySegment.
+     */
+    private fun dotQ4_KSubBlockMemSeg(
+        input: FloatArray,
+        inputOffset: Int,
+        weightSeg: MemorySegment,
+        qsOffset: Long,
+        scale: Float,
+        min: Float,
+    ): Float {
+        val subBlockSize = 32
+        var codeSum = 0f
+        var inputSum = 0f
+
+        val floatStep = floatSpecies.length()
+        var idx = 0
+
+        if (floatStep <= subBlockSize) {
+            val loopBound = floatSpecies.loopBound(subBlockSize)
+            while (idx < loopBound) {
+                val inputVec = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+                inputSum += inputVec.reduceLanes(VectorOperators.ADD)
+
+                val codeFloats = FloatArray(floatStep)
+                for (i in 0 until floatStep) {
+                    val elemIdx = idx + i
+                    val packedByte = weightSeg.get(JAVA_BYTE_LE, qsOffset + (elemIdx / 2).toLong()).toInt() and 0xFF
+                    codeFloats[i] = (if (elemIdx % 2 == 0) packedByte and 0x0F else packedByte ushr 4).toFloat()
+                }
+                val codeVec = FloatVector.fromArray(floatSpecies, codeFloats, 0)
+                codeSum += inputVec.mul(codeVec).reduceLanes(VectorOperators.ADD)
+                idx += floatStep
+            }
+        }
+
+        while (idx < subBlockSize) {
+            val inputVal = input[inputOffset + idx]
+            inputSum += inputVal
+            val packedByte = weightSeg.get(JAVA_BYTE_LE, qsOffset + (idx / 2).toLong()).toInt() and 0xFF
+            val code = if (idx % 2 == 0) packedByte and 0x0F else packedByte ushr 4
+            codeSum += inputVal * code.toFloat()
+            idx++
+        }
+
+        return codeSum * scale + inputSum * min
+    }
+
+    /**
+     * F32 x Q8_0 matrix-vector multiply using MemorySegment for packed Q8_0 weights.
+     */
+    fun matmulF32Q8_0MemSeg(
+        input: FloatArray,
+        weightSeg: MemorySegment,
+        weightByteOffset: Long,
+        inputDim: Int,
+        outputDim: Int,
+        output: FloatArray,
+        outputOffset: Int = 0,
+    ) {
+        val blockSize = 32
+        val bytesPerBlock = 34L // 2 bytes scale + 32 bytes codes
+        val blocksPerRow = (inputDim + blockSize - 1) / blockSize
+
+        for (o in 0 until outputDim) {
+            var acc = 0f
+
+            for (blockIdx in 0 until blocksPerRow) {
+                val blockOff = weightByteOffset +
+                    (blockIdx.toLong() * outputDim + o) * bytesPerBlock
+
+                val b0 = weightSeg.get(JAVA_BYTE_LE, blockOff).toInt() and 0xFF
+                val b1 = weightSeg.get(JAVA_BYTE_LE, blockOff + 1).toInt() and 0xFF
+                val scale = halfToFloat((b1 shl 8) or b0)
+
+                val codesOff = blockOff + 2
+                val inputStart = blockIdx * blockSize
+
+                // Vectorized dot product over 32 elements
+                val floatStep = floatSpecies.length()
+                var sum = 0f
+                var idx = 0
+                if (floatStep <= blockSize) {
+                    val loopBound = floatSpecies.loopBound(blockSize)
+                    while (idx < loopBound) {
+                        val inputVec = FloatVector.fromArray(floatSpecies, input, inputStart + idx)
+                        val codeFloats = FloatArray(floatStep)
+                        for (i in 0 until floatStep) {
+                            codeFloats[i] = weightSeg.get(JAVA_BYTE_LE, codesOff + (idx + i).toLong()).toFloat()
+                        }
+                        val codeVec = FloatVector.fromArray(floatSpecies, codeFloats, 0)
+                        sum += inputVec.mul(codeVec).reduceLanes(VectorOperators.ADD)
+                        idx += floatStep
+                    }
+                }
+                while (idx < blockSize) {
+                    sum += input[inputStart + idx] * weightSeg.get(JAVA_BYTE_LE, codesOff + idx.toLong()).toFloat()
+                    idx++
+                }
+
+                acc += sum * scale
+            }
+
+            output[outputOffset + o] = acc
+        }
     }
 }

@@ -7,13 +7,18 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
+import sk.ainet.lang.tensor.data.MemorySegmentBackedData
+import sk.ainet.lang.tensor.data.MemorySegmentTensorData
+import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8_0TensorData
+import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.tensor.data.TensorDataFactory
+import java.lang.foreign.Arena
 import kotlin.math.max
 
 internal class DefaultCpuOpsJvm(
@@ -276,11 +281,11 @@ internal class DefaultCpuOpsJvm(
     /**
      * Dispatch to vectorized quantized matmul kernels for Q8_0 and Q4_K weights.
      * Input must be FP32, weights can be Q8_0TensorData or Q4_KTensorData.
+     * Also supports MemorySegment-backed quantized tensor data.
      */
     private fun <T : DType, V> chooseQuantizedMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
-        // Input must be FP32 with FloatArray backing
+        // Input must be FP32
         if (a.dtype != FP32::class) return null
-        val aData = a.data as? FloatArrayTensorData<*> ?: return null
         if (a.shape.rank != 2) return null
 
         val bData = b.data
@@ -294,19 +299,26 @@ internal class DefaultCpuOpsJvm(
 
         if (inputDim != weightInputDim) return null
 
+        // Get input as FloatArray — works for both FloatArrayTensorData and MemorySegmentTensorData
+        val inputBuffer: FloatArray = when (val aData = a.data) {
+            is FloatArrayTensorData<*> -> aData.buffer
+            is MemorySegmentBackedData -> a.data.copyToFloatArray()
+            else -> return null
+        }
+
         return when (bData) {
             is Q8_0TensorData -> {
                 val outBuffer = FloatArray(batchSize * outputDim)
                 for (batch in 0 until batchSize) {
-                    val inputOffset = batch * inputDim
-                    val outputOffset = batch * outputDim
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
                     JvmQuantizedVectorKernels.matmulQ8_0Vec(
-                        aData.buffer,
+                        batchInput,
                         bData.packedData,
                         inputDim,
                         outputDim,
                         outBuffer,
-                        outputOffset
+                        batch * outputDim,
                     )
                 }
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
@@ -316,23 +328,78 @@ internal class DefaultCpuOpsJvm(
             is Q4_KTensorData -> {
                 val outBuffer = FloatArray(batchSize * outputDim)
                 for (batch in 0 until batchSize) {
-                    val inputOffset = batch * inputDim
-                    val outputOffset = batch * outputDim
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
                     JvmQuantizedVectorKernels.matmulQ4_KVec(
-                        aData.buffer,
+                        batchInput,
                         bData.packedData,
                         inputDim,
                         outputDim,
                         outBuffer,
-                        outputOffset
+                        batch * outputDim,
                     )
                 }
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
                 @Suppress("UNCHECKED_CAST")
                 CpuTensor(outData as TensorData<T, V>, this, a.dtype)
             }
+            // MemorySegment-backed quantized weights (Q4/Q8) — dispatch to MemorySegment kernels
+            is MemorySegmentBackedData -> {
+                chooseQuantizedMatmulMemSeg(inputBuffer, bData, batchSize, inputDim, outputDim, a)
+            }
             else -> null
         }
+    }
+
+    /**
+     * Dispatch quantized matmul when weight data is MemorySegment-backed.
+     * The concrete type is checked via marker interfaces set during weight loading.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> chooseQuantizedMatmulMemSeg(
+        inputBuffer: FloatArray,
+        bData: MemorySegmentBackedData,
+        batchSize: Int,
+        inputDim: Int,
+        outputDim: Int,
+        a: Tensor<T, V>,
+    ): Tensor<T, V>? {
+        val outBuffer = FloatArray(batchSize * outputDim)
+        when (bData) {
+            is Q4MemorySegmentMarker -> {
+                for (batch in 0 until batchSize) {
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                    JvmQuantizedVectorKernels.matmulF32Q4_0MemSeg(
+                        batchInput,
+                        bData.segment,
+                        bData.segmentByteOffset,
+                        inputDim,
+                        outputDim,
+                        outBuffer,
+                        batch * outputDim,
+                    )
+                }
+            }
+            is Q8MemorySegmentMarker -> {
+                for (batch in 0 until batchSize) {
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                    JvmQuantizedVectorKernels.matmulF32Q8_0MemSeg(
+                        batchInput,
+                        bData.segment,
+                        bData.segmentByteOffset,
+                        inputDim,
+                        outputDim,
+                        outBuffer,
+                        batch * outputDim,
+                    )
+                }
+            }
+            else -> return null
+        }
+        val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+        return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
     }
 
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
@@ -534,15 +601,41 @@ internal class DefaultCpuOpsJvm(
         val bCols = b.shape[1]
         if (aCols != bRows) return null
 
-        val aData = a.data as? FloatArrayTensorData<T> ?: return null
-        val bData = b.data as? FloatArrayTensorData<T> ?: return null
-
-        // Heuristics
         val m = aRows
         val n = bCols
         val k = aCols
-        val work = m.toLong() * n.toLong() * k.toLong()
 
+        // ---- MemorySegment fast path ----
+        val aMemSeg = a.data as? MemorySegmentBackedData
+        val bMemSeg = b.data as? MemorySegmentBackedData
+        if (aMemSeg != null && bMemSeg != null) {
+            val arena = Arena.ofConfined()
+            val result = MemorySegmentTensorData<T>(Shape(m, n), arena)
+            val blockedThresholdMS = 16 * 16
+            if (m >= blockedThresholdMS || n >= blockedThresholdMS || k >= blockedThresholdMS) {
+                JvmVectorKernels.matmulFloatBlockedMemSeg(
+                    m, k, n,
+                    aMemSeg.segment, aMemSeg.segmentByteOffset,
+                    bMemSeg.segment, bMemSeg.segmentByteOffset,
+                    result.segment, result.segmentByteOffset,
+                )
+            } else {
+                JvmVectorKernels.matmulFloatMemSeg(
+                    m, k, n,
+                    aMemSeg.segment, aMemSeg.segmentByteOffset,
+                    bMemSeg.segment, bMemSeg.segmentByteOffset,
+                    result.segment, result.segmentByteOffset,
+                )
+            }
+            @Suppress("UNCHECKED_CAST")
+            return CpuTensor(result as TensorData<T, V>, this, a.dtype)
+        }
+
+        // ---- FloatArray path ----
+        val aData = a.data as? FloatArrayTensorData<T> ?: return null
+        val bData = b.data as? FloatArrayTensorData<T> ?: return null
+
+        val work = m.toLong() * n.toLong() * k.toLong()
         val outBuffer = FloatArray(m * n)
 
         // Try BLAS for large sizes if enabled and available

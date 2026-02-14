@@ -38,6 +38,28 @@ public interface AttentionBackend<T : DType> {
     ): Tensor<T, Float>
 
     /**
+     * Compute attention for a batch of tokens starting at [startPos].
+     *
+     * Default implementation iterates over positions and calls single-token [attention].
+     * Backends can override for more efficient batch processing (e.g. batched RoPE,
+     * single KV cache update pass).
+     *
+     * @param q Query tensor [batchSize, dim]
+     * @param k Key tensor [batchSize, kvDim]
+     * @param v Value tensor [batchSize, kvDim]
+     * @param layerIdx Transformer layer index
+     * @param startPos Starting position for the batch
+     * @return Attention output tensor [batchSize, dim]
+     */
+    public fun batchAttention(
+        q: Tensor<T, Float>,
+        k: Tensor<T, Float>,
+        v: Tensor<T, Float>,
+        layerIdx: Int,
+        startPos: Int,
+    ): Tensor<T, Float>? = null
+
+    /**
      * Reset internal state (KV caches, position tracking, etc.).
      */
     public fun reset()

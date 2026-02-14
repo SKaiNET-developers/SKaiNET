@@ -107,6 +107,81 @@ public class LlamaRuntime<T : DType>(
         return logits
     }
 
+    /**
+     * Batch-forward a chunk of tokens through all layers.
+     *
+     * Embeds all tokens at once, runs each layer with batch-aware attention
+     * (if the backend supports it, otherwise falls back to sequential),
+     * and returns the logits for the last token.
+     *
+     * @param tokenIds Array of token IDs to process
+     * @param startPos Starting position in the sequence
+     * @return Logits tensor for the **last** token in the batch
+     */
+    public fun batchForward(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {
+        require(tokenIds.isNotEmpty()) { "tokenIds must not be empty" }
+        require(startPos + tokenIds.size <= seqLen) {
+            "Batch would exceed context: startPos=$startPos, batchSize=${tokenIds.size}, seqLen=$seqLen"
+        }
+
+        // Try batch path if attention backend supports it
+        if (tokenIds.size > 1 && attentionBackend.batchAttention(
+                // Probe: pass empty tensors to check support — actually just check null return
+                embedding.forward(intArrayOf(tokenIds[0]), ctx),
+                embedding.forward(intArrayOf(tokenIds[0]), ctx),
+                embedding.forward(intArrayOf(tokenIds[0]), ctx),
+                0, startPos,
+            ) != null
+        ) {
+            // Full batch path: embed all tokens, batch through layers
+            return batchForwardFull(tokenIds, startPos)
+        }
+
+        // Fallback: sequential forward for each token
+        var logits: Tensor<T, Float>? = null
+        for (i in tokenIds.indices) {
+            logits = forward(tokenIds[i])
+        }
+        return logits!!
+    }
+
+    private fun batchForwardFull(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {
+        // Embed all tokens: produces [batchSize, dim]
+        var x = embedding.forward(tokenIds, ctx)
+
+        weights.layers.forEachIndexed { layerIdx, layer ->
+            val attnNorm = attnNorms[layerIdx].forward(x, ctx)
+            val q = attnNorm.matmul(layer.wq.t())
+            val k = attnNorm.matmul(layer.wk.t())
+            val v = attnNorm.matmul(layer.wv.t())
+
+            val attnOut = attentionBackend.batchAttention(q, k, v, layerIdx, startPos)
+                ?: return batchForwardFallback(tokenIds, startPos) // shouldn't happen but be safe
+
+            val afterAttn = x + attnOut.matmul(layer.wo.t())
+
+            val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
+            val gate = ffnNorm.matmul(layer.ffnGate.t()).silu()
+            val up = ffnNorm.matmul(layer.ffnUp.t())
+            val ffnOut = (gate * up).matmul(layer.ffnDown.t())
+            x = afterAttn + ffnOut
+        }
+
+        val norm = outputNorm.forward(x, ctx)
+        val logits = norm.matmul(weights.outputWeight.t())
+        position = startPos + tokenIds.size
+        return logits
+    }
+
+    private fun batchForwardFallback(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {
+        position = startPos
+        var logits: Tensor<T, Float>? = null
+        for (tokenId in tokenIds) {
+            logits = forward(tokenId)
+        }
+        return logits!!
+    }
+
     override fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
         require(steps > 0) { "steps must be > 0" }
 
@@ -118,22 +193,50 @@ public class LlamaRuntime<T : DType>(
             prompt
         }
 
-        var token = fullPrompt[0]
-        var pos = 0
-        var generatedCount = 0
-        while (generatedCount < steps) {
-            val logits = forward(token)
-            val next = if (pos + 1 < fullPrompt.size) {
-                fullPrompt[pos + 1]
-            } else {
-                sample(logits, temperature)
+        // Phase 1: Batch-process prompt tokens in chunks (only for longer prompts)
+        val batchChunkSize = 256
+
+        if (fullPrompt.size > batchChunkSize) {
+            // Process all prompt tokens except the last one in batches
+            val promptTokens = fullPrompt.sliceArray(0 until fullPrompt.size - 1)
+            var promptPos = 0
+            while (promptPos < promptTokens.size) {
+                val chunkEnd = minOf(promptPos + batchChunkSize, promptTokens.size)
+                val chunk = promptTokens.sliceArray(promptPos until chunkEnd)
+                batchForward(chunk, promptPos)
+                promptPos = chunkEnd
             }
-            if (pos + 1 >= fullPrompt.size) {
+            // Phase 2: Auto-regressive generation starting from last prompt token
+            var token = fullPrompt[fullPrompt.size - 1]
+            var pos = fullPrompt.size - 1
+            var generatedCount = 0
+            while (generatedCount < steps) {
+                val logits = forward(token)
+                val next = sample(logits, temperature)
                 onToken(next)
                 generatedCount++
+                token = next
+                pos++
             }
-            token = next
-            pos++
+        } else {
+            // Original sequential path for short prompts
+            var token = fullPrompt[0]
+            var pos = 0
+            var generatedCount = 0
+            while (generatedCount < steps) {
+                val logits = forward(token)
+                val next = if (pos + 1 < fullPrompt.size) {
+                    fullPrompt[pos + 1]
+                } else {
+                    sample(logits, temperature)
+                }
+                if (pos + 1 >= fullPrompt.size) {
+                    onToken(next)
+                    generatedCount++
+                }
+                token = next
+                pos++
+            }
         }
     }
 
