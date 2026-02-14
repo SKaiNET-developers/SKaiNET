@@ -7,8 +7,10 @@ import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.ops.TensorOp
 import sk.ainet.lang.ops.InProgress
+import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.UpsampleMode
+import sk.ainet.lang.types.FP32
 import kotlin.math.sqrt
 
 @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#defaultcpuops")
@@ -240,7 +242,6 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-matmul")
     override fun <T : DType, V> matmul(
         a: Tensor<T, V>,
         b: Tensor<T, V>
@@ -248,6 +249,41 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(a.rank >= 1 && b.rank >= 1) { "Matrix multiplication requires tensors with at least 1 dimension per operand" }
         require(a.dtype == b.dtype) { "DType mismatch: ${a.dtype} vs ${b.dtype}" }
 
+        // Fast path: 2D × 2D with FloatArray backing — direct buffer access, no per-element allocation
+        if (a.rank == 2 && b.rank == 2
+            && (a.dtype == FP32::class)
+            && a.data is FloatArrayTensorData<*> && b.data is FloatArrayTensorData<*>
+        ) {
+            val aBuf = (a.data as FloatArrayTensorData<*>).buffer
+            val bBuf = (b.data as FloatArrayTensorData<*>).buffer
+            val m = a.shape[0]
+            val k = a.shape[1]
+            val n = b.shape[1]
+            require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
+            val out = FloatArray(m * n)
+            for (i in 0 until m) {
+                val aOff = i * k
+                for (j in 0 until n) {
+                    var sum = 0f
+                    for (p in 0 until k) {
+                        sum += aBuf[aOff + p] * bBuf[p * n + j]
+                    }
+                    out[i * n + j] = sum
+                }
+            }
+            @Suppress("UNCHECKED_CAST")
+            val outData = dataFactory.fromFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+            return newTensor(outData, a.dtype, a, b)
+        }
+
+        // Generic fallback for batched / non-float / non-2D cases
+        return matmulGeneric(a, b)
+    }
+
+    private fun <T : DType, V> matmulGeneric(
+        a: Tensor<T, V>,
+        b: Tensor<T, V>
+    ): Tensor<T, V> {
         val aDims = a.shape.dimensions
         val bDims = b.shape.dimensions
         val aRank = aDims.size
@@ -288,14 +324,12 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val outShape = when {
             aIs1D && bIs1D -> Shape(intArrayOf())
             aIs1D -> {
-                // (k,) @ (..., k, n) -> (..., n)
                 val dims = IntArray(outBatch.size + 1)
                 if (outBatch.isNotEmpty()) outBatch.copyInto(dims, 0)
                 dims[dims.size - 1] = n
                 Shape(dims)
             }
             bIs1D -> {
-                // (..., m, k) @ (k,) -> (..., m)
                 val dims = IntArray(outBatch.size + 1)
                 if (outBatch.isNotEmpty()) outBatch.copyInto(dims, 0)
                 dims[dims.size - 1] = m
@@ -310,7 +344,6 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             }
         }
 
-        // Helper to map an output batch index to input batch indices with broadcasting using effective ranks
         fun mapBatchIndexEff(batchIdx: IntArray, effDims: IntArray): IntArray {
             val inBatchRank = effDims.size - 2
             val mapped = IntArray(inBatchRank)
@@ -326,7 +359,6 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         }
 
         val outData = dataFactory.init<T, V>(outShape, a.dtype) { outIdx ->
-            // Determine batchIdx, m, n interpretation based on 1D/2D cases
             val (batchIdx, mIdx, nIdx) = when {
                 aIs1D && bIs1D -> Triple(IntArray(0), -1, -1)
                 aIs1D -> {
@@ -349,40 +381,29 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val aBatchIdx = mapBatchIndexEff(batchIdx, aEff)
             val bBatchIdx = mapBatchIndexEff(batchIdx, bEff)
 
-            // Accumulate over k
             when (a.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
                     var acc = 0.0f
                     var k = 0
                     while (k < kA) {
-                        // Get a value
                         val av: Float = if (aIs1D) {
-                            val aIdx = intArrayOf(k)
-                            a.data.get(*aIdx) as Float
+                            a.data.get(*intArrayOf(k)) as Float
                         } else {
                             val aIdx = IntArray(aRank)
-                            if (aBatchIdx.isNotEmpty()) {
-                                aBatchIdx.copyInto(aIdx, destinationOffset = 0, startIndex = 0, endIndex = aBatchIdx.size)
-                            }
+                            if (aBatchIdx.isNotEmpty()) aBatchIdx.copyInto(aIdx)
                             aIdx[aRank - 2] = mIdx
                             aIdx[aRank - 1] = k
                             a.data.get(*aIdx) as Float
                         }
-
-                        // Get b value
                         val bv: Float = if (bIs1D) {
-                            val bIdx = intArrayOf(k)
-                            b.data.get(*bIdx) as Float
+                            b.data.get(*intArrayOf(k)) as Float
                         } else {
                             val bIdx = IntArray(bRank)
-                            if (bBatchIdx.isNotEmpty()) {
-                                bBatchIdx.copyInto(bIdx, destinationOffset = 0, startIndex = 0, endIndex = bBatchIdx.size)
-                            }
+                            if (bBatchIdx.isNotEmpty()) bBatchIdx.copyInto(bIdx)
                             bIdx[bRank - 2] = k
                             bIdx[bRank - 1] = nIdx
                             b.data.get(*bIdx) as Float
                         }
-
                         acc += av * bv
                         k++
                     }
@@ -396,31 +417,23 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     var k = 0
                     while (k < kA) {
                         val av: Int = if (aIs1D) {
-                            val aIdx = intArrayOf(k)
-                            a.data.get(*aIdx) as Int
+                            a.data.get(*intArrayOf(k)) as Int
                         } else {
                             val aIdx = IntArray(aRank)
-                            if (aBatchIdx.isNotEmpty()) {
-                                aBatchIdx.copyInto(aIdx, destinationOffset = 0, startIndex = 0, endIndex = aBatchIdx.size)
-                            }
+                            if (aBatchIdx.isNotEmpty()) aBatchIdx.copyInto(aIdx)
                             aIdx[aRank - 2] = mIdx
                             aIdx[aRank - 1] = k
                             a.data.get(*aIdx) as Int
                         }
-
                         val bv: Int = if (bIs1D) {
-                            val bIdx = intArrayOf(k)
-                            b.data.get(*bIdx) as Int
+                            b.data.get(*intArrayOf(k)) as Int
                         } else {
                             val bIdx = IntArray(bRank)
-                            if (bBatchIdx.isNotEmpty()) {
-                                bBatchIdx.copyInto(bIdx, destinationOffset = 0, startIndex = 0, endIndex = bBatchIdx.size)
-                            }
+                            if (bBatchIdx.isNotEmpty()) bBatchIdx.copyInto(bIdx)
                             bIdx[bRank - 2] = k
                             bIdx[bRank - 1] = nIdx
                             b.data.get(*bIdx) as Int
                         }
-
                         acc += av * bv
                         k++
                     }
@@ -435,18 +448,33 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-transpose")
     override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
         val rank = tensor.shape.rank
         require(rank >= 2) { "Transpose requires at least 2 dimensions" }
+        val rows = tensor.shape[rank - 2]
+        val cols = tensor.shape[rank - 1]
+
+        // Fast path: 2D float tensor — direct buffer swap
+        if (rank == 2 && tensor.data is FloatArrayTensorData<*>) {
+            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+            val out = FloatArray(rows * cols)
+            for (r in 0 until rows) {
+                for (c in 0 until cols) {
+                    out[c * rows + r] = buf[r * cols + c]
+                }
+            }
+            @Suppress("UNCHECKED_CAST")
+            val outData = dataFactory.fromFloatArray<T, Float>(Shape(cols, rows), tensor.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+            return newTensor(outData, tensor.dtype, tensor)
+        }
+
+        // Generic fallback
         val outDims = tensor.shape.dimensions.copyOf()
-        val tmp = outDims[rank - 1]
-        outDims[rank - 1] = outDims[rank - 2]
-        outDims[rank - 2] = tmp
+        outDims[rank - 1] = rows
+        outDims[rank - 2] = cols
         val outShape = Shape(outDims)
         val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { outIdx ->
             val inIdx = outIdx.copyOf()
-            // swap last two indices to read from input
             inIdx[rank - 2] = outIdx[rank - 1]
             inIdx[rank - 1] = outIdx[rank - 2]
             tensor.data.get(*inIdx)
