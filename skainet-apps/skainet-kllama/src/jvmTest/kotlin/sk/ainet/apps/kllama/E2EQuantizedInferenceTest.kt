@@ -205,8 +205,10 @@ class E2EQuantizedInferenceTest {
     fun `benchmark DEQUANTIZE_TO_FP32 baseline inference`() {
         if (skipIfNoModel()) return
         runBlocking {
-            // Use default heap-based factory for dequantized FP32 weights
-            val ctx = DirectCpuExecutionContext()
+            // Use MemorySegment factory so dequantized FP32 weights live off-heap
+            val arena = Arena.ofShared()
+            val memSegFactory = MemorySegmentTensorDataFactory()
+            val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
 
             val ingestion = LlamaIngestion<FP32>(
                 ctx = ctx,
@@ -259,6 +261,9 @@ class E2EQuantizedInferenceTest {
             println("==============================================")
 
             assertTrue(tokPerSec > 0, "Should produce positive throughput")
+
+            arena.close()
+            memSegFactory.close()
         }
     }
 }

@@ -113,7 +113,7 @@ kotlin {
 }
 
 tasks.withType<Test>().configureEach {
-    jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
+    jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector", "-XX:MaxDirectMemorySize=12g")
     maxHeapSize = "6g"
 }
 
