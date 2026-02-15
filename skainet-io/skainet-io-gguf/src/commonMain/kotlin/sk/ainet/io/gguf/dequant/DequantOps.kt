@@ -1,0 +1,842 @@
+package sk.ainet.io.gguf.dequant
+
+import sk.ainet.io.gguf.GGMLQuantizationType
+import sk.ainet.io.gguf.QK_K
+import kotlin.math.pow
+
+/**
+ * Shared dequantization operations for GGUF and SafeTensors weight loading.
+ *
+ * All functions are module-visible (`internal`) and stateless. They convert
+ * quantized byte payloads into FP32 float arrays.
+ */
+public object DequantOps {
+
+    // ========== List<Any>-based variants (GGUFReader in-memory) ==========
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    internal fun toByteArray(raw: List<Any>, tensorName: String): ByteArray {
+        val first = raw.firstOrNull()
+        return when (first) {
+            is Byte -> ByteArray(raw.size) { (raw[it] as Number).toByte() }
+            is UByte -> ByteArray(raw.size) { (raw[it] as UByte).toByte() }
+            else -> error("Unexpected raw data type ${typeName(first)} for tensor $tensorName")
+        }
+    }
+
+    internal fun dequantF16(raw: List<Any>): FloatArray {
+        val bytes: ByteArray = toByteArray(raw, "F16")
+        return dequantF16FromBytes(bytes)
+    }
+
+    internal fun dequantBF16(raw: List<Any>): FloatArray {
+        val bytes: ByteArray = toByteArray(raw, "BF16")
+        return dequantBF16FromBytes(bytes)
+    }
+
+    internal fun dequantQ4_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q4_0")
+        return dequantQ4_0FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ5_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q5_0")
+        return dequantQ5_0FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ8_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q8_0")
+        return dequantQ8_0FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ4_1(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q4_1")
+        return dequantQ4_1FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ5_1(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q5_1")
+        return dequantQ5_1FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ8_1(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q8_1")
+        return dequantQ8_1FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantIQ4NL(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ4_NL")
+        return dequantIQ4NLFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantIQ4XS(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ4_XS")
+        return dequantIQ4XSFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q2_K")
+        return dequantQ2KFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ3K(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q3_K")
+        return dequantQ3KFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ4K(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q4_K")
+        return dequantQ4KFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ5K(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q5_K")
+        return dequantQ5KFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ6K(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q6_K")
+        return dequantQ6KFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantQ8K(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q8_K")
+        return dequantQ8KFromBytes(bytes, nElems)
+    }
+
+    internal fun dequantTQ2_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "TQ2_0")
+        return dequantTQ2_0FromBytes(bytes, nElems)
+    }
+
+    internal fun dequantTQ1_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "TQ1_0")
+        return dequantTQ1_0FromBytes(bytes, nElems)
+    }
+
+    // ========== ByteArray-based variants (StreamingGGUFReader / SafeTensors) ==========
+
+    internal fun dequantF16FromBytes(bytes: ByteArray): FloatArray {
+        val out = FloatArray(bytes.size / 2)
+        var i = 0
+        var o = 0
+        while (i < bytes.size) {
+            val b0 = bytes[i].toInt() and 0xFF
+            val b1 = bytes[i + 1].toInt() and 0xFF
+            val half = (b1 shl 8) or b0
+            out[o] = halfToFloat(half)
+            i += 2
+            o++
+        }
+        return out
+    }
+
+    internal fun dequantBF16FromBytes(bytes: ByteArray): FloatArray {
+        val out = FloatArray(bytes.size / 2)
+        var i = 0
+        var o = 0
+        while (i < bytes.size) {
+            val b0 = bytes[i].toInt() and 0xFF
+            val b1 = bytes[i + 1].toInt() and 0xFF
+            val bits = (b1 shl 24) or (b0 shl 16)
+            out[o] = Float.fromBits(bits)
+            i += 2
+            o++
+        }
+        return out
+    }
+
+    internal fun bytesToFloatArray(bytes: ByteArray): FloatArray {
+        val out = FloatArray(bytes.size / 4)
+        var i = 0
+        var o = 0
+        while (i < bytes.size) {
+            val bits = (bytes[i].toInt() and 0xFF) or
+                ((bytes[i + 1].toInt() and 0xFF) shl 8) or
+                ((bytes[i + 2].toInt() and 0xFF) shl 16) or
+                ((bytes[i + 3].toInt() and 0xFF) shl 24)
+            out[o] = Float.fromBits(bits)
+            i += 4
+            o++
+        }
+        return out
+    }
+
+    internal fun halfToFloat(hbits: Int): Float {
+        val mant = hbits and 0x03FF
+        val exp = hbits and 0x7C00
+        val sign = hbits and 0x8000
+        return when (exp) {
+            0 -> {
+                val v = (mant.toFloat() / 1024.0f) * (2.0f).pow(-14)
+                if (sign != 0) -v else v
+            }
+            0x7C00 -> {
+                val v = if (mant == 0) Float.POSITIVE_INFINITY else Float.NaN
+                if (sign != 0) -v else v
+            }
+            else -> {
+                val v = (1.0f + mant.toFloat() / 1024.0f) * (2.0f).pow((exp shr 10) - 15)
+                if (sign != 0) -v else v
+            }
+        }
+    }
+
+    /**
+     * Handle column-major to row-major conversion for GGUF tensors.
+     * Data layout is unchanged — only the shape interpretation changes.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    internal fun transposeColumnMajorToRowMajor(
+        data: FloatArray,
+        rows: Int,
+        cols: Int
+    ): FloatArray = data
+
+    /**
+     * Dispatch dequantization based on tensor type for byte arrays.
+     */
+    internal fun dequantFromBytes(bytes: ByteArray, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
+        return when (tensorType) {
+            GGMLQuantizationType.F16 -> dequantF16FromBytes(bytes)
+            GGMLQuantizationType.BF16 -> dequantBF16FromBytes(bytes)
+            GGMLQuantizationType.Q4_0 -> dequantQ4_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q4_1 -> dequantQ4_1FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q5_0 -> dequantQ5_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q5_1 -> dequantQ5_1FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q8_0 -> dequantQ8_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q8_1 -> dequantQ8_1FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q2_K -> dequantQ2KFromBytes(bytes, nElems)
+            GGMLQuantizationType.Q3_K -> dequantQ3KFromBytes(bytes, nElems)
+            GGMLQuantizationType.Q4_K -> dequantQ4KFromBytes(bytes, nElems)
+            GGMLQuantizationType.Q5_K -> dequantQ5KFromBytes(bytes, nElems)
+            GGMLQuantizationType.Q6_K -> dequantQ6KFromBytes(bytes, nElems)
+            GGMLQuantizationType.Q8_K -> dequantQ8KFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ4_NL -> dequantIQ4NLFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ4_XS -> dequantIQ4XSFromBytes(bytes, nElems)
+            GGMLQuantizationType.TQ1_0 -> dequantTQ1_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.TQ2_0 -> dequantTQ2_0FromBytes(bytes, nElems)
+            else -> error("Dequantization for $tensorType not implemented")
+        }
+    }
+
+    /**
+     * Dispatch dequantization based on tensor type for List<Any> (in-memory GGUFReader).
+     */
+    internal fun dequantFromList(raw: List<Any>, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
+        return when (tensorType) {
+            GGMLQuantizationType.F16 -> dequantF16(raw)
+            GGMLQuantizationType.BF16 -> dequantBF16(raw)
+            GGMLQuantizationType.Q4_0 -> dequantQ4_0(raw, nElems)
+            GGMLQuantizationType.Q4_1 -> dequantQ4_1(raw, nElems)
+            GGMLQuantizationType.Q5_0 -> dequantQ5_0(raw, nElems)
+            GGMLQuantizationType.Q5_1 -> dequantQ5_1(raw, nElems)
+            GGMLQuantizationType.Q8_0 -> dequantQ8_0(raw, nElems)
+            GGMLQuantizationType.Q8_1 -> dequantQ8_1(raw, nElems)
+            GGMLQuantizationType.Q2_K -> dequantQ2K(raw, nElems)
+            GGMLQuantizationType.Q3_K -> dequantQ3K(raw, nElems)
+            GGMLQuantizationType.Q4_K -> dequantQ4K(raw, nElems)
+            GGMLQuantizationType.Q5_K -> dequantQ5K(raw, nElems)
+            GGMLQuantizationType.Q6_K -> dequantQ6K(raw, nElems)
+            GGMLQuantizationType.Q8_K -> dequantQ8K(raw, nElems)
+            GGMLQuantizationType.IQ4_NL -> dequantIQ4NL(raw, nElems)
+            GGMLQuantizationType.IQ4_XS -> dequantIQ4XS(raw, nElems)
+            GGMLQuantizationType.TQ1_0 -> dequantTQ1_0(raw, nElems)
+            GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, nElems)
+            else -> error("Dequantization for $tensorType not implemented")
+        }
+    }
+
+    // ========== ByteArray-based quantization implementations ==========
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ4_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 18
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val b0 = bytes[offset].toInt() and 0xFF
+            val b1 = bytes[offset + 1].toInt() and 0xFF
+            val d = halfToFloat(b0 or (b1 shl 8))
+            offset += 2
+            for (j in 0 until 16) {
+                val b = bytes[offset + j].toInt() and 0xFF
+                val lo = (b and 0x0F) - 8
+                val hi = (b shr 4) - 8
+                out[outOff + j] = lo.toFloat() * d
+                out[outOff + 16 + j] = hi.toFloat() * d
+            }
+            offset += 16
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ5_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 22
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            offset += 2
+            val qh0 = bytes[offset].toInt() and 0xFF
+            val qh1 = bytes[offset + 1].toInt() and 0xFF
+            val qh2 = bytes[offset + 2].toInt() and 0xFF
+            val qh3 = bytes[offset + 3].toInt() and 0xFF
+            offset += 4
+            val qh = intArrayOf(qh0, qh1, qh2, qh3)
+            for (j in 0 until 16) {
+                val q = bytes[offset + j].toInt() and 0xFF
+                val lo = q and 0x0F
+                val hi = q shr 4
+                val bitLo = ((qh[j / 8] shr (j % 8)) and 0x01) shl 4
+                val bitHi = ((qh[(j + 16) / 8] shr ((j + 16) % 8)) and 0x01) shl 4
+                out[outOff + j] = d * (lo + bitLo - 16)
+                out[outOff + 16 + j] = d * (hi + bitHi - 16)
+            }
+            offset += 16
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ8_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 34
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            offset += 2
+            for (j in 0 until 32) {
+                out[outOff + j] = d * bytes[offset + j].toFloat()
+            }
+            offset += 32
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ4_1FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 20
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val m = halfToFloat((bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF))
+            offset += 4
+            for (j in 0 until 16) {
+                val b = bytes[offset + j].toInt() and 0xFF
+                val lo = b and 0x0F
+                val hi = b shr 4
+                out[outOff + j] = d * lo + m
+                out[outOff + 16 + j] = d * hi + m
+            }
+            offset += 16
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ5_1FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 24
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val m = halfToFloat((bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF))
+            offset += 4
+            val qh0 = bytes[offset].toInt() and 0xFF
+            val qh1 = bytes[offset + 1].toInt() and 0xFF
+            val qh2 = bytes[offset + 2].toInt() and 0xFF
+            val qh3 = bytes[offset + 3].toInt() and 0xFF
+            offset += 4
+            val qh = intArrayOf(qh0, qh1, qh2, qh3)
+            for (j in 0 until 16) {
+                val q = bytes[offset + j].toInt() and 0xFF
+                val lo = q and 0x0F
+                val hi = q shr 4
+                val bitLo = (qh[j / 8] shr (j % 8)) and 0x01
+                val bitHi = (qh[(j + 16) / 8] shr ((j + 16) % 8)) and 0x01
+                out[outOff + j] = d * (lo + (bitLo shl 4)) + m
+                out[outOff + 16 + j] = d * (hi + (bitHi shl 4)) + m
+            }
+            offset += 16
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ8_1FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 40
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val dBits = (bytes[offset].toInt() and 0xFF) or
+                    ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+                    ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+                    ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+            val d = Float.fromBits(dBits)
+            offset += 8 // skip d (4 bytes) + s (4 bytes)
+            for (j in 0 until 32) {
+                out[outOff + j] = d * bytes[offset + j].toFloat()
+            }
+            offset += 32
+            outOff += blockSize
+        }
+        return out
+    }
+
+    private val iq4nlValues: IntArray = intArrayOf(
+        -127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113
+    )
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ4NLFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 18
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            offset += 2
+            repeat(blockSize / 2) { j ->
+                val code = bytes[offset + j].toInt() and 0xFF
+                val lo = code and 0x0F
+                val hi = code ushr 4
+                out[outOff + j] = d * iq4nlValues[lo]
+                out[outOff + blockSize / 2 + j] = d * iq4nlValues[hi]
+            }
+            offset += blockSize / 2
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ4XSFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 2 + 2 + QK_K / 2 + QK_K / 64
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            offset += 2
+            val scalesH = (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            offset += 2
+            val scalesL = bytes.copyOfRange(offset, offset + QK_K / 64)
+            offset += QK_K / 64
+            val qs = bytes.copyOfRange(offset, offset + QK_K / 2)
+            offset += QK_K / 2
+            repeat(QK_K / 32) { ib ->
+                val ls = ((scalesL[ib / 2].toInt() ushr (4 * (ib % 2))) and 0x0F) or
+                    (((scalesH ushr (2 * ib)) and 0x03) shl 4)
+                val dl = d * (ls - 32)
+                repeat(16) { j ->
+                    val code = qs[ib * 16 + j].toInt() and 0xFF
+                    val lo = code and 0x0F
+                    val hi = code ushr 4
+                    out[outOff + ib * 32 + j] = dl * iq4nlValues[lo]
+                    out[outOff + ib * 32 + 16 + j] = dl * iq4nlValues[hi]
+                }
+            }
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ2KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 2 + 2 + QK_K / 16 + QK_K / 4
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            val dMin = halfToFloat(
+                (bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF)
+            )
+            offset += 4
+            val scales = bytes.copyOfRange(offset, offset + 16)
+            offset += 16
+            val qs = bytes.copyOfRange(offset, offset + 64)
+            offset += 64
+            repeat(16) { block ->
+                val scaleIdx = (scales[block].toInt() ushr 4) and 0x0F
+                val minIdx = scales[block].toInt() and 0x0F
+                val scale = d * (scaleIdx / 15.0f)
+                val min = dMin * (minIdx / 15.0f)
+                repeat(16) { j ->
+                    val codeByte = qs[block * 4 + j / 4].toInt() and 0xFF
+                    val q = (codeByte ushr ((j % 4) * 2)) and 0x03
+                    out[outOff + block * 16 + j] = q * scale - min
+                }
+            }
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ3KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 2 + QK_K / 4 + QK_K / 8 + 12
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            offset += 2
+            val hmask = bytes.copyOfRange(offset, offset + 32)
+            offset += 32
+            val qs = bytes.copyOfRange(offset, offset + 64)
+            offset += 64
+            val scales = bytes.copyOfRange(offset, offset + 12)
+            offset += 12
+            repeat(16) { block ->
+                val bitPos = block * 6
+                val bytePos = bitPos / 8
+                val bitShift = bitPos % 8
+                val packed =
+                    (scales.getOrElse(bytePos) { 0 }.toInt() and 0xFF) or
+                        ((scales.getOrElse(bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
+                        ((scales.getOrElse(bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
+                val scaleIdx = (packed ushr bitShift) and 0x3F
+                val scale = d * (scaleIdx / 63.0f)
+                repeat(16) { j ->
+                    val idx = block * 16 + j
+                    val ql = (qs[idx / 4].toInt() ushr ((idx % 4) * 2)) and 0x03
+                    val qh = (hmask[idx / 8].toInt() ushr (idx % 8)) and 0x01
+                    val q = ql or (qh shl 2)
+                    out[outOff + idx] = q * scale
+                }
+            }
+            outOff += blockSize
+        }
+        return out
+    }
+
+    private fun getScaleMinK4(j: Int, scales: ByteArray): Pair<Int, Int> {
+        return if (j < 4) {
+            val sc = scales[j].toInt() and 0x3F
+            val m = scales[j + 4].toInt() and 0x3F
+            sc to m
+        } else {
+            val sc = ((scales[j + 4].toInt() and 0x0F) or
+                     (((scales[j - 4].toInt() and 0xFF) shr 6) shl 4))
+            val m = (((scales[j + 4].toInt() and 0xFF) shr 4) or
+                    (((scales[j].toInt() and 0xFF) shr 6) shl 4))
+            sc to m
+        }
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ4KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 144
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            val dMin = halfToFloat(
+                (bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF)
+            )
+            offset += 4
+            val scales = bytes.copyOfRange(offset, offset + 12)
+            offset += 12
+            val qs = bytes.copyOfRange(offset, offset + 128)
+            offset += 128
+
+            var qOffset = 0
+            var scaleIdx = 0
+            repeat(4) {
+                val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
+                val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
+                val d1 = d * sc1
+                val min1 = dMin * m1
+                val d2 = d * sc2
+                val min2 = dMin * m2
+
+                for (l in 0 until 32) {
+                    val q = qs[qOffset + l].toInt() and 0x0F
+                    out[outOff++] = d1 * q - min1
+                }
+                for (l in 0 until 32) {
+                    val q = (qs[qOffset + l].toInt() and 0xFF) shr 4
+                    out[outOff++] = d2 * q - min2
+                }
+                qOffset += 32
+                scaleIdx += 2
+            }
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ5KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 176
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            val dMin = halfToFloat(
+                (bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF)
+            )
+            offset += 4
+            val scales = bytes.copyOfRange(offset, offset + 12)
+            offset += 12
+            val qh = bytes.copyOfRange(offset, offset + 32)
+            offset += 32
+            val qs = bytes.copyOfRange(offset, offset + 128)
+            offset += 128
+
+            var qOffset = 0
+            var scaleIdx = 0
+            var outIdx = 0
+            repeat(4) {
+                val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
+                val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
+                val d1 = d * sc1
+                val min1 = dMin * m1
+                val d2 = d * sc2
+                val min2 = dMin * m2
+
+                for (l in 0 until 32) {
+                    val idx = outIdx + l
+                    val qLow = qs[qOffset + l].toInt() and 0x0F
+                    val qHigh = ((qh[idx / 8].toInt() and 0xFF) shr (idx % 8)) and 0x01
+                    val q = qLow or (qHigh shl 4)
+                    out[outOff + idx] = d1 * q - min1
+                }
+                for (l in 0 until 32) {
+                    val idx = outIdx + 32 + l
+                    val qLow = ((qs[qOffset + l].toInt() and 0xFF) shr 4)
+                    val qHigh = ((qh[idx / 8].toInt() and 0xFF) shr (idx % 8)) and 0x01
+                    val q = qLow or (qHigh shl 4)
+                    out[outOff + idx] = d2 * q - min2
+                }
+                qOffset += 32
+                scaleIdx += 2
+                outIdx += 64
+            }
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ6KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 210
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val ql = bytes.copyOfRange(offset, offset + 128)
+            offset += 128
+            val qh = bytes.copyOfRange(offset, offset + 64)
+            offset += 64
+            val scales = bytes.copyOfRange(offset, offset + 16)
+            offset += 16
+            val d = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            offset += 2
+
+            repeat(2) { half ->
+                val qlBase = half * 64
+                val qhBase = half * 32
+                val scBase = half * 8
+
+                for (l in 0 until 32) {
+                    val isIdx = l / 16
+
+                    val q1Low = ql[qlBase + l].toInt() and 0x0F
+                    val q1High = (qh[qhBase + l].toInt() shr 0) and 0x03
+                    val q1 = (q1Low or (q1High shl 4)) - 32
+
+                    val q2Low = ql[qlBase + l + 32].toInt() and 0x0F
+                    val q2High = (qh[qhBase + l].toInt() shr 2) and 0x03
+                    val q2 = (q2Low or (q2High shl 4)) - 32
+
+                    val q3Low = (ql[qlBase + l].toInt() and 0xFF) shr 4
+                    val q3High = (qh[qhBase + l].toInt() shr 4) and 0x03
+                    val q3 = (q3Low or (q3High shl 4)) - 32
+
+                    val q4Low = (ql[qlBase + l + 32].toInt() and 0xFF) shr 4
+                    val q4High = (qh[qhBase + l].toInt() shr 6) and 0x03
+                    val q4 = (q4Low or (q4High shl 4)) - 32
+
+                    val sc1 = scales[scBase + isIdx + 0].toInt()
+                    val sc2 = scales[scBase + isIdx + 2].toInt()
+                    val sc3 = scales[scBase + isIdx + 4].toInt()
+                    val sc4 = scales[scBase + isIdx + 6].toInt()
+
+                    out[outOff + half * 128 + l + 0] = d * sc1 * q1
+                    out[outOff + half * 128 + l + 32] = d * sc2 * q2
+                    out[outOff + half * 128 + l + 64] = d * sc3 * q3
+                    out[outOff + half * 128 + l + 96] = d * sc4 * q4
+                }
+            }
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ8KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = QK_K
+        val bytesPerBlock = 292
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val dBits =
+                (bytes[offset + 3].toInt() and 0xFF shl 24) or
+                    (bytes[offset + 2].toInt() and 0xFF shl 16) or
+                    (bytes[offset + 1].toInt() and 0xFF shl 8) or
+                    (bytes[offset].toInt() and 0xFF)
+            val d = Float.fromBits(dBits)
+            offset += 4
+            repeat(blockSize) { j ->
+                out[outOff + j] = d * bytes[offset + j].toFloat()
+            }
+            offset += blockSize
+            offset += 32 // skip bsums
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantTQ2_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 256
+        val bytesPerBlock = 66
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+
+        repeat(blockCount) {
+            val qs = bytes.copyOfRange(offset, offset + 64)
+            offset += 64
+
+            val scale = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            offset += 2
+
+            for (i in 0 until 64) {
+                val b = qs[i].toInt() and 0xFF
+                val v0 = (b and 0x03) - 1
+                val v1 = ((b shr 2) and 0x03) - 1
+                val v2 = ((b shr 4) and 0x03) - 1
+                val v3 = ((b shr 6) and 0x03) - 1
+
+                out[outOff + i * 4 + 0] = v0 * scale
+                out[outOff + i * 4 + 1] = v1 * scale
+                out[outOff + i * 4 + 2] = v2 * scale
+                out[outOff + i * 4 + 3] = v3 * scale
+            }
+            outOff += blockSize
+        }
+        return out
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantTQ1_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 256
+        val bytesPerBlock = 54
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+
+        repeat(blockCount) {
+            val qsBase3 = bytes.copyOfRange(offset, offset + 48)
+            offset += 48
+
+            val qs2bit = bytes.copyOfRange(offset, offset + 4)
+            offset += 4
+
+            val scale = halfToFloat(
+                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+            )
+            offset += 2
+
+            var outIdx = 0
+            for (i in 0 until 48) {
+                var b = qsBase3[i].toInt() and 0xFF
+                repeat(5) {
+                    val v = (b % 3) - 1
+                    out[outOff + outIdx] = v * scale
+                    outIdx++
+                    b /= 3
+                }
+            }
+
+            for (i in 0 until 4) {
+                val b = qs2bit[i].toInt() and 0xFF
+                val v0 = (b and 0x03) - 1
+                val v1 = ((b shr 2) and 0x03) - 1
+                val v2 = ((b shr 4) and 0x03) - 1
+                val v3 = ((b shr 6) and 0x03) - 1
+
+                out[outOff + 240 + i * 4 + 0] = v0 * scale
+                out[outOff + 240 + i * 4 + 1] = v1 * scale
+                out[outOff + 240 + i * 4 + 2] = v2 * scale
+                out[outOff + 240 + i * 4 + 3] = v3 * scale
+            }
+
+            outOff += blockSize
+        }
+        return out
+    }
+
+    private fun typeName(value: Any?): String =
+        value?.let { it::class.simpleName ?: it::class.toString() } ?: "null"
+}

@@ -12,7 +12,7 @@ import sk.ainet.apps.kllama.MemSegWeightConverter
 import sk.ainet.apps.kllama.TokenizerUtils
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
 import kotlinx.io.buffered
@@ -268,7 +268,7 @@ fun main(args: Array<String>) {
                     ctx = ctx,
                     dtype = FP32::class,
                     config = LlamaLoadConfig(
-                        quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                        quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                         allowQuantized = true
                     )
                 )

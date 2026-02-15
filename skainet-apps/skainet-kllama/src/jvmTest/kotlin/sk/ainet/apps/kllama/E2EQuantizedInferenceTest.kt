@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.types.FP32
@@ -51,7 +51,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                    quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                     allowQuantized = true
                 )
             )
@@ -95,7 +95,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                    quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                     allowQuantized = true
                 )
             )
@@ -147,7 +147,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                    quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                     allowQuantized = true
                 )
             )
@@ -212,7 +212,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+                    quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
                     allowQuantized = true
                 )
             )

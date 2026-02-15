@@ -1,9 +1,8 @@
 package sk.ainet.apps.kgemma
 
-import kotlin.math.exp
 import kotlin.random.Random
+import sk.ainet.apps.llm.DecoderRuntime
 import sk.ainet.context.ExecutionContext
-import sk.ainet.io.gguf.gemma.Gemma3nLayerWeights
 import sk.ainet.io.gguf.gemma.Gemma3nRuntimeWeights
 import sk.ainet.lang.nn.layers.Embedding
 import sk.ainet.lang.tensor.Tensor
@@ -12,7 +11,6 @@ import sk.ainet.lang.tensor.plus
 import sk.ainet.lang.tensor.t
 import sk.ainet.lang.tensor.times
 import sk.ainet.lang.nn.normalization.RMSNormalization
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
 
@@ -25,9 +23,7 @@ import kotlin.reflect.KClass
  * - Hybrid attention (local sliding-window + global)
  * - Per-layer embeddings (optional)
  *
- * The attention strategy (CPU vs GPU) is injected via [AttentionBackend].
- * All other logic (embedding, norms, projections, FFN, sampling, generate loop)
- * is shared.
+ * Extends [DecoderRuntime] for shared forward/generate/sample logic.
  *
  * @param ctx ExecutionContext for tensor operations
  * @param weights Gemma 3n model weights
@@ -44,18 +40,19 @@ public class Gemma3nRuntime<T : DType>(
     private val dtype: KClass<T>,
     private val config: Gemma3nConfig,
     private val eps: Float = 1e-6f,
-    private val random: Random = Random.Default
-) {
+    random: Random = Random.Default
+) : DecoderRuntime<T>(random) {
 
     private companion object {
         const val BOS_TOKEN: Int = 2  // Gemma uses 2 as BOS
     }
 
-    private val dim = config.hiddenSize
-    private val seqLen = weights.metadata.contextLength
-    private val vocabSize = weights.metadata.vocabSize
-
-    private var position: Int = 0
+    // ---- DecoderRuntime abstract properties ----
+    override val dim: Int = config.hiddenSize
+    override val seqLen: Int = weights.metadata.contextLength
+    override val vocabSize: Int = weights.metadata.vocabSize
+    override val nLayers: Int = weights.layers.size
+    override val bosToken: Int = BOS_TOKEN
 
     private val embedding = Embedding(
         numEmbeddings = vocabSize,
@@ -64,7 +61,7 @@ public class Gemma3nRuntime<T : DType>(
         name = "token_embd"
     )
 
-    private val finalNorm = RMSNormalization<T, Float>(
+    private val finalNormLayer = RMSNormalization<T, Float>(
         normalizedShape = intArrayOf(dim),
         eps = eps.toDouble(),
         name = "final_norm",
@@ -92,73 +89,13 @@ public class Gemma3nRuntime<T : DType>(
     public val currentPosition: Int
         get() = position
 
-    public fun reset() {
-        attentionBackend.reset()
-        position = 0
-    }
+    // ---- DecoderRuntime template methods ----
 
-    /**
-     * Perform a single forward pass for one token.
-     *
-     * @param tokenId Input token ID
-     * @return Logits tensor [1, vocabSize]
-     */
-    public fun forward(tokenId: Int): Tensor<T, Float> {
-        require(position < seqLen) { "Context length exceeded: pos=$position seqLen=$seqLen" }
+    override fun embedToken(tokenId: Int): Tensor<T, Float> =
+        embedding.forward(intArrayOf(tokenId), ctx)
 
-        var x: Tensor<T, Float> = embedding.forward(intArrayOf(tokenId), ctx)
-
-        weights.layers.forEachIndexed { layerIdx, layer ->
-            x = runLayer(layerIdx, layer, x)
-        }
-
-        val norm = finalNorm.forward(x, ctx)
-        val logits = norm.matmul(weights.lmHead.t())
-
-        position++
-        return logits
-    }
-
-    /**
-     * Generate tokens autoregressively.
-     *
-     * @param prompt Initial prompt as token IDs
-     * @param steps Maximum number of tokens to generate
-     * @param temperature Sampling temperature (0 = greedy)
-     * @param onToken Callback for each generated token
-     */
-    public fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
-        require(steps > 0) { "steps must be > 0" }
-
-        val fullPrompt = if (prompt.isNotEmpty() && prompt[0] != BOS_TOKEN) {
-            intArrayOf(BOS_TOKEN) + prompt
-        } else if (prompt.isEmpty()) {
-            intArrayOf(BOS_TOKEN)
-        } else {
-            prompt
-        }
-
-        var token = fullPrompt[0]
-        var pos = 0
-        var generatedCount = 0
-        while (generatedCount < steps) {
-            val logits = forward(token)
-            val next = if (pos + 1 < fullPrompt.size) {
-                fullPrompt[pos + 1]
-            } else {
-                sample(logits, temperature)
-            }
-            if (pos + 1 >= fullPrompt.size) {
-                onToken(next)
-                generatedCount++
-            }
-            token = next
-            pos++
-        }
-    }
-
-    private fun runLayer(layerIdx: Int, layer: Gemma3nLayerWeights<T>, input: Tensor<T, Float>): Tensor<T, Float> {
-        var x = input
+    override fun runLayer(layerIdx: Int, x: Tensor<T, Float>): Tensor<T, Float> {
+        val layer = weights.layers[layerIdx]
 
         // Pre-attention normalization
         val attnNorm = inputLayernorms[layerIdx].forward(x, ctx)
@@ -185,6 +122,18 @@ public class Gemma3nRuntime<T : DType>(
         return afterAttn + ffnOut
     }
 
+    override fun outputNorm(x: Tensor<T, Float>): Tensor<T, Float> =
+        finalNormLayer.forward(x, ctx)
+
+    override fun outputProject(x: Tensor<T, Float>): Tensor<T, Float> =
+        x.matmul(weights.lmHead.t())
+
+    override fun resetState() {
+        attentionBackend.reset()
+    }
+
+    // ---- Gemma-specific: GELU activation ----
+
     /**
      * Apply GELU (Gaussian Error Linear Unit) activation.
      * Gemma uses GELU instead of SiLU.
@@ -194,7 +143,6 @@ public class Gemma3nRuntime<T : DType>(
         val out = FloatArray(buf.size)
 
         // GELU approximation: x * 0.5 * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
-        // Using the exact formulation for better accuracy
         val sqrtTwoPi = 0.7978845608028654f // sqrt(2/pi)
         val c = 0.044715f
 
@@ -207,52 +155,5 @@ public class Gemma3nRuntime<T : DType>(
         }
 
         return ctx.fromFloatArray(this.shape, dtype, out)
-    }
-
-    private fun sample(logits: Tensor<T, Float>, temperature: Float): Int {
-        val buf = logits.expectFloatBuffer()
-
-        if (temperature <= 1e-6f) {
-            // Greedy decoding
-            var best = 0
-            var bestVal = buf[0]
-            for (i in 1 until buf.size) {
-                if (buf[i] > bestVal) {
-                    bestVal = buf[i]
-                    best = i
-                }
-            }
-            return best
-        }
-
-        // Temperature sampling
-        val scaled = FloatArray(buf.size)
-        var maxLogit = Float.NEGATIVE_INFINITY
-        for (i in buf.indices) {
-            val v = buf[i] / temperature
-            scaled[i] = v
-            if (v > maxLogit) maxLogit = v
-        }
-
-        var sum = 0f
-        for (i in scaled.indices) {
-            val e = exp((scaled[i] - maxLogit).toDouble()).toFloat()
-            scaled[i] = e
-            sum += e
-        }
-
-        val r = random.nextFloat() * sum
-        var acc = 0f
-        for (i in scaled.indices) {
-            acc += scaled[i]
-            if (acc >= r) return i
-        }
-        return scaled.lastIndex
-    }
-
-    private fun Tensor<T, Float>.expectFloatBuffer(): FloatArray {
-        val data = this.data
-        if (data is FloatArrayTensorData<*>) return data.buffer
-        return data.copyToFloatArray()
     }
 }

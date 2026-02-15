@@ -16,7 +16,7 @@ import sk.ainet.apps.kllama.LlamaRuntimeInterface
 import sk.ainet.apps.kllama.Llama2DotCWeightLoader
 import sk.ainet.apps.kllama.TokenizerUtils
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -111,7 +111,7 @@ private suspend fun <T : DType> runInference(
             ctx = ctx,
             dtype = dtype,
             config = LlamaLoadConfig(
-                quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+                quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
                 allowQuantized = false
             )
         )

@@ -1,9 +1,8 @@
 package sk.ainet.apps.kllama
 
-import kotlin.math.exp
 import kotlin.random.Random
+import sk.ainet.apps.llm.DecoderRuntime
 import sk.ainet.context.ExecutionContext
-import sk.ainet.io.gguf.llama.LlamaLayerWeights
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
 import sk.ainet.lang.nn.layers.Embedding
 import sk.ainet.lang.tensor.Tensor
@@ -13,9 +12,7 @@ import sk.ainet.lang.tensor.silu
 import sk.ainet.lang.tensor.t
 import sk.ainet.lang.tensor.times
 import sk.ainet.lang.nn.normalization.RMSNormalization
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.DType
-import sk.ainet.lang.types.FP32
 import kotlin.reflect.KClass
 
 /**
@@ -24,6 +21,9 @@ import kotlin.reflect.KClass
  * The attention strategy (CPU vs GPU) is injected via [AttentionBackend].
  * All other logic (embedding, norms, projections, FFN, sampling, generate loop)
  * is shared.
+ *
+ * Extends [DecoderRuntime] for shared forward/generate/sample logic.
+ * Adds batch-prefill optimization for long prompts.
  *
  * @param ctx ExecutionContext for tensor operations
  * @param weights LLaMA model weights
@@ -37,9 +37,9 @@ public class LlamaRuntime<T : DType>(
     private val attentionBackend: AttentionBackend<T>,
     private val dtype: KClass<T>,
     private val eps: Float = 1e-5f,
-    private val random: Random = Random.Default,
+    random: Random = Random.Default,
     private val graphAccelerator: GraphAccelerator<T>? = null
-) : LlamaRuntimeInterface<T> {
+) : DecoderRuntime<T>(random), LlamaRuntimeInterface<T> {
 
     private companion object {
         const val BOS_TOKEN: Int = 1
@@ -69,11 +69,12 @@ public class LlamaRuntime<T : DType>(
     }
     private val outputWeightT: Tensor<T, Float> = weights.outputWeight.t()
 
-    private val dim = weights.metadata.embeddingLength
-    private val seqLen = weights.metadata.contextLength
-    private val vocabSize = weights.metadata.vocabSize
-
-    private var position: Int = 0
+    // ---- DecoderRuntime abstract properties ----
+    override val dim: Int = weights.metadata.embeddingLength
+    override val seqLen: Int = weights.metadata.contextLength
+    override val vocabSize: Int = weights.metadata.vocabSize
+    override val nLayers: Int = weights.layers.size
+    override val bosToken: Int = BOS_TOKEN
 
     private val embedding = Embedding(
         numEmbeddings = vocabSize,
@@ -82,7 +83,7 @@ public class LlamaRuntime<T : DType>(
         name = "token_embd"
     )
 
-    private val outputNorm = RMSNormalization<T, Float>(
+    private val outputNormLayer = RMSNormalization<T, Float>(
         normalizedShape = intArrayOf(dim),
         eps = eps.toDouble(),
         name = "output_norm",
@@ -110,25 +111,95 @@ public class LlamaRuntime<T : DType>(
     override val currentPosition: Int
         get() = position
 
-    override fun reset() {
-        attentionBackend.reset()
-        position = 0
-    }
+    // ---- DecoderRuntime template methods ----
 
-    override fun forward(tokenId: Int): Tensor<T, Float> {
-        require(position < seqLen) { "Context length exceeded: pos=$position seqLen=$seqLen" }
+    override fun embedToken(tokenId: Int): Tensor<T, Float> =
+        embedding.forward(intArrayOf(tokenId), ctx)
 
-        var x: Tensor<T, Float> = embedding.forward(intArrayOf(tokenId), ctx)
+    override fun runLayer(layerIdx: Int, x: Tensor<T, Float>): Tensor<T, Float> {
+        val tl = transposedLayers[layerIdx]
 
-        weights.layers.forEachIndexed { layerIdx, layer ->
-            x = runLayer(layerIdx, layer, x)
+        // QKV: try compiled graph first, fall back to individual ops
+        val (q, k, v) = graphAccelerator?.runQKV(layerIdx, x)?.let {
+            Triple(it.q, it.k, it.v)
+        } ?: run {
+            val attnNorm = attnNorms[layerIdx].forward(x, ctx)
+            Triple(
+                attnNorm.matmul(tl.wqT),
+                attnNorm.matmul(tl.wkT),
+                attnNorm.matmul(tl.wvT)
+            )
         }
 
-        val norm = outputNorm.forward(x, ctx)
-        val logits = norm.matmul(outputWeightT)
+        // Delegate attention (RoPE + KV cache + scoring) to backend
+        val attnOut = attentionBackend.attention(q, k, v, layerIdx, position)
 
-        position++
-        return logits
+        // Output projection + residual
+        val afterAttn = x + attnOut.matmul(tl.woT)
+
+        // FFN: try compiled graph first, fall back to individual ops
+        return graphAccelerator?.runFFN(layerIdx, afterAttn) ?: run {
+            val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
+            val gate = ffnNorm.matmul(tl.ffnGateT).silu()
+            val up = ffnNorm.matmul(tl.ffnUpT)
+            val ffnOut = (gate * up).matmul(tl.ffnDownT)
+            afterAttn + ffnOut
+        }
+    }
+
+    override fun outputNorm(x: Tensor<T, Float>): Tensor<T, Float> =
+        outputNormLayer.forward(x, ctx)
+
+    override fun outputProject(x: Tensor<T, Float>): Tensor<T, Float> =
+        x.matmul(outputWeightT)
+
+    override fun resetState() {
+        attentionBackend.reset()
+    }
+
+    // ---- LLaMA-specific batch optimization ----
+
+    /**
+     * Override generate to add batch-prefill optimization for long prompts.
+     */
+    override fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
+        require(steps > 0) { "steps must be > 0" }
+
+        val fullPrompt = if (prompt.isNotEmpty() && prompt[0] != bosToken) {
+            intArrayOf(bosToken) + prompt
+        } else if (prompt.isEmpty()) {
+            intArrayOf(bosToken)
+        } else {
+            prompt
+        }
+
+        // Phase 1: Batch-process prompt tokens in chunks (only for longer prompts)
+        val batchChunkSize = 256
+
+        if (fullPrompt.size > batchChunkSize) {
+            // Process all prompt tokens except the last one in batches
+            val promptTokens = fullPrompt.sliceArray(0 until fullPrompt.size - 1)
+            var promptPos = 0
+            while (promptPos < promptTokens.size) {
+                val chunkEnd = minOf(promptPos + batchChunkSize, promptTokens.size)
+                val chunk = promptTokens.sliceArray(promptPos until chunkEnd)
+                batchForward(chunk, promptPos)
+                promptPos = chunkEnd
+            }
+            // Phase 2: Auto-regressive generation starting from last prompt token
+            var token = fullPrompt[fullPrompt.size - 1]
+            var generatedCount = 0
+            while (generatedCount < steps) {
+                val logits = forward(token)
+                val next = sample(logits, temperature)
+                onToken(next)
+                generatedCount++
+                token = next
+            }
+        } else {
+            // Short prompts: use the base class sequential path
+            super.generate(fullPrompt, steps, temperature, onToken)
+        }
     }
 
     /**
@@ -182,7 +253,7 @@ public class LlamaRuntime<T : DType>(
             x = afterAttn + ffnOut
         }
 
-        val norm = outputNorm.forward(x, ctx)
+        val norm = outputNormLayer.forward(x, ctx)
         val logits = norm.matmul(outputWeightT)
         position = startPos + tokenIds.size
         return logits
@@ -195,138 +266,5 @@ public class LlamaRuntime<T : DType>(
             logits = forward(tokenId)
         }
         return logits!!
-    }
-
-    override fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
-        require(steps > 0) { "steps must be > 0" }
-
-        val fullPrompt = if (prompt.isNotEmpty() && prompt[0] != BOS_TOKEN) {
-            intArrayOf(BOS_TOKEN) + prompt
-        } else if (prompt.isEmpty()) {
-            intArrayOf(BOS_TOKEN)
-        } else {
-            prompt
-        }
-
-        // Phase 1: Batch-process prompt tokens in chunks (only for longer prompts)
-        val batchChunkSize = 256
-
-        if (fullPrompt.size > batchChunkSize) {
-            // Process all prompt tokens except the last one in batches
-            val promptTokens = fullPrompt.sliceArray(0 until fullPrompt.size - 1)
-            var promptPos = 0
-            while (promptPos < promptTokens.size) {
-                val chunkEnd = minOf(promptPos + batchChunkSize, promptTokens.size)
-                val chunk = promptTokens.sliceArray(promptPos until chunkEnd)
-                batchForward(chunk, promptPos)
-                promptPos = chunkEnd
-            }
-            // Phase 2: Auto-regressive generation starting from last prompt token
-            var token = fullPrompt[fullPrompt.size - 1]
-            var pos = fullPrompt.size - 1
-            var generatedCount = 0
-            while (generatedCount < steps) {
-                val logits = forward(token)
-                val next = sample(logits, temperature)
-                onToken(next)
-                generatedCount++
-                token = next
-                pos++
-            }
-        } else {
-            // Original sequential path for short prompts
-            var token = fullPrompt[0]
-            var pos = 0
-            var generatedCount = 0
-            while (generatedCount < steps) {
-                val logits = forward(token)
-                val next = if (pos + 1 < fullPrompt.size) {
-                    fullPrompt[pos + 1]
-                } else {
-                    sample(logits, temperature)
-                }
-                if (pos + 1 >= fullPrompt.size) {
-                    onToken(next)
-                    generatedCount++
-                }
-                token = next
-                pos++
-            }
-        }
-    }
-
-    private fun runLayer(layerIdx: Int, layer: LlamaLayerWeights<T>, input: Tensor<T, Float>): Tensor<T, Float> {
-        val x = input
-        val tl = transposedLayers[layerIdx]
-
-        // QKV: try compiled graph first, fall back to individual ops
-        val (q, k, v) = graphAccelerator?.runQKV(layerIdx, x)?.let {
-            Triple(it.q, it.k, it.v)
-        } ?: run {
-            val attnNorm = attnNorms[layerIdx].forward(x, ctx)
-            Triple(
-                attnNorm.matmul(tl.wqT),
-                attnNorm.matmul(tl.wkT),
-                attnNorm.matmul(tl.wvT)
-            )
-        }
-
-        // Delegate attention (RoPE + KV cache + scoring) to backend
-        val attnOut = attentionBackend.attention(q, k, v, layerIdx, position)
-
-        // Output projection + residual
-        val afterAttn = x + attnOut.matmul(tl.woT)
-
-        // FFN: try compiled graph first, fall back to individual ops
-        return graphAccelerator?.runFFN(layerIdx, afterAttn) ?: run {
-            val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
-            val gate = ffnNorm.matmul(tl.ffnGateT).silu()
-            val up = ffnNorm.matmul(tl.ffnUpT)
-            val ffnOut = (gate * up).matmul(tl.ffnDownT)
-            afterAttn + ffnOut
-        }
-    }
-
-    private fun sample(logits: Tensor<T, Float>, temperature: Float): Int {
-        val buf = logits.expectFloatBuffer()
-
-        if (temperature <= 1e-6f) {
-            var best = 0
-            var bestVal = buf[0]
-            for (i in 1 until buf.size) {
-                if (buf[i] > bestVal) {
-                    bestVal = buf[i]
-                    best = i
-                }
-            }
-            return best
-        }
-
-        val scaled = FloatArray(buf.size)
-        var maxLogit = Float.NEGATIVE_INFINITY
-        for (i in buf.indices) {
-            val v = buf[i] / temperature
-            scaled[i] = v
-            if (v > maxLogit) maxLogit = v
-        }
-        var sum = 0f
-        for (i in scaled.indices) {
-            val e = exp((scaled[i] - maxLogit).toDouble()).toFloat()
-            scaled[i] = e
-            sum += e
-        }
-        val r = random.nextFloat() * sum
-        var acc = 0f
-        for (i in scaled.indices) {
-            acc += scaled[i]
-            if (acc >= r) return i
-        }
-        return scaled.lastIndex
-    }
-
-    private fun Tensor<T, Float>.expectFloatBuffer(): FloatArray {
-        val data = this.data
-        if (data is FloatArrayTensorData<*>) return data.buffer
-        return data.copyToFloatArray()
     }
 }

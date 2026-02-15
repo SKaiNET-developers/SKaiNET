@@ -1,6 +1,7 @@
 package sk.ainet.io.gguf.gemma
 
 import sk.ainet.context.ExecutionContext
+import sk.ainet.io.gguf.dequant.DequantOps
 import sk.ainet.io.safetensors.ShardedTensorInfo
 import sk.ainet.io.safetensors.StreamingShardedSafeTensorsReader
 import sk.ainet.io.safetensors.readTextFile
@@ -8,7 +9,6 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
-import kotlin.math.pow
 import kotlin.reflect.KClass
 
 /**
@@ -220,74 +220,11 @@ public class Gemma3nSafeTensorsWeightLoader(
         }
     }
 
-    // ========== Byte Conversion Helpers ==========
+    // ========== Byte Conversion Helpers (delegating to DequantOps) ==========
 
-    private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
-        val out = FloatArray(bytes.size / 4)
-        var i = 0
-        var o = 0
-        while (i < bytes.size) {
-            val bits = (bytes[i].toInt() and 0xFF) or
-                    ((bytes[i + 1].toInt() and 0xFF) shl 8) or
-                    ((bytes[i + 2].toInt() and 0xFF) shl 16) or
-                    ((bytes[i + 3].toInt() and 0xFF) shl 24)
-            out[o] = Float.fromBits(bits)
-            i += 4
-            o++
-        }
-        return out
-    }
-
-    private fun dequantF16FromBytes(bytes: ByteArray): FloatArray {
-        val out = FloatArray(bytes.size / 2)
-        var i = 0
-        var o = 0
-        while (i < bytes.size) {
-            val b0 = bytes[i].toInt() and 0xFF
-            val b1 = bytes[i + 1].toInt() and 0xFF
-            val half = (b1 shl 8) or b0
-            out[o] = halfToFloat(half)
-            i += 2
-            o++
-        }
-        return out
-    }
-
-    private fun dequantBF16FromBytes(bytes: ByteArray): FloatArray {
-        val out = FloatArray(bytes.size / 2)
-        var i = 0
-        var o = 0
-        while (i < bytes.size) {
-            val b0 = bytes[i].toInt() and 0xFF
-            val b1 = bytes[i + 1].toInt() and 0xFF
-            // BF16: upper 16 bits of float32
-            val bits = (b1 shl 24) or (b0 shl 16)
-            out[o] = Float.fromBits(bits)
-            i += 2
-            o++
-        }
-        return out
-    }
-
-    private fun halfToFloat(hbits: Int): Float {
-        val mant = hbits and 0x03FF
-        val exp = hbits and 0x7C00
-        val sign = hbits and 0x8000
-        return when (exp) {
-            0 -> {
-                val v = (mant.toFloat() / 1024.0f) * (2.0f).pow(-14)
-                if (sign != 0) -v else v
-            }
-            0x7C00 -> {
-                val v = if (mant == 0) Float.POSITIVE_INFINITY else Float.NaN
-                if (sign != 0) -v else v
-            }
-            else -> {
-                val v = (1.0f + mant.toFloat() / 1024.0f) * (2.0f).pow((exp shr 10) - 15)
-                if (sign != 0) -v else v
-            }
-        }
-    }
+    private fun bytesToFloatArray(bytes: ByteArray): FloatArray = DequantOps.bytesToFloatArray(bytes)
+    private fun dequantF16FromBytes(bytes: ByteArray): FloatArray = DequantOps.dequantF16FromBytes(bytes)
+    private fun dequantBF16FromBytes(bytes: ByteArray): FloatArray = DequantOps.dequantBF16FromBytes(bytes)
 
     private fun transposeRowMajor(data: FloatArray, rows: Int, cols: Int): FloatArray {
         val out = FloatArray(data.size)

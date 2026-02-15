@@ -38,6 +38,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":skainet-lang:skainet-lang-core"))
         }
 
         commonTest.dependencies {

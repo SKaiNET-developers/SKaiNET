@@ -5,7 +5,7 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaModelMetadata
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeightsStreaming
 import sk.ainet.lang.types.DType
@@ -16,7 +16,7 @@ import kotlin.reflect.KClass
  * Default policy dequantizes to FP32 to ensure parity before quant-aware kernels are wired.
  */
 public data class LlamaLoadConfig(
-    val quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+    val quantPolicy: QuantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
     val allowQuantized: Boolean = false
 )
 
