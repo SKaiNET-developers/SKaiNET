@@ -253,9 +253,14 @@ fun main(args: Array<String>) {
 
         if (!modelPath.exists()) error("Model not found: $modelPath")
 
-        val arena = Arena.ofShared()
+        val quantArena = Arena.ofShared()
         val memSegFactory = MemorySegmentTensorDataFactory()
         val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
+
+        Runtime.getRuntime().addShutdownHook(Thread {
+            quantArena.close()
+            memSegFactory.close()
+        })
 
         val runtimeWeights = when (format) {
             ModelFormat.GGUF -> {
@@ -273,7 +278,7 @@ fun main(args: Array<String>) {
                 }
                 if (rawWeights.quantTypes.isNotEmpty()) {
                     println("Converting ${rawWeights.quantTypes.size} quantized tensors to MemorySegment-backed SIMD format...")
-                    MemSegWeightConverter.convert(rawWeights, ctx, arena)
+                    MemSegWeightConverter.convert(rawWeights, ctx, quantArena)
                 } else {
                     rawWeights
                 }
