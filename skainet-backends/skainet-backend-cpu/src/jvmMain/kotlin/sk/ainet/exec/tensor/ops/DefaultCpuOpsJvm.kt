@@ -10,8 +10,10 @@ import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.MemorySegmentBackedData
 import sk.ainet.lang.tensor.data.MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
+import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
+import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
@@ -53,6 +55,48 @@ internal class DefaultCpuOpsJvm(
         // Fallback to standard FP32 matmul
         chooseMatmul(a, b)?.let { return it }
         return super.matmul(a, b)
+    }
+
+    override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
+        val rank = tensor.shape.rank
+        if (rank == 2) {
+            val rows = tensor.shape[0]
+            val cols = tensor.shape[1]
+            val data = tensor.data
+            // Lazy transpose for Q4/Q8 MemorySegment data: swap shape, keep data.
+            // The quantized matmul kernel accesses the segment directly with
+            // (inputDim, outputDim) parameters derived from the transposed shape,
+            // so physical data reordering is not needed.
+            if (data is Q4MemorySegmentMarker) {
+                val td = data as Q4MemorySegmentTensorData
+                val transposed = Q4MemorySegmentTensorData(Shape(cols, rows), td.segment, td.segmentByteOffset)
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
+            }
+            if (data is Q8MemorySegmentMarker) {
+                val td = data as Q8MemorySegmentTensorData
+                val transposed = Q8MemorySegmentTensorData(Shape(cols, rows), td.segment, td.segmentByteOffset)
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
+            }
+            // MemorySegment FP32 fast path: physical transpose via SIMD
+            if (data is MemorySegmentBackedData) {
+                val arena = Arena.ofConfined()
+                val result = MemorySegmentTensorData<T>(Shape(cols, rows), arena)
+                val src = data as MemorySegmentBackedData
+                val srcOff = src.segmentByteOffset
+                val dstOff = result.segmentByteOffset
+                for (r in 0 until rows) {
+                    for (c in 0 until cols) {
+                        val v = src.segment.get(java.lang.foreign.ValueLayout.JAVA_FLOAT, srcOff + (r.toLong() * cols + c) * 4)
+                        result.segment.set(java.lang.foreign.ValueLayout.JAVA_FLOAT, dstOff + (c.toLong() * rows + r) * 4, v)
+                    }
+                }
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(result as TensorData<T, V>, tensor.dtype, tensor)
+            }
+        }
+        return super.transpose(tensor)
     }
 
     override fun <T : DType, V> conv2d(
