@@ -62,7 +62,9 @@ public object MemSegWeightConverter {
         }
 
         return weights.copy(
-            tokenEmbedding = maybeConvert(
+            // Token embedding is used by Embedding layer (row gather, not matmul)
+            // so it must be dequantized to float rather than kept as packed Q4/Q8.
+            tokenEmbedding = maybeDequantize(
                 weights.tokenEmbedding, LlamaTensorNames.TOKEN_EMBEDDINGS,
                 Shape(meta.vocabSize, dim), qt, ctx, arena
             ),
@@ -99,6 +101,41 @@ public object MemSegWeightConverter {
 
         @Suppress("UNCHECKED_CAST")
         return ctx.fromData(newData as TensorData<FP32, Float>, FP32::class)
+    }
+
+    /**
+     * Dequantize a quantized tensor to float. Used for tensors that need
+     * element-level access (e.g., embedding lookup) rather than matmul.
+     */
+    private fun maybeDequantize(
+        tensor: Tensor<FP32, Float>,
+        tensorName: String,
+        logicalShape: Shape,
+        quantTypes: Map<String, GGMLQuantizationType>,
+        ctx: ExecutionContext,
+        arena: Arena
+    ): Tensor<FP32, Float> {
+        val quantType = quantTypes[tensorName] ?: return tensor
+
+        val bytes = extractBytes(tensor.data)
+
+        // Convert to Q4/Q8 MemorySegment first, then dequantize to float array
+        val floats: FloatArray = when (quantType) {
+            GGMLQuantizationType.Q4_0 -> {
+                val q4 = Q4MemorySegmentTensorData.fromRawBytes(logicalShape, bytes, arena)
+                q4.copyToFloatArray()
+            }
+            GGMLQuantizationType.Q8_0 -> {
+                val q8 = Q8MemorySegmentTensorData.fromRawBytes(logicalShape, bytes, arena)
+                q8.copyToFloatArray()
+            }
+            else -> {
+                println("WARNING: Cannot dequantize $quantType for $tensorName, keeping as-is")
+                return tensor
+            }
+        }
+
+        return ctx.fromFloatArray(logicalShape, FP32::class, floats)
     }
 
     private fun extractBytes(data: TensorData<*, *>): ByteArray {

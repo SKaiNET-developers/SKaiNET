@@ -400,7 +400,7 @@ internal object JvmQuantizedVectorKernels {
             var acc = 0f
             for (blockIdx in 0 until blocksPerRow) {
                 val blockOff = weightByteOffset +
-                    (blockIdx.toLong() * outputDim + o) * bytesPerBlock
+                    (o.toLong() * blocksPerRow + blockIdx) * bytesPerBlock
                 val inputStart = blockIdx * blockSize
                 acc += dotQ4_0BlockMemSeg(input, inputStart, weightSeg, blockOff)
             }
@@ -432,7 +432,7 @@ internal object JvmQuantizedVectorKernels {
 
             for (blockIdx in 0 until blocksPerRow) {
                 val blockOff = weightByteOffset +
-                    (blockIdx.toLong() * outputDim + o) * bytesPerBlock
+                    (o.toLong() * blocksPerRow + blockIdx) * bytesPerBlock
 
                 // Read f16 d and dMin
                 val dBits = (weightSeg.get(JAVA_BYTE_LE, blockOff + 1).toInt() and 0xFF shl 8) or
@@ -543,7 +543,7 @@ internal object JvmQuantizedVectorKernels {
 
             for (blockIdx in 0 until blocksPerRow) {
                 val blockOff = weightByteOffset +
-                    (blockIdx.toLong() * outputDim + o) * bytesPerBlock
+                    (o.toLong() * blocksPerRow + blockIdx) * bytesPerBlock
 
                 val b0 = weightSeg.get(JAVA_BYTE_LE, blockOff).toInt() and 0xFF
                 val b1 = weightSeg.get(JAVA_BYTE_LE, blockOff + 1).toInt() and 0xFF

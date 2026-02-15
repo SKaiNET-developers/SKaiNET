@@ -1026,7 +1026,14 @@ public class LlamaWeightLoader private constructor(
                 validateStreamingTensorShape(name, st, metadata)
                 val tensor: Tensor<T, V> = streamingTensorToTensor(ctx, dtype, reader, st)
                 onTensorLoaded(name, tensor)
-                if ((quantPolicy == QuantPolicy.RAW_BYTES || quantPolicy == QuantPolicy.NATIVE_OPTIMIZED) && st.tensorType != GGMLQuantizationType.F32) {
+                val isRawQuant = when (quantPolicy) {
+                    QuantPolicy.RAW_BYTES -> st.tensorType != GGMLQuantizationType.F32
+                    QuantPolicy.NATIVE_OPTIMIZED -> st.tensorType != GGMLQuantizationType.F32
+                        && st.tensorType != GGMLQuantizationType.F16
+                        && st.tensorType != GGMLQuantizationType.BF16
+                    QuantPolicy.DEQUANTIZE_TO_FP32 -> false
+                }
+                if (isRawQuant) {
                     quantCallback?.invoke(name, st.tensorType)
                 }
             }
