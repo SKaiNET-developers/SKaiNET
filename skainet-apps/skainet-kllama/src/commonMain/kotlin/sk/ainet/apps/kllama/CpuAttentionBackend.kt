@@ -45,6 +45,9 @@ public class CpuAttentionBackend<T : DType>(
 
     private val cache: KvCache = kvCache ?: HeapKvCache(nLayers, seqLen, kvDim)
 
+    /** Pre-allocated score buffer reused across heads/tokens to avoid per-head allocation. */
+    private val scoreBuffer = FloatArray(seqLen)
+
     override fun attention(
         q: Tensor<T, Float>,
         k: Tensor<T, Float>,
@@ -61,6 +64,40 @@ public class CpuAttentionBackend<T : DType>(
 
         val attnOutRaw = attentionGqa(layerIdx, qBuf, position)
         return ctx.fromFloatArray<T, Float>(Shape(1, dim), dtype, attnOutRaw)
+    }
+
+    override fun batchAttention(
+        q: Tensor<T, Float>,
+        k: Tensor<T, Float>,
+        v: Tensor<T, Float>,
+        layerIdx: Int,
+        startPos: Int,
+    ): Tensor<T, Float> {
+        val batchSize = q.shape[0]
+        val qAll = q.expectFloatBuffer()
+        val kAll = k.expectFloatBuffer()
+        val vAll = v.expectFloatBuffer()
+
+        val result = FloatArray(batchSize * dim)
+
+        for (i in 0 until batchSize) {
+            val pos = startPos + i
+
+            // Extract per-token slices
+            val qBuf = qAll.copyOfRange(i * dim, (i + 1) * dim)
+            val kBuf = kAll.copyOfRange(i * kvDim, (i + 1) * kvDim)
+            val vBuf = vAll.copyOfRange(i * kvDim, (i + 1) * kvDim)
+
+            // RoPE + KV cache store
+            applyRopeGqa(qBuf, kBuf, pos)
+            cache.store(layerIdx, pos, kBuf, 0, vBuf, 0)
+
+            // Attention with causal mask (attend to 0..pos)
+            val attnOut = attentionGqa(layerIdx, qBuf, pos)
+            attnOut.copyInto(result, i * dim)
+        }
+
+        return ctx.fromFloatArray<T, Float>(Shape(batchSize, dim), dtype, result)
     }
 
     override fun reset() {
@@ -121,12 +158,12 @@ public class CpuAttentionBackend<T : DType>(
     private fun attentionGqa(layerIdx: Int, qBuf: FloatArray, pos: Int): FloatArray {
         val out = FloatArray(dim)
         val scale = 1f / sqrt(headSize.toDouble()).toFloat()
+        val scores = scoreBuffer // reuse pre-allocated buffer
 
         for (h in 0 until nHeads) {
             val qHeadOffset = h * headSize
             val kvHeadIdx = h / nHeadsPerKv
             val kvHeadOffset = kvHeadIdx * headSize
-            val scores = FloatArray(pos + 1)
 
             for (t in 0..pos) {
                 var score = 0f
@@ -136,7 +173,7 @@ public class CpuAttentionBackend<T : DType>(
                 scores[t] = score * scale
             }
 
-            softmaxInPlace(scores)
+            softmaxInPlace(scores, pos + 1)
 
             for (t in 0..pos) {
                 val weight = scores[t]
@@ -148,18 +185,21 @@ public class CpuAttentionBackend<T : DType>(
         return out
     }
 
-    private fun softmaxInPlace(values: FloatArray) {
-        var maxVal = values.fold(Float.NEGATIVE_INFINITY) { acc, v -> max(acc, v) }
+    private fun softmaxInPlace(values: FloatArray, length: Int) {
+        var maxVal = Float.NEGATIVE_INFINITY
+        for (i in 0 until length) {
+            if (values[i] > maxVal) maxVal = values[i]
+        }
         if (maxVal.isInfinite()) maxVal = 0f
         var sum = 0f
-        for (i in values.indices) {
+        for (i in 0 until length) {
             val e = exp((values[i] - maxVal).toDouble()).toFloat()
             values[i] = e
             sum += e
         }
         if (sum == 0f) return
         val inv = 1f / sum
-        for (i in values.indices) {
+        for (i in 0 until length) {
             values[i] *= inv
         }
     }

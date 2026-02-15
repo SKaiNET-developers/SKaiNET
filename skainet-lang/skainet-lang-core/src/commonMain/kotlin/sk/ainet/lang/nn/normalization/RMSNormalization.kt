@@ -11,6 +11,24 @@ import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
 
 /**
+ * Optional interface that [TensorOps] implementations can provide to support
+ * fused RMS normalization without intermediate tensor allocations.
+ */
+public interface FusedRmsNormOps {
+    /**
+     * Compute fused RMS normalization:
+     *   output[i] = (input[i] / rms(input)) * weight[i]
+     *
+     * @return result tensor, or `null` if this implementation cannot handle the input
+     */
+    public fun <T : DType, V> fusedRmsNorm(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        eps: Float,
+    ): Tensor<T, V>?
+}
+
+/**
  * RMS (Root Mean Square) Normalization layer.
  * Unlike LayerNormalization, RMSNorm has no bias and normalizes using only the
  * root mean square of the input, making it simpler and faster.
@@ -50,11 +68,20 @@ public class RMSNormalization<T : DType, V>(
 
     override fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> =
         sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
+            // Try fused path if the ops backend supports it
+            val w = params[0].value
+            val fusedOps = ctx.ops as? FusedRmsNormOps
+            if (fusedOps != null) {
+                val result = fusedOps.fusedRmsNorm(input, w, eps.toFloat())
+                if (result != null) return@withForwardHooks result
+            }
+            // Fallback: decomposed path
             val squared = input * input
             val mean = squared.mean(dim = input.rank - 1)
-            val rms = (mean + eps).sqrt()
+            // Unsqueeze so broadcasting works for batched input (e.g. [B, dim] / [B, 1])
+            val rmsRaw = (mean + eps).sqrt()
+            val rms = if (rmsRaw.rank < input.rank) rmsRaw.unsqueeze(rmsRaw.rank) else rmsRaw
             val normalized = input / rms
-            val w = params[0].value
             val weight = if (w.rank == 1) w.reshape(Shape(1, w.shape[0])) else w
             normalized * weight
         }

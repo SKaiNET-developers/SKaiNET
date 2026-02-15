@@ -8,14 +8,17 @@ import sk.ainet.apps.llm.Tokenizer
 import sk.ainet.apps.kllama.LlamaRuntime
 import sk.ainet.apps.kllama.CpuAttentionBackend
 import sk.ainet.apps.kllama.Llama2DotCWeightLoader
+import sk.ainet.apps.kllama.MemSegWeightConverter
 import sk.ainet.apps.kllama.TokenizerUtils
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
 import kotlinx.io.buffered
 import kotlinx.io.asSource
 import kotlin.io.path.inputStream
+import java.lang.foreign.Arena
 import java.nio.file.Path
 import java.nio.file.Files
 import kotlin.io.path.exists
@@ -250,7 +253,14 @@ fun main(args: Array<String>) {
 
         if (!modelPath.exists()) error("Model not found: $modelPath")
 
-        val ctx = DirectCpuExecutionContext()
+        val quantArena = Arena.ofShared()
+        val memSegFactory = MemorySegmentTensorDataFactory()
+        val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
+
+        Runtime.getRuntime().addShutdownHook(Thread {
+            quantArena.close()
+            memSegFactory.close()
+        })
 
         val runtimeWeights = when (format) {
             ModelFormat.GGUF -> {
@@ -258,13 +268,19 @@ fun main(args: Array<String>) {
                     ctx = ctx,
                     dtype = FP32::class,
                     config = LlamaLoadConfig(
-                        quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
-                        allowQuantized = false
+                        quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                        allowQuantized = true
                     )
                 )
                 println("Loading GGUF model from $modelPath (streaming mode)...")
-                ingestion.loadStreaming {
+                val rawWeights = ingestion.loadStreaming {
                     JvmRandomAccessSource.open(modelPath.toString())
+                }
+                if (rawWeights.quantTypes.isNotEmpty()) {
+                    println("Converting ${rawWeights.quantTypes.size} quantized tensors to MemorySegment-backed SIMD format...")
+                    MemSegWeightConverter.convert(rawWeights, ctx, quantArena)
+                } else {
+                    rawWeights
                 }
             }
             ModelFormat.SAFETENSORS -> {

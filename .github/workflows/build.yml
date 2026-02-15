@@ -5,7 +5,7 @@ on: [ push, pull_request ]
 jobs:
   build-job:
     runs-on: ubuntu-latest # enables hardware acceleration in the virtual machine
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout

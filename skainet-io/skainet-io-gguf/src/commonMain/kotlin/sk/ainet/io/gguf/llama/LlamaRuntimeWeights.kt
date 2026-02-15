@@ -139,7 +139,8 @@ public object LlamaWeightMapper {
             ropeFreqImag = ropeImag,
             layers = layers,
             outputNorm = outputNorm,
-            outputWeight = outputWeight
+            outputWeight = outputWeight,
+            quantTypes = weights.quantTypes
         )
     }
 }

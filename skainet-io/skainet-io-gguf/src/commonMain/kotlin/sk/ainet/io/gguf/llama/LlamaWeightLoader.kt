@@ -109,7 +109,18 @@ public class LlamaWeightLoader private constructor(
          * Dequantize to FP32 on load. Currently unsupported; use RAW_BYTES until a dequant path
          * is implemented.
          */
-        DEQUANTIZE_TO_FP32
+        DEQUANTIZE_TO_FP32,
+
+        /**
+         * Mixed mode: dequantize F32/F16/BF16 tensors to FP32, but keep quantized
+         * weight tensors (Q4_0, Q8_0, etc.) as raw bytes for native kernel consumption.
+         *
+         * This allows loading with dtype=FP32 while preserving quantized weights
+         * for platform-specific optimized kernels (e.g. MemorySegment-backed SIMD).
+         * The quantized tensors are stored as raw byte arrays with shapes matching
+         * the GGUF layout, and recorded in [LlamaWeights.quantTypes].
+         */
+        NATIVE_OPTIMIZED
     }
 
     public companion object Dequant {
@@ -963,7 +974,7 @@ public class LlamaWeightLoader private constructor(
             validateTensorShape(name, rt, metadata)
             val tensor: Tensor<T, V> = readerTensorToTensor(ctx, dtype, reader, rt)
             onTensorLoaded(name, tensor)
-            if (quantPolicy == QuantPolicy.RAW_BYTES && rt.tensorType != GGMLQuantizationType.F32) {
+            if ((quantPolicy == QuantPolicy.RAW_BYTES || quantPolicy == QuantPolicy.NATIVE_OPTIMIZED) && rt.tensorType != GGMLQuantizationType.F32) {
                 quantCallback?.invoke(name, rt.tensorType)
             }
         }
@@ -1015,7 +1026,14 @@ public class LlamaWeightLoader private constructor(
                 validateStreamingTensorShape(name, st, metadata)
                 val tensor: Tensor<T, V> = streamingTensorToTensor(ctx, dtype, reader, st)
                 onTensorLoaded(name, tensor)
-                if (quantPolicy == QuantPolicy.RAW_BYTES && st.tensorType != GGMLQuantizationType.F32) {
+                val isRawQuant = when (quantPolicy) {
+                    QuantPolicy.RAW_BYTES -> st.tensorType != GGMLQuantizationType.F32
+                    QuantPolicy.NATIVE_OPTIMIZED -> st.tensorType != GGMLQuantizationType.F32
+                        && st.tensorType != GGMLQuantizationType.F16
+                        && st.tensorType != GGMLQuantizationType.BF16
+                    QuantPolicy.DEQUANTIZE_TO_FP32 -> false
+                }
+                if (isRawQuant) {
                     quantCallback?.invoke(name, st.tensorType)
                 }
             }
@@ -1188,7 +1206,8 @@ public class LlamaWeightLoader private constructor(
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
 
-                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                    QuantPolicy.DEQUANTIZE_TO_FP32,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         require(dtype == FP32::class || dtype == FP16::class) {
                             "Dequantizing ${st.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
                         }
@@ -1230,6 +1249,16 @@ public class LlamaWeightLoader private constructor(
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
 
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
+                        // Store raw quantized bytes; dtype can be FP32 (mixed mode).
+                        // Streaming reader preserves logical shape, so use byte-level shape.
+                        // The tensor is technically mistyped but works via erasure;
+                        // matmul dispatch inspects the actual TensorData type at runtime.
+                        val byteShape = Shape(bytes.size)
+                        @Suppress("UNCHECKED_CAST")
+                        ctx.fromByteArray<Int8, Byte>(byteShape, Int8::class, bytes) as Tensor<T, V>
+                    }
+
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
                         require(dtype == FP32::class || dtype == FP16::class) {
                             "Dequantizing ${st.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
@@ -1250,12 +1279,11 @@ public class LlamaWeightLoader private constructor(
                         }
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
-                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                    QuantPolicy.DEQUANTIZE_TO_FP32,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         // Cannot dequantize unknown type - fall back to raw bytes with warning
                         println("WARNING: Cannot dequantize unknown type (raw: ${st.rawTypeValue}) for '${st.name}'. Falling back to raw bytes.")
-                        require(dtype == Int8::class) {
-                            "Unknown tensor type cannot be dequantized. Use dtype Int8 or add support for type ${st.rawTypeValue}"
-                        }
+                        @Suppress("UNCHECKED_CAST")
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
                 }
@@ -1264,9 +1292,7 @@ public class LlamaWeightLoader private constructor(
             else -> {
                 // Fallback for any other unhandled types (shouldn't normally reach here)
                 println("WARNING: Unhandled tensor type ${st.tensorType} for '${st.name}'. Storing as raw bytes.")
-                require(dtype == Int8::class) {
-                    "Unhandled tensor type ${st.tensorType} requires dtype Int8"
-                }
+                @Suppress("UNCHECKED_CAST")
                 ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
             }
         }
@@ -1609,7 +1635,8 @@ public class LlamaWeightLoader private constructor(
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
 
-                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                    QuantPolicy.DEQUANTIZE_TO_FP32,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         require(dtype == FP32::class || dtype == FP16::class) {
                             "Dequantizing ${rt.tensorType} requires dtype FP32 or FP16; got ${dtype.simpleName}"
                         }
@@ -1649,6 +1676,16 @@ public class LlamaWeightLoader private constructor(
                         require(dtype == Int8::class) {
                             "Quantized tensor ${rt.name} requires dtype Int8 with quantPolicy=RAW_BYTES; got ${dtype.simpleName}"
                         }
+                        val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
+                        val bytes: ByteArray = toByteArray(raw, rt.name)
+                        @Suppress("UNCHECKED_CAST")
+                        ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
+                    }
+
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
+                        // Store raw quantized bytes; dtype can be FP32 (mixed mode).
+                        // The tensor is technically mistyped but works via erasure;
+                        // matmul dispatch inspects the actual TensorData type at runtime.
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                         val bytes: ByteArray = toByteArray(raw, rt.name)
                         @Suppress("UNCHECKED_CAST")
@@ -1697,12 +1734,10 @@ public class LlamaWeightLoader private constructor(
                         @Suppress("UNCHECKED_CAST")
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
-                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                    QuantPolicy.DEQUANTIZE_TO_FP32,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         // Cannot dequantize unknown type - fall back to raw bytes with warning
                         println("WARNING: Cannot dequantize unknown type (raw: ${rt.rawTypeValue}) for '${rt.name}'. Falling back to raw bytes.")
-                        require(dtype == Int8::class) {
-                            "Unknown tensor type cannot be dequantized. Use dtype Int8 or add support for type ${rt.rawTypeValue}"
-                        }
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                         val bytes: ByteArray = toByteArray(raw, rt.name)
                         @Suppress("UNCHECKED_CAST")
@@ -1714,9 +1749,6 @@ public class LlamaWeightLoader private constructor(
             else -> {
                 // Fallback for any other unhandled types (shouldn't normally reach here)
                 println("WARNING: Unhandled tensor type ${rt.tensorType} for '${rt.name}'. Storing as raw bytes.")
-                require(dtype == Int8::class) {
-                    "Unhandled tensor type ${rt.tensorType} requires dtype Int8; got ${dtype.simpleName}"
-                }
                 val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                 val bytes: ByteArray = toByteArray(raw, rt.name)
                 @Suppress("UNCHECKED_CAST")

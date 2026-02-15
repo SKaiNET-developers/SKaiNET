@@ -45,6 +45,30 @@ public class LlamaRuntime<T : DType>(
         const val BOS_TOKEN: Int = 1
     }
 
+    /** Pre-transposed weight tensors per layer — avoids re-creating lazy transpose wrappers every forward pass. */
+    private class TransposedLayerWeights<T : DType>(
+        val wqT: Tensor<T, Float>,
+        val wkT: Tensor<T, Float>,
+        val wvT: Tensor<T, Float>,
+        val woT: Tensor<T, Float>,
+        val ffnGateT: Tensor<T, Float>,
+        val ffnDownT: Tensor<T, Float>,
+        val ffnUpT: Tensor<T, Float>,
+    )
+
+    private val transposedLayers: List<TransposedLayerWeights<T>> = weights.layers.map { layer ->
+        TransposedLayerWeights(
+            wqT = layer.wq.t(),
+            wkT = layer.wk.t(),
+            wvT = layer.wv.t(),
+            woT = layer.wo.t(),
+            ffnGateT = layer.ffnGate.t(),
+            ffnDownT = layer.ffnDown.t(),
+            ffnUpT = layer.ffnUp.t(),
+        )
+    }
+    private val outputWeightT: Tensor<T, Float> = weights.outputWeight.t()
+
     private val dim = weights.metadata.embeddingLength
     private val seqLen = weights.metadata.contextLength
     private val vocabSize = weights.metadata.vocabSize
@@ -101,10 +125,76 @@ public class LlamaRuntime<T : DType>(
         }
 
         val norm = outputNorm.forward(x, ctx)
-        val logits = norm.matmul(weights.outputWeight.t())
+        val logits = norm.matmul(outputWeightT)
 
         position++
         return logits
+    }
+
+    /**
+     * Batch-forward a chunk of tokens through all layers.
+     *
+     * Embeds all tokens at once, runs each layer with batch-aware attention
+     * (if the backend supports it, otherwise falls back to sequential),
+     * and returns the logits for the last token.
+     *
+     * @param tokenIds Array of token IDs to process
+     * @param startPos Starting position in the sequence
+     * @return Logits tensor for the **last** token in the batch
+     */
+    public fun batchForward(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {
+        require(tokenIds.isNotEmpty()) { "tokenIds must not be empty" }
+        require(startPos + tokenIds.size <= seqLen) {
+            "Batch would exceed context: startPos=$startPos, batchSize=${tokenIds.size}, seqLen=$seqLen"
+        }
+
+        // Try the full batch path; batchForwardFull falls back to sequential
+        // if the attention backend returns null from batchAttention.
+        if (tokenIds.size > 1) {
+            return batchForwardFull(tokenIds, startPos)
+        }
+
+        // Single token: use regular forward
+        position = startPos
+        return forward(tokenIds[0])
+    }
+
+    private fun batchForwardFull(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {
+        // Embed all tokens: produces [batchSize, dim]
+        var x = embedding.forward(tokenIds, ctx)
+
+        weights.layers.forEachIndexed { layerIdx, _ ->
+            val tl = transposedLayers[layerIdx]
+            val attnNorm = attnNorms[layerIdx].forward(x, ctx)
+            val q = attnNorm.matmul(tl.wqT)
+            val k = attnNorm.matmul(tl.wkT)
+            val v = attnNorm.matmul(tl.wvT)
+
+            val attnOut = attentionBackend.batchAttention(q, k, v, layerIdx, startPos)
+                ?: return batchForwardFallback(tokenIds, startPos) // shouldn't happen but be safe
+
+            val afterAttn = x + attnOut.matmul(tl.woT)
+
+            val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
+            val gate = ffnNorm.matmul(tl.ffnGateT).silu()
+            val up = ffnNorm.matmul(tl.ffnUpT)
+            val ffnOut = (gate * up).matmul(tl.ffnDownT)
+            x = afterAttn + ffnOut
+        }
+
+        val norm = outputNorm.forward(x, ctx)
+        val logits = norm.matmul(outputWeightT)
+        position = startPos + tokenIds.size
+        return logits
+    }
+
+    private fun batchForwardFallback(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {
+        position = startPos
+        var logits: Tensor<T, Float>? = null
+        for (tokenId in tokenIds) {
+            logits = forward(tokenId)
+        }
+        return logits!!
     }
 
     override fun generate(prompt: IntArray, steps: Int, temperature: Float, onToken: (Int) -> Unit) {
@@ -118,27 +208,56 @@ public class LlamaRuntime<T : DType>(
             prompt
         }
 
-        var token = fullPrompt[0]
-        var pos = 0
-        var generatedCount = 0
-        while (generatedCount < steps) {
-            val logits = forward(token)
-            val next = if (pos + 1 < fullPrompt.size) {
-                fullPrompt[pos + 1]
-            } else {
-                sample(logits, temperature)
+        // Phase 1: Batch-process prompt tokens in chunks (only for longer prompts)
+        val batchChunkSize = 256
+
+        if (fullPrompt.size > batchChunkSize) {
+            // Process all prompt tokens except the last one in batches
+            val promptTokens = fullPrompt.sliceArray(0 until fullPrompt.size - 1)
+            var promptPos = 0
+            while (promptPos < promptTokens.size) {
+                val chunkEnd = minOf(promptPos + batchChunkSize, promptTokens.size)
+                val chunk = promptTokens.sliceArray(promptPos until chunkEnd)
+                batchForward(chunk, promptPos)
+                promptPos = chunkEnd
             }
-            if (pos + 1 >= fullPrompt.size) {
+            // Phase 2: Auto-regressive generation starting from last prompt token
+            var token = fullPrompt[fullPrompt.size - 1]
+            var pos = fullPrompt.size - 1
+            var generatedCount = 0
+            while (generatedCount < steps) {
+                val logits = forward(token)
+                val next = sample(logits, temperature)
                 onToken(next)
                 generatedCount++
+                token = next
+                pos++
             }
-            token = next
-            pos++
+        } else {
+            // Original sequential path for short prompts
+            var token = fullPrompt[0]
+            var pos = 0
+            var generatedCount = 0
+            while (generatedCount < steps) {
+                val logits = forward(token)
+                val next = if (pos + 1 < fullPrompt.size) {
+                    fullPrompt[pos + 1]
+                } else {
+                    sample(logits, temperature)
+                }
+                if (pos + 1 >= fullPrompt.size) {
+                    onToken(next)
+                    generatedCount++
+                }
+                token = next
+                pos++
+            }
         }
     }
 
     private fun runLayer(layerIdx: Int, layer: LlamaLayerWeights<T>, input: Tensor<T, Float>): Tensor<T, Float> {
         val x = input
+        val tl = transposedLayers[layerIdx]
 
         // QKV: try compiled graph first, fall back to individual ops
         val (q, k, v) = graphAccelerator?.runQKV(layerIdx, x)?.let {
@@ -146,9 +265,9 @@ public class LlamaRuntime<T : DType>(
         } ?: run {
             val attnNorm = attnNorms[layerIdx].forward(x, ctx)
             Triple(
-                attnNorm.matmul(layer.wq.t()),
-                attnNorm.matmul(layer.wk.t()),
-                attnNorm.matmul(layer.wv.t())
+                attnNorm.matmul(tl.wqT),
+                attnNorm.matmul(tl.wkT),
+                attnNorm.matmul(tl.wvT)
             )
         }
 
@@ -156,14 +275,14 @@ public class LlamaRuntime<T : DType>(
         val attnOut = attentionBackend.attention(q, k, v, layerIdx, position)
 
         // Output projection + residual
-        val afterAttn = x + attnOut.matmul(layer.wo.t())
+        val afterAttn = x + attnOut.matmul(tl.woT)
 
         // FFN: try compiled graph first, fall back to individual ops
         return graphAccelerator?.runFFN(layerIdx, afterAttn) ?: run {
             val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
-            val gate = ffnNorm.matmul(layer.ffnGate.t()).silu()
-            val up = ffnNorm.matmul(layer.ffnUp.t())
-            val ffnOut = (gate * up).matmul(layer.ffnDown.t())
+            val gate = ffnNorm.matmul(tl.ffnGateT).silu()
+            val up = ffnNorm.matmul(tl.ffnUpT)
+            val ffnOut = (gate * up).matmul(tl.ffnDownT)
             afterAttn + ffnOut
         }
     }
