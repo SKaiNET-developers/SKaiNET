@@ -52,7 +52,9 @@ public class RMSNormalization<T : DType, V>(
         sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
             val squared = input * input
             val mean = squared.mean(dim = input.rank - 1)
-            val rms = (mean + eps).sqrt()
+            // Unsqueeze so broadcasting works for batched input (e.g. [B, dim] / [B, 1])
+            val rmsRaw = (mean + eps).sqrt()
+            val rms = if (rmsRaw.rank < input.rank) rmsRaw.unsqueeze(rmsRaw.rank) else rmsRaw
             val normalized = input / rms
             val w = params[0].value
             val weight = if (w.rank == 1) w.reshape(Shape(1, w.shape[0])) else w

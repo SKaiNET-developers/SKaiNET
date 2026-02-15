@@ -124,25 +124,15 @@ public class LlamaRuntime<T : DType>(
             "Batch would exceed context: startPos=$startPos, batchSize=${tokenIds.size}, seqLen=$seqLen"
         }
 
-        // Try batch path if attention backend supports it
-        if (tokenIds.size > 1 && attentionBackend.batchAttention(
-                // Probe: pass empty tensors to check support — actually just check null return
-                embedding.forward(intArrayOf(tokenIds[0]), ctx),
-                embedding.forward(intArrayOf(tokenIds[0]), ctx),
-                embedding.forward(intArrayOf(tokenIds[0]), ctx),
-                0, startPos,
-            ) != null
-        ) {
-            // Full batch path: embed all tokens, batch through layers
+        // Try the full batch path; batchForwardFull falls back to sequential
+        // if the attention backend returns null from batchAttention.
+        if (tokenIds.size > 1) {
             return batchForwardFull(tokenIds, startPos)
         }
 
-        // Fallback: sequential forward for each token
-        var logits: Tensor<T, Float>? = null
-        for (i in tokenIds.indices) {
-            logits = forward(tokenIds[i])
-        }
-        return logits!!
+        // Single token: use regular forward
+        position = startPos
+        return forward(tokenIds[0])
     }
 
     private fun batchForwardFull(tokenIds: IntArray, startPos: Int): Tensor<T, Float> {

@@ -139,6 +139,74 @@ class AttentionBackendTest {
     }
 
     @Test
+    fun `batchAttention produces same results as sequential attention`() {
+        val weights = createWeights()
+
+        // Sequential: process 3 tokens one at a time
+        val seqBackend = CpuAttentionBackend(ctx, weights, FP32::class)
+        val seqRuntime = LlamaRuntime(ctx, weights, seqBackend, FP32::class)
+        val seqLogits = mutableListOf<FloatArray>()
+        for (tokenId in intArrayOf(0, 1, 2)) {
+            val logits = seqRuntime.forward(tokenId)
+            seqLogits.add(logits.data.copyToFloatArray())
+        }
+
+        // Batch: process same 3 tokens via batchForward
+        val batchBackend = CpuAttentionBackend(ctx, weights, FP32::class)
+        val batchRuntime = LlamaRuntime(ctx, weights, batchBackend, FP32::class)
+        val batchLogits = batchRuntime.batchForward(intArrayOf(0, 1, 2), startPos = 0)
+        val batchData = batchLogits.data.copyToFloatArray()
+
+        // The batch path returns logits for all tokens [3, vocab].
+        // Compare the last token's logits (which is what matters for generation).
+        val lastSeqLogits = seqLogits.last()
+        val lastBatchLogits = FloatArray(vocab) { batchData[(2) * vocab + it] }
+
+        for (i in lastSeqLogits.indices) {
+            assertEquals(lastSeqLogits[i], lastBatchLogits[i], 1e-4f,
+                "Last-token logit mismatch at index $i between sequential and batch")
+        }
+
+        // Positions should match
+        assertEquals(seqRuntime.currentPosition, batchRuntime.currentPosition,
+            "Position should match after sequential vs batch processing")
+    }
+
+    @Test
+    fun `batchAttention output shape is correct`() {
+        val weights = createWeights()
+        val backend = CpuAttentionBackend(ctx, weights, FP32::class)
+
+        val batchSize = 3
+        val q = ctx.full<FP32, Float>(Shape(batchSize, dim), FP32::class, 0.5f)
+        val k = ctx.full<FP32, Float>(Shape(batchSize, dim), FP32::class, 0.3f)
+        val v = ctx.full<FP32, Float>(Shape(batchSize, dim), FP32::class, 0.2f)
+
+        val out = backend.batchAttention(q, k, v, layerIdx = 0, startPos = 0)
+        assertEquals(Shape(batchSize, dim), out!!.shape)
+    }
+
+    @Test
+    fun `batchForward with single token matches regular forward`() {
+        val weights = createWeights()
+
+        val seqBackend = CpuAttentionBackend(ctx, weights, FP32::class)
+        val seqRuntime = LlamaRuntime(ctx, weights, seqBackend, FP32::class)
+        val seqLogits = seqRuntime.forward(2)
+
+        val batchBackend = CpuAttentionBackend(ctx, weights, FP32::class)
+        val batchRuntime = LlamaRuntime(ctx, weights, batchBackend, FP32::class)
+        val batchLogits = batchRuntime.batchForward(intArrayOf(2), startPos = 0)
+
+        val seqData = seqLogits.data.copyToFloatArray()
+        val batchData = batchLogits.data.copyToFloatArray()
+        for (i in seqData.indices) {
+            assertEquals(seqData[i], batchData[i], 1e-6f,
+                "Single-token batchForward mismatch at index $i")
+        }
+    }
+
+    @Test
     fun `runtime reset delegates to attention backend`() {
         val weights = createWeights()
         val runtime = LlamaRuntime(ctx, weights, CpuAttentionBackend(ctx, weights, FP32::class), FP32::class)

@@ -63,6 +63,40 @@ public class CpuAttentionBackend<T : DType>(
         return ctx.fromFloatArray<T, Float>(Shape(1, dim), dtype, attnOutRaw)
     }
 
+    override fun batchAttention(
+        q: Tensor<T, Float>,
+        k: Tensor<T, Float>,
+        v: Tensor<T, Float>,
+        layerIdx: Int,
+        startPos: Int,
+    ): Tensor<T, Float> {
+        val batchSize = q.shape[0]
+        val qAll = q.expectFloatBuffer()
+        val kAll = k.expectFloatBuffer()
+        val vAll = v.expectFloatBuffer()
+
+        val result = FloatArray(batchSize * dim)
+
+        for (i in 0 until batchSize) {
+            val pos = startPos + i
+
+            // Extract per-token slices
+            val qBuf = qAll.copyOfRange(i * dim, (i + 1) * dim)
+            val kBuf = kAll.copyOfRange(i * kvDim, (i + 1) * kvDim)
+            val vBuf = vAll.copyOfRange(i * kvDim, (i + 1) * kvDim)
+
+            // RoPE + KV cache store
+            applyRopeGqa(qBuf, kBuf, pos)
+            cache.store(layerIdx, pos, kBuf, 0, vBuf, 0)
+
+            // Attention with causal mask (attend to 0..pos)
+            val attnOut = attentionGqa(layerIdx, qBuf, pos)
+            attnOut.copyInto(result, i * dim)
+        }
+
+        return ctx.fromFloatArray<T, Float>(Shape(batchSize, dim), dtype, result)
+    }
+
     override fun reset() {
         cache.reset()
     }
