@@ -45,6 +45,30 @@ public class LlamaRuntime<T : DType>(
         const val BOS_TOKEN: Int = 1
     }
 
+    /** Pre-transposed weight tensors per layer — avoids re-creating lazy transpose wrappers every forward pass. */
+    private class TransposedLayerWeights<T : DType>(
+        val wqT: Tensor<T, Float>,
+        val wkT: Tensor<T, Float>,
+        val wvT: Tensor<T, Float>,
+        val woT: Tensor<T, Float>,
+        val ffnGateT: Tensor<T, Float>,
+        val ffnDownT: Tensor<T, Float>,
+        val ffnUpT: Tensor<T, Float>,
+    )
+
+    private val transposedLayers: List<TransposedLayerWeights<T>> = weights.layers.map { layer ->
+        TransposedLayerWeights(
+            wqT = layer.wq.t(),
+            wkT = layer.wk.t(),
+            wvT = layer.wv.t(),
+            woT = layer.wo.t(),
+            ffnGateT = layer.ffnGate.t(),
+            ffnDownT = layer.ffnDown.t(),
+            ffnUpT = layer.ffnUp.t(),
+        )
+    }
+    private val outputWeightT: Tensor<T, Float> = weights.outputWeight.t()
+
     private val dim = weights.metadata.embeddingLength
     private val seqLen = weights.metadata.contextLength
     private val vocabSize = weights.metadata.vocabSize
@@ -101,7 +125,7 @@ public class LlamaRuntime<T : DType>(
         }
 
         val norm = outputNorm.forward(x, ctx)
-        val logits = norm.matmul(weights.outputWeight.t())
+        val logits = norm.matmul(outputWeightT)
 
         position++
         return logits
@@ -139,26 +163,27 @@ public class LlamaRuntime<T : DType>(
         // Embed all tokens: produces [batchSize, dim]
         var x = embedding.forward(tokenIds, ctx)
 
-        weights.layers.forEachIndexed { layerIdx, layer ->
+        weights.layers.forEachIndexed { layerIdx, _ ->
+            val tl = transposedLayers[layerIdx]
             val attnNorm = attnNorms[layerIdx].forward(x, ctx)
-            val q = attnNorm.matmul(layer.wq.t())
-            val k = attnNorm.matmul(layer.wk.t())
-            val v = attnNorm.matmul(layer.wv.t())
+            val q = attnNorm.matmul(tl.wqT)
+            val k = attnNorm.matmul(tl.wkT)
+            val v = attnNorm.matmul(tl.wvT)
 
             val attnOut = attentionBackend.batchAttention(q, k, v, layerIdx, startPos)
                 ?: return batchForwardFallback(tokenIds, startPos) // shouldn't happen but be safe
 
-            val afterAttn = x + attnOut.matmul(layer.wo.t())
+            val afterAttn = x + attnOut.matmul(tl.woT)
 
             val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
-            val gate = ffnNorm.matmul(layer.ffnGate.t()).silu()
-            val up = ffnNorm.matmul(layer.ffnUp.t())
-            val ffnOut = (gate * up).matmul(layer.ffnDown.t())
+            val gate = ffnNorm.matmul(tl.ffnGateT).silu()
+            val up = ffnNorm.matmul(tl.ffnUpT)
+            val ffnOut = (gate * up).matmul(tl.ffnDownT)
             x = afterAttn + ffnOut
         }
 
         val norm = outputNorm.forward(x, ctx)
-        val logits = norm.matmul(weights.outputWeight.t())
+        val logits = norm.matmul(outputWeightT)
         position = startPos + tokenIds.size
         return logits
     }
@@ -232,6 +257,7 @@ public class LlamaRuntime<T : DType>(
 
     private fun runLayer(layerIdx: Int, layer: LlamaLayerWeights<T>, input: Tensor<T, Float>): Tensor<T, Float> {
         val x = input
+        val tl = transposedLayers[layerIdx]
 
         // QKV: try compiled graph first, fall back to individual ops
         val (q, k, v) = graphAccelerator?.runQKV(layerIdx, x)?.let {
@@ -239,9 +265,9 @@ public class LlamaRuntime<T : DType>(
         } ?: run {
             val attnNorm = attnNorms[layerIdx].forward(x, ctx)
             Triple(
-                attnNorm.matmul(layer.wq.t()),
-                attnNorm.matmul(layer.wk.t()),
-                attnNorm.matmul(layer.wv.t())
+                attnNorm.matmul(tl.wqT),
+                attnNorm.matmul(tl.wkT),
+                attnNorm.matmul(tl.wvT)
             )
         }
 
@@ -249,14 +275,14 @@ public class LlamaRuntime<T : DType>(
         val attnOut = attentionBackend.attention(q, k, v, layerIdx, position)
 
         // Output projection + residual
-        val afterAttn = x + attnOut.matmul(layer.wo.t())
+        val afterAttn = x + attnOut.matmul(tl.woT)
 
         // FFN: try compiled graph first, fall back to individual ops
         return graphAccelerator?.runFFN(layerIdx, afterAttn) ?: run {
             val ffnNorm = ffnNorms[layerIdx].forward(afterAttn, ctx)
-            val gate = ffnNorm.matmul(layer.ffnGate.t()).silu()
-            val up = ffnNorm.matmul(layer.ffnUp.t())
-            val ffnOut = (gate * up).matmul(layer.ffnDown.t())
+            val gate = ffnNorm.matmul(tl.ffnGateT).silu()
+            val up = ffnNorm.matmul(tl.ffnUpT)
+            val ffnOut = (gate * up).matmul(tl.ffnDownT)
             afterAttn + ffnOut
         }
     }

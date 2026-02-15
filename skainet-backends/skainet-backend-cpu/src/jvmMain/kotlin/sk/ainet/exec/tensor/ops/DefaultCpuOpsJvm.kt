@@ -25,7 +25,7 @@ import kotlin.math.max
 
 internal class DefaultCpuOpsJvm(
     dataFactory: TensorDataFactory,
-) : DefaultCpuOpsBase(dataFactory) {
+) : DefaultCpuOpsBase(dataFactory), sk.ainet.lang.nn.normalization.FusedRmsNormOps {
 
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 
@@ -343,10 +343,16 @@ internal class DefaultCpuOpsJvm(
 
         if (inputDim != weightInputDim) return null
 
+        // Fast path: MemorySegment input × Q8 MemorySegment weights — avoid heap copy entirely
+        val aData = a.data
+        if (aData is MemorySegmentBackedData && bData is Q8MemorySegmentMarker) {
+            return chooseQ8MemSegInputMatmul(aData, bData, batchSize, inputDim, outputDim, a)
+        }
+
         // Get input as FloatArray — works for both FloatArrayTensorData and MemorySegmentTensorData
-        val inputBuffer: FloatArray = when (val aData = a.data) {
+        val inputBuffer: FloatArray = when (aData) {
             is FloatArrayTensorData<*> -> aData.buffer
-            is MemorySegmentBackedData -> a.data.copyToFloatArray()
+            is MemorySegmentBackedData -> aData.copyToFloatArray()
             else -> return null
         }
 
@@ -446,6 +452,37 @@ internal class DefaultCpuOpsJvm(
         return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
     }
 
+    /**
+     * MemorySegment input × Q8 MemorySegment weights — zero-copy path that avoids
+     * materializing input as a heap FloatArray.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> chooseQ8MemSegInputMatmul(
+        aData: MemorySegmentBackedData,
+        bData: Q8MemorySegmentMarker,
+        batchSize: Int,
+        inputDim: Int,
+        outputDim: Int,
+        a: Tensor<T, V>,
+    ): Tensor<T, V> {
+        val outBuffer = FloatArray(batchSize * outputDim)
+        for (batch in 0 until batchSize) {
+            val inputByteOffset = aData.segmentByteOffset + batch.toLong() * inputDim * 4
+            JvmQuantizedVectorKernels.matmulF32Q8_0MemSegInput(
+                aData.segment,
+                inputByteOffset,
+                bData.segment,
+                bData.segmentByteOffset,
+                inputDim,
+                outputDim,
+                outBuffer,
+                batch * outputDim,
+            )
+        }
+        val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+        return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+    }
+
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
         vectorFloatUnary(tensor, { vector ->
             val zero = FloatVector.zero(floatSpecies)
@@ -454,6 +491,63 @@ internal class DefaultCpuOpsJvm(
             if (value < 0f) 0f else value
         })?.let { return it }
         return super.relu(tensor)
+    }
+
+    override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> {
+        val data = tensor.data as? FloatArrayTensorData<T> ?: return super.silu(tensor)
+        val buf = data.buffer
+        val out = FloatArray(buf.size)
+        for (i in buf.indices) {
+            val x = buf[i]
+            out[i] = x / (1f + kotlin.math.exp(-x))
+        }
+        val outData = DenseFloatArrayTensorData<T>(Shape(tensor.shape.dimensions.copyOf()), out)
+        @Suppress("UNCHECKED_CAST")
+        return CpuTensor(outData as TensorData<T, V>, this, tensor.dtype)
+    }
+
+    /**
+     * Fused RMS normalization: computes mean-of-squares → reciprocal-sqrt → multiply by weight
+     * in a single pass without intermediate tensor allocations.
+     *
+     * Handles both [1, dim] (single token) and [B, dim] (batch) inputs.
+     */
+    override fun <T : DType, V> fusedRmsNorm(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        eps: Float,
+    ): Tensor<T, V>? {
+        if (input.dtype != FP32::class) return null
+        val inputData = input.data as? FloatArrayTensorData<T> ?: return null
+        val weightData = weight.data as? FloatArrayTensorData<T> ?: return null
+        val buf = inputData.buffer
+        val wBuf = weightData.buffer
+        val rank = input.shape.rank
+        if (rank < 1 || rank > 2) return null
+
+        val dim = input.shape[rank - 1]
+        if (wBuf.size < dim) return null
+        val batchSize = if (rank == 2) input.shape[0] else 1
+        val out = FloatArray(buf.size)
+
+        for (b in 0 until batchSize) {
+            val off = b * dim
+            // Compute mean of squares
+            var sumSq = 0f
+            for (i in 0 until dim) {
+                val x = buf[off + i]
+                sumSq += x * x
+            }
+            val rms = 1f / kotlin.math.sqrt((sumSq / dim + eps).toDouble()).toFloat()
+            // Normalize and scale by weight
+            for (i in 0 until dim) {
+                out[off + i] = buf[off + i] * rms * wBuf[i]
+            }
+        }
+
+        val outData = DenseFloatArrayTensorData<T>(Shape(input.shape.dimensions.copyOf()), out)
+        @Suppress("UNCHECKED_CAST")
+        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
     }
 
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {

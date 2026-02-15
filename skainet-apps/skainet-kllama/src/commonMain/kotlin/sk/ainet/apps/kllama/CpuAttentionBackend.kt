@@ -45,6 +45,9 @@ public class CpuAttentionBackend<T : DType>(
 
     private val cache: KvCache = kvCache ?: HeapKvCache(nLayers, seqLen, kvDim)
 
+    /** Pre-allocated score buffer reused across heads/tokens to avoid per-head allocation. */
+    private val scoreBuffer = FloatArray(seqLen)
+
     override fun attention(
         q: Tensor<T, Float>,
         k: Tensor<T, Float>,
@@ -155,12 +158,12 @@ public class CpuAttentionBackend<T : DType>(
     private fun attentionGqa(layerIdx: Int, qBuf: FloatArray, pos: Int): FloatArray {
         val out = FloatArray(dim)
         val scale = 1f / sqrt(headSize.toDouble()).toFloat()
+        val scores = scoreBuffer // reuse pre-allocated buffer
 
         for (h in 0 until nHeads) {
             val qHeadOffset = h * headSize
             val kvHeadIdx = h / nHeadsPerKv
             val kvHeadOffset = kvHeadIdx * headSize
-            val scores = FloatArray(pos + 1)
 
             for (t in 0..pos) {
                 var score = 0f
@@ -170,7 +173,7 @@ public class CpuAttentionBackend<T : DType>(
                 scores[t] = score * scale
             }
 
-            softmaxInPlace(scores)
+            softmaxInPlace(scores, pos + 1)
 
             for (t in 0..pos) {
                 val weight = scores[t]
@@ -182,18 +185,21 @@ public class CpuAttentionBackend<T : DType>(
         return out
     }
 
-    private fun softmaxInPlace(values: FloatArray) {
-        var maxVal = values.fold(Float.NEGATIVE_INFINITY) { acc, v -> max(acc, v) }
+    private fun softmaxInPlace(values: FloatArray, length: Int) {
+        var maxVal = Float.NEGATIVE_INFINITY
+        for (i in 0 until length) {
+            if (values[i] > maxVal) maxVal = values[i]
+        }
         if (maxVal.isInfinite()) maxVal = 0f
         var sum = 0f
-        for (i in values.indices) {
+        for (i in 0 until length) {
             val e = exp((values[i] - maxVal).toDouble()).toFloat()
             values[i] = e
             sum += e
         }
         if (sum == 0f) return
         val inv = 1f / sum
-        for (i in values.indices) {
+        for (i in 0 until length) {
             values[i] *= inv
         }
     }
