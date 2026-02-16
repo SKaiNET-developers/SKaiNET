@@ -4,6 +4,7 @@ import kotlinx.io.Source
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGMLQuantizationType
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
@@ -216,7 +217,7 @@ public suspend fun <T : DType> loadGemma3nRuntimeWeights(
     ctx: ExecutionContext,
     sourceProvider: () -> Source,
     dtype: KClass<T>,
-    quantPolicy: Gemma3nWeightLoader.QuantPolicy = Gemma3nWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): Gemma3nRuntimeWeights<T> {
     val loader = Gemma3nWeightLoader(
@@ -234,7 +235,7 @@ public suspend fun <T : DType> loadGemma3nRuntimeWeights(
 public suspend fun loadGemma3nRuntimeWeights(
     ctx: ExecutionContext,
     sourceProvider: () -> Source,
-    quantPolicy: Gemma3nWeightLoader.QuantPolicy = Gemma3nWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): Gemma3nRuntimeWeights<FP32> = loadGemma3nRuntimeWeights(ctx, sourceProvider, FP32::class, quantPolicy, allowQuantized)
 
@@ -248,7 +249,7 @@ public suspend fun <T : DType> loadGemma3nRuntimeWeightsDequantized(
 ): Gemma3nRuntimeWeights<T> {
     val loader = Gemma3nWeightLoader(
         sourceProvider = sourceProvider,
-        quantPolicy = Gemma3nWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
+        quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32
     )
     val loaded = loader.loadToMap<T, Float>(ctx, dtype)
     if (loaded.quantTypes.isNotEmpty()) {
@@ -272,7 +273,7 @@ public suspend fun <T : DType> loadGemma3nRuntimeWeightsStreaming(
     ctx: ExecutionContext,
     randomAccessProvider: () -> RandomAccessSource,
     dtype: KClass<T>,
-    quantPolicy: Gemma3nWeightLoader.QuantPolicy = Gemma3nWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): Gemma3nRuntimeWeights<T> {
     val loader = Gemma3nWeightLoader(
@@ -290,7 +291,7 @@ public suspend fun <T : DType> loadGemma3nRuntimeWeightsStreaming(
 public suspend fun loadGemma3nRuntimeWeightsStreaming(
     ctx: ExecutionContext,
     randomAccessProvider: () -> RandomAccessSource,
-    quantPolicy: Gemma3nWeightLoader.QuantPolicy = Gemma3nWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): Gemma3nRuntimeWeights<FP32> = loadGemma3nRuntimeWeightsStreaming(ctx, randomAccessProvider, FP32::class, quantPolicy, allowQuantized)
 
@@ -304,7 +305,7 @@ public suspend fun <T : DType> loadGemma3nRuntimeWeightsDequantizedStreaming(
 ): Gemma3nRuntimeWeights<T> {
     val loader = Gemma3nWeightLoader(
         randomAccessProvider = randomAccessProvider,
-        quantPolicy = Gemma3nWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
+        quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32
     )
     val loaded = loader.loadToMapStreaming<T, Float>(ctx, dtype)
     if (loaded.quantTypes.isNotEmpty()) {

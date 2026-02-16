@@ -12,7 +12,7 @@ import sk.ainet.apps.llm.tokenizer.HuggingFaceBPETokenizer
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.gemma.Gemma3nRuntimeWeights
-import sk.ainet.io.gguf.gemma.Gemma3nWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.types.FP32
 import java.io.File
 import java.nio.file.Path
@@ -122,7 +122,7 @@ fun main(args: Array<String>) {
             ctx = ctx,
             dtype = FP32::class,
             config = Gemma3nLoadConfig(
-                quantPolicy = Gemma3nWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+                quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
                 allowQuantized = false
             )
         )

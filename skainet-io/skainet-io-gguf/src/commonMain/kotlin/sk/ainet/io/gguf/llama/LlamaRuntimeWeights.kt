@@ -9,6 +9,7 @@ import kotlinx.io.Source
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.GGMLQuantizationType
 import kotlin.reflect.KClass
+import sk.ainet.io.gguf.dequant.QuantPolicy
 
 public data class LlamaLayerWeights<T : DType>(
     val attnNorm: Tensor<T, Float>,
@@ -152,7 +153,7 @@ public suspend fun <T : DType> loadLlamaRuntimeWeights(
     ctx: ExecutionContext,
     sourceProvider: () -> Source,
     dtype: KClass<T>,
-    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
@@ -170,7 +171,7 @@ public suspend fun <T : DType> loadLlamaRuntimeWeights(
 public suspend fun loadLlamaRuntimeWeights(
     ctx: ExecutionContext,
     sourceProvider: () -> Source,
-    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): LlamaRuntimeWeights<FP32> = loadLlamaRuntimeWeights(ctx, sourceProvider, FP32::class, quantPolicy, allowQuantized)
 
@@ -184,7 +185,7 @@ public suspend fun <T : DType> loadLlamaRuntimeWeightsDequantized(
 ): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
         sourceProvider = sourceProvider,
-        quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
+        quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32
     )
     val loaded = loader.loadToMap<T, Float>(ctx, dtype)
     if (loaded.quantTypes.isNotEmpty()) {
@@ -215,7 +216,7 @@ public suspend fun <T : DType> loadLlamaRuntimeWeightsStreaming(
     ctx: ExecutionContext,
     randomAccessProvider: () -> RandomAccessSource,
     dtype: KClass<T>,
-    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
@@ -233,7 +234,7 @@ public suspend fun <T : DType> loadLlamaRuntimeWeightsStreaming(
 public suspend fun loadLlamaRuntimeWeightsStreaming(
     ctx: ExecutionContext,
     randomAccessProvider: () -> RandomAccessSource,
-    quantPolicy: LlamaWeightLoader.QuantPolicy = LlamaWeightLoader.QuantPolicy.RAW_BYTES,
+    quantPolicy: QuantPolicy = QuantPolicy.RAW_BYTES,
     allowQuantized: Boolean = false
 ): LlamaRuntimeWeights<FP32> = loadLlamaRuntimeWeightsStreaming(ctx, randomAccessProvider, FP32::class, quantPolicy, allowQuantized)
 
@@ -248,7 +249,7 @@ public suspend fun <T : DType> loadLlamaRuntimeWeightsDequantizedStreaming(
 ): LlamaRuntimeWeights<T> {
     val loader = LlamaWeightLoader(
         randomAccessProvider = randomAccessProvider,
-        quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
+        quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32
     )
     val loaded = loader.loadToMapStreaming<T, Float>(ctx, dtype)
     if (loaded.quantTypes.isNotEmpty()) {

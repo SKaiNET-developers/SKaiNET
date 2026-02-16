@@ -17,7 +17,7 @@ import sk.ainet.apps.kllama.LlamaRuntime
 import sk.ainet.apps.kllama.LlamaRuntimeInterface
 import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.context.DirectCpuExecutionContext
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
 import sk.ainet.apps.llm.Tokenizer
 
@@ -74,7 +74,7 @@ private suspend fun loadRuntimeAndTokenizer(path: String): Pair<LlamaRuntimeInte
     val weights = loadLlamaRuntimeWeights(
         ctx = ctx,
         sourceProvider = { source1 },
-        quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32
+        quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32
     )
 
     // Create source for loading tokenizer (need fresh buffer as source is consumed)

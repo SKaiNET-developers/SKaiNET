@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.types.FP32
@@ -51,7 +51,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                    quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                     allowQuantized = true
                 )
             )
@@ -95,7 +95,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                    quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                     allowQuantized = true
                 )
             )
@@ -147,7 +147,7 @@ class E2EQuantizedInferenceTest {
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED,
+                    quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
                     allowQuantized = true
                 )
             )
@@ -205,14 +205,16 @@ class E2EQuantizedInferenceTest {
     fun `benchmark DEQUANTIZE_TO_FP32 baseline inference`() {
         if (skipIfNoModel()) return
         runBlocking {
-            // Use default heap-based factory for dequantized FP32 weights
-            val ctx = DirectCpuExecutionContext()
+            // Use MemorySegment factory so dequantized FP32 weights live off-heap
+            val arena = Arena.ofShared()
+            val memSegFactory = MemorySegmentTensorDataFactory()
+            val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
 
             val ingestion = LlamaIngestion<FP32>(
                 ctx = ctx,
                 dtype = FP32::class,
                 config = LlamaLoadConfig(
-                    quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+                    quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
                     allowQuantized = true
                 )
             )
@@ -259,6 +261,9 @@ class E2EQuantizedInferenceTest {
             println("==============================================")
 
             assertTrue(tokPerSec > 0, "Should produce positive throughput")
+
+            arena.close()
+            memSegFactory.close()
         }
     }
 }

@@ -10,7 +10,8 @@ import sk.ainet.io.gguf.ReaderField
 import sk.ainet.io.gguf.ReaderTensor
 import sk.ainet.io.gguf.StreamingGGUFReader
 import sk.ainet.io.gguf.StreamingTensorInfo
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.DequantOps
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
@@ -65,12 +66,6 @@ public class Gemma3nWeightLoader private constructor(
         quantPolicy = quantPolicy
     )
 
-    public enum class QuantPolicy {
-        /** Keep quantized payloads as raw bytes (Int8 tensor) with quantized shape. */
-        RAW_BYTES,
-        /** Dequantize to FP32 on load. */
-        DEQUANTIZE_TO_FP32
-    }
 
     /**
      * Load weights and invoke [onTensorLoaded] for each required tensor. Returns parsed metadata.
@@ -535,14 +530,15 @@ public class Gemma3nWeightLoader private constructor(
                 when (quantPolicy) {
                     QuantPolicy.RAW_BYTES -> {
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
-                        val bytes = toByteArray(raw, rt.name)
+                        val bytes = DequantOps.toByteArray(raw, rt.name)
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
-                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                    QuantPolicy.DEQUANTIZE_TO_FP32,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
                         val floats = when (rt.tensorType) {
-                            GGMLQuantizationType.F16 -> LlamaWeightLoader.dequantF16(raw)
-                            GGMLQuantizationType.BF16 -> LlamaWeightLoader.dequantBF16(raw)
+                            GGMLQuantizationType.F16 -> DequantOps.dequantF16(raw)
+                            GGMLQuantizationType.BF16 -> DequantOps.dequantBF16(raw)
                             else -> error("Unreachable")
                         }
                         createTensor(ctx, dtype, shape, floats)
@@ -567,9 +563,10 @@ public class Gemma3nWeightLoader private constructor(
             GGMLQuantizationType.TQ1_0,
             GGMLQuantizationType.TQ2_0 -> {
                 when (quantPolicy) {
-                    QuantPolicy.RAW_BYTES -> {
+                    QuantPolicy.RAW_BYTES,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
-                        val bytes = toByteArray(raw, rt.name)
+                        val bytes = DequantOps.toByteArray(raw, rt.name)
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
@@ -582,7 +579,7 @@ public class Gemma3nWeightLoader private constructor(
 
             else -> {
                 val raw = if (rt.data.isEmpty()) reader.materialize(rt) else rt.data
-                val bytes = toByteArray(raw, rt.name)
+                val bytes = DequantOps.toByteArray(raw, rt.name)
                 ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
             }
         }
@@ -611,7 +608,8 @@ public class Gemma3nWeightLoader private constructor(
                     QuantPolicy.RAW_BYTES -> {
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
-                    QuantPolicy.DEQUANTIZE_TO_FP32 -> {
+                    QuantPolicy.DEQUANTIZE_TO_FP32,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         val floats = when (st.tensorType) {
                             GGMLQuantizationType.F16 -> dequantF16FromBytes(bytes)
                             GGMLQuantizationType.BF16 -> dequantBF16FromBytes(bytes)
@@ -639,7 +637,8 @@ public class Gemma3nWeightLoader private constructor(
             GGMLQuantizationType.TQ1_0,
             GGMLQuantizationType.TQ2_0 -> {
                 when (quantPolicy) {
-                    QuantPolicy.RAW_BYTES -> {
+                    QuantPolicy.RAW_BYTES,
+                    QuantPolicy.NATIVE_OPTIMIZED -> {
                         ctx.fromByteArray<Int8, Byte>(shape, Int8::class, bytes) as Tensor<T, V>
                     }
                     QuantPolicy.DEQUANTIZE_TO_FP32 -> {
@@ -655,32 +654,11 @@ public class Gemma3nWeightLoader private constructor(
         }
     }
 
-    private fun dequantize(raw: List<Any>, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
-        return when (tensorType) {
-            GGMLQuantizationType.Q4_0 -> LlamaWeightLoader.dequantQ4_0(raw, nElems)
-            GGMLQuantizationType.Q4_1 -> LlamaWeightLoader.dequantQ4_1(raw, nElems)
-            GGMLQuantizationType.Q5_0 -> LlamaWeightLoader.dequantQ5_0(raw, nElems)
-            GGMLQuantizationType.Q5_1 -> LlamaWeightLoader.dequantQ5_1(raw, nElems)
-            GGMLQuantizationType.Q8_0 -> LlamaWeightLoader.dequantQ8_0(raw, nElems)
-            GGMLQuantizationType.Q8_1 -> LlamaWeightLoader.dequantQ8_1(raw, nElems)
-            GGMLQuantizationType.Q2_K -> LlamaWeightLoader.dequantQ2K(raw, nElems)
-            GGMLQuantizationType.Q3_K -> LlamaWeightLoader.dequantQ3K(raw, nElems)
-            GGMLQuantizationType.Q4_K -> LlamaWeightLoader.dequantQ4K(raw, nElems)
-            GGMLQuantizationType.Q5_K -> LlamaWeightLoader.dequantQ5K(raw, nElems)
-            GGMLQuantizationType.Q6_K -> LlamaWeightLoader.dequantQ6K(raw, nElems)
-            GGMLQuantizationType.Q8_K -> LlamaWeightLoader.dequantQ8K(raw, nElems)
-            GGMLQuantizationType.IQ4_NL -> LlamaWeightLoader.dequantIQ4NL(raw, nElems)
-            GGMLQuantizationType.IQ4_XS -> LlamaWeightLoader.dequantIQ4XS(raw, nElems)
-            GGMLQuantizationType.TQ1_0 -> LlamaWeightLoader.dequantTQ1_0(raw, nElems)
-            GGMLQuantizationType.TQ2_0 -> LlamaWeightLoader.dequantTQ2_0(raw, nElems)
-            else -> error("Dequantization for $tensorType not implemented")
-        }
-    }
+    private fun dequantize(raw: List<Any>, tensorType: GGMLQuantizationType, nElems: Int): FloatArray =
+        DequantOps.dequantFromList(raw, tensorType, nElems)
 
-    private fun dequantFromBytes(bytes: ByteArray, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
-        val raw: List<Any> = bytes.map { it }
-        return dequantize(raw, tensorType, nElems)
-    }
+    private fun dequantFromBytes(bytes: ByteArray, tensorType: GGMLQuantizationType, nElems: Int): FloatArray =
+        DequantOps.dequantFromBytes(bytes, tensorType, nElems)
 
     @Suppress("UNCHECKED_CAST")
     private fun <T : DType, V> createTensor(
@@ -692,7 +670,7 @@ public class Gemma3nWeightLoader private constructor(
         return if (originalShape.rank == 2) {
             val rows = originalShape[0]
             val cols = originalShape[1]
-            val transposed = LlamaWeightLoader.transposeColumnMajorToRowMajor(data, rows, cols)
+            val transposed = DequantOps.transposeColumnMajorToRowMajor(data, rows, cols)
             val newShape = Shape(cols, rows)
             ctx.fromFloatArray<T, Float>(newShape, dtype, transposed) as Tensor<T, V>
         } else {
@@ -700,83 +678,11 @@ public class Gemma3nWeightLoader private constructor(
         }
     }
 
-    // ============== Helper methods ==============
+    // ============== Helper methods (delegating to DequantOps) ==============
 
-    @OptIn(ExperimentalUnsignedTypes::class)
-    private fun toByteArray(raw: List<Any>, tensorName: String): ByteArray {
-        val first = raw.firstOrNull()
-        return when (first) {
-            is Byte -> ByteArray(raw.size) { (raw[it] as Number).toByte() }
-            is UByte -> ByteArray(raw.size) { (raw[it] as UByte).toByte() }
-            else -> error("Unexpected raw data type for tensor $tensorName")
-        }
-    }
-
-    private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
-        val out = FloatArray(bytes.size / 4)
-        var i = 0
-        var o = 0
-        while (i < bytes.size) {
-            val bits = (bytes[i].toInt() and 0xFF) or
-                ((bytes[i + 1].toInt() and 0xFF) shl 8) or
-                ((bytes[i + 2].toInt() and 0xFF) shl 16) or
-                ((bytes[i + 3].toInt() and 0xFF) shl 24)
-            out[o] = Float.fromBits(bits)
-            i += 4
-            o++
-        }
-        return out
-    }
-
-    private fun dequantF16FromBytes(bytes: ByteArray): FloatArray {
-        val out = FloatArray(bytes.size / 2)
-        var i = 0
-        var o = 0
-        while (i < bytes.size) {
-            val b0 = bytes[i].toInt() and 0xFF
-            val b1 = bytes[i + 1].toInt() and 0xFF
-            val half = (b1 shl 8) or b0
-            out[o] = halfToFloat(half)
-            i += 2
-            o++
-        }
-        return out
-    }
-
-    private fun dequantBF16FromBytes(bytes: ByteArray): FloatArray {
-        val out = FloatArray(bytes.size / 2)
-        var i = 0
-        var o = 0
-        while (i < bytes.size) {
-            val b0 = bytes[i].toInt() and 0xFF
-            val b1 = bytes[i + 1].toInt() and 0xFF
-            val bits = (b1 shl 24) or (b0 shl 16)
-            out[o] = Float.fromBits(bits)
-            i += 2
-            o++
-        }
-        return out
-    }
-
-    private fun halfToFloat(hbits: Int): Float {
-        val mant = hbits and 0x03FF
-        val exp = hbits and 0x7C00
-        val sign = hbits and 0x8000
-        return when (exp) {
-            0 -> {
-                val v = (mant.toFloat() / 1024.0f) * (2.0f).pow(-14)
-                if (sign != 0) -v else v
-            }
-            0x7C00 -> {
-                val v = if (mant == 0) Float.POSITIVE_INFINITY else Float.NaN
-                if (sign != 0) -v else v
-            }
-            else -> {
-                val v = (1.0f + mant.toFloat() / 1024.0f) * (2.0f).pow((exp shr 10) - 15)
-                if (sign != 0) -v else v
-            }
-        }
-    }
+    private fun bytesToFloatArray(bytes: ByteArray): FloatArray = DequantOps.bytesToFloatArray(bytes)
+    private fun dequantF16FromBytes(bytes: ByteArray): FloatArray = DequantOps.dequantF16FromBytes(bytes)
+    private fun dequantBF16FromBytes(bytes: ByteArray): FloatArray = DequantOps.dequantBF16FromBytes(bytes)
 
     private fun Any?.toIntValue(): Int? = when (this) {
         is Int -> this

@@ -4,7 +4,7 @@ import kotlinx.io.Source
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.gemma.Gemma3nRuntimeWeights
-import sk.ainet.io.gguf.gemma.Gemma3nWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeights
 import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeightsFromSafeTensors
 import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeightsStreaming
@@ -18,7 +18,7 @@ import kotlin.reflect.KClass
  * @property allowQuantized If false, error on encountering quantized tensors
  */
 public data class Gemma3nLoadConfig(
-    val quantPolicy: Gemma3nWeightLoader.QuantPolicy = Gemma3nWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+    val quantPolicy: QuantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
     val allowQuantized: Boolean = false
 )
 

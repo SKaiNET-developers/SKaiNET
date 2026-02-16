@@ -18,7 +18,7 @@ import java.lang.foreign.Arena
  * Post-processor that converts raw-byte quantized tensors (loaded via NATIVE_OPTIMIZED)
  * into MemorySegment-backed Q4/Q8 tensor data for SIMD kernel dispatch.
  *
- * After loading with [sk.ainet.io.gguf.llama.LlamaWeightLoader.QuantPolicy.NATIVE_OPTIMIZED],
+ * After loading with [sk.ainet.io.gguf.dequant.QuantPolicy.NATIVE_OPTIMIZED],
  * quantized weight tensors are stored as raw byte arrays in [IntArrayTensorData].
  * This converter replaces them with [Q4MemorySegmentTensorData] or [Q8MemorySegmentTensorData]
  * backed by arena-managed, 64-byte-aligned MemorySegments.

@@ -9,7 +9,7 @@ import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.llama.LlamaLayerWeights
 import sk.ainet.io.gguf.llama.LlamaModelMetadata
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.llama.LlamaWeightLoader
+import sk.ainet.io.gguf.dequant.QuantPolicy
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.FP16
 import java.io.File
@@ -146,7 +146,7 @@ class LlamaRuntimeFP16Test {
             ctx = ctx,
             dtype = FP16::class,
             config = LlamaLoadConfig(
-                quantPolicy = LlamaWeightLoader.QuantPolicy.DEQUANTIZE_TO_FP32,
+                quantPolicy = QuantPolicy.DEQUANTIZE_TO_FP32,
                 allowQuantized = false
             )
         )
