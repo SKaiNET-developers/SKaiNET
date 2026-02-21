@@ -2,10 +2,14 @@ name: Feature Branch Libraries build
 
 on: [ push, pull_request ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-job:
-    runs-on: ubuntu-latest # enables hardware acceleration in the virtual machine
-    timeout-minutes: 40
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -20,32 +24,38 @@ jobs:
           distribution: 'zulu'
           java-version: 22
 
-
       - name: Print git commit variables
         run: |
           echo "TAG: $CURRENT_TAG"
 
-      - name: Copy CI gradle.properties
-        run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+      - name: Disk space (observability)
+        run: df -h
 
-      # Use --no-daemon only if you must. With setup-gradle, the build runs efficiently without a long-lived daemon anyway.
       - name: Build and Test (PR)
         if: github.event_name == 'pull_request'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
         run: |
-          ./gradlew --stacktrace \
+          ./gradlew --no-daemon --stacktrace --info \
             -Dorg.gradle.caching=true \
             -Dorg.gradle.configuration-cache=true \
-            -Dorg.gradle.parallel=true \
             clean assemble allTests
 
       - name: Build and Test (push)
         if: github.event_name != 'pull_request'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
         run: |
-          ./gradlew --stacktrace \
+          ./gradlew --no-daemon --stacktrace --info \
             -Dorg.gradle.caching=true \
             -Dorg.gradle.configuration-cache=true \
-            -Dorg.gradle.parallel=true \
-             assemble allTests
+            assemble allTests
+
+      - name: Memory info (on failure)
+        if: failure()
+        run: |
+          free -h || true
+          cat /proc/meminfo | head -n 50 || true
 
       - name: Upload all test reports
         if: always()
