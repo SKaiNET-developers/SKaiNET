@@ -41,6 +41,10 @@ kotlin {
         browser()
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
 
     sourceSets {
         val commonMain by getting {

@@ -2,8 +2,10 @@
 
 package sk.ainet.lang.ksp
 
+import com.tschuchort.compiletesting.JvmCompilationResult
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
+import com.tschuchort.compiletesting.configureKsp
 import com.tschuchort.compiletesting.symbolProcessorProviders
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.junit.Test
@@ -1192,7 +1194,7 @@ class TracingWrapperProcessorTest {
         )
     }
 
-    private fun compileWithProcessor(sourceCode: String, fileName: String): KotlinCompilation.Result {
+    private fun compileWithProcessor(sourceCode: String, fileName: String): JvmCompilationResult {
         val source = SourceFile.kotlin("test/$fileName", sourceCode)
         
         // Add mock tracing classes for compilation
@@ -1247,7 +1249,8 @@ class TracingWrapperProcessorTest {
         
         val compilation = KotlinCompilation().apply {
             sources = listOf(source) + mockSources
-            symbolProcessorProviders = listOf(TracingWrapperProcessorProvider())
+            configureKsp {}
+            symbolProcessorProviders = mutableListOf(TracingWrapperProcessorProvider())
             inheritClassPath = true
             messageOutputStream = System.out
         }

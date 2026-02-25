@@ -16,6 +16,10 @@ on:
       - 'docs/**'
       - '.github/workflows/documentation.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build-documentation:
     runs-on: ubuntu-latest

@@ -41,6 +41,11 @@ kotlin {
         browser()
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
+
     sourceSets {
         commonMain {
             // Include KSP-generated sources in commonMain so downstream modules can access them

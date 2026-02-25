@@ -24,6 +24,11 @@ jobs:
           distribution: 'zulu'
           java-version: 22
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Print git commit variables
         run: |
           echo "TAG: $CURRENT_TAG"

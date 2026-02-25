@@ -24,7 +24,7 @@ class MNISTIntegrationTest {
     fun downloadSplitAndTensorize() = runBlocking {
         // always ignore cache to force download as requested
         val config = MNISTLoaderConfig(
-            cacheDir = createTempDir(prefix = "mnist-it-").absolutePath,
+            cacheDir = kotlin.io.path.createTempDirectory(prefix = "mnist-it-").toFile().absolutePath,
             useCache = false
         )
 

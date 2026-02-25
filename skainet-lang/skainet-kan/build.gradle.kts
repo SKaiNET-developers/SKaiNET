@@ -39,6 +39,11 @@ kotlin {
         browser()
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(project(":skainet-lang:skainet-lang-core"))

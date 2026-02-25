@@ -4,7 +4,7 @@ jacksonDatabind = "2.21.0"
 jsonSchemaValidator = "3.0.0"
 jsonSchemaValidatorVersion = "0.5.3"
 junit = "4.13.2"
-kotlin = "2.2.21"
+kotlin = "2.3.0"
 kotlinxCoroutines = "1.10.2"
 kotlinBrowser = "0.5.0"
 android-minSdk = "24"
@@ -15,9 +15,9 @@ ktorClientPlugins = "3.1.1"
 logbackClassic = "1.5.27"
 kover = "0.9.7"
 binaryCompatibilityValidator = "0.18.1"
-ksp = "2.2.21-2.0.4"
+ksp = "2.3.0"
 kotlinpoet = "2.2.0"
-kotlin-compile-testing = "1.6.0"
+kctfork = "0.12.1"
 asciidoctorj = "3.0.1"
 dokka = "2.1.0"
 kotlinxCli = "0.3.6"
@@ -56,8 +56,8 @@ kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
 kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet" }
 ksp-api = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
 ksp-test = { module = "com.google.devtools.ksp:symbol-processing-test", version.ref = "ksp" }
-kotlin-compile-testing = { module = "com.github.tschuchortdev:kotlin-compile-testing", version.ref = "kotlin-compile-testing" }
-kotlin-compile-testing-ksp = { module = "com.github.tschuchortdev:kotlin-compile-testing-ksp", version.ref = "kotlin-compile-testing" }
+kotlin-compile-testing = { module = "dev.zacsweers.kctfork:core", version.ref = "kctfork" }
+kotlin-compile-testing-ksp = { module = "dev.zacsweers.kctfork:ksp", version.ref = "kctfork" }
 
 asciidoctorj-core = { module = "org.asciidoctor:asciidoctorj", version.ref = "asciidoctorj" }
 asciidoctorj-pdf = { module = "org.asciidoctor:asciidoctorj-pdf", version.ref = "asciidoctorj" }
