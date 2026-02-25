@@ -26,5 +26,10 @@ kotlin {
     wasmJs {
         browser()
     }
+
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
 }
 

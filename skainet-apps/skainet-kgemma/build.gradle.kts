@@ -64,6 +64,11 @@ kotlin {
         binaries.executable()
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(project(":skainet-apps:skainet-llm"))

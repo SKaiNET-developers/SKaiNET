@@ -35,6 +35,11 @@ kotlin {
         browser()
     }
 
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
+
     sourceSets {
         commonMain.dependencies {
             // No dependencies on skainet-lang-core - keep it minimal
