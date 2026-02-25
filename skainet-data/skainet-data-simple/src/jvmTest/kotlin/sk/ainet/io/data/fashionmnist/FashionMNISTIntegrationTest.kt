@@ -24,7 +24,7 @@ class FashionMNISTIntegrationTest {
     fun downloadSplitAndTensorize() = runBlocking {
         // always ignore cache to force download as requested
         val config = FashionMNISTLoaderConfig(
-            cacheDir = createTempDir(prefix = "fashionmnist-it-").absolutePath,
+            cacheDir = kotlin.io.path.createTempDirectory(prefix = "fashionmnist-it-").toFile().absolutePath,
             useCache = false
         )
 
