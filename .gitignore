@@ -47,3 +47,6 @@ out/
 !.brokk/review.md
 !.brokk/project.properties
 **.onnx
+
+### Build artifacts ###
+com/
