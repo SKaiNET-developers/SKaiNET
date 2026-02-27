@@ -1,5 +1,6 @@
 package sk.ainet.compile.hlo.generate
 
+import kotlinx.coroutines.runBlocking
 import sk.ainet.compile.hlo.StableHloModule
 import sk.ainet.compile.hlo.toStableHlo
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
@@ -16,7 +17,7 @@ import sk.ainet.lang.types.DType
  * 3. Converting the execution tape to a ComputeGraph
  * 4. Compiling the graph to StableHLO MLIR
  */
-object HloGenerator {
+public object HloGenerator {
 
     /**
      * Generate StableHLO from any [Model] and a sample input tensor.
@@ -25,15 +26,15 @@ object HloGenerator {
      * @param sampleInput A tensor with the desired input shape/dtype (values don't matter).
      * @param functionName The MLIR function name in the emitted module.
      */
-    suspend fun <D : DType, V> generate(
+    public suspend fun <D : DType, V> generate(
         model: Model<D, V, Tensor<D, V>, Tensor<D, V>>,
         sampleInput: Tensor<D, V>,
         functionName: String = "main"
     ): StableHloModule {
         val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
 
-        @Suppress("UNCHECKED_CAST")
         val (tape, _) = ctx.record {
+            @Suppress("UNCHECKED_CAST")
             traceForwardPass(
                 model as Model<DType, Any?, Tensor<DType, Any?>, Tensor<DType, Any?>>,
                 sampleInput as Tensor<DType, Any?>,
@@ -64,6 +65,19 @@ object HloGenerator {
             ?: error("Failed to create compute graph: no execution tape was recorded")
 
         return toStableHlo(computeGraph, descriptor.functionName)
+    }
+
+    /**
+     * Blocking variant of [generate] for Java callers who cannot use `suspend`.
+     */
+    @JvmStatic
+    @JvmOverloads
+    public fun <D : DType, V> generateBlocking(
+        model: Model<D, V, Tensor<D, V>, Tensor<D, V>>,
+        sampleInput: Tensor<D, V>,
+        functionName: String = "main"
+    ): StableHloModule = runBlocking {
+        generate(model, sampleInput, functionName)
     }
 
     private suspend fun traceForwardPass(

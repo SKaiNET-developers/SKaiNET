@@ -57,6 +57,11 @@ kotlin {
             implementation(project(":skainet-backends:skainet-backend-cpu"))
             implementation(libs.kotlinx.coroutines)
         }
+
+        jvmTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+        }
     }
 }
 
