@@ -6,6 +6,7 @@ import sk.ainet.compile.hlo.converters.LegacyOperationsConverter
 import sk.ainet.compile.hlo.converters.LinalgOperationsConverter
 import sk.ainet.compile.hlo.converters.MathOperationsConverter
 import sk.ainet.compile.hlo.converters.NeuralNetOperationsConverter
+import sk.ainet.compile.hlo.converters.ReductionOperationsConverter
 import sk.ainet.compile.hlo.converters.ShapeOperationsConverter
 
 /**
@@ -39,12 +40,15 @@ public object StableHloConverterFactory {
         // Register shape operations converter
         registry.register(ShapeOperationsConverter())
         
+        // Register reduction operations converter
+        registry.register(ReductionOperationsConverter())
+
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
-        
+
         return StableHloConverter(registry, typeMapper, validator)
     }
-    
+
     /**
      * Create a converter with extended operations support
      */
@@ -70,13 +74,16 @@ public object StableHloConverterFactory {
         
         // Register shape operations converter
         registry.register(ShapeOperationsConverter())
-        
+
+        // Register reduction operations converter
+        registry.register(ReductionOperationsConverter())
+
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
-        
+
         return StableHloConverter(registry, typeMapper, validator)
     }
-    
+
     /**
      * Create a converter without validation (for performance)
      */
@@ -90,8 +97,9 @@ public object StableHloConverterFactory {
         registry.register(NeuralNetOperationsConverter())
         registry.register(ActivationOperationsConverter())
         registry.register(ShapeOperationsConverter())
+        registry.register(ReductionOperationsConverter())
         registry.register(ConstantOperationsConverter())
-        
+
         return StableHloConverter(registry, typeMapper, null)
     }
     

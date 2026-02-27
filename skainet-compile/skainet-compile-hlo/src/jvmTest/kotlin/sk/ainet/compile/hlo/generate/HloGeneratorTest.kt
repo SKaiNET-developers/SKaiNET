@@ -28,7 +28,8 @@ class HloGeneratorTest {
         assertTrue(module.content.contains("module {"), "Expected 'module {' in MLIR output")
         assertTrue(module.content.contains("func.func"), "Expected 'func.func' in MLIR output")
         assertTrue(module.content.contains("@rgb2grayscale"), "Expected function name in MLIR output")
-        // Conv2D ops are traced even if the basic converter emits them as comments
+        // Extended converter now handles conv2d, but VoidTensorOps tracing may not yet
+        // produce operations in the compute graph. Assert structure only for now.
         assertTrue(module.content.length > 50, "Expected non-trivial MLIR output")
     }
 

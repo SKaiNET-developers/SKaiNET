@@ -1,8 +1,8 @@
 package sk.ainet.compile.hlo.generate
 
 import kotlinx.coroutines.runBlocking
+import sk.ainet.compile.hlo.StableHloConverterFactory
 import sk.ainet.compile.hlo.StableHloModule
-import sk.ainet.compile.hlo.toStableHlo
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.model.Model
 import sk.ainet.lang.tensor.Tensor
@@ -45,7 +45,8 @@ public object HloGenerator {
         val computeGraph = tape?.toComputeGraph()
             ?: error("Failed to create compute graph: no execution tape was recorded")
 
-        return toStableHlo(computeGraph, functionName)
+        val converter = StableHloConverterFactory.createExtended()
+        return converter.convert(computeGraph, functionName)
     }
 
     internal suspend fun generate(descriptor: ModelDescriptor, height: Int, width: Int, batch: Int): StableHloModule {
@@ -64,7 +65,8 @@ public object HloGenerator {
         val computeGraph = tape?.toComputeGraph()
             ?: error("Failed to create compute graph: no execution tape was recorded")
 
-        return toStableHlo(computeGraph, descriptor.functionName)
+        val converter = StableHloConverterFactory.createExtended()
+        return converter.convert(computeGraph, descriptor.functionName)
     }
 
     /**
