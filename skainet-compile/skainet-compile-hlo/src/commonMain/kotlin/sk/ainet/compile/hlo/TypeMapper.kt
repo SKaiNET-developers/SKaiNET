@@ -25,7 +25,7 @@ public class TypeMapper {
         "UI32", "UINT32" -> "ui32"
         "UI64", "UINT64" -> "ui64"
         "BF16", "BFLOAT16" -> "bf16"
-        "F16", "FLOAT16" -> "f16"
+        "FP16", "F16", "FLOAT16" -> "f16"
         "BOOL", "BOOLEAN" -> "i1"
         else -> {
             // Default fallback with warning

@@ -33,6 +33,10 @@ public object HloGenerator {
     ): StableHloModule {
         val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
 
+        // Capture the sample input's tensor ref ID so we can mark it as a function argument
+        @Suppress("UNCHECKED_CAST")
+        val inputRefId = ctx.session.refOf(sampleInput as sk.ainet.lang.tensor.Tensor<*, *>).id
+
         val (tape, _) = ctx.record {
             @Suppress("UNCHECKED_CAST")
             traceForwardPass(
@@ -42,8 +46,10 @@ public object HloGenerator {
             )
         }
 
-        val computeGraph = tape?.toComputeGraph()
-            ?: error("Failed to create compute graph: no execution tape was recorded")
+        val computeGraph = tape?.toComputeGraph(
+            synthesizeExternalInputs = true,
+            inputTensorIds = setOf(inputRefId)
+        ) ?: error("Failed to create compute graph: no execution tape was recorded")
 
         val converter = StableHloConverterFactory.createExtended()
         return converter.convert(computeGraph, functionName)
@@ -52,8 +58,11 @@ public object HloGenerator {
     internal suspend fun generate(descriptor: ModelDescriptor, height: Int, width: Int, batch: Int): StableHloModule {
         val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
 
+        var sampleInputRefId: String? = null
         val (tape, _) = ctx.record {
             val (model, sampleInput) = descriptor.createModelAndInput(ctx, height, width, batch)
+            @Suppress("UNCHECKED_CAST")
+            sampleInputRefId = ctx.session.refOf(sampleInput as sk.ainet.lang.tensor.Tensor<*, *>).id
             @Suppress("UNCHECKED_CAST")
             traceForwardPass(
                 model as Model<DType, Any?, Tensor<DType, Any?>, Tensor<DType, Any?>>,
@@ -62,8 +71,11 @@ public object HloGenerator {
             )
         }
 
-        val computeGraph = tape?.toComputeGraph()
-            ?: error("Failed to create compute graph: no execution tape was recorded")
+        val inputIds = sampleInputRefId?.let { setOf(it) } ?: emptySet()
+        val computeGraph = tape?.toComputeGraph(
+            synthesizeExternalInputs = true,
+            inputTensorIds = inputIds
+        ) ?: error("Failed to create compute graph: no execution tape was recorded")
 
         val converter = StableHloConverterFactory.createExtended()
         return converter.convert(computeGraph, descriptor.functionName)

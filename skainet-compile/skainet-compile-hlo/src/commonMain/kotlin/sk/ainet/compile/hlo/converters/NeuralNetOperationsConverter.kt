@@ -72,13 +72,20 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val groups = params["groups"] as? Int ?: 1
         
         val resultValue = context.nextTempValue()
-        
+
+        // Resolve input/weight types for the functional type annotation
+        val typeMapper = context.getTypeMapper()
+        val inputType = node.inputs.getOrNull(0)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?x?xf32>"
+        val weightType = node.inputs.getOrNull(1)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?x?xf32>"
+
         // Build StableHLO convolution operation
         val convOperation = buildConvolutionOperation(
             resultValue = resultValue,
             input = operands[0],
             weight = operands[1],
             bias = if (operands.size > 2) operands[2] else null,
+            inputType = inputType,
+            weightType = weightType,
             outputType = outputType,
             stride = stride,
             padding = padding,
@@ -319,38 +326,36 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         input: String,
         weight: String,
         bias: String?,
+        inputType: String,
+        weightType: String,
         outputType: String,
         stride: Pair<Int, Int>,
         padding: Pair<Int, Int>,
         dilation: Pair<Int, Int>,
         groups: Int
     ): String {
-        val paddingAttr = "padding = dense<[[${padding.first}, ${padding.first}], [${padding.second}, ${padding.second}]]> : tensor<2x2xi64>"
-        val strideAttr = "window_strides = dense<[${stride.first}, ${stride.second}]> : tensor<2xi64>"
-        val dilationAttr = "rhs_dilation = dense<[${dilation.first}, ${dilation.second}]> : tensor<2xi64>"
-        val dimensionNumbers = "dimension_numbers = #stablehlo.conv<[b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]>"
-        val featureGroupCount = "feature_group_count = $groups : i64"
-        val batchGroupCount = "batch_group_count = 1 : i64"
-        
-        return if (bias != null) {
-            // Convolution with bias requires two operations
-            val convResult = "${resultValue}_conv"
-            val convOp = "$convResult = stablehlo.convolution($input, $weight) " +
+        // StableHLO convolution custom assembly format:
+        //   %r = stablehlo.convolution(%lhs, %rhs)
+        //     dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
+        //     window = {stride = [...], pad = [...], rhs_dilate = [...]}
+        //     {batch_group_count = 1 : i64, feature_group_count = N : i64}
+        //     : (lhs_type, rhs_type) -> result_type
+        val convCore = { rv: String ->
+            "$rv = stablehlo.convolution($input, $weight) " +
                     "dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], " +
                     "window = {stride = [${stride.first}, ${stride.second}], " +
                     "pad = [[${padding.first}, ${padding.first}], [${padding.second}, ${padding.second}]], " +
-                    "rhs_dilate = [${dilation.first}, ${dilation.second}]}, " +
-                    "feature_group_count = $groups : $outputType"
-            
-            // Note: This is simplified - in practice, bias addition would need proper broadcasting
+                    "rhs_dilate = [${dilation.first}, ${dilation.second}]} " +
+                    "{batch_group_count = 1 : i64, feature_group_count = $groups : i64} " +
+                    ": ($inputType, $weightType) -> $outputType"
+        }
+
+        return if (bias != null) {
+            val convResult = "${resultValue}_conv"
+            val convOp = convCore(convResult)
             "$convOp\n    $resultValue = stablehlo.add $convResult, $bias : $outputType"
         } else {
-            "$resultValue = stablehlo.convolution($input, $weight) " +
-                    "dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], " +
-                    "window = {stride = [${stride.first}, ${stride.second}], " +
-                    "pad = [[${padding.first}, ${padding.first}], [${padding.second}, ${padding.second}]], " +
-                    "rhs_dilate = [${dilation.first}, ${dilation.second}]}, " +
-                    "feature_group_count = $groups : $outputType"
+            convCore(resultValue)
         }
     }
     

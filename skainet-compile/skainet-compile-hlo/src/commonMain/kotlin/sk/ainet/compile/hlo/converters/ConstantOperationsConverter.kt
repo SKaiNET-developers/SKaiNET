@@ -342,55 +342,54 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
     }
     
     /**
-     * Format tensor values for MLIR dense constant
+     * Format tensor values for MLIR dense constant.
+     * MLIR dense<> syntax requires nested brackets matching the tensor rank:
+     *   scalar:  dense<42.0>
+     *   1D [3]:  dense<[v0, v1, v2]>
+     *   2D [2,3]: dense<[[v0,v1,v2],[v3,v4,v5]]>
+     *   4D [1,3,1,1]: dense<[[[[v0],[v1],[v2]]]]>
      */
     private fun formatTensorValues(values: List<*>, outputSpec: TensorSpec?): String {
         val shape = outputSpec?.shape ?: emptyList()
-        
+
         return when {
             values.isEmpty() -> "0.0"
-            shape.isEmpty() || shape.size == 1 -> {
-                // 1D tensor or scalar
-                values.joinToString(", ") { formatConstantValue(it as Number) }
-            }
-            shape.size == 2 -> {
-                // 2D tensor - format as nested arrays
-                formatAs2DTensor(values, shape)
-            }
-            else -> {
-                // Multi-dimensional tensor - flatten for now
-                values.joinToString(", ") { formatConstantValue(it as Number) }
-            }
+            values.size == 1 -> formatConstantValue(values[0] as Number)
+            shape.isEmpty() -> "[" + values.joinToString(", ") { formatConstantValue(it as Number) } + "]"
+            else -> formatNestedTensor(values, shape, 0, IntArray(1))
         }
     }
-    
+
     /**
-     * Format values as a 2D tensor for MLIR
+     * Recursively format a flat list of values into nested MLIR dense literal
+     * matching the given shape. [offset] tracks the current position in the flat values list.
      */
-    private fun formatAs2DTensor(values: List<*>, shape: List<Int>): String {
-        if (shape.size != 2) return values.joinToString(", ") { formatConstantValue(it as Number) }
-        
-        val rows = shape[0]
-        val cols = shape[1]
-        val result = StringBuilder()
-        
-        result.append("[")
-        for (i in 0 until rows) {
-            if (i > 0) result.append(", ")
-            result.append("[")
-            for (j in 0 until cols) {
-                if (j > 0) result.append(", ")
-                val index = i * cols + j
-                if (index < values.size) {
-                    result.append(formatConstantValue(values[index] as Number))
+    private fun formatNestedTensor(values: List<*>, shape: List<Int>, dim: Int, offset: IntArray): String {
+        if (dim == shape.size - 1) {
+            // Innermost dimension: emit a flat array of values
+            val size = shape[dim]
+            val sb = StringBuilder("[")
+            for (i in 0 until size) {
+                if (i > 0) sb.append(", ")
+                val idx = offset[0]++
+                if (idx < values.size) {
+                    sb.append(formatConstantValue(values[idx] as Number))
                 } else {
-                    result.append("0.0")
+                    sb.append("0.0")
                 }
             }
-            result.append("]")
+            sb.append("]")
+            return sb.toString()
         }
-        result.append("]")
-        
-        return result.toString()
+
+        // Non-innermost dimension: recurse
+        val size = shape[dim]
+        val sb = StringBuilder("[")
+        for (i in 0 until size) {
+            if (i > 0) sb.append(", ")
+            sb.append(formatNestedTensor(values, shape, dim + 1, offset))
+        }
+        sb.append("]")
+        return sb.toString()
     }
 }
