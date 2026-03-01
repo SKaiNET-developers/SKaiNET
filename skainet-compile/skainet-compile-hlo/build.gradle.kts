@@ -51,6 +51,17 @@ kotlin {
             implementation(project(":skainet-backends:skainet-backend-cpu"))
 
         }
+
+        jvmMain.dependencies {
+            implementation(project(":skainet-lang:skainet-lang-models"))
+            implementation(project(":skainet-backends:skainet-backend-cpu"))
+            implementation(libs.kotlinx.coroutines)
+        }
+
+        jvmTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+        }
     }
 }
 
@@ -65,4 +76,34 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+// CLI task to generate StableHLO MLIR from registered sample models.
+// Usage:
+//   ./gradlew :skainet-compile:skainet-compile-hlo:generateHlo -Pmodel=list
+//   ./gradlew :skainet-compile:skainet-compile-hlo:generateHlo -Pmodel=rgb2grayscale
+//   ./gradlew :skainet-compile:skainet-compile-hlo:generateHlo \
+//       -Pmodel=rgb2grayscale -Poutput=rgb2grayscale.mlir -Pheight=224 -Pwidth=224
+val jvmMainCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
+
+tasks.register<JavaExec>("generateHlo") {
+    group = "application"
+    description = "Generates StableHLO MLIR from a registered sample model."
+
+    dependsOn(tasks.named("jvmJar"))
+
+    mainClass.set("sk.ainet.compile.hlo.generate.HloGeneratorMainKt")
+
+    classpath = files(
+        jvmMainCompilation.runtimeDependencyFiles,
+        tasks.named("jvmJar").get().outputs.files
+    )
+
+    val argsList = mutableListOf<String>()
+    providers.gradleProperty("model").orNull?.let { argsList += "--model=$it" }
+    providers.gradleProperty("output").orNull?.let { argsList += "--output=$it" }
+    providers.gradleProperty("height").orNull?.let { argsList += "--height=$it" }
+    providers.gradleProperty("width").orNull?.let { argsList += "--width=$it" }
+    providers.gradleProperty("batch").orNull?.let { argsList += "--batch=$it" }
+    args = argsList
 }

@@ -18,9 +18,10 @@ import sk.ainet.lang.tensor.ops.ValidationResult
  *   "e_<srcNodeId>_<srcOut>__<dstNodeId>_<dstIn>"
  *   Example: e_n0_Add_0__n1_Relu_0. This is deterministic given the node IDs and wiring.
  *
- * Note: This builder does NOT synthesize explicit "input" placeholder nodes for tensors without a
- * known producer. Only real operation nodes are created, and edges are added solely between such
- * nodes when a producer is known. This matches the expectations of TracingAcceptanceTest.
+ * By default this builder does NOT synthesize explicit "input" placeholder nodes for tensors
+ * without a known producer. Call [finalize] after adding all traces to synthesize "input" and
+ * "weight" constant nodes for unresolved external inputs. This is required for StableHLO
+ * compilation where every operand must be wired through graph edges.
  */
 public class TraceToGraphBuilder(
     private val graph: ComputeGraph,
@@ -31,6 +32,14 @@ public class TraceToGraphBuilder(
 
     private data class Producer(val node: GraphNode, val outIndex: Int, val spec: TensorSpec)
     private val producersByTensorId = mutableMapOf<String, Producer>()
+
+    private data class UnresolvedRef(
+        val tensorRef: TensorRef,
+        val consumerNode: GraphNode,
+        val inputIndex: Int,
+        val spec: TensorSpec
+    )
+    private val unresolvedByTensorId = mutableMapOf<String, MutableList<UnresolvedRef>>()
 
     /**
      * Add a single OpTrace into the graph, wiring known producers to inputs
@@ -106,6 +115,35 @@ public class TraceToGraphBuilder(
                         }
                     }
                 }
+                "conv2d" -> {
+                    // For Conv2d layer: conv2d(input, weight, bias?)
+                    // Resolve weight tensor (second input) from session
+                    if (trace.inputs.size >= 2) {
+                        val weightRef = trace.inputs[1]
+                        if (!producersByTensorId.containsKey(weightRef.id)) {
+                            val tensor = session?.resolve(weightRef)
+                            if (tensor != null) {
+                                val values = extractFloatArray(tensor)
+                                if (values != null) {
+                                    parameters["weights"] = values
+                                }
+                            }
+                        }
+                    }
+                    // Resolve optional bias tensor (third input) from session
+                    if (trace.inputs.size >= 3) {
+                        val biasRef = trace.inputs[2]
+                        if (!producersByTensorId.containsKey(biasRef.id)) {
+                            val tensor = session?.resolve(biasRef)
+                            if (tensor != null) {
+                                val values = extractFloatArray(tensor)
+                                if (values != null) {
+                                    parameters["bias_values"] = values
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -113,8 +151,6 @@ public class TraceToGraphBuilder(
 
         val inputSpecs = buildInputSpecs(trace)
         val outputSpecs = buildOutputSpecs(trace)
-
-        // Do not synthesize placeholder input nodes; leave unknown producers unresolved.
 
         val nodeId = "n${nextNodeId++}_${trace.opType}"
         val node = GraphNode(
@@ -125,7 +161,7 @@ public class TraceToGraphBuilder(
         )
         graph.addNode(node)
 
-        // Wire edges from producers
+        // Wire edges from producers; track unresolved inputs for later finalization
         trace.inputs.forEachIndexed { idx, tRef ->
             val prod = producersByTensorId[tRef.id]
             if (prod != null) {
@@ -141,6 +177,15 @@ public class TraceToGraphBuilder(
                         tensorSpec = tensorSpec
                     )
                 )
+            } else {
+                // Track for finalize() — no placeholder synthesized here by default
+                val spec = inputSpecs.getOrNull(idx) ?: TensorSpec(
+                    name = tRef.id,
+                    shape = tRef.shape.dimensions.toList(),
+                    dtype = tRef.dtype::class.simpleName ?: "FP32"
+                )
+                unresolvedByTensorId.getOrPut(tRef.id) { mutableListOf() }
+                    .add(UnresolvedRef(tRef, node, idx, spec))
             }
         }
 
@@ -157,6 +202,95 @@ public class TraceToGraphBuilder(
 
     public fun addAll(traces: Iterable<OpTrace>) {
         traces.forEach { addTrace(it) }
+    }
+
+    /**
+     * Synthesize placeholder nodes for tensor inputs that had no known producer.
+     *
+     * For each unresolved tensor:
+     * - If the tensor ID is in [inputTensorIds], an "input" placeholder node is created
+     *   (representing a function argument).
+     * - Else if the original tensor can be resolved from the session and contains constant data
+     *   (e.g. model weights), a "weight" constant node is created.
+     * - Otherwise an "input" placeholder node is created as a fallback.
+     *
+     * Edges are wired from the new nodes to every consumer that referenced the tensor.
+     * Call this after [addAll] when building graphs for compilation.
+     *
+     * @param inputTensorIds Tensor IDs that should always become function arguments (model inputs).
+     */
+    public fun finalize(inputTensorIds: Set<String> = emptySet()) {
+        for ((tensorId, refs) in unresolvedByTensorId) {
+            val firstRef = refs.first()
+            val spec = firstRef.spec
+
+            // If explicitly marked as model input, create an input node unconditionally
+            val forceInput = inputTensorIds.contains(tensorId)
+
+            // Try to resolve as a constant from the session
+            val tensor = if (!forceInput) session?.resolve(firstRef.tensorRef) else null
+            val constantValues = tensor?.let { extractFloatArray(it) }
+
+            val syntheticNode: GraphNode
+            if (constantValues != null) {
+                // Create a constant/weight node with embedded values
+                val weightShape = tensor!!.shape.dimensions.toList()
+                val weightDtype = tensor.dtype.simpleName ?: "FP32"
+                val nodeId = "n${nextNodeId++}_weight"
+                val op = TraceBackedOperation(
+                    name = "weight",
+                    type = "constant",
+                    parameters = mapOf(
+                        "initial_value" to constantValues.toList(),
+                        "trainable" to false
+                    )
+                )
+                syntheticNode = GraphNode(
+                    id = nodeId,
+                    operation = op,
+                    inputs = emptyList(),
+                    outputs = listOf(TensorSpec(
+                        name = tensorId,
+                        shape = weightShape,
+                        dtype = weightDtype
+                    ))
+                )
+            } else {
+                // Create an input placeholder node
+                val nodeId = "n${nextNodeId++}_input"
+                val op = TraceBackedOperation(
+                    name = "input",
+                    type = "input",
+                    parameters = emptyMap()
+                )
+                syntheticNode = GraphNode(
+                    id = nodeId,
+                    operation = op,
+                    inputs = emptyList(),
+                    outputs = listOf(spec)
+                )
+            }
+
+            graph.addNode(syntheticNode)
+
+            // Wire edges to all consumers
+            for (ref in refs) {
+                graph.addEdge(
+                    GraphEdge(
+                        id = "e_${syntheticNode.id}_0__${ref.consumerNode.id}_${ref.inputIndex}",
+                        source = syntheticNode,
+                        destination = ref.consumerNode,
+                        sourceOutputIndex = 0,
+                        destinationInputIndex = ref.inputIndex,
+                        tensorSpec = ref.spec
+                    )
+                )
+            }
+
+            // Register as producer
+            producersByTensorId[tensorId] = Producer(syntheticNode, 0, spec)
+        }
+        unresolvedByTensorId.clear()
     }
 
     private fun buildInputSpecs(trace: OpTrace): List<TensorSpec> {

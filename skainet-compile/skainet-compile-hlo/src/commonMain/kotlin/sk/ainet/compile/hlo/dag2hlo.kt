@@ -26,6 +26,11 @@ public data class StableHloModule(
     public fun optimize(optimizer: StableHloOptimizer): StableHloModule {
         return optimizer.optimize(this)
     }
+
+    /**
+     * Lazily iterate over the MLIR content line by line.
+     */
+    public fun contentLines(): Sequence<String> = content.lineSequence()
 }
 
 /**

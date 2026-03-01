@@ -322,7 +322,7 @@ class TracingWrapperGenerator(
             val tensorParams = method.parameters.filter { it.isTensor }
             if (tensorParams.isNotEmpty()) {
                 val inputRefs = tensorParams.map { param ->
-                    if (param.type.endsWith("?")) {
+                    if (param.type.endsWith("?") || param.isOptional) {
                         // Handle nullable tensor parameters
                         "if (${param.name} != null) session.refOf(${param.name} as Tensor<*, *>) else null"
                     } else {
