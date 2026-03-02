@@ -32,7 +32,7 @@ import kotlin.math.pow
  * @param decoupledWeightDecay If true, uses AdamW-style decoupled weight decay (default: true)
  * @param amsgrad If true, uses the AMSGrad variant that maintains the maximum of all v_t (default: false)
  */
-public class AdamOptimizer(
+public class AdamOptimizer @kotlin.jvm.JvmOverloads constructor(
     private val lr: Double = 0.001,
     private val beta1: Double = 0.9,
     private val beta2: Double = 0.999,

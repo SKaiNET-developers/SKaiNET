@@ -21,7 +21,7 @@ import kotlin.math.exp
  *
  * @param epsilon Small value for numerical stability. Default is 1e-7.
  */
-public class BinaryCrossEntropyLoss(
+public class BinaryCrossEntropyLoss @kotlin.jvm.JvmOverloads constructor(
     private val epsilon: Float = 1e-7f
 ) : Loss {
 

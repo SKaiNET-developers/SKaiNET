@@ -1,3 +1,27 @@
+public abstract class sk/ainet/apps/llm/DecoderRuntime {
+	public fun <init> ()V
+	public fun <init> (Lkotlin/random/Random;)V
+	public synthetic fun <init> (Lkotlin/random/Random;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	protected abstract fun embedToken (I)Lsk/ainet/lang/tensor/Tensor;
+	protected final fun expectFloatBuffer (Lsk/ainet/lang/tensor/Tensor;)[F
+	public fun forward (I)Lsk/ainet/lang/tensor/Tensor;
+	public fun generate ([IIFLkotlin/jvm/functions/Function1;)V
+	protected abstract fun getBosToken ()I
+	protected abstract fun getDim ()I
+	protected abstract fun getNLayers ()I
+	public final fun getPosition ()I
+	protected final fun getRandom ()Lkotlin/random/Random;
+	protected abstract fun getSeqLen ()I
+	protected abstract fun getVocabSize ()I
+	protected abstract fun outputNorm (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	protected abstract fun outputProject (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun reset ()V
+	protected abstract fun resetState ()V
+	protected abstract fun runLayer (ILsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	protected final fun sample (Lsk/ainet/lang/tensor/Tensor;F)I
+	protected final fun setPosition (I)V
+}
+
 public abstract interface class sk/ainet/apps/llm/Tokenizer {
 	public abstract fun decode (I)Ljava/lang/String;
 	public abstract fun decode ([I)Ljava/lang/String;

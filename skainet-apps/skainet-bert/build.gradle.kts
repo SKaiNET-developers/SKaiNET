@@ -54,6 +54,12 @@ kotlin {
             implementation(libs.kotlin.test)
         }
 
+        val jvmMain by getting {
+            dependencies {
+                implementation(project(":skainet-io:skainet-io-safetensors"))
+            }
+        }
+
         val jvmTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)

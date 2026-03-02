@@ -20,7 +20,7 @@ import sk.ainet.lang.nn.topology.weights
  * @param initBias Initial bias
  */
 
-public class Linear<T : DType, V>(
+public class Linear<T : DType, V> @kotlin.jvm.JvmOverloads constructor(
     inFeatures: Int,
     outFeatures: Int,
     override val name: String = "Linear",

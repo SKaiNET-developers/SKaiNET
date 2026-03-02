@@ -83,6 +83,10 @@ tasks.named("dokkaHtml") {
     dependsOn("kspCommonMainKotlinMetadata")
 }
 
+tasks.named("dokkaJavadoc") {
+    dependsOn("kspCommonMainKotlinMetadata")
+}
+
 benchmark {
     targets {
         register("jvm")

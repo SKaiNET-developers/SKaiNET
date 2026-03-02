@@ -26,7 +26,7 @@ import kotlin.math.ln
  *                 (e.g., output of softplus). Default is true.
  * @param epsilon Small value for numerical stability when logInput is false. Default is 1e-8.
  */
-public class PoissonLoss(
+public class PoissonLoss @kotlin.jvm.JvmOverloads constructor(
     private val logInput: Boolean = true,
     private val epsilon: Float = 1e-8f
 ) : Loss {

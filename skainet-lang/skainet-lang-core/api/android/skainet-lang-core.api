@@ -463,8 +463,16 @@ public final class sk/ainet/lang/nn/Conv1d : sk/ainet/lang/nn/Module, sk/ainet/l
 }
 
 public final class sk/ainet/lang/nn/Conv2d : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ILsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
 	public synthetic fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IZLsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILkotlin/Pair;Lkotlin/Pair;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILkotlin/Pair;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
 	public final fun getBias ()Z
 	public final fun getDilation ()Lkotlin/Pair;
@@ -747,8 +755,10 @@ public abstract class sk/ainet/lang/nn/InternalMixedPrecisionModule : sk/ainet/l
 }
 
 public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
 	public synthetic fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IILsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun getModules ()Ljava/util/List;
 	public fun getName ()Ljava/lang/String;
 	public fun getParams ()Ljava/util/List;
@@ -756,6 +766,9 @@ public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/l
 }
 
 public final class sk/ainet/lang/nn/MaxPool2d : sk/ainet/lang/nn/Module {
+	public fun <init> (Lkotlin/Pair;)V
+	public fun <init> (Lkotlin/Pair;Lkotlin/Pair;)V
+	public fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;)V
 	public fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
 	public synthetic fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
@@ -1715,6 +1728,7 @@ public final class sk/ainet/lang/nn/loss/MSELoss : sk/ainet/lang/nn/loss/Loss {
 
 public final class sk/ainet/lang/nn/loss/PoissonLoss : sk/ainet/lang/nn/loss/Loss {
 	public fun <init> ()V
+	public fun <init> (Z)V
 	public fun <init> (ZF)V
 	public synthetic fun <init> (ZFILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/nn/loss/Reduction;)Lsk/ainet/lang/tensor/Tensor;
@@ -1782,6 +1796,10 @@ public final class sk/ainet/lang/nn/normalization/BatchNormalization : sk/ainet/
 	public final fun train ()V
 }
 
+public abstract interface class sk/ainet/lang/nn/normalization/FusedRmsNormOps {
+	public abstract fun fusedRmsNorm (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+}
+
 public final class sk/ainet/lang/nn/normalization/GroupNormalization : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> (IIDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public synthetic fun <init> (IIDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -1818,6 +1836,12 @@ public final class sk/ainet/lang/nn/optim/AdamKt {
 
 public final class sk/ainet/lang/nn/optim/AdamOptimizer : sk/ainet/lang/nn/optim/Optimizer {
 	public fun <init> ()V
+	public fun <init> (D)V
+	public fun <init> (DD)V
+	public fun <init> (DDD)V
+	public fun <init> (DDDD)V
+	public fun <init> (DDDDD)V
+	public fun <init> (DDDDDZ)V
 	public fun <init> (DDDDDZZ)V
 	public synthetic fun <init> (DDDDDZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun addParameter (Lsk/ainet/lang/nn/topology/ModuleParameter;Z)V
@@ -1847,6 +1871,8 @@ public final class sk/ainet/lang/nn/optim/SGDKt {
 }
 
 public final class sk/ainet/lang/nn/optim/SgdOptimizer : sk/ainet/lang/nn/optim/Optimizer {
+	public fun <init> (D)V
+	public fun <init> (DD)V
 	public fun <init> (DDD)V
 	public synthetic fun <init> (DDDILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun addParameter (Lsk/ainet/lang/nn/topology/ModuleParameter;Z)V
@@ -3641,15 +3667,43 @@ public final class sk/ainet/lang/types/BF16 : sk/ainet/lang/types/DType {
 
 public abstract interface class sk/ainet/lang/types/DType {
 	public static final field Companion Lsk/ainet/lang/types/DType$Companion;
+	public static fun bf16 ()Lsk/ainet/lang/types/DType;
+	public static fun fp16 ()Lsk/ainet/lang/types/DType;
+	public static fun fp32 ()Lsk/ainet/lang/types/DType;
+	public static fun fp64 ()Lsk/ainet/lang/types/DType;
 	public abstract fun getName ()Ljava/lang/String;
 	public abstract fun getSizeInBits ()I
+	public static fun int16 ()Lsk/ainet/lang/types/DType;
+	public static fun int32 ()Lsk/ainet/lang/types/DType;
+	public static fun int4 ()Lsk/ainet/lang/types/DType;
+	public static fun int64 ()Lsk/ainet/lang/types/DType;
+	public static fun int8 ()Lsk/ainet/lang/types/DType;
 	public abstract fun isCompatible (Lsk/ainet/lang/types/DType;)Z
 	public abstract fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
+	public static fun ternary ()Lsk/ainet/lang/types/DType;
+	public static fun uint16 ()Lsk/ainet/lang/types/DType;
+	public static fun uint32 ()Lsk/ainet/lang/types/DType;
+	public static fun uint64 ()Lsk/ainet/lang/types/DType;
+	public static fun uint8 ()Lsk/ainet/lang/types/DType;
 }
 
 public final class sk/ainet/lang/types/DType$Companion {
+	public final fun bf16 ()Lsk/ainet/lang/types/DType;
 	public final fun findByName (Ljava/lang/String;)Lsk/ainet/lang/types/DType;
+	public final fun fp16 ()Lsk/ainet/lang/types/DType;
+	public final fun fp32 ()Lsk/ainet/lang/types/DType;
+	public final fun fp64 ()Lsk/ainet/lang/types/DType;
 	public final fun getAllTypes ()Ljava/util/Map;
+	public final fun int16 ()Lsk/ainet/lang/types/DType;
+	public final fun int32 ()Lsk/ainet/lang/types/DType;
+	public final fun int4 ()Lsk/ainet/lang/types/DType;
+	public final fun int64 ()Lsk/ainet/lang/types/DType;
+	public final fun int8 ()Lsk/ainet/lang/types/DType;
+	public final fun ternary ()Lsk/ainet/lang/types/DType;
+	public final fun uint16 ()Lsk/ainet/lang/types/DType;
+	public final fun uint32 ()Lsk/ainet/lang/types/DType;
+	public final fun uint64 ()Lsk/ainet/lang/types/DType;
+	public final fun uint8 ()Lsk/ainet/lang/types/DType;
 }
 
 public final class sk/ainet/lang/types/DTypeExtensionsKt {
