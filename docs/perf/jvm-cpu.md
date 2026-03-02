@@ -21,6 +21,8 @@ Source files:
   - `--enable-preview`
   - `--add-modules jdk.incubator.vector`
 
+For Java 25-specific performance advantages, see [Java 25 CPU Backend](java-25-cpu-backend.md).
+
 #### Feature flags
 You can toggle acceleration paths at runtime using system properties or environment variables:
 - Vector acceleration:

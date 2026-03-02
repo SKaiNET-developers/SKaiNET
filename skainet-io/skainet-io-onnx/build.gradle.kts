@@ -9,8 +9,6 @@ plugins {
 }
 
 kotlin {
-    // Align with the root project toolchain to avoid class file version mismatches
-    jvmToolchain(21)
     explicitApi()
     targets.configureEach {
         compilations.configureEach {

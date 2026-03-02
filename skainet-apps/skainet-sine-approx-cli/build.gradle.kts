@@ -3,10 +3,6 @@ plugins {
     application
 }
 
-kotlin {
-    jvmToolchain(21)
-}
-
 dependencies {
     implementation(kotlin("stdlib"))
     implementation(libs.kotlinx.cli)
