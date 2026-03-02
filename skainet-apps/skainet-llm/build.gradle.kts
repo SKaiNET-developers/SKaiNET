@@ -11,8 +11,6 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(21)
-
     androidTarget {
         publishLibraryVariants("release")
         @OptIn(ExperimentalKotlinGradlePluginApi::class)

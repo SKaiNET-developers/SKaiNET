@@ -3,16 +3,6 @@ plugins {
     id("me.champeau.jmh") version "0.7.3"
 }
 
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
-
-kotlin {
-    jvmToolchain(21)
-}
-
 dependencies {
     implementation(project(":skainet-lang:skainet-lang-core"))
     implementation(project(":skainet-backends:skainet-backend-cpu"))

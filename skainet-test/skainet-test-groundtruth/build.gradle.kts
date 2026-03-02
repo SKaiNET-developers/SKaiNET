@@ -102,7 +102,6 @@ tasks.withType<Test> {
 
 kotlin {
     explicitApi()
-    jvmToolchain(21)
 
     androidTarget {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)

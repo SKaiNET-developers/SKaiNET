@@ -17,18 +17,38 @@ allprojects {
     group = "sk.ainet"
 }
 
-// Enforce a consistent JVM toolchain across all Kotlin modules to avoid bytecode mismatches
+// Require JDK 21+ but allow any newer version (produces Java 21 bytecode via --release / jvmTarget)
 subprojects {
-    // Kotlin Multiplatform projects
+    require(JavaVersion.current() >= JavaVersion.VERSION_21) {
+        "This project requires JDK 21+, but found ${JavaVersion.current()}"
+    }
+
+    // Kotlin Multiplatform projects – set jvmTarget on every JVM-like target
     plugins.withId("org.jetbrains.kotlin.multiplatform") {
         extensions.findByType(org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java)?.apply {
-            jvmToolchain(21)
+            targets.withType(org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget::class.java) {
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+                }
+            }
         }
     }
     // Kotlin/JVM projects
     plugins.withId("org.jetbrains.kotlin.jvm") {
         extensions.findByType(org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension::class.java)?.apply {
-            jvmToolchain(21)
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+            }
+        }
+    }
+
+    // Java sources – produce Java 21 bytecode regardless of the JDK used to compile.
+    // Skip Android projects: AGP manages source/target compatibility itself and rejects --release.
+    afterEvaluate {
+        if (!plugins.hasPlugin("com.android.library") && !plugins.hasPlugin("com.android.application")) {
+            tasks.withType<JavaCompile>().configureEach {
+                options.release.set(21)
+            }
         }
     }
 
