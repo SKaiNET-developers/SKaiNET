@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "sk.ainet"
-version = rootProject.findProperty("VERSION_NAME") ?: "0.13.0"
+version = rootProject.findProperty("VERSION_NAME") ?: "0.14.0"
 
 kotlin {
     jvmToolchain(21)

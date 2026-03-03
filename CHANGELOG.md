@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.14.0] - 2026-03-03
+
+### Added
+- **First-Class Java 21+ Support**: Complete Java API surface with `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition (`SequentialModelBuilder`), `KLlamaJava`/`KBertJava` facades, `JavaAgentLoop` for tool-calling agents, and `TrainingLoop` builder.
+- **Maven BOM**: New `sk.ainet:skainet-bom` artifact for one-line version management across all modules.
+- **Java Documentation**: Added [Getting Started](docs/java-getting-started.md), [LLM Inference](docs/java-llm-inference.md), and [Model Training](docs/java-model-training.md) guides.
+- **Java 25 Performance Documentation**: Added documentation for JVM CPU backend performance advantages.
+- **WasmWasi Target**: Added `wasmWasi` target support across all KMP modules.
+- **StableHLO MLIR Streaming API**: New `HloGenerator` public API with generic Model + Tensor interface and streaming MLIR output.
+- **ReductionOperationsConverter**: Added support for reduction operations in StableHLO export.
+- **JVM Performance (Jlama Techniques)**: MemorySegment-based tensors, SIMD GEMM kernels, paged KV cache, batch attention for prompt prefill, fused QKV projections, and cached quantized weights.
+- **Native RandomAccessSource**: POSIX `pread()`-based source for memory-efficient GGUF parsing.
+- **MemorySegment Weight Conversion**: New `NATIVE_OPTIMIZED` quant policy and `MemSegWeightConverter` pipeline with Arena lifecycle management.
+- **Lazy Transpose**: Added lazy transpose for Q4/Q8 MemorySegment tensors and MemSeg FP32 transpose.
+- **Java CLI App**: New Java-based KLlama CLI application.
+
+### Changed
+- **Android KMP Plugin Migration**: Migrated Android subprojects to `androidMultiplatformLibrary` plugin for AGP 9 compatibility.
+- **Refactored Model Loading**: Extracted shared dequantization, registry, tensor naming, and decoder runtime into reusable components.
+- **JDK Requirement Relaxed**: Allow JDK >= 21 instead of requiring exactly JDK 21.
+- **Gradle Upgrade**: Updated to Gradle 9.3.1.
+- **Kotlin Upgrade**: Bumped Kotlin from 2.2.21 to 2.3.10.
+- **Kotlin Compile Testing**: Replaced abandoned `kotlin-compile-testing` with `kctfork` for Kotlin 2.3.0 compatibility.
+
+### Fixed
+- **StableHLO MLIR Export**: Fixed MLIR export to produce valid IREE-compilable output.
+- **OOM in Dequantization Benchmark**: Fixed out-of-memory in `DEQUANTIZE_TO_FP32` E2E benchmark test.
+- **Quantized MatMul**: Fixed block offset calculation in quantized matrix multiplication.
+- **CI Stability**: Fixed AAPT2 daemon crashes and improved Android build stability.
+- **Documentation CI**: Fixed workflow permissions for PR comments.
+- **Deprecated API Usage**: Fixed `createTempDir()` deprecation in data-simple integration tests.
+
+### Dependencies
+- com.gradleup.shadow: 9.3.1 → 9.3.2.
+- com.fasterxml.jackson.core:jackson-databind: 2.21.0 → 2.21.1.
+- ch.qos.logback:logback-classic: 1.5.27 → 1.5.32.
+- io.github.kotest:kotest: 6.1.3 → 6.1.4.
+- org.jetbrains.kotlinx:kotlinx-io-core: 0.8.2 → 0.9.0.
+- com.vanniktech.maven.publish: → 0.36.0.
+- org.jetbrains.kotlinx.kover: → 0.9.7.
+- actions/setup-node: 4 → 6.
+- actions/upload-artifact: 6 → 7.
+- actions/download-artifact: 7 → 8.
+- junit-platform-launcher added for CI test execution.
+
+### Contributors
+Thank you to the following contributors for their work on this release:
+- **Dhia Chemingui** ([@dhiaspaner](https://github.com/dhiaspaner)) — Android KMP plugin migration (#385, #386)
+
 ## [0.13.0] - 2026-02-12
 
 ### Added
