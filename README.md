@@ -153,17 +153,56 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 
 - Clean APIs, growing docs, Maven Central artifacts
 - Get productive in minutes with minimal deps
+- **First-class Java 21+ support** with builder APIs, blocking/async facades, and complete documentation
 
+**Kotlin:**
 ```kotlin
 dependencies {
     implementation("sk.ainet.core:SKaiNET-lang-core:0.13.0")
     implementation("sk.ainet.core:SKaiNET-backend-cpu:0.13.0")
 ```
 
+**Java (Maven with BOM):**
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-bom</artifactId>
+            <version>0.13.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>sk.ainet</groupId>
+        <artifactId>skainet-lang-core-jvm</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>sk.ainet</groupId>
+        <artifactId>skainet-backend-cpu-jvm</artifactId>
+    </dependency>
+</dependencies>
+```
+
+```java
+// Hello Tensor in Java
+var ctx = SKaiNET.context();
+var a = SKaiNET.tensor(ctx, new int[]{2, 3}, DType.fp32(),
+        new float[]{1, 2, 3, 4, 5, 6});
+var b = SKaiNET.tensor(ctx, new int[]{3, 2}, DType.fp32(),
+        new float[]{7, 8, 9, 10, 11, 12});
+var c = TensorJavaOps.matmul(a, b);  // [2,2]
+```
+
 ### SKaiNET is for LLMs
 
 Generate text with just a few lines of code using any Llama-based GGUF model:
 
+**Kotlin:**
 ```kotlin
 val ctx = DirectCpuExecutionContext()
 val ingestion = LlamaIngestion(ctx)
@@ -179,15 +218,25 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 }
 ```
 
+**Java:**
+```java
+// Load and generate in ~5 lines
+try (var session = KLlamaJava.loadGGUF(Path.of("model.gguf"))) {
+    var config = GenerationConfig.builder().maxTokens(256).temperature(0.7f).build();
+    session.generate("Once upon a time", config, token -> System.out.print(token));
+}
+```
+
 ## Use it
 
 - From Kotlin code in apps, libraries, CLIs
+- From **Java 21+** with idiomatic builder APIs and blocking/async facades
 - In Kotlin Notebooks for quick exploration
 - With sample projects to learn patterns
 
 ## Quick start
 
-Gradle (Kotlin DSL):
+### Gradle (Kotlin DSL)
 
 ```kotlin
 dependencyResolutionManagement {
@@ -215,20 +264,68 @@ dependencies {
 }
 ```
 
-Maven:
+### Maven (with BOM)
 
 ```xml
-<dependency>
-  <groupId>sk.ainet.core</groupId>
-  <artifactId>SKaiNET-lang-core</artifactId>
-  <version>0.13.0</version>
-</dependency>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-bom</artifactId>
+            <version>0.13.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <!-- Core tensor operations -->
+    <dependency>
+        <groupId>sk.ainet</groupId>
+        <artifactId>skainet-lang-core-jvm</artifactId>
+    </dependency>
+    <!-- CPU backend -->
+    <dependency>
+        <groupId>sk.ainet</groupId>
+        <artifactId>skainet-backend-cpu-jvm</artifactId>
+    </dependency>
+    <!-- Optional: MNIST/data loading -->
+    <dependency>
+        <groupId>sk.ainet</groupId>
+        <artifactId>skainet-data-simple-jvm</artifactId>
+    </dependency>
+    <!-- Optional: LLM inference -->
+    <dependency>
+        <groupId>sk.ainet</groupId>
+        <artifactId>skainet-kllama-jvm</artifactId>
+    </dependency>
+</dependencies>
 ```
+
+> **Note for Java users:** Add `--enable-preview --add-modules jdk.incubator.vector` to your JVM args for SIMD acceleration. See [Java Getting Started](docs/java-getting-started.md) for full setup instructions.
 
 ## Examples and notebooks
 
 - [See examples](https://github.com/SKaiNET-developers/SKaiNET-examples)
+- [Java examples](examples/java/) — standalone Maven project with tensor ops, MNIST training, LLM inference
 - Kotlin Notebook: https://github.com/SKaiNET-developers/SKaiNET-notebook
+
+## 0.14.0 highlights
+
+- **First-Class Java 21+ Support**: Complete Java API surface with `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition, `KLlamaJava`/`KBertJava` facades, and `JavaAgentLoop` for tool-calling agents.
+- **Maven BOM**: `sk.ainet:skainet-bom` for one-line version management across all modules.
+- **Java Documentation**: [Getting Started](docs/java-getting-started.md) | [LLM Inference](docs/java-llm-inference.md) | [Model Training](docs/java-model-training.md)
+
+```java
+// Java: Build and train a model
+var model = new SequentialModelBuilder(ctx)
+        .input(784).dense(128).relu().dense(10).build();
+var loop = TrainingLoop.builder()
+        .model(model).loss(Losses.crossEntropy())
+        .optimizer(Optimizers.adam(0.001)).context(ctx).build();
+float loss = loop.step(x, y);
+```
 
 ## 0.13.0 highlights
 

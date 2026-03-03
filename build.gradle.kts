@@ -45,7 +45,7 @@ subprojects {
     // Java sources – produce Java 21 bytecode regardless of the JDK used to compile.
     // Skip Android projects: AGP manages source/target compatibility itself and rejects --release.
     afterEvaluate {
-        if (!plugins.hasPlugin("com.android.library") && !plugins.hasPlugin("com.android.application")) {
+        if (!plugins.hasPlugin("com.android.library") && !plugins.hasPlugin("com.android.application") && !plugins.hasPlugin("com.android.kotlin.multiplatform.library")) {
             tasks.withType<JavaCompile>().configureEach {
                 options.release.set(21)
             }

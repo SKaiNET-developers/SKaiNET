@@ -23,7 +23,7 @@ import sk.ainet.lang.nn.topology.weights
  * @param initWeights Initial weights tensor
  * @param initBias Initial bias tensor (if bias is true)
  */
-public class Conv2d<T : DType, V>(
+public class Conv2d<T : DType, V> @kotlin.jvm.JvmOverloads constructor(
     public val inChannels: Int,
     public val outChannels: Int,
     public val kernelSize: Pair<Int, Int>,

@@ -15,7 +15,7 @@ import sk.ainet.lang.types.DType
  * @param padding Padding added to all sides of the input (default: 0, 0)
  * @param name Name of the module
  */
-public class MaxPool2d<T : DType, V>(
+public class MaxPool2d<T : DType, V> @kotlin.jvm.JvmOverloads constructor(
     public val kernelSize: Pair<Int, Int>,
     public val stride: Pair<Int, Int> = kernelSize,
     public val padding: Pair<Int, Int> = 0 to 0,

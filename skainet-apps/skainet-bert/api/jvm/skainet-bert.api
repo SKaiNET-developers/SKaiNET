@@ -187,3 +187,15 @@ public final class sk/ainet/apps/bert/TokenizerOutput {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/apps/bert/java/KBertJava {
+	public static final field INSTANCE Lsk/ainet/apps/bert/java/KBertJava;
+	public static final fun loadSafeTensors (Ljava/nio/file/Path;)Lsk/ainet/apps/bert/java/KBertSession;
+}
+
+public final class sk/ainet/apps/bert/java/KBertSession : java/lang/AutoCloseable {
+	public fun <init> (Lsk/ainet/apps/bert/BertRuntime;Lsk/ainet/apps/bert/HuggingFaceTokenizer;)V
+	public fun close ()V
+	public final fun encode (Ljava/lang/String;)[F
+	public final fun similarity (Ljava/lang/String;Ljava/lang/String;)F
+}
+

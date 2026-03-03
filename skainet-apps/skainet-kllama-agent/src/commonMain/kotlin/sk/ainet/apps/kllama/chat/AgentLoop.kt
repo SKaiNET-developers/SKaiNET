@@ -14,7 +14,7 @@ import sk.ainet.lang.types.DType
  * @param temperature Sampling temperature.
  * @param random Random generator for sampling.
  */
-public data class AgentConfig(
+public data class AgentConfig @kotlin.jvm.JvmOverloads constructor(
     val maxToolRounds: Int = 5,
     val maxTokensPerRound: Int = 512,
     val temperature: Float = 0.7f,

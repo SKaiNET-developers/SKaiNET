@@ -23,7 +23,7 @@ import sk.ainet.lang.types.DType
  *
  * @see CrossEntropyLoss
  */
-public class CategoricalCrossEntropyLoss(
+public class CategoricalCrossEntropyLoss @kotlin.jvm.JvmOverloads constructor(
     private val dim: Int = -1
 ) : Loss {
     private val delegate = CrossEntropyLoss(dim)
@@ -53,7 +53,7 @@ public class CategoricalCrossEntropyLoss(
  *
  * @see CrossEntropyLoss
  */
-public class SparseCategoricalCrossEntropyLoss(
+public class SparseCategoricalCrossEntropyLoss @kotlin.jvm.JvmOverloads constructor(
     private val dim: Int = -1
 ) : Loss {
     private val delegate = CrossEntropyLoss(dim)

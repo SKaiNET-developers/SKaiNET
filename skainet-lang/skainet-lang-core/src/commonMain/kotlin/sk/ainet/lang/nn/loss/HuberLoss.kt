@@ -20,7 +20,7 @@ import kotlin.math.abs
  * @param delta The threshold at which to change from quadratic to linear loss.
  *              Default is 1.0.
  */
-public class HuberLoss(
+public class HuberLoss @kotlin.jvm.JvmOverloads constructor(
     private val delta: Float = 1.0f
 ) : Loss {
 

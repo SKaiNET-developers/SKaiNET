@@ -132,6 +132,7 @@ public final class sk/ainet/compile/hlo/StableHloModule {
 	public final fun component3 ()Ljava/util/List;
 	public final fun component4 ()Ljava/util/List;
 	public final fun component5 ()Ljava/util/Map;
+	public final fun contentLines ()Lkotlin/sequences/Sequence;
 	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/StableHloModule;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 	public fun equals (Ljava/lang/Object;)Z
@@ -144,6 +145,11 @@ public final class sk/ainet/compile/hlo/StableHloModule {
 	public final fun optimize (Lsk/ainet/compile/hlo/StableHloOptimizer;)Lsk/ainet/compile/hlo/StableHloModule;
 	public fun toString ()Ljava/lang/String;
 	public final fun validate (Lsk/ainet/compile/hlo/MlirValidator;)Ljava/util/List;
+}
+
+public final class sk/ainet/compile/hlo/StableHloModuleJvmKt {
+	public static final fun asInputStream (Lsk/ainet/compile/hlo/StableHloModule;)Ljava/io/InputStream;
+	public static final fun asReader (Lsk/ainet/compile/hlo/StableHloModule;)Ljava/io/Reader;
 }
 
 public abstract interface class sk/ainet/compile/hlo/StableHloOperationConverter {
@@ -228,6 +234,12 @@ public final class sk/ainet/compile/hlo/converters/NeuralNetOperationsConverter 
 	public fun getSupportedOperations ()Ljava/util/Set;
 }
 
+public final class sk/ainet/compile/hlo/converters/ReductionOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
 public final class sk/ainet/compile/hlo/converters/ShapeOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
@@ -304,6 +316,19 @@ public final class sk/ainet/compile/hlo/examples/ValidationDemonstrationResult {
 	public fun hashCode ()I
 	public final fun summary ()Ljava/lang/String;
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/generate/HloGenerator {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/generate/HloGenerator;
+	public final fun generate (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun generate$default (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun generateBlocking$default (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+}
+
+public final class sk/ainet/compile/hlo/generate/HloGeneratorMainKt {
+	public static final fun main ([Ljava/lang/String;)V
 }
 
 public final class sk/ainet/compile/hlo/validation/BenchmarkResults {

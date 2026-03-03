@@ -67,6 +67,38 @@ public sealed interface DType {
          * @return The DType instance or null if not found
          */
         public fun findByName(name: String): DType? = typeRegistry[name]
+
+        // --- Java-friendly static accessors (A.1 / A.6) ---
+
+        /** @return The FP32 (32-bit float) data type. */
+        @kotlin.jvm.JvmStatic public fun fp32(): DType = FP32
+        /** @return The FP16 (16-bit float) data type. */
+        @kotlin.jvm.JvmStatic public fun fp16(): DType = FP16
+        /** @return The FP64 (64-bit float) data type. */
+        @kotlin.jvm.JvmStatic public fun fp64(): DType = FP64
+        /** @return The BF16 (BFloat16) data type. */
+        @kotlin.jvm.JvmStatic public fun bf16(): DType = BF16
+        /** @return The Int4 (4-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun int4(): DType = Int4
+        /** @return The Int8 (8-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun int8(): DType = Int8
+        /** @return The Int16 (16-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun int16(): DType = Int16
+        /** @return The Int32 (32-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun int32(): DType = Int32
+        /** @return The Int64 (64-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun int64(): DType = Int64
+        /** @return The UInt8 (unsigned 8-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun uint8(): DType = UInt8
+        /** @return The UInt16 (unsigned 16-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun uint16(): DType = UInt16
+        /** @return The UInt32 (unsigned 32-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun uint32(): DType = UInt32
+        /** @return The UInt64 (unsigned 64-bit integer) data type. */
+        @kotlin.jvm.JvmStatic public fun uint64(): DType = UInt64
+        /** @return The Ternary data type. */
+        @kotlin.jvm.JvmStatic public fun ternary(): DType = Ternary
+
     }
 
 }

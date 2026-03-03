@@ -66,8 +66,13 @@ include("skainet-models:skainet-model-yolo")
 //include("skainet-integrations:skainet-simple-cpu")
 
 
+// ====== BOM & STARTER
+include("skainet-bom")
+include("skainet-starter-jvm")
+
 // ====== TEST
 include("skainet-test:skainet-test-groundtruth")
+include("skainet-test:skainet-test-java")
 
 // ====== APPS
 include("skainet-apps:skainet-grayscale-cli")

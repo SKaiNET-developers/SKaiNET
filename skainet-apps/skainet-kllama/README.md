@@ -1,170 +1,212 @@
-# KLlama Getting Started Guide
+# KLlama
 
-Welcome to **KLlama**, the pure Kotlin LLaMA inference runtime. This guide will help you get started with the CLI and show you how to embed LLaMA models directly into your own Kotlin applications using **SKaiNET 0.11.0**.
+A pure Kotlin LLaMA inference library for JVM, Native, JS, and WebAssembly. Part of the [SKaiNET](../../README.md) framework.
 
-⚠️ **Early Stage Development**: The whole project is in early development. While it supports various formats and quantizations, you may encounter edge cases. We appreciate your feedback and bug reports!
+KLlama lets you load and run LLaMA-family models directly in your application — no Python, no native binaries, no external servers.
 
-## 🚀 Quick Start with CLI
+> **Early Stage Development**: The project is in active development. While it supports various formats and quantizations, you may encounter edge cases. We appreciate your feedback and bug reports!
 
-The CLI is the fastest way to test your LLaMA models on your machine.
-
-### Building
-
-To build the executable fat JAR, run the following command from the project root with Java 21+ as the default JDK:
-
-```bash
-./gradlew :skainet-apps:skainet-kllama-cli:shadowJar
-```
-
-The JAR will be located at: `skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar`
-
-### Running
-
-KLlama leverages the **Java Vector API** for high-performance CPU inference. You must enable it via JVM flags:
-
-```bash
-java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar -m <model_path> [-t <tokenizer_path>] [-s <steps>] [-k <temperature>] [-p <system_prompt>] "<prompt>"
-```
-
-*   **`<model_path>`**: Path to `.gguf` or `.bin` (Karpathy) model.
-*   **`[tokenizer_path]`**: Required for `.bin` models. Optional for `.gguf` if the tokenizer is embedded.
-*   **`[steps]`**: Optional generation step count (default: `64`).
-*   **`[temperature]`**: Optional sampling temperature (default: `0.8`).
-*   **`[system_prompt]`**: Optional system prompt prepended as context.
-*   **`"<prompt>"`**: Your text prompt.
-
-**Example (GGUF with embedded tokenizer):**
-```bash
-java --enable-preview --add-modules jdk.incubator.vector -jar skainet-apps/skainet-kllama-cli/build/libs/kllama-all.jar -m tinyllama-1.1b-q4.gguf -s 96 -k 0.7 -p "You are concise" "Once upon a time"
-```
+Looking for the command-line interface? See the [KLlama CLI README](../skainet-kllama-cli/README.md).
 
 ---
 
-### Running
+## Supported Formats & Quantization
 
-```bash
-./skainet-apps/skainet-kllama/build/bin/macosArm64/releaseExecutable/kllama.kexe <model_path> "<prompt>" [steps] [temperature] [--backend=cpu]
-```
+| Format | Description |
+|---|---|
+| **GGUF** | Full support with embedded tokenizer |
+| **SafeTensors** | HuggingFace format (`model.safetensors` + `config.json` + `tokenizer.json`) |
+| **Karpathy .bin** | Legacy llama2.c format |
 
-**Options:**
-*   `--backend=mlx` - Use MLX GPU backend (default on macOS)
-*   `--backend=cpu` - Use CPU backend
-*   `--list-backends` - Show available backends and exit
-
-**Example:**
-```bash
-# Fall back to CPU backend
-./kllama.kexe tinyllama-1.1b.gguf "Once upon a time" --backend=cpu
-
-# List available backends
-./kllama.kexe --list-backends
-# Output: Available: cpu
-```
+**Quantization:** Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q8_1, K-quants (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K). Quantized weights are dequantized on the fly for maximum cross-platform compatibility.
 
 ---
 
-## 🛠 Embedding KLlama in Your App
+## Quick Start (Java)
 
-You can easily integrate KLlama into any Kotlin project.
+Add the dependency (version managed by [BOM](../../docs/java-getting-started.md)):
 
-### 1. Add Dependencies
+```xml
+<dependency>
+    <groupId>sk.ainet</groupId>
+    <artifactId>skainet-kllama-jvm</artifactId>
+</dependency>
+<dependency>
+    <groupId>sk.ainet</groupId>
+    <artifactId>skainet-backend-cpu-jvm</artifactId>
+</dependency>
+```
 
-Add the following to your `build.gradle.kts` (ensure you are using version `0.11.0`):
+Load a GGUF model and generate text:
 
-```kotlin
-dependencies {
-    implementation("sk.ainet.apps:skainet-kllama:0.11.0")
-    // For JVM SIMD support
-    implementation("sk.ainet.core:skainet-backend-cpu:0.11.0")
+```java
+import sk.ainet.apps.kllama.java.GenerationConfig;
+import sk.ainet.apps.kllama.java.KLlamaJava;
+import sk.ainet.apps.kllama.java.KLlamaSession;
+import java.nio.file.Path;
+
+public class Example {
+    public static void main(String[] args) {
+        try (KLlamaSession session = KLlamaJava.loadGGUF(Path.of("model.gguf"))) {
+            GenerationConfig config = GenerationConfig.builder()
+                    .maxTokens(128)
+                    .temperature(0.7f)
+                    .build();
+
+            // Stream tokens to stdout as they are generated
+            session.generate("The capital of France is", config,
+                    token -> System.out.print(token));
+            System.out.println();
+        }
+    }
 }
 ```
 
-### 2. Basic Usage
+Run with JVM flags (required for Vector API / SIMD):
 
-Here is a minimal example of how to load a GGUF model and generate text:
+```bash
+java --enable-preview --add-modules jdk.incubator.vector -cp <classpath> Example
+```
+
+See the [Java LLM Inference Guide](../../docs/java-llm-inference.md) for streaming, async, SafeTensors, BERT, and agent/tool-calling examples. See [Building a Java CLI App](../../docs/java-cli-app.md) for a complete standalone project walkthrough.
+
+---
+
+## Embedding in Kotlin
+
+### 1. Add Dependencies
+
+```kotlin
+dependencies {
+    implementation("sk.ainet:skainet-kllama-jvm:0.13.0")
+    implementation("sk.ainet:skainet-backend-cpu-jvm:0.13.0")
+}
+```
+
+### 2. High-Level API
+
+The simplest way from Kotlin is to use the Java facade — it handles context creation, weight loading, quantization dispatch, and tokenizer setup:
+
+```kotlin
+import sk.ainet.apps.kllama.java.KLlamaJava
+import sk.ainet.apps.kllama.java.GenerationConfig
+import java.nio.file.Path
+
+fun main() {
+    KLlamaJava.loadGGUF(Path.of("model.gguf")).use { session ->
+        val config = GenerationConfig.builder()
+            .maxTokens(128)
+            .temperature(0.7f)
+            .build()
+
+        session.generate("The capital of France is", config) { token ->
+            print(token)
+        }
+        println()
+    }
+}
+```
+
+### 3. Low-Level API
+
+For full control over the loading pipeline (e.g., custom execution context, quantization policy, weight conversion):
 
 ```kotlin
 import sk.ainet.apps.kllama.*
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.io.gguf.dequant.QuantPolicy
+import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
+import sk.ainet.lang.types.FP32
+import java.lang.foreign.Arena
 import kotlinx.coroutines.runBlocking
 
 fun main() = runBlocking {
     val modelPath = "path/to/model.gguf"
-    val ctx = DirectCpuExecutionContext()
+    val quantArena = Arena.ofShared()
+    val memSegFactory = MemorySegmentTensorDataFactory()
+    val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
 
-    // 1. Load the model (supports GGUF quantization via on-the-fly dequantization)
-    val ingestion = LlamaIngestion(ctx)
-    val runtimeWeights = ingestion.loadStreaming {
+    // 1. Load weights with quantization support
+    val ingestion = LlamaIngestion<FP32>(
+        ctx = ctx,
+        dtype = FP32::class,
+        config = LlamaLoadConfig(
+            quantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
+            allowQuantized = true
+        )
+    )
+    val rawWeights = ingestion.loadStreaming {
         JvmRandomAccessSource.open(modelPath)
     }
+    val weights = if (rawWeights.quantTypes.isNotEmpty()) {
+        MemSegWeightConverter.convert(rawWeights, ctx, quantArena)
+    } else {
+        rawWeights
+    }
 
-    // 2. Initialize the runtime and tokenizer
-    val runtime = LlamaRuntime(ctx, runtimeWeights)
+    // 2. Create runtime and tokenizer
+    val backend = CpuAttentionBackend<FP32>(ctx, weights, FP32::class)
+    val runtime = LlamaRuntime<FP32>(ctx, weights, backend, FP32::class)
     val tokenizer = JvmRandomAccessSource.open(modelPath).use { source ->
         GGUFTokenizer.fromRandomAccessSource(source)
     }
 
     // 3. Generate text
     val prompt = "The capital of France is"
-    val promptTokens = tokenizer.encode(prompt)
-    
-    println("Response:")
-    runtime.generate(promptTokens, steps = 32) { tokenId ->
+    val tokens = tokenizer.encode(prompt)
+
+    runtime.generate(tokens, steps = 64, temperature = 0.8f) { tokenId ->
         print(tokenizer.decode(tokenId))
     }
+    println()
+
+    // 4. Cleanup
+    quantArena.close()
+    memSegFactory.close()
 }
 ```
 
-### 3. Custom Backend Integration (Advanced)
+---
 
-KLlama is hardware-agnostic by design. If you are developing a project that uses a specialized hardware backend (e.g., `mxl-backend`), you can inject your own implementations into the `LlamaRuntime`:
+## Custom Backend Integration
 
-1.  **`AttentionBackend`**: Implement this interface to provide custom RoPE application and KV cache management for your hardware.
-2.  **`GraphAccelerator`**: (Optional) Implement this to provide fused operations (like RMSNorm + QKV matmuls) to bypass individual operator calls and reduce synchronization overhead.
+KLlama is hardware-agnostic. You can inject your own attention and acceleration backends:
 
-**Example: Injecting a custom backend**
+- **`AttentionBackend<T>`** — provides RoPE application and KV cache management for your hardware.
+- **`GraphAccelerator<T>`** *(optional)* — provides fused operations (RMSNorm + QKV matmuls) to reduce synchronization overhead.
 
 ```kotlin
-val mxlCtx = MxlExecutionContext() 
-val customBackend = MxlAttentionBackend(mxlCtx, weights)
-val mxlAccelerator = MxlGraphAccelerator(mxlCtx)
+val customBackend = MyGpuAttentionBackend(ctx, weights)
+val accelerator = MyGpuAccelerator(ctx)
 
-val runtime = LlamaRuntime(
-    ctx = mxlCtx,
-    weights = runtimeWeights,
+val runtime = LlamaRuntime<FP32>(
+    ctx = ctx,
+    weights = weights,
     attentionBackend = customBackend,
     dtype = FP32::class,
-    graphAccelerator = mxlAccelerator 
+    graphAccelerator = accelerator
 )
 ```
 
 ---
 
-## 📦 Supported Formats & Quantization
+## Performance
 
-KLlama is designed to be flexible with model formats:
+For best JVM performance, always run with Java Vector API flags:
 
-*   **GGUF**: Full support for loading GGUF models.
-*   **Quantization**: Supports **Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q8_1, and K-quants (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K)**.
-    *   *Note: Currently, quantized weights are dequantized to FP32 during loading for maximum compatibility across platforms.*
-*   **Karpathy .bin**: Legacy support for llama2.c format.
+```
+--enable-preview --add-modules jdk.incubator.vector
+```
+
+This enables SIMD instructions for accelerated tensor operations.
 
 ---
 
-## 🐛 Reporting Bugs
+## Reporting Bugs
 
-Since we are in early development, your bug reports are invaluable. If you encounter an issue:
-
-1.  **Check the model**: Tell us the exact model name and where you downloaded it (e.g., "TinyLlama-1.1B-Chat-v1.0-GGUF").
-2.  **Provide a Stack Trace**: If the app crashes, please include the full exception stack trace.
-3.  **Environment**: Mention your OS, Architecture (Intel/Apple Silicon), and Java version.
+1. **Model**: The exact model name and source (e.g., "TinyLlama-1.1B-Chat-v1.0-GGUF").
+2. **Stack trace**: Full exception output if the app crashes.
+3. **Environment**: OS, architecture (Intel/Apple Silicon), and Java version.
 
 Report issues on our [GitHub Issue Tracker](https://github.com/anthropics/skainet/issues).
-
----
-
-## 💡 Pro Tip: Performance
-For the best performance on JVM, always run with:
-`--enable-preview --add-modules jdk.incubator.vector`
-This enables SIMD instructions, which can significantly speed up tensor operations.

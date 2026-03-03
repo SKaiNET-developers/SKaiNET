@@ -63,7 +63,8 @@ public class sk/ainet/lang/graph/DefaultExecutionTape : sk/ainet/tape/ExecutionT
 	protected final fun set_recordingStrategy (Lsk/ainet/tape/TapeRecordingStrategy;)V
 	public fun startRecording ()V
 	public fun stopRecording ()V
-	public final fun toComputeGraph ()Lsk/ainet/lang/graph/ComputeGraph;
+	public final fun toComputeGraph (ZLjava/util/Set;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static synthetic fun toComputeGraph$default (Lsk/ainet/lang/graph/DefaultExecutionTape;ZLjava/util/Set;ILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
 }
 
 public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph/DefaultExecutionTape, sk/ainet/lang/tensor/ops/DifferentiableTensorOps, sk/ainet/tape/GradientTape {
@@ -380,7 +381,8 @@ public final class sk/ainet/lang/graph/utils/GraphvizKt {
 }
 
 public final class sk/ainet/lang/tape/ExtensionsKt {
-	public static final fun toComputeGraph (Lsk/ainet/tape/ExecutionTape;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static final fun toComputeGraph (Lsk/ainet/tape/ExecutionTape;ZLjava/util/Set;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static synthetic fun toComputeGraph$default (Lsk/ainet/tape/ExecutionTape;ZLjava/util/Set;ILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
 }
 
 public final class sk/ainet/lang/trace/GraphSink : sk/ainet/lang/trace/OpSink {
@@ -398,5 +400,7 @@ public final class sk/ainet/lang/trace/TraceToGraphBuilder {
 	public synthetic fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/TraceSession;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addAll (Ljava/lang/Iterable;)V
 	public final fun addTrace (Lsk/ainet/lang/trace/OpTrace;)V
+	public final fun finalize (Ljava/util/Set;)V
+	public static synthetic fun finalize$default (Lsk/ainet/lang/trace/TraceToGraphBuilder;Ljava/util/Set;ILjava/lang/Object;)V
 }
 

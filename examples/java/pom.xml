@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>sk.ainet.examples</groupId>
+    <artifactId>skainet-java-examples</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>SKaiNET Java Examples</name>
+    <description>Example Java applications demonstrating SKaiNET usage</description>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <skainet.version>0.13.0</skainet.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- SKaiNET BOM for version alignment -->
+            <dependency>
+                <groupId>sk.ainet</groupId>
+                <artifactId>skainet-bom</artifactId>
+                <version>${skainet.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Core tensor operations -->
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-lang-core-jvm</artifactId>
+        </dependency>
+
+        <!-- CPU backend -->
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-backend-cpu-jvm</artifactId>
+        </dependency>
+
+        <!-- MNIST data loading -->
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-data-simple-jvm</artifactId>
+        </dependency>
+
+        <!-- LLM inference (uncomment if needed) -->
+        <!--
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-kllama-jvm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-bert-jvm</artifactId>
+        </dependency>
+        -->
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <compilerArgs>
+                        <arg>--enable-preview</arg>
+                        <arg>--add-modules</arg>
+                        <arg>jdk.incubator.vector</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <argLine>--enable-preview --add-modules jdk.incubator.vector</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.4.1</version>
+                <configuration>
+                    <mainClass>sk.ainet.examples.HelloTensor</mainClass>
+                    <arguments>
+                        <argument>--enable-preview</argument>
+                        <argument>--add-modules</argument>
+                        <argument>jdk.incubator.vector</argument>
+                    </arguments>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
