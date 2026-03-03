@@ -33,6 +33,7 @@ include("skainet-lang:skainet-lang-dag")
 // ====== COMPILE
 include("skainet-compile:skainet-compile-core")
 include("skainet-compile:skainet-compile-dag")
+include("skainet-compile:skainet-compile-opt")
 include("skainet-compile:skainet-compile-json")
 include("skainet-compile:skainet-compile-hlo")
 include("skainet-compile:skainet-compile-c")
