@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.androidMultiplatformLibrary)
+    id("sk.ainet.dokka")
 }
 
 kotlin {

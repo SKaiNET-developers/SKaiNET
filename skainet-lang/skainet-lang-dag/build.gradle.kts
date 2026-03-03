@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.ksp)
+    id("sk.ainet.dokka")
 }
 
 kotlin {
@@ -67,6 +68,10 @@ tasks.configureEach {
     ) {
         dependsOn("kspCommonMainKotlinMetadata")
     }
+}
+
+tasks.matching { it.name.startsWith("dokka") }.configureEach {
+    dependsOn("kspCommonMainKotlinMetadata")
 }
 
 dependencies {

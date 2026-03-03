@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 
     alias(libs.plugins.vanniktech.mavenPublish)
+    id("sk.ainet.dokka")
 }
 
 kotlin {

@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.kover)
     alias(libs.plugins.binary.compatibility.validator)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.dokka)
+    id("sk.ainet.dokka")
     id("org.jetbrains.kotlinx.benchmark")
 }
 
@@ -79,11 +79,7 @@ dependencies {
     add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
 }
 
-tasks.named("dokkaHtml") {
-    dependsOn("kspCommonMainKotlinMetadata")
-}
-
-tasks.named("dokkaJavadoc") {
+tasks.matching { it.name.startsWith("dokka") }.configureEach {
     dependsOn("kspCommonMainKotlinMetadata")
 }
 
