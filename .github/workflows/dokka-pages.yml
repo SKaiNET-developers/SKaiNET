@@ -2,7 +2,7 @@ name: Dokka API Docs → GitHub Pages
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/14-dokka ]
   workflow_dispatch:
 
 permissions:
