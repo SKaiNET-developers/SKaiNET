@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.binary.compatibility.validator) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.asciidoctorJvm) apply false
-    alias(libs.plugins.dokka) apply false
+    alias(libs.plugins.dokka)
     alias(libs.plugins.skainet.docs)
     id("org.jetbrains.kotlinx.benchmark") version "0.4.16" apply false
 }
@@ -102,4 +102,48 @@ documentation {
 
 tasks.named("generateDocs") {
     dependsOn(":skainet-lang:skainet-lang-core:kspCommonMainKotlinMetadata")
+}
+
+// Dokka aggregation – unified API reference across all library modules
+dokka {
+    moduleName.set("SKaiNET")
+    dokkaPublications.html {
+        includes.from("README.md")
+    }
+}
+
+dependencies {
+    // skainet-lang
+    dokka(project(":skainet-lang:skainet-lang-core"))
+    dokka(project(":skainet-lang:skainet-lang-models"))
+    dokka(project(":skainet-lang:skainet-lang-ksp-annotations"))
+    dokka(project(":skainet-lang:skainet-kan"))
+    dokka(project(":skainet-lang:skainet-lang-dag"))
+
+    // skainet-compile
+    dokka(project(":skainet-compile:skainet-compile-core"))
+    dokka(project(":skainet-compile:skainet-compile-dag"))
+    dokka(project(":skainet-compile:skainet-compile-json"))
+    dokka(project(":skainet-compile:skainet-compile-hlo"))
+    dokka(project(":skainet-compile:skainet-compile-c"))
+
+    // skainet-backends
+    dokka(project(":skainet-backends:skainet-backend-cpu"))
+
+    // skainet-data
+    dokka(project(":skainet-data:skainet-data-api"))
+    dokka(project(":skainet-data:skainet-data-transform"))
+    dokka(project(":skainet-data:skainet-data-simple"))
+    dokka(project(":skainet-data:skainet-data-media"))
+
+    // skainet-io
+    dokka(project(":skainet-io:skainet-io-core"))
+    dokka(project(":skainet-io:skainet-io-gguf"))
+    dokka(project(":skainet-io:skainet-io-image"))
+    dokka(project(":skainet-io:skainet-io-onnx"))
+    dokka(project(":skainet-io:skainet-io-safetensors"))
+
+    // Other
+    dokka(project(":skainet-pipeline"))
+    dokka(project(":skainet-models:skainet-model-yolo"))
 }
