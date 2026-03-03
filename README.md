@@ -158,8 +158,8 @@ Read the [Deep Technical Explanation](docs/arduino-c-codegen.md) for more detail
 **Kotlin:**
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.13.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.14.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.14.0")
 ```
 
 **Java (Maven with BOM):**
@@ -169,7 +169,7 @@ dependencies {
         <dependency>
             <groupId>sk.ainet</groupId>
             <artifactId>skainet-bom</artifactId>
-            <version>0.13.0</version>
+            <version>0.14.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -247,20 +247,20 @@ dependencyResolutionManagement {
 
 dependencies {
     // minimal dependency with simple CPU backend
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.13.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.14.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.14.0")
 
     // simple model zoo
-    implementation("sk.ainet.core:SKaiNET-lang-models:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-lang-models:0.14.0")
 
     // Optional I/O (e.g., GGUF loader, SafeTensors, JSON)
-    implementation("sk.ainet.core:SKaiNET-io-core:0.13.0")
-    implementation("sk.ainet.io:skainet-io-safetensors:0.13.0")
-    implementation("sk.ainet.core:SKaiNET-io-gguf:0.13.0")
+    implementation("sk.ainet.core:SKaiNET-io-core:0.14.0")
+    implementation("sk.ainet.io:skainet-io-safetensors:0.14.0")
+    implementation("sk.ainet.core:SKaiNET-io-gguf:0.14.0")
 
     // Apps & Runtimes
-    implementation("sk.ainet.apps:skainet-llm:0.13.0") // Llama runtime
-    implementation("sk.ainet.apps:skainet-bert:0.13.0") // BERT runtime
+    implementation("sk.ainet.apps:skainet-llm:0.14.0") // Llama runtime
+    implementation("sk.ainet.apps:skainet-bert:0.14.0") // BERT runtime
 }
 ```
 
@@ -272,7 +272,7 @@ dependencies {
         <dependency>
             <groupId>sk.ainet</groupId>
             <artifactId>skainet-bom</artifactId>
-            <version>0.13.0</version>
+            <version>0.14.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -315,6 +315,10 @@ dependencies {
 
 - **First-Class Java 21+ Support**: Complete Java API surface with `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition, `KLlamaJava`/`KBertJava` facades, and `JavaAgentLoop` for tool-calling agents.
 - **Maven BOM**: `sk.ainet:skainet-bom` for one-line version management across all modules.
+- **JVM Performance (Jlama Techniques)**: MemorySegment tensors, SIMD GEMM kernels, paged KV cache, batch prefill, and fused QKV projections for significantly faster LLM inference on JVM.
+- **WasmWasi Target**: New `wasmWasi` platform target across all KMP modules.
+- **StableHLO MLIR Improvements**: Fixed MLIR export for valid IREE-compilable output, new streaming API, and public `HloGenerator`.
+- **Refactored Model Loading**: Shared dequantization, registry, and decoder runtime extracted into reusable components.
 - **Java Documentation**: [Getting Started](docs/java-getting-started.md) | [LLM Inference](docs/java-llm-inference.md) | [Model Training](docs/java-model-training.md)
 
 ```java
@@ -563,10 +567,14 @@ skainet(ctx) {
 ```
 
 ### 🗺️ Roadmap
-- **Q1 2026**: Comprehensive documentation.
+- **Q1 2026**: Comprehensive documentation. ✅ (Java docs, architecture guides)
 - **Q2 2026**: Reference-based validation of the correctness of computations.
-- **Q3 2026**: Support for agentic AI.
+- **Q3 2026**: Agentic AI enhancements. ✅ (Tool calling shipped in 0.13.0; ongoing improvements)
 - **Q4 2026**: Federated learning support for multi-device training.
+
+### 🙏 Contributors (0.14.0)
+Thank you to the following contributors for their work on this release:
+- **Dhia Chemingui** ([@dhiaspaner](https://github.com/dhiaspaner)) — Android KMP plugin migration (#385, #386)
 
 ### 🤝 Join the Community
 *   **GitHub Discussions**: [Ask questions & suggest features as issue](https://github.com/SKaiNET-developers/SKaiNET/issues)
