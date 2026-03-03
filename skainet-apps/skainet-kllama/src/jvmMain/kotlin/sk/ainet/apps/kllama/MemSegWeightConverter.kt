@@ -2,6 +2,7 @@ package sk.ainet.apps.kllama
 
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.gguf.GGMLQuantizationType
+import sk.ainet.io.gguf.dequant.DequantOps
 import sk.ainet.io.gguf.llama.LlamaLayerWeights
 import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
 import sk.ainet.io.gguf.llama.LlamaTensorNames
@@ -93,6 +94,13 @@ public object MemSegWeightConverter {
                 Q4MemorySegmentTensorData.fromRawBytes(logicalShape, bytes, arena)
             GGMLQuantizationType.Q8_0 ->
                 Q8MemorySegmentTensorData.fromRawBytes(logicalShape, bytes, arena)
+            GGMLQuantizationType.Q4_K,
+            GGMLQuantizationType.Q5_K,
+            GGMLQuantizationType.Q6_K -> {
+                // Dequantize K-quant types to FP32 (no native SIMD kernel yet)
+                val floats = DequantOps.dequantFromBytes(bytes, quantType, logicalShape.volume)
+                return ctx.fromFloatArray(logicalShape, FP32::class, floats)
+            }
             else -> {
                 println("WARNING: Unsupported quant type $quantType for MemorySegment conversion of $tensorName, keeping as-is")
                 return tensor
@@ -128,6 +136,11 @@ public object MemSegWeightConverter {
             GGMLQuantizationType.Q8_0 -> {
                 val q8 = Q8MemorySegmentTensorData.fromRawBytes(logicalShape, bytes, arena)
                 q8.copyToFloatArray()
+            }
+            GGMLQuantizationType.Q4_K,
+            GGMLQuantizationType.Q5_K,
+            GGMLQuantizationType.Q6_K -> {
+                DequantOps.dequantFromBytes(bytes, quantType, logicalShape.volume)
             }
             else -> {
                 println("WARNING: Cannot dequantize $quantType for $tensorName, keeping as-is")

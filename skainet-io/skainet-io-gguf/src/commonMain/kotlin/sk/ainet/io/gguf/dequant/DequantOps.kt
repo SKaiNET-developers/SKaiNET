@@ -196,7 +196,7 @@ public object DequantOps {
     /**
      * Dispatch dequantization based on tensor type for byte arrays.
      */
-    internal fun dequantFromBytes(bytes: ByteArray, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
+    fun dequantFromBytes(bytes: ByteArray, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
         return when (tensorType) {
             GGMLQuantizationType.F16 -> dequantF16FromBytes(bytes)
             GGMLQuantizationType.BF16 -> dequantBF16FromBytes(bytes)
