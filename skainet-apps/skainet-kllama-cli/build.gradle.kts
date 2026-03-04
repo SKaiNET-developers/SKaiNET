@@ -1,6 +1,11 @@
 plugins {
     kotlin("jvm")
     alias(libs.plugins.shadow)
+    application
+}
+
+application {
+    mainClass.set("sk.ainet.apps.kllama.cli.MainKt")
 }
 
 dependencies {

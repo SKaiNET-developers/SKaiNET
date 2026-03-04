@@ -172,6 +172,22 @@ public class Gemma3nWeightLoader private constructor(
             }
         }
 
+        // Output weight: use dedicated tensor or fall back to weight tying (reuse token embeddings)
+        val outputRt = tensorByName[Gemma3nTensorNames.OUTPUT_WEIGHT]
+        if (outputRt != null) {
+            val tensor: Tensor<T, V> = readerTensorToTensor(ctx, dtype, reader, outputRt, metadata)
+            onTensorLoaded(Gemma3nTensorNames.OUTPUT_WEIGHT, tensor)
+            if (quantPolicy == QuantPolicy.RAW_BYTES && outputRt.tensorType != GGMLQuantizationType.F32) {
+                quantCallback?.invoke(Gemma3nTensorNames.OUTPUT_WEIGHT, outputRt.tensorType)
+            }
+        } else {
+            // Weight tying: reuse token_embd.weight as output.weight (common in Gemma models)
+            val embedRt = tensorByName[Gemma3nTensorNames.TOKEN_EMBEDDINGS]
+                ?: error("Missing both output.weight and token_embd.weight — cannot resolve LM head")
+            val tensor: Tensor<T, V> = readerTensorToTensor(ctx, dtype, reader, embedRt, metadata)
+            onTensorLoaded(Gemma3nTensorNames.OUTPUT_WEIGHT, tensor)
+        }
+
         // Optional tensors
         loadOptionalTensors(ctx, dtype, reader, tensorByName, onTensorLoaded, metadata)
 
@@ -207,6 +223,22 @@ public class Gemma3nWeightLoader private constructor(
                 if (quantPolicy == QuantPolicy.RAW_BYTES && st.tensorType != GGMLQuantizationType.F32) {
                     quantCallback?.invoke(name, st.tensorType)
                 }
+            }
+
+            // Output weight: use dedicated tensor or fall back to weight tying (reuse token embeddings)
+            val outputSt = tensorByName[Gemma3nTensorNames.OUTPUT_WEIGHT]
+            if (outputSt != null) {
+                val tensor: Tensor<T, V> = streamingTensorToTensor(ctx, dtype, reader, outputSt, metadata)
+                onTensorLoaded(Gemma3nTensorNames.OUTPUT_WEIGHT, tensor)
+                if (quantPolicy == QuantPolicy.RAW_BYTES && outputSt.tensorType != GGMLQuantizationType.F32) {
+                    quantCallback?.invoke(Gemma3nTensorNames.OUTPUT_WEIGHT, outputSt.tensorType)
+                }
+            } else {
+                // Weight tying: reuse token_embd.weight as output.weight (common in Gemma models)
+                val embedSt = tensorByName[Gemma3nTensorNames.TOKEN_EMBEDDINGS]
+                    ?: error("Missing both output.weight and token_embd.weight — cannot resolve LM head")
+                val tensor: Tensor<T, V> = streamingTensorToTensor(ctx, dtype, reader, embedSt, metadata)
+                onTensorLoaded(Gemma3nTensorNames.OUTPUT_WEIGHT, tensor)
             }
 
             // Optional tensors
@@ -421,7 +453,8 @@ public class Gemma3nWeightLoader private constructor(
         val names = mutableListOf<String>()
         names += Gemma3nTensorNames.TOKEN_EMBEDDINGS
         names += Gemma3nTensorNames.OUTPUT_NORM
-        names += Gemma3nTensorNames.OUTPUT_WEIGHT
+        // OUTPUT_WEIGHT is handled separately — many Gemma models use weight tying
+        // (no output.weight tensor; the token embedding is reused as the LM head).
 
         repeat(metadata.blockCount) { layer ->
             names += Gemma3nTensorNames.inputLayernorm(layer)

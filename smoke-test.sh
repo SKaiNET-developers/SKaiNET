@@ -12,6 +12,11 @@
 #   ./smoke-test.sh /path/to/models          # scan custom directory (legacy)
 #   ./smoke-test.sh model1.gguf model2.gguf  # run specific files (legacy)
 #
+# Environment variables:
+#   MODELS_ROOT   Root directory for resolving relative model paths in the
+#                 JSON config. Absolute paths (/ or ~/) are unaffected.
+#                 In legacy mode, used as the default scan directory.
+#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,7 +37,7 @@ separator() {
 # Maps runner name → Gradle task
 runner_task() {
   case "$1" in
-    kllama) echo ":skainet-apps:skainet-kllama:run" ;;
+    kllama) echo ":skainet-apps:skainet-kllama-cli:run" ;;
     kgemma) echo ":skainet-apps:skainet-kgemma:jvmRun" ;;
     kbert)  echo ":skainet-apps:skainet-kbert-cli:run" ;;
     *)      echo "UNKNOWN"; return 1 ;;
@@ -42,9 +47,9 @@ runner_task() {
 # Maps runner name → compile task
 runner_compile_task() {
   case "$1" in
-    kllama) echo ":skainet-apps:skainet-kllama:jvmMainClasses" ;;
+    kllama) echo ":skainet-apps:skainet-kllama-cli:classes" ;;
     kgemma) echo ":skainet-apps:skainet-kgemma:jvmMainClasses" ;;
-    kbert)  echo ":skainet-apps:skainet-kbert-cli:jvmMainClasses" ;;
+    kbert)  echo ":skainet-apps:skainet-kbert-cli:mainClasses" ;;
     *)      echo "UNKNOWN"; return 1 ;;
   esac
 }
@@ -54,7 +59,7 @@ runner_args() {
   local runner="$1" model="$2" prompt="$3" steps="$4" temp="$5" doc="${6:-}"
 
   case "$runner" in
-    kllama) echo "-m ${model} -s ${steps} -k ${temp} ${prompt}" ;;
+    kllama) echo "-m ${model} -s ${steps} -k ${temp} \"${prompt}\"" ;;
     kgemma) echo "${model} \"${prompt}\" ${steps} ${temp}" ;;
     kbert)
       if [[ -n "$doc" ]]; then
@@ -66,11 +71,15 @@ runner_args() {
   esac
 }
 
-# Expand ~ to $HOME in a path
+# Expand ~ to $HOME in a path; prepend MODELS_ROOT for relative paths
 expand_path() {
   local p="$1"
   if [[ "$p" == "~/"* ]]; then
     echo "${HOME}/${p#\~/}"
+  elif [[ "$p" == /* ]]; then
+    echo "$p"
+  elif [[ -n "${MODELS_ROOT:-}" ]]; then
+    echo "${MODELS_ROOT%/}/${p}"
   else
     echo "$p"
   fi
@@ -129,6 +138,7 @@ print(f'DEF_TEMP={d.get(\"temperature\", 0.0)}')
 
   echo -e "${BOLD}SKaiNET Smoke Test${RESET} (config: $(basename "$CONFIG_FILE"))"
   echo -e "Models: ${CYAN}${MODEL_COUNT}${RESET}"
+  [[ -n "${MODELS_ROOT:-}" ]] && echo -e "Models root:          ${MODELS_ROOT}"
   echo -e "Default prompt:       \"${DEF_PROMPT}\""
   echo -e "Default steps:        ${DEF_STEPS}"
   echo -e "Default temperature:  ${DEF_TEMP}"
@@ -253,8 +263,8 @@ fi
 PROMPT="${SMOKE_PROMPT:-The capital of France is}"
 STEPS="${SMOKE_STEPS:-32}"
 TEMP="${SMOKE_TEMP:-0.0}"
-MODEL_DIR="${LEGACY_ARGS[0]:-$HOME/.lmstudio/models}"
-TASK=":skainet-apps:skainet-kllama:run"
+MODEL_DIR="${LEGACY_ARGS[0]:-${MODELS_ROOT:-$HOME/.lmstudio/models}}"
+TASK=":skainet-apps:skainet-kllama-cli:run"
 
 models=()
 
@@ -296,7 +306,7 @@ separator
 
 # ── Ensure project compiles ────────────────────────────────────────────
 echo -e "${YELLOW}Compiling kllama (JVM)...${RESET}"
-if ! $GRADLE :skainet-apps:skainet-kllama:jvmMainClasses --quiet 2>&1; then
+if ! $GRADLE :skainet-apps:skainet-kllama-cli:classes --quiet 2>&1; then
   echo -e "${RED}Compilation failed.${RESET}"
   exit 1
 fi
@@ -320,7 +330,7 @@ for model in "${models[@]}"; do
   output_file=$(mktemp)
   exit_code=0
 
-  $GRADLE "$TASK" --quiet --args="-m ${model} -s ${STEPS} -k ${TEMP} ${PROMPT}" \
+  $GRADLE "$TASK" --quiet --args="-m ${model} -s ${STEPS} -k ${TEMP} \"${PROMPT}\"" \
     > "$output_file" 2>&1 || exit_code=$?
 
   end_ts=$(python3 -c 'import time; print(time.time())')
