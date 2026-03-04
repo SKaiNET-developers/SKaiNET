@@ -1,6 +1,6 @@
 package sk.ainet.apps.kllama.java
 
-import sk.ainet.apps.kllama.LlamaRuntime
+import sk.ainet.models.llama.LlamaRuntime
 import sk.ainet.apps.kllama.agent.generateUntilStop
 import sk.ainet.lang.types.FP32
 import sk.ainet.apps.llm.Tokenizer

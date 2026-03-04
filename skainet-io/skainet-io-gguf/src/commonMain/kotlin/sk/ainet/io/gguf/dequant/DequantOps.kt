@@ -15,7 +15,7 @@ public object DequantOps {
     // ========== List<Any>-based variants (GGUFReader in-memory) ==========
 
     @OptIn(ExperimentalUnsignedTypes::class)
-    internal fun toByteArray(raw: List<Any>, tensorName: String): ByteArray {
+    public fun toByteArray(raw: List<Any>, tensorName: String): ByteArray {
         val first = raw.firstOrNull()
         return when (first) {
             is Byte -> ByteArray(raw.size) { (raw[it] as Number).toByte() }
@@ -24,99 +24,99 @@ public object DequantOps {
         }
     }
 
-    internal fun dequantF16(raw: List<Any>): FloatArray {
+    public fun dequantF16(raw: List<Any>): FloatArray {
         val bytes: ByteArray = toByteArray(raw, "F16")
         return dequantF16FromBytes(bytes)
     }
 
-    internal fun dequantBF16(raw: List<Any>): FloatArray {
+    public fun dequantBF16(raw: List<Any>): FloatArray {
         val bytes: ByteArray = toByteArray(raw, "BF16")
         return dequantBF16FromBytes(bytes)
     }
 
-    internal fun dequantQ4_0(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ4_0(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q4_0")
         return dequantQ4_0FromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ5_0(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ5_0(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q5_0")
         return dequantQ5_0FromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ8_0(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ8_0(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q8_0")
         return dequantQ8_0FromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ4_1(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ4_1(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q4_1")
         return dequantQ4_1FromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ5_1(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ5_1(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q5_1")
         return dequantQ5_1FromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ8_1(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ8_1(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q8_1")
         return dequantQ8_1FromBytes(bytes, nElems)
     }
 
-    internal fun dequantIQ4NL(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantIQ4NL(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "IQ4_NL")
         return dequantIQ4NLFromBytes(bytes, nElems)
     }
 
-    internal fun dequantIQ4XS(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantIQ4XS(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "IQ4_XS")
         return dequantIQ4XSFromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q2_K")
         return dequantQ2KFromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ3K(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ3K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q3_K")
         return dequantQ3KFromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ4K(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ4K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q4_K")
         return dequantQ4KFromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ5K(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ5K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q5_K")
         return dequantQ5KFromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ6K(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ6K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q6_K")
         return dequantQ6KFromBytes(bytes, nElems)
     }
 
-    internal fun dequantQ8K(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantQ8K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q8_K")
         return dequantQ8KFromBytes(bytes, nElems)
     }
 
-    internal fun dequantTQ2_0(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantTQ2_0(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "TQ2_0")
         return dequantTQ2_0FromBytes(bytes, nElems)
     }
 
-    internal fun dequantTQ1_0(raw: List<Any>, nElems: Int): FloatArray {
+    public fun dequantTQ1_0(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "TQ1_0")
         return dequantTQ1_0FromBytes(bytes, nElems)
     }
 
     // ========== ByteArray-based variants (StreamingGGUFReader / SafeTensors) ==========
 
-    internal fun dequantF16FromBytes(bytes: ByteArray): FloatArray {
+    public fun dequantF16FromBytes(bytes: ByteArray): FloatArray {
         val out = FloatArray(bytes.size / 2)
         var i = 0
         var o = 0
@@ -131,7 +131,7 @@ public object DequantOps {
         return out
     }
 
-    internal fun dequantBF16FromBytes(bytes: ByteArray): FloatArray {
+    public fun dequantBF16FromBytes(bytes: ByteArray): FloatArray {
         val out = FloatArray(bytes.size / 2)
         var i = 0
         var o = 0
@@ -146,7 +146,7 @@ public object DequantOps {
         return out
     }
 
-    internal fun bytesToFloatArray(bytes: ByteArray): FloatArray {
+    public fun bytesToFloatArray(bytes: ByteArray): FloatArray {
         val out = FloatArray(bytes.size / 4)
         var i = 0
         var o = 0
@@ -162,7 +162,7 @@ public object DequantOps {
         return out
     }
 
-    internal fun halfToFloat(hbits: Int): Float {
+    public fun halfToFloat(hbits: Int): Float {
         val mant = hbits and 0x03FF
         val exp = hbits and 0x7C00
         val sign = hbits and 0x8000
@@ -187,7 +187,7 @@ public object DequantOps {
      * Data layout is unchanged — only the shape interpretation changes.
      */
     @Suppress("UNUSED_PARAMETER")
-    internal fun transposeColumnMajorToRowMajor(
+    public fun transposeColumnMajorToRowMajor(
         data: FloatArray,
         rows: Int,
         cols: Int
@@ -223,7 +223,7 @@ public object DequantOps {
     /**
      * Dispatch dequantization based on tensor type for List<Any> (in-memory GGUFReader).
      */
-    internal fun dequantFromList(raw: List<Any>, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
+    public fun dequantFromList(raw: List<Any>, tensorType: GGMLQuantizationType, nElems: Int): FloatArray {
         return when (tensorType) {
             GGMLQuantizationType.F16 -> dequantF16(raw)
             GGMLQuantizationType.BF16 -> dequantBF16(raw)

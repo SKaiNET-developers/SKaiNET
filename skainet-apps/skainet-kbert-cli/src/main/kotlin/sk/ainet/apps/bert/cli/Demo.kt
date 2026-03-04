@@ -1,8 +1,8 @@
 package sk.ainet.apps.bert.cli
 
-import sk.ainet.apps.bert.BertRuntime
-import sk.ainet.apps.bert.HuggingFaceTokenizer
-import sk.ainet.apps.bert.loadBertWeights
+import sk.ainet.models.bert.BertRuntime
+import sk.ainet.models.bert.HuggingFaceTokenizer
+import sk.ainet.models.bert.loadBertWeights
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.safetensors.SafeTensorsParametersLoader

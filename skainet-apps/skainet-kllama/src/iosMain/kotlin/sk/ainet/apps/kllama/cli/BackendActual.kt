@@ -1,12 +1,12 @@
 package sk.ainet.apps.kllama.cli
 
-import sk.ainet.apps.kllama.GraphAccelerator
+import sk.ainet.models.llama.GraphAccelerator
 import sk.ainet.apps.kllama.GpuTensorBridge
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.context.ExecutionContext
 import sk.ainet.context.MetalExecutionContext
 import sk.ainet.exec.tensor.ops.MetalTensorOps
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.LlamaRuntimeWeights
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass

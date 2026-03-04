@@ -5,9 +5,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import sk.ainet.context.DirectCpuExecutionContext
-import sk.ainet.io.gguf.llama.LlamaLayerWeights
-import sk.ainet.io.gguf.llama.LlamaModelMetadata
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.LlamaLayerWeights
+import sk.ainet.models.llama.LlamaRuntime
+import sk.ainet.models.llama.LlamaModelMetadata
+import sk.ainet.models.llama.LlamaRuntimeWeights
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.FP32
 

@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":skainet-apps:skainet-bert"))
+    implementation(project(":skainet-models:skainet-model-bert"))
     implementation(project(":skainet-lang:skainet-lang-core"))
     implementation(project(":skainet-io:skainet-io-core"))
     implementation(project(":skainet-io:skainet-io-safetensors"))

@@ -5,8 +5,11 @@ import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.dequant.QuantPolicy
+import sk.ainet.models.llama.LlamaRuntime
+import sk.ainet.models.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.MemSegWeightConverter
+import sk.ainet.models.llama.loadLlamaRuntimeWeightsStreaming
+import sk.ainet.io.model.QuantPolicy
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.types.FP32

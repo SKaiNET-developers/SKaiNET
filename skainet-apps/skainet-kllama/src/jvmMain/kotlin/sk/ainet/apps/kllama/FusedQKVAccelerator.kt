@@ -1,8 +1,9 @@
 package sk.ainet.apps.kllama
 
 import sk.ainet.context.ExecutionContext
-import sk.ainet.io.gguf.llama.LlamaLayerWeights
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.GraphAccelerator
+import sk.ainet.models.llama.LlamaLayerWeights
+import sk.ainet.models.llama.LlamaRuntimeWeights
 import sk.ainet.lang.nn.normalization.RMSNormalization
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor

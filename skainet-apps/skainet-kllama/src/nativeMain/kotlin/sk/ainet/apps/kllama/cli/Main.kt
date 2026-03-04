@@ -11,12 +11,12 @@ import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.llm.Tokenizer
 import sk.ainet.apps.kllama.GpuAttentionBackend
-import sk.ainet.apps.kllama.LlamaRuntime
-import sk.ainet.apps.kllama.LlamaRuntimeInterface
+import sk.ainet.models.llama.LlamaRuntime
+import sk.ainet.models.llama.LlamaRuntimeInterface
 import sk.ainet.apps.kllama.Llama2DotCWeightLoader
 import sk.ainet.apps.kllama.TokenizerUtils
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.dequant.QuantPolicy
+import sk.ainet.models.llama.LlamaRuntimeWeights
+import sk.ainet.io.model.QuantPolicy
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16

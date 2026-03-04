@@ -6,7 +6,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.io.Source
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.io.RandomAccessSource
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.LlamaRuntimeWeights
 import sk.ainet.lang.types.DType
 
 /**

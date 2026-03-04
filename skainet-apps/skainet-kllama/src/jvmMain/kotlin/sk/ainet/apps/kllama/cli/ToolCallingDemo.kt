@@ -1,7 +1,7 @@
 package sk.ainet.apps.kllama.cli
 
 import sk.ainet.apps.kllama.GGUFTokenizer
-import sk.ainet.apps.kllama.LlamaRuntimeInterface
+import sk.ainet.models.llama.LlamaRuntimeInterface
 import sk.ainet.apps.kllama.chat.*
 import sk.ainet.lang.types.DType
 import kotlinx.serialization.json.JsonObject

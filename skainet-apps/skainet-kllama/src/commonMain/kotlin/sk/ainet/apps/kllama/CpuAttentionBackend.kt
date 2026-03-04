@@ -7,7 +7,8 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 import sk.ainet.context.ExecutionContext
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.AttentionBackend
+import sk.ainet.models.llama.LlamaRuntimeWeights
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.FloatArrayTensorData

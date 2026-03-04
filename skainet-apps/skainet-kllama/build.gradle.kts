@@ -61,6 +61,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":skainet-models:skainet-model-llama"))
             implementation(project(":skainet-apps:skainet-kllama-agent"))
             implementation(project(":skainet-apps:skainet-llm"))
             implementation(project(":skainet-lang:skainet-lang-core"))
