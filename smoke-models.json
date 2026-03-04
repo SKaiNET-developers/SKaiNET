@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "prompt": "The capital of France is",
+    "steps": 32,
+    "temperature": 0.0
+  },
+  "models": [
+    {
+      "name": "Llama-3.2-1B-Q8",
+      "runner": "kllama",
+      "model": "~/.lmstudio/models/llama-3.2-1b/llama-3.2-1b-q8_0.gguf",
+      "format": "gguf"
+    },
+    {
+      "name": "Gemma-2B-SafeTensors",
+      "runner": "kgemma",
+      "model": "~/.cache/huggingface/models/gemma-2b",
+      "format": "safetensors",
+      "steps": 16
+    },
+    {
+      "name": "BERT-MiniLM",
+      "runner": "kbert",
+      "model": "~/.cache/huggingface/models/all-MiniLM-L6-v2",
+      "format": "safetensors",
+      "prompt": "Hello world",
+      "doc": "Good morning"
+    }
+  ]
+}
