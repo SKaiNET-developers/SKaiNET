@@ -53,7 +53,6 @@ kotlin {
                 implementation(libs.kotlinx.io.core)
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-io:skainet-io-core"))
-                implementation(project(":skainet-io:skainet-io-safetensors"))
                 implementation(project(":skainet-compile:skainet-compile-core"))
                 implementation(project(":skainet-compile:skainet-compile-dag"))
 

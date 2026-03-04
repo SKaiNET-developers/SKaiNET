@@ -4,9 +4,9 @@ import kotlinx.io.Source
 import kotlinx.io.readFloatLe
 import kotlinx.io.readIntLe
 import sk.ainet.context.ExecutionContext
-import sk.ainet.io.gguf.llama.LlamaLayerWeights
-import sk.ainet.io.gguf.llama.LlamaModelMetadata
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.LlamaLayerWeights
+import sk.ainet.models.llama.LlamaModelMetadata
+import sk.ainet.models.llama.LlamaRuntimeWeights
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.FP32
 

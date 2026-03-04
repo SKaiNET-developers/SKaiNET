@@ -1,11 +1,11 @@
 package sk.ainet.apps.bert.cli
 
-import sk.ainet.apps.bert.BertIngestion
-import sk.ainet.apps.bert.BertModelConfig
-import sk.ainet.apps.bert.BertRuntime
-import sk.ainet.apps.bert.HuggingFaceTokenizer
-import sk.ainet.apps.bert.MDBR_LEAF_IR_CONFIG
-import sk.ainet.apps.bert.BertRuntimeWeights
+import sk.ainet.models.bert.BertIngestion
+import sk.ainet.models.bert.BertModelConfig
+import sk.ainet.models.bert.BertRuntime
+import sk.ainet.models.bert.HuggingFaceTokenizer
+import sk.ainet.models.bert.MDBR_LEAF_IR_CONFIG
+import sk.ainet.models.bert.BertRuntimeWeights
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.safetensors.SafeTensorsParametersLoader

@@ -1,18 +1,18 @@
 package sk.ainet.apps.kllama.cli
 
 import sk.ainet.apps.kllama.GGUFTokenizer
-import sk.ainet.apps.kllama.LlamaConfigParser
+import sk.ainet.models.llama.LlamaConfigParser
 import sk.ainet.apps.kllama.LlamaIngestion
 import sk.ainet.apps.kllama.LlamaLoadConfig
 import sk.ainet.apps.llm.Tokenizer
-import sk.ainet.apps.kllama.LlamaRuntime
+import sk.ainet.models.llama.LlamaRuntime
 import sk.ainet.apps.kllama.CpuAttentionBackend
 import sk.ainet.apps.kllama.Llama2DotCWeightLoader
-import sk.ainet.apps.kllama.MemSegWeightConverter
+import sk.ainet.models.llama.MemSegWeightConverter
 import sk.ainet.apps.kllama.TokenizerUtils
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.gguf.dequant.QuantPolicy
+import sk.ainet.io.model.QuantPolicy
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
 import kotlinx.io.buffered

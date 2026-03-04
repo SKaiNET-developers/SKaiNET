@@ -2,6 +2,7 @@ package sk.ainet.io.gguf.registry
 
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.StreamingGGUFReader
+import sk.ainet.io.model.ModelArchitecture
 
 /**
  * Describes how to create a weight loader for a specific model architecture.

@@ -4,9 +4,15 @@ package sk.ainet.apps.kllama.java
 
 import kotlinx.coroutines.runBlocking
 import sk.ainet.apps.kllama.*
+import sk.ainet.models.llama.LlamaConfigParser
+import sk.ainet.models.llama.LlamaRuntime
+import sk.ainet.models.llama.LlamaRuntimeWeights
+import sk.ainet.models.llama.LlamaSafeTensorsLoader
+import sk.ainet.models.llama.MemSegWeightConverter
+import sk.ainet.models.llama.loadLlamaRuntimeWeightsStreaming
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.gguf.dequant.QuantPolicy
+import sk.ainet.io.model.QuantPolicy
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
 import java.lang.foreign.Arena

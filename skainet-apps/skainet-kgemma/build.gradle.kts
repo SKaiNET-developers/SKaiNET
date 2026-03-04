@@ -69,6 +69,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":skainet-models:skainet-model-gemma"))
             implementation(project(":skainet-apps:skainet-llm"))
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-compile:skainet-compile-core"))

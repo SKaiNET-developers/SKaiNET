@@ -13,12 +13,12 @@ import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.DataView
 import org.w3c.fetch.Response
 import kotlin.js.Promise
-import sk.ainet.apps.kllama.LlamaRuntime
-import sk.ainet.apps.kllama.LlamaRuntimeInterface
+import sk.ainet.models.llama.LlamaRuntime
+import sk.ainet.models.llama.LlamaRuntimeInterface
 import sk.ainet.apps.kllama.GGUFTokenizer
 import sk.ainet.context.DirectCpuExecutionContext
-import sk.ainet.io.gguf.dequant.QuantPolicy
-import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
+import sk.ainet.io.model.QuantPolicy
+import sk.ainet.models.llama.loadLlamaRuntimeWeights
 import sk.ainet.apps.llm.Tokenizer
 
 private val scope = MainScope()

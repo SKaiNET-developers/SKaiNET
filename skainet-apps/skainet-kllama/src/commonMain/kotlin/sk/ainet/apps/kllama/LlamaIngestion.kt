@@ -3,11 +3,12 @@ package sk.ainet.apps.kllama
 import kotlinx.io.Source
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.RandomAccessSource
-import sk.ainet.io.gguf.llama.LlamaModelMetadata
-import sk.ainet.io.gguf.llama.LlamaRuntimeWeights
-import sk.ainet.io.gguf.dequant.QuantPolicy
-import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeights
-import sk.ainet.io.gguf.llama.loadLlamaRuntimeWeightsStreaming
+import sk.ainet.models.llama.LlamaModelMetadata
+import sk.ainet.models.llama.LlamaRuntimeWeights
+import sk.ainet.io.model.QuantPolicy
+import sk.ainet.models.llama.loadLlamaRuntimeWeights
+import sk.ainet.models.llama.LlamaSafeTensorsLoader
+import sk.ainet.models.llama.loadLlamaRuntimeWeightsStreaming
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
 

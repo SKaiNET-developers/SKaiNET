@@ -1,5 +1,7 @@
 package sk.ainet.io.gguf.registry
 
+import sk.ainet.io.model.ModelArchitecture
+
 /**
  * Loader descriptor for Gemma-family models (Gemma, Gemma 3, Gemma 3n).
  *

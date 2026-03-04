@@ -3,11 +3,15 @@ package sk.ainet.apps.kgemma
 import kotlinx.io.Source
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.RandomAccessSource
-import sk.ainet.io.gguf.gemma.Gemma3nRuntimeWeights
-import sk.ainet.io.gguf.dequant.QuantPolicy
-import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeights
-import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeightsFromSafeTensors
-import sk.ainet.io.gguf.gemma.loadGemma3nRuntimeWeightsStreaming
+import sk.ainet.models.gemma.Gemma3nAttentionBackend
+import sk.ainet.models.gemma.Gemma3nConfig
+import sk.ainet.models.gemma.Gemma3nRuntime
+import sk.ainet.models.gemma.Gemma3nRuntimeWeights
+import sk.ainet.models.gemma.createOptimalGemma3nKvCache
+import sk.ainet.io.model.QuantPolicy
+import sk.ainet.models.gemma.loadGemma3nRuntimeWeights
+import sk.ainet.models.gemma.loadGemma3nRuntimeWeightsFromSafeTensors
+import sk.ainet.models.gemma.loadGemma3nRuntimeWeightsStreaming
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
 
