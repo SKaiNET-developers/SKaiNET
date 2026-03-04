@@ -22,7 +22,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
     
     override val supportedOperations: Set<String> = setOf(
         // Convolutional operations
-        "conv2d",
+        "conv1d", "conv2d",
         // Pooling operations
         "maxPool2d", "avgPool2d", "averagePool2d",
         // Normalization operations
@@ -36,6 +36,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         context: ConversionContext
     ): ConversionResult {
         return when (node.operation.name.lowercase()) {
+            "conv1d" -> convertConv1d(node, operands, context)
             "conv2d" -> convertConv2d(node, operands, context)
             "maxpool2d" -> convertMaxPool2d(node, operands, context)
             "avgpool2d", "averagepool2d" -> convertAvgPool2d(node, operands, context)
@@ -48,6 +49,56 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         }
     }
     
+    private fun convertConv1d(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size < 2) {
+            return ConversionResult.Failure(
+                "Conv1d operation requires at least 2 operands (input, weight), got ${operands.size}",
+                "Unsupported conv1d arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?x?xf32>"
+
+        val params = node.operation.parameters
+        val stride = params["stride"] as? Int ?: 1
+        val padding = params["padding"] as? Int ?: 0
+        val dilation = params["dilation"] as? Int ?: 1
+        val groups = params["groups"] as? Int ?: 1
+
+        val resultValue = context.nextTempValue()
+
+        val typeMapper = context.getTypeMapper()
+        val inputType = node.inputs.getOrNull(0)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?xf32>"
+        val weightType = node.inputs.getOrNull(1)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?xf32>"
+
+        val convOperation = buildConv1dOperation(
+            resultValue = resultValue,
+            input = operands[0],
+            weight = operands[1],
+            bias = if (operands.size > 2) operands[2] else null,
+            inputType = inputType,
+            weightType = weightType,
+            outputType = outputType,
+            stride = stride,
+            padding = padding,
+            dilation = dilation,
+            groups = groups
+        )
+
+        context.emitOperation(convOperation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(convOperation)
+        )
+    }
+
     private fun convertConv2d(
         node: GraphNode,
         operands: List<String>,
@@ -321,6 +372,41 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
     
     // Helper functions for building StableHLO operations
     
+    private fun buildConv1dOperation(
+        resultValue: String,
+        input: String,
+        weight: String,
+        bias: String?,
+        inputType: String,
+        weightType: String,
+        outputType: String,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int
+    ): String {
+        // StableHLO convolution with 1D spatial dimensions:
+        //   dim_numbers = [b, f, 0]x[o, i, 0]->[b, f, 0]
+        //   (batch=implicit, feature, one spatial dim)
+        val convCore = { rv: String ->
+            "$rv = stablehlo.convolution($input, $weight) " +
+                    "dim_numbers = [b, f, 0]x[o, i, 0]->[b, f, 0], " +
+                    "window = {stride = [$stride], " +
+                    "pad = [[$padding, $padding]], " +
+                    "rhs_dilate = [$dilation]} " +
+                    "{batch_group_count = 1 : i64, feature_group_count = $groups : i64} " +
+                    ": ($inputType, $weightType) -> $outputType"
+        }
+
+        return if (bias != null) {
+            val convResult = "${resultValue}_conv"
+            val convOp = convCore(convResult)
+            "$convOp\n    $resultValue = stablehlo.add $convResult, $bias : $outputType"
+        } else {
+            convCore(resultValue)
+        }
+    }
+
     private fun buildConvolutionOperation(
         resultValue: String,
         input: String,
