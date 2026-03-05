@@ -1,7 +1,5 @@
 package sk.ainet.compile.hlo.generate
 
-import sk.ainet.apps.kwhisper.WhisperModelMetadata
-import sk.ainet.apps.kwhisper.dsl.WhisperEncoderHloModel
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.model.Model
 import sk.ainet.lang.tensor.Shape
@@ -66,35 +64,6 @@ internal object ModelRegistry {
             }
         ))
 
-        // Whisper-tiny.en encoder: mel spectrogram → encoder hidden states
-        put("whisper-encoder", ModelDescriptor(
-            name = "whisper-encoder",
-            description = "Whisper-tiny.en encoder (FP32, 4 layers, 384-dim)",
-            functionName = "whisper_encoder",
-            createModelAndInput = { ctx, height, width, batch ->
-                val metadata = WhisperModelMetadata(
-                    nMels = 80,
-                    nAudioCtx = 1500,
-                    nAudioState = 384,
-                    nAudioHead = 6,
-                    nAudioLayer = 4,
-                    nVocab = 51864,
-                    nTextCtx = 448,
-                    nTextState = 384,
-                    nTextHead = 6,
-                    nTextLayer = 4
-                )
-                val model = WhisperEncoderHloModel(metadata)
-                // Mel spectrogram input: [nMels, nFrames] where nFrames = 3000 for 30s audio
-                val nFrames = 3000
-                val input = ctx.fromFloatArray<FP32, Float>(
-                    shape = Shape(metadata.nMels, nFrames),
-                    dtype = FP32::class,
-                    data = FloatArray(metadata.nMels * nFrames) { 0.0f }
-                )
-                ModelAndInput(model, input)
-            }
-        ))
     }
 
     fun get(name: String): ModelDescriptor? = models[name]

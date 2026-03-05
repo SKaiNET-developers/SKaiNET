@@ -65,11 +65,11 @@ public class ImageLoaderTest {
     public fun loadImage_nonExistentFile_throwsException() {
         val nonExistentPath = File(tempDir, "nonexistent.jpg").absolutePath
         
-        val exception = assertFailsWith<ImageLoadException> {
+        val exception = assertFailsWith<GrayscaleCliError.ImageLoadError.FileNotFound> {
             imageLoader.loadImage(nonExistentPath)
         }
-        
-        assertTrue(exception.message!!.contains("does not exist"))
+
+        assertTrue(exception.message!!.contains("not found"))
     }
     
     @Test
@@ -78,20 +78,20 @@ public class ImageLoaderTest {
         val textFile = File(tempDir, "test.txt")
         textFile.writeText("not an image")
         
-        val exception = assertFailsWith<ImageLoadException> {
+        val exception = assertFailsWith<GrayscaleCliError.ImageLoadError.UnsupportedFormat> {
             imageLoader.loadImage(textFile.absolutePath)
         }
-        
+
         assertTrue(exception.message!!.contains("Unsupported image format"))
     }
     
     @Test
     public fun loadImage_directoryPath_throwsException() {
-        val exception = assertFailsWith<ImageLoadException> {
+        val exception = assertFailsWith<GrayscaleCliError.ImageLoadError.FileNotFound> {
             imageLoader.loadImage(tempDir.absolutePath)
         }
-        
-        assertTrue(exception.message!!.contains("not a file"))
+
+        assertTrue(exception.message!!.contains("not found"))
     }
     
     @Test
@@ -153,11 +153,11 @@ public class ImageLoaderTest {
     public fun loadImagesFromDirectory_nonExistentDirectory_throwsException() {
         val nonExistentDir = File(tempDir, "nonexistent").absolutePath
         
-        val exception = assertFailsWith<ImageLoadException> {
+        val exception = assertFailsWith<GrayscaleCliError.ImageLoadError.DirectoryNotFound> {
             imageLoader.loadImagesFromDirectory(nonExistentDir)
         }
-        
-        assertTrue(exception.message!!.contains("does not exist"))
+
+        assertTrue(exception.message!!.contains("not found"))
     }
     
     @Test
@@ -166,11 +166,11 @@ public class ImageLoaderTest {
         val file = File(tempDir, "notadirectory.txt")
         file.writeText("test")
         
-        val exception = assertFailsWith<ImageLoadException> {
+        val exception = assertFailsWith<GrayscaleCliError.ImageLoadError.DirectoryNotFound> {
             imageLoader.loadImagesFromDirectory(file.absolutePath)
         }
-        
-        assertTrue(exception.message!!.contains("not a directory"))
+
+        assertTrue(exception.message!!.contains("not found"))
     }
     
     @Test
