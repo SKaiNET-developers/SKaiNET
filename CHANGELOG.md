@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.0] - 2026-03-06
+
+### Added
+- **System Prompt Support (Java)**: Added `systemPrompt` support to `KLlamaJava` and `KLlamaSession` for prepending system instructions to conversations.
+- **Model Module Extraction**: Extracted model-specific code into dedicated `skainet-models` modules for better separation of concerns and maintainability.
+- **Enhanced Smoke Tests**: Refactored `smoke-test.sh` to support multiple runners via JSON configuration and improved LLM loading verification.
+
+### Fixed
+- **Whisper HLO Generation**: Fixed StableHLO MLIR generation for Whisper models.
+- **Compilation**: Fixed various Kotlin/JVM compilation errors.
+
 ## [0.14.0] - 2026-03-03
 
 ### Added

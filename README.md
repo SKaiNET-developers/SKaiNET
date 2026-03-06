@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.14.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.14.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.15.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.15.0")
 }
 ```
 
@@ -128,14 +128,13 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 
 ---
 
-## What's New in 0.14.0
+## What's New in 0.15.0
 
-- **First-class Java 21+ support** — complete API surface with builders, facades, and BOM
-- **JVM performance (Jlama techniques)** — MemorySegment tensors, SIMD GEMM, paged KV cache, fused QKV
-- **WasmWasi target** — new `wasmWasi` platform across all KMP modules
-- **StableHLO MLIR improvements** — valid IREE output, streaming API, public `HloGenerator`
-- **Refactored model loading** — shared dequantization, registry, and decoder runtime
-- **Agentic AI & tool calling** — `skainet-kllama-agent` with function calling and `AgentLoop`
+- **System prompt support (Java)** — added `systemPrompt` support to `KLlamaJava` and `KLlamaSession` for easier customization of agent behavior
+- **Model extraction** — model-specific code is now isolated in dedicated `skainet-models` modules
+- **Whisper HLO generation** — fixed StableHLO MLIR output for Whisper audio models
+- **Smoke test improvements** — faster and more robust LLM loading verification with multi-runner support
+
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 

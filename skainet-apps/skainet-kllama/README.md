@@ -78,8 +78,8 @@ See the [Java LLM Inference Guide](../../docs/java-llm-inference.md) for streami
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet:skainet-kllama-jvm:0.13.0")
-    implementation("sk.ainet:skainet-backend-cpu-jvm:0.13.0")
+    implementation("sk.ainet:skainet-kllama-jvm:0.15.0")
+    implementation("sk.ainet:skainet-backend-cpu-jvm:0.15.0")
 }
 ```
 
