@@ -71,9 +71,8 @@ include("skainet-models:skainet-model-qwen")
 //include("skainet-integrations:skainet-simple-cpu")
 
 
-// ====== BOM & STARTER
+// ====== BOM
 include("skainet-bom")
-include("skainet-starter-jvm")
 
 // ====== TEST
 include("skainet-test:skainet-test-groundtruth")
