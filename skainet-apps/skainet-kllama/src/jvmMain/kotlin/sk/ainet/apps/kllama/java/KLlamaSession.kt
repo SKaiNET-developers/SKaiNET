@@ -31,6 +31,7 @@ public class KLlamaSession(
     internal val runtime: LlamaRuntime<FP32>,
     internal val tokenizer: Tokenizer,
     private val eosTokenId: Int,
+    public val systemPrompt: String? = null,
     private val closeAction: Runnable? = null
 ) : AutoCloseable {
 
@@ -44,7 +45,8 @@ public class KLlamaSession(
     @JvmOverloads
     public fun generate(prompt: String, config: GenerationConfig = GenerationConfig.defaults()): String {
         runtime.reset()
-        val tokens = tokenizer.encode(prompt)
+        val fullPrompt = if (systemPrompt != null) "$systemPrompt\n\n$prompt" else prompt
+        val tokens = tokenizer.encode(fullPrompt)
         val result = runtime.generateUntilStop(
             prompt = tokens,
             maxTokens = config.maxTokens,
@@ -65,7 +67,8 @@ public class KLlamaSession(
      */
     public fun generate(prompt: String, config: GenerationConfig, tokenConsumer: Consumer<String>): String {
         runtime.reset()
-        val tokens = tokenizer.encode(prompt)
+        val fullPrompt = if (systemPrompt != null) "$systemPrompt\n\n$prompt" else prompt
+        val tokens = tokenizer.encode(fullPrompt)
         val result = runtime.generateUntilStop(
             prompt = tokens,
             maxTokens = config.maxTokens,

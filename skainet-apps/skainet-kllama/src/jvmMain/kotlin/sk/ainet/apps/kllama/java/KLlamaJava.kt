@@ -42,10 +42,12 @@ public object KLlamaJava {
      * Load a GGUF model and return a ready-to-use session.
      *
      * @param modelPath Path to the .gguf model file.
+     * @param systemPrompt Optional system prompt to prepend to all user inputs.
      * @return A KLlamaSession that implements AutoCloseable.
      */
     @JvmStatic
-    public fun loadGGUF(modelPath: Path): KLlamaSession {
+    @JvmOverloads
+    public fun loadGGUF(modelPath: Path, systemPrompt: String? = null): KLlamaSession {
         val quantArena = Arena.ofShared()
         val memSegFactory = MemorySegmentTensorDataFactory()
         val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
@@ -84,6 +86,7 @@ public object KLlamaJava {
             runtime = runtime,
             tokenizer = tokenizer,
             eosTokenId = tokenizer.eosId,
+            systemPrompt = systemPrompt,
             closeAction = Runnable {
                 quantArena.close()
                 memSegFactory.close()
@@ -98,10 +101,12 @@ public object KLlamaJava {
      * and `tokenizer.json`.
      *
      * @param modelDir Path to the HuggingFace model directory.
+     * @param systemPrompt Optional system prompt to prepend to all user inputs.
      * @return A KLlamaSession that implements AutoCloseable.
      */
     @JvmStatic
-    public fun loadSafeTensors(modelDir: Path): KLlamaSession {
+    @JvmOverloads
+    public fun loadSafeTensors(modelDir: Path, systemPrompt: String? = null): KLlamaSession {
         val quantArena = Arena.ofShared()
         val memSegFactory = MemorySegmentTensorDataFactory()
         val ctx = DirectCpuExecutionContext(tensorDataFactory = memSegFactory)
@@ -134,6 +139,7 @@ public object KLlamaJava {
             runtime = runtime,
             tokenizer = tokenizer,
             eosTokenId = tokenizer.eosId,
+            systemPrompt = systemPrompt,
             closeAction = Runnable {
                 quantArena.close()
                 memSegFactory.close()
