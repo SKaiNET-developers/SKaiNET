@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.15.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.15.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.15.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.15.1")
 }
 ```
 
@@ -128,7 +128,7 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 
 ---
 
-## What's New in 0.15.0
+## What's New in 0.15.1
 
 - **System prompt support (Java)** — added `systemPrompt` support to `KLlamaJava` and `KLlamaSession` for easier customization of agent behavior
 - **Model extraction** — model-specific code is now isolated in dedicated `skainet-models` modules
