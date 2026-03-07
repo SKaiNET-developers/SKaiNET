@@ -43,6 +43,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":skainet-apps:skainet-llm"))
             implementation(project(":skainet-lang:skainet-lang-core"))
+            implementation(project(":skainet-io:skainet-io-safetensors"))
             implementation(project(":skainet-compile:skainet-compile-core"))
             implementation(project(":skainet-backends:skainet-backend-cpu"))
             implementation(project(":skainet-io:skainet-io-core"))
@@ -51,12 +52,6 @@ kotlin {
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
-        }
-
-        val jvmMain by getting {
-            dependencies {
-                implementation(project(":skainet-io:skainet-io-safetensors"))
-            }
         }
 
         val jvmTest by getting {

@@ -7,8 +7,8 @@ kotlin {
 }
 
 dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(project(":skainet-lang:skainet-lang-core"))
     testImplementation(project(":skainet-backends:skainet-backend-cpu"))
     testImplementation(project(":skainet-data:skainet-data-simple"))

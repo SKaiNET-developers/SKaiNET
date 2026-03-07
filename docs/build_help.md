@@ -46,7 +46,7 @@ The plugin is applied to 21 library modules:
 | skainet-io | `skainet-io-core`, `skainet-io-gguf`, `skainet-io-image`, `skainet-io-onnx`, `skainet-io-safetensors` |
 | Other | `skainet-pipeline`, `skainet-model-yolo` |
 
-**Excluded:** `skainet-bom` (no source), `skainet-starter-jvm`, `skainet-apps/*`, `skainet-test/*`, benchmarks, and `skainet-lang-ksp-processor` (internal).
+**Excluded:** `skainet-bom` (no source), `skainet-apps/*`, `skainet-test/*`, benchmarks, and `skainet-lang-ksp-processor` (internal).
 
 ### Root-level aggregation
 

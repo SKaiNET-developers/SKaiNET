@@ -4,6 +4,7 @@ jacksonDatabind = "2.21.1"
 jsonSchemaValidator = "3.0.0"
 jsonSchemaValidatorVersion = "0.5.3"
 junit = "4.13.2"
+junitJupiter = "6.0.3"
 kotlin = "2.3.0"
 kotlinxCoroutines = "1.10.2"
 kotlinBrowser = "0.5.0"
@@ -30,6 +31,8 @@ kotest = "6.1.4"
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
 junit = { module = "junit:junit", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitJupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 kotlinx-coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.ref = "kotlinBrowser" }
 kotlinx-coroutines-core-jvm = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm", version.ref = "kotlinxCoroutines" }

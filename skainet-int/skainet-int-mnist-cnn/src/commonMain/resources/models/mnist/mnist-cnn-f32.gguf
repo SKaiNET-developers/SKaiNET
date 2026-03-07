@@ -1,3 +1,0 @@
-SKAINET_MNIST_GGUF_PLACEHOLDER
-This is a small placeholder file for the MNIST CNN GGUF parameters.
-Replace with the actual mnist-cnn-f32.gguf during production packaging.
