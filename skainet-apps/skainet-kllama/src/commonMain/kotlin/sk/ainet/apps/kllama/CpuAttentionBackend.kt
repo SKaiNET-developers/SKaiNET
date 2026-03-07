@@ -1,11 +1,10 @@
 package sk.ainet.apps.kllama
 
-import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.max
-import kotlin.math.pow
-import kotlin.math.sin
 import kotlin.math.sqrt
+import sk.ainet.apps.llm.KvCache
+import sk.ainet.apps.llm.HeapKvCache
+import sk.ainet.apps.llm.applyRopeRotation
+import sk.ainet.apps.llm.softmaxInPlace
 import sk.ainet.context.ExecutionContext
 import sk.ainet.models.llama.AttentionBackend
 import sk.ainet.models.llama.LlamaRuntimeWeights
@@ -105,21 +104,6 @@ public class CpuAttentionBackend<T : DType>(
         cache.reset()
     }
 
-    private fun ropeCosFallback(pair: Int, pos: Int): Float {
-        val freq = ropeFrequency(pair, pos)
-        return cos(freq)
-    }
-
-    private fun ropeSinFallback(pair: Int, pos: Int): Float {
-        val freq = ropeFrequency(pair, pos)
-        return sin(freq)
-    }
-
-    private fun ropeFrequency(pair: Int, pos: Int): Float {
-        val exponent = (2f * pair) / ropeDim
-        return pos / ropeFreqBase.pow(exponent)
-    }
-
     private fun applyRopeGqa(qBuf: FloatArray, kBuf: FloatArray, pos: Int) {
         val ropeReal = weights.ropeFreqReal?.expectFloatBuffer()
         val ropeImag = weights.ropeFreqImag?.expectFloatBuffer()
@@ -127,33 +111,8 @@ public class CpuAttentionBackend<T : DType>(
 
         require(headSize % 2 == 0) { "RoPE requires even head size; got $headSize" }
 
-        for (h in 0 until nHeads) {
-            val headOffset = h * headSize
-            for (pair in 0 until ropeDim / 2) {
-                val i = pair * 2
-                val fcr = ropeReal?.get(pos * ropeStride + pair) ?: ropeCosFallback(pair, pos)
-                val fci = ropeImag?.get(pos * ropeStride + pair) ?: ropeSinFallback(pair, pos)
-
-                val q0 = qBuf[headOffset + i]
-                val q1 = qBuf[headOffset + i + 1]
-                qBuf[headOffset + i] = q0 * fcr - q1 * fci
-                qBuf[headOffset + i + 1] = q0 * fci + q1 * fcr
-            }
-        }
-
-        for (h in 0 until nKvHeads) {
-            val headOffset = h * headSize
-            for (pair in 0 until ropeDim / 2) {
-                val i = pair * 2
-                val fcr = ropeReal?.get(pos * ropeStride + pair) ?: ropeCosFallback(pair, pos)
-                val fci = ropeImag?.get(pos * ropeStride + pair) ?: ropeSinFallback(pair, pos)
-
-                val k0 = kBuf[headOffset + i]
-                val k1 = kBuf[headOffset + i + 1]
-                kBuf[headOffset + i] = k0 * fcr - k1 * fci
-                kBuf[headOffset + i + 1] = k0 * fci + k1 * fcr
-            }
-        }
+        applyRopeRotation(qBuf, nHeads, headSize, ropeDim, pos, ropeFreqBase, ropeReal, ropeImag, ropeStride)
+        applyRopeRotation(kBuf, nKvHeads, headSize, ropeDim, pos, ropeFreqBase, ropeReal, ropeImag, ropeStride)
     }
 
     private fun attentionGqa(layerIdx: Int, qBuf: FloatArray, pos: Int): FloatArray {
@@ -184,25 +143,6 @@ public class CpuAttentionBackend<T : DType>(
             }
         }
         return out
-    }
-
-    private fun softmaxInPlace(values: FloatArray, length: Int) {
-        var maxVal = Float.NEGATIVE_INFINITY
-        for (i in 0 until length) {
-            if (values[i] > maxVal) maxVal = values[i]
-        }
-        if (maxVal.isInfinite()) maxVal = 0f
-        var sum = 0f
-        for (i in 0 until length) {
-            val e = exp((values[i] - maxVal).toDouble()).toFloat()
-            values[i] = e
-            sum += e
-        }
-        if (sum == 0f) return
-        val inv = 1f / sum
-        for (i in 0 until length) {
-            values[i] *= inv
-        }
     }
 
     private fun Tensor<T, Float>.expectFloatBuffer(): FloatArray {

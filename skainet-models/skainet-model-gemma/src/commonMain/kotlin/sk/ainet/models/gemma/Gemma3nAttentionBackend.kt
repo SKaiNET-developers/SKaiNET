@@ -1,12 +1,9 @@
 package sk.ainet.models.gemma
 
-import kotlin.math.cos
-import kotlin.math.exp
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.pow
-import kotlin.math.sin
 import kotlin.math.sqrt
+import sk.ainet.apps.llm.applyRopeRotation
+import sk.ainet.apps.llm.softmaxInPlace
 import sk.ainet.context.ExecutionContext
 import sk.ainet.models.gemma.Gemma3nRuntimeWeights
 import sk.ainet.models.gemma.LayerType
@@ -93,22 +90,6 @@ public class Gemma3nAttentionBackend<T : DType>(
     }
 
     /**
-     * Compute RoPE frequency for a given pair index and position.
-     */
-    private fun ropeFrequency(pair: Int, pos: Int, ropeBase: Float): Float {
-        val exponent = (2f * pair) / headDim
-        return pos / ropeBase.pow(exponent)
-    }
-
-    private fun ropeCosFallback(pair: Int, pos: Int, ropeBase: Float): Float {
-        return cos(ropeFrequency(pair, pos, ropeBase))
-    }
-
-    private fun ropeSinFallback(pair: Int, pos: Int, ropeBase: Float): Float {
-        return sin(ropeFrequency(pair, pos, ropeBase))
-    }
-
-    /**
      * Apply RoPE to Q and K with layer-specific base frequency.
      */
     private fun applyRopeGqa(qBuf: FloatArray, kBuf: FloatArray, pos: Int, ropeBase: Float) {
@@ -118,52 +99,14 @@ public class Gemma3nAttentionBackend<T : DType>(
 
         require(headDim % 2 == 0) { "RoPE requires even head size; got $headDim" }
 
-        // Apply RoPE to all query heads
-        for (h in 0 until nHeads) {
-            val headOffset = h * headDim
-            for (pair in 0 until headDim / 2) {
-                val i = pair * 2
-                // Use precomputed tables if available and base matches, otherwise compute on-the-fly
-                val fcr = if (ropeReal != null && ropeBase == config.ropeBaseLocal) {
-                    ropeReal[pos * ropeStride + pair]
-                } else {
-                    ropeCosFallback(pair, pos, ropeBase)
-                }
-                val fci = if (ropeImag != null && ropeBase == config.ropeBaseLocal) {
-                    ropeImag[pos * ropeStride + pair]
-                } else {
-                    ropeSinFallback(pair, pos, ropeBase)
-                }
-
-                val q0 = qBuf[headOffset + i]
-                val q1 = qBuf[headOffset + i + 1]
-                qBuf[headOffset + i] = q0 * fcr - q1 * fci
-                qBuf[headOffset + i + 1] = q0 * fci + q1 * fcr
-            }
-        }
-
-        // Apply RoPE to all KV heads
-        for (h in 0 until nKvHeads) {
-            val headOffset = h * headDim
-            for (pair in 0 until headDim / 2) {
-                val i = pair * 2
-                val fcr = if (ropeReal != null && ropeBase == config.ropeBaseLocal) {
-                    ropeReal[pos * ropeStride + pair]
-                } else {
-                    ropeCosFallback(pair, pos, ropeBase)
-                }
-                val fci = if (ropeImag != null && ropeBase == config.ropeBaseLocal) {
-                    ropeImag[pos * ropeStride + pair]
-                } else {
-                    ropeSinFallback(pair, pos, ropeBase)
-                }
-
-                val k0 = kBuf[headOffset + i]
-                val k1 = kBuf[headOffset + i + 1]
-                kBuf[headOffset + i] = k0 * fcr - k1 * fci
-                kBuf[headOffset + i + 1] = k0 * fci + k1 * fcr
-            }
-        }
+        applyRopeRotation(
+            qBuf, nHeads, headDim, headDim, pos, ropeBase,
+            ropeReal, ropeImag, ropeStride, config.ropeBaseLocal
+        )
+        applyRopeRotation(
+            kBuf, nKvHeads, headDim, headDim, pos, ropeBase,
+            ropeReal, ropeImag, ropeStride, config.ropeBaseLocal
+        )
     }
 
     /**
@@ -240,26 +183,6 @@ public class Gemma3nAttentionBackend<T : DType>(
             }
         }
         return out
-    }
-
-    private fun softmaxInPlace(values: FloatArray) {
-        if (values.isEmpty()) return
-
-        var maxVal = values.fold(Float.NEGATIVE_INFINITY) { acc, v -> max(acc, v) }
-        if (maxVal.isInfinite()) maxVal = 0f
-
-        var sum = 0f
-        for (i in values.indices) {
-            val e = exp((values[i] - maxVal).toDouble()).toFloat()
-            values[i] = e
-            sum += e
-        }
-
-        if (sum == 0f) return
-        val inv = 1f / sum
-        for (i in values.indices) {
-            values[i] *= inv
-        }
     }
 
     private fun Tensor<T, Float>.expectFloatBuffer(): FloatArray {

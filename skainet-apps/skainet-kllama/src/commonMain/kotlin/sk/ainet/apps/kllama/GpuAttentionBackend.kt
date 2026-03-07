@@ -1,9 +1,8 @@
 package sk.ainet.apps.kllama
 
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
 import kotlin.math.sqrt
+import sk.ainet.apps.llm.ropeCos
+import sk.ainet.apps.llm.ropeSin
 import sk.ainet.context.ExecutionContext
 import sk.ainet.models.llama.AttentionBackend
 import sk.ainet.models.llama.LlamaRuntimeWeights
@@ -68,11 +67,9 @@ public class GpuAttentionBackend<T : DType>(
 
         for (pos in 0 until seqLen) {
             for (pair in 0 until halfDim) {
-                val exponent = (2f * pair) / ropeDim
-                val freq = pos / ropeFreqBase.pow(exponent)
                 val idx = pos * halfDim + pair
-                freqCosData[idx] = cos(freq)
-                freqSinData[idx] = sin(freq)
+                freqCosData[idx] = ropeCos(pair, pos, ropeDim, ropeFreqBase)
+                freqSinData[idx] = ropeSin(pair, pos, ropeDim, ropeFreqBase)
             }
         }
 

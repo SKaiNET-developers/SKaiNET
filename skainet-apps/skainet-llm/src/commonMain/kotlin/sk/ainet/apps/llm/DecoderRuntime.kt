@@ -1,6 +1,5 @@
 package sk.ainet.apps.llm
 
-import kotlin.math.exp
 import kotlin.random.Random
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
@@ -132,44 +131,11 @@ public abstract class DecoderRuntime<T : DType>(
     /**
      * Sample a token ID from a logits tensor.
      *
-     * - temperature <= 1e-6 -> greedy (argmax)
-     * - otherwise -> temperature-scaled softmax + categorical sample
+     * Delegates to the shared [sampleFromLogits] utility.
      */
     protected fun sample(logits: Tensor<T, Float>, temperature: Float): Int {
-        val buf = logits.expectFloatBuffer()
-
-        if (temperature <= 1e-6f) {
-            var best = 0
-            var bestVal = buf[0]
-            for (i in 1 until buf.size) {
-                if (buf[i] > bestVal) {
-                    bestVal = buf[i]
-                    best = i
-                }
-            }
-            return best
-        }
-
-        val scaled = FloatArray(buf.size)
-        var maxLogit = Float.NEGATIVE_INFINITY
-        for (i in buf.indices) {
-            val v = buf[i] / temperature
-            scaled[i] = v
-            if (v > maxLogit) maxLogit = v
-        }
-        var sum = 0f
-        for (i in scaled.indices) {
-            val e = exp((scaled[i] - maxLogit).toDouble()).toFloat()
-            scaled[i] = e
-            sum += e
-        }
-        val r = random.nextFloat() * sum
-        var acc = 0f
-        for (i in scaled.indices) {
-            acc += scaled[i]
-            if (acc >= r) return i
-        }
-        return scaled.lastIndex
+        val buf = logits.expectFloatBuffer().copyOf()
+        return sampleFromLogits(buf, temperature, random)
     }
 
     /** Extract a FloatArray from a tensor, preferring zero-copy when possible. */

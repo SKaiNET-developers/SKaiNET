@@ -1,6 +1,6 @@
 package sk.ainet.models.llama
 
-import sk.ainet.apps.kllama.agent.InferenceRuntime
+import sk.ainet.apps.llm.InferenceRuntime
 import sk.ainet.lang.types.DType
 
 /**

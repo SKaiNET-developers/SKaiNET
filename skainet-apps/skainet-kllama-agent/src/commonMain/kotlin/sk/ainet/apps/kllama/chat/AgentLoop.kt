@@ -2,7 +2,7 @@ package sk.ainet.apps.kllama.chat
 
 import kotlin.random.Random
 import sk.ainet.apps.kllama.agent.GenerateResult
-import sk.ainet.apps.kllama.agent.InferenceRuntime
+import sk.ainet.apps.llm.InferenceRuntime
 import sk.ainet.apps.kllama.agent.generateUntilStop
 import sk.ainet.lang.types.DType
 

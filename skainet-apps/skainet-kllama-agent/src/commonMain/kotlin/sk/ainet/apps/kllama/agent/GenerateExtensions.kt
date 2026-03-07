@@ -1,7 +1,7 @@
 package sk.ainet.apps.kllama.agent
 
-import kotlin.math.exp
 import kotlin.random.Random
+import sk.ainet.apps.llm.InferenceRuntime
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.DType
@@ -68,6 +68,8 @@ public fun <T : DType> InferenceRuntime<T>.generateUntilStop(
 /**
  * Sample a token ID from a logits tensor.
  *
+ * Delegates to the shared [sk.ainet.apps.llm.sampleFromLogits] after extracting the float array.
+ *
  * @param logits The logits tensor (1D, vocabSize).
  * @param temperature Sampling temperature. Values <= 1e-6 use greedy (argmax).
  * @param random Random generator.
@@ -79,44 +81,11 @@ public fun <T : DType> sampleFromLogits(
     random: Random = Random.Default
 ): Int {
     val buf = logits.toFloatArray()
-
-    // Greedy (argmax) for near-zero temperature
-    if (temperature <= 1e-6f) {
-        var best = 0
-        var bestVal = buf[0]
-        for (i in 1 until buf.size) {
-            if (buf[i] > bestVal) {
-                bestVal = buf[i]
-                best = i
-            }
-        }
-        return best
-    }
-
-    // Temperature-scaled softmax sampling
-    var maxLogit = Float.NEGATIVE_INFINITY
-    for (i in buf.indices) {
-        val v = buf[i] / temperature
-        buf[i] = v
-        if (v > maxLogit) maxLogit = v
-    }
-    var sum = 0f
-    for (i in buf.indices) {
-        val e = exp((buf[i] - maxLogit).toDouble()).toFloat()
-        buf[i] = e
-        sum += e
-    }
-    val r = random.nextFloat() * sum
-    var acc = 0f
-    for (i in buf.indices) {
-        acc += buf[i]
-        if (acc >= r) return i
-    }
-    return buf.lastIndex
+    return sk.ainet.apps.llm.sampleFromLogits(buf, temperature, random)
 }
 
 /**
- * Extract a FloatArray from a tensor, using the fast path if available.
+ * Extract a FloatArray from a tensor, creating a copy for safe mutation.
  */
 private fun <T : DType> Tensor<T, Float>.toFloatArray(): FloatArray {
     val data = this.data

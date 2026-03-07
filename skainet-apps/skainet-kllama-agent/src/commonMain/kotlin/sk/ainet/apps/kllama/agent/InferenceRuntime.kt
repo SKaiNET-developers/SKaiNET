@@ -1,17 +1,9 @@
+@file:Suppress("unused")
+
 package sk.ainet.apps.kllama.agent
 
-import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.types.DType
-
 /**
- * Minimal inference runtime interface for the agent layer.
- * Any model runtime (LLaMA, Mistral, etc.) that wants agent capabilities
- * implements this interface.
+ * Re-export for backward compatibility.
+ * The canonical definition is now in [sk.ainet.apps.llm.InferenceRuntime].
  */
-public interface InferenceRuntime<T : DType> {
-    /** Reset the runtime state (clear KV cache, rewind position). */
-    public fun reset()
-
-    /** Forward one token and return logits. */
-    public fun forward(tokenId: Int): Tensor<T, Float>
-}
+public typealias InferenceRuntime<T> = sk.ainet.apps.llm.InferenceRuntime<T>
