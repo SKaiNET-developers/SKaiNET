@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.15.0] - 2026-03-06
+## [0.15.3] - 2026-03-07
 
 ### Added
 - **System Prompt Support (Java)**: Added `systemPrompt` support to `KLlamaJava` and `KLlamaSession` for prepending system instructions to conversations.
