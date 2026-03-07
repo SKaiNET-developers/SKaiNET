@@ -49,7 +49,6 @@ kotlin {
             implementation(project(":skainet-io:skainet-io-safetensors"))
             implementation(project(":skainet-compile:skainet-compile-core"))
             implementation(project(":skainet-apps:skainet-llm"))
-            implementation(project(":skainet-apps:skainet-kllama-agent"))
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.coroutines)
         }

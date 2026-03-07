@@ -1,61 +1,18 @@
 package sk.ainet.models.gemma
 
+import sk.ainet.apps.llm.KvCache
+
 /**
- * Interface for Gemma 3n KV cache implementations.
+ * KV cache interface for Gemma 3n with layer sharing support.
+ *
+ * Extends the shared [KvCache] interface, inheriting the standard
+ * store/getKey/getValue/reset contract.
  *
  * Key differences from standard KV cache:
  * - KV cache sharing for the last N layers
  * - Layer-aware caching (shared layers map to same slot)
  */
-public interface Gemma3nKvCache {
-    /** Number of transformer layers. */
-    public val nLayers: Int
-
-    /** Maximum sequence length (context window). */
-    public val seqLen: Int
-
-    /** KV dimension (nKvHeads * headDim). */
-    public val kvDim: Int
-
-    /**
-     * Store key and value vectors for a layer and position.
-     *
-     * @param layerIdx Layer index (0 to nLayers-1)
-     * @param position Sequence position (0 to seqLen-1)
-     * @param keys Key vector (copied from keysOffset, length kvDim)
-     * @param keysOffset Offset in keys array
-     * @param values Value vector (copied from valuesOffset, length kvDim)
-     * @param valuesOffset Offset in values array
-     */
-    public fun store(
-        layerIdx: Int,
-        position: Int,
-        keys: FloatArray,
-        keysOffset: Int,
-        values: FloatArray,
-        valuesOffset: Int
-    )
-
-    /**
-     * Get a key value at a specific index.
-     *
-     * @param layerIdx Layer index
-     * @param position Sequence position
-     * @param headOffset Offset within the KV dimension
-     * @param elementIdx Element index within the head
-     */
-    public fun getKey(layerIdx: Int, position: Int, headOffset: Int, elementIdx: Int): Float
-
-    /**
-     * Get a value at a specific index.
-     */
-    public fun getValue(layerIdx: Int, position: Int, headOffset: Int, elementIdx: Int): Float
-
-    /**
-     * Reset all cached values to zero.
-     */
-    public fun reset()
-}
+public interface Gemma3nKvCache : KvCache
 
 /**
  * Heap-based KV cache implementation for Gemma 3n with layer sharing.
