@@ -62,10 +62,6 @@ include("skainet-io:skainet-io-onnx")
 
 // ====== models
 include("skainet-models:skainet-model-yolo")
-include("skainet-models:skainet-model-llama")
-include("skainet-models:skainet-model-gemma")
-include("skainet-models:skainet-model-bert")
-include("skainet-models:skainet-model-qwen")
 
 // ====== Integrations
 //include("skainet-integrations:skainet-simple-cpu")
@@ -81,10 +77,4 @@ include("skainet-test:skainet-test-java")
 // ====== APPS
 include("skainet-apps:skainet-grayscale-cli")
 include("skainet-apps:skainet-tensor-tools")
-include("skainet-apps:skainet-llm")
-include("skainet-apps:skainet-kllama")
-include("skainet-apps:skainet-kllama-agent")
-include("skainet-apps:skainet-kllama-cli")
-include("skainet-apps:skainet-kgemma")
-include("skainet-apps:skainet-kbert-cli")
 include("skainet-io:skainet-io-safetensors")
