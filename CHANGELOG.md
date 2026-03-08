@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.0] - 2026-03-08
+
+### Added
+- **Deduplicated LLM infrastructure**: unified `KvCache`, `softmax`, `RoPE`, and `sampling` logic across modules for improved maintainability.
+- **Updated skainet-bom**: Refactored the Bill of Materials (BOM) to use local `project()` references for better build consistency.
+
+### Changed
+- **LLM Module Extraction**: Extracted and moved core LLM modules to the standalone [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) repository to reduce core codebase footprint.
+- **Transformer Code Cleanup**: Removed redundant code that has been moved to the [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) repository.
+
+### Fixed
+- **Dependency Graph**: Resolved inverted dependency issues in the LLM infrastructure.
+
 ## [0.15.3] - 2026-03-07
 
 ### Added
