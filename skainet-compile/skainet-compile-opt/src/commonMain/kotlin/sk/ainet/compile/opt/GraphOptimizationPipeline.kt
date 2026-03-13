@@ -3,7 +3,10 @@ package sk.ainet.compile.opt
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.compile.opt.passes.ConstantFoldingPass
 import sk.ainet.compile.opt.passes.DeadCodeEliminationPass
+import sk.ainet.compile.opt.passes.LLMFusionPass
 import sk.ainet.compile.opt.passes.OperationFusionPass
+import sk.ainet.compile.opt.passes.SharedWeightDeduplicationPass
+import sk.ainet.compile.opt.passes.TransposeEliminationPass
 
 /**
  * Result of running the full optimization pipeline.
@@ -86,6 +89,27 @@ public class GraphOptimizationPipeline(
                 OperationFusionPass()
             ),
             maxIterations = 3
+        )
+
+        /**
+         * Creates an LLM-optimized pipeline with transformer-specific passes.
+         *
+         * Pass ordering:
+         * 1. TransposeElimination — fold transposes into matmuls
+         * 2. SharedWeightDedup — deduplicate tied weights (e.g. token_embd ↔ output)
+         * 3. LLMFusion — fuse RMSNorm, SwiGLU, QKV patterns
+         * 4. OperationFusion — fuse remaining elementwise chains
+         * 5. DeadCodeElimination — clean up orphaned nodes
+         */
+        public fun createLLM(): GraphOptimizationPipeline = GraphOptimizationPipeline(
+            passes = listOf(
+                TransposeEliminationPass(),
+                SharedWeightDeduplicationPass(),
+                LLMFusionPass(),
+                OperationFusionPass(),
+                DeadCodeEliminationPass()
+            ),
+            maxIterations = 2
         )
     }
 }
