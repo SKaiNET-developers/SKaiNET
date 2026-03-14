@@ -1242,8 +1242,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         // Normalize dim allowing dim==rank for scalars to create 1D
         val nd = if (dim < 0) dim + maxOf(rank, 1) else dim
         require(nd >= 0 && nd <= rank) { "concat: dim ${dim} out of range for rank ${rank}" }
-        // Disallow concatenation along leading dimension for rank > 1 to match shape semantics tests
-        require(!(rank > 1 && nd == 0)) { "concat: concatenation along dimension 0 is not supported for rank > 1" }
+        // Allow concatenation along any valid dimension (including dim 0 for rank > 1)
         // Validate shapes and dtype, compute output dims
         var concatSize = 0
         val outDims = IntArray(if (rank == 0) 1 else rank) { i -> if (rank == 0) 0 else first.shape[i] }
@@ -2209,7 +2208,100 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         scale: Float,
         causal: Boolean
     ): Tensor<T, V> {
-        TODO("Not yet implemented")
+        // Expected shapes: [batch, heads, seqQ, headDim] for Q, [batch, heads, seqKV, headDim] for K/V
+        require(query.rank == 4) { "SDPA: expected rank-4 query, got rank ${query.rank}" }
+        require(key.rank == 4) { "SDPA: expected rank-4 key, got rank ${key.rank}" }
+        require(value.rank == 4) { "SDPA: expected rank-4 value, got rank ${value.rank}" }
+
+        val batch = query.shape[0]
+        val heads = query.shape[1]
+        val seqQ = query.shape[2]
+        val headDim = query.shape[3]
+        val seqKV = key.shape[2]
+
+        val qBuf = query.data.copyToFloatArray()
+        val kBuf = key.data.copyToFloatArray()
+        val vBuf = value.data.copyToFloatArray()
+
+        val outBuf = FloatArray(batch * heads * seqQ * headDim)
+
+        for (b in 0 until batch) {
+            for (h in 0 until heads) {
+                // Compute attention scores: Q @ K^T, then scale
+                val scores = FloatArray(seqQ * seqKV)
+                for (qi in 0 until seqQ) {
+                    for (ki in 0 until seqKV) {
+                        var dot = 0f
+                        val qOff = ((b * heads + h) * seqQ + qi) * headDim
+                        val kOff = ((b * heads + h) * seqKV + ki) * headDim
+                        for (d in 0 until headDim) {
+                            dot += qBuf[qOff + d] * kBuf[kOff + d]
+                        }
+                        scores[qi * seqKV + ki] = dot * scale
+                    }
+                }
+
+                // Apply causal mask (set future positions to -inf)
+                if (causal) {
+                    for (qi in 0 until seqQ) {
+                        // For single-token inference with KV cache: qi indexes from the
+                        // query's perspective. The valid range of ki is [0, seqKV).
+                        // With cache, seqQ=1 and seqKV=pos+1, so all keys are valid (no masking needed).
+                        // Without cache, seqQ=seqKV, and we mask ki > qi.
+                        val maxKi = if (seqQ == seqKV) qi else seqKV - seqQ + qi
+                        for (ki in maxKi + 1 until seqKV) {
+                            scores[qi * seqKV + ki] = Float.NEGATIVE_INFINITY
+                        }
+                    }
+                }
+
+                // Apply external mask if provided
+                if (mask != null) {
+                    val maskBuf = mask.data.copyToFloatArray()
+                    for (i in scores.indices) {
+                        scores[i] += maskBuf[i % maskBuf.size]
+                    }
+                }
+
+                // Softmax over the key dimension for each query position
+                for (qi in 0 until seqQ) {
+                    val off = qi * seqKV
+                    var maxVal = Float.NEGATIVE_INFINITY
+                    for (ki in 0 until seqKV) {
+                        if (scores[off + ki] > maxVal) maxVal = scores[off + ki]
+                    }
+                    var sumExp = 0f
+                    for (ki in 0 until seqKV) {
+                        val e = kotlin.math.exp(scores[off + ki] - maxVal)
+                        scores[off + ki] = e
+                        sumExp += e
+                    }
+                    if (sumExp > 0f) {
+                        for (ki in 0 until seqKV) {
+                            scores[off + ki] /= sumExp
+                        }
+                    }
+                }
+
+                // Compute output: scores @ V
+                for (qi in 0 until seqQ) {
+                    val outOff = ((b * heads + h) * seqQ + qi) * headDim
+                    for (d in 0 until headDim) {
+                        var sum = 0f
+                        for (ki in 0 until seqKV) {
+                            val vOff = ((b * heads + h) * seqKV + ki) * headDim
+                            sum += scores[qi * seqKV + ki] * vBuf[vOff + d]
+                        }
+                        outBuf[outOff + d] = sum
+                    }
+                }
+            }
+        }
+
+        val shape = Shape(batch, heads, seqQ, headDim)
+        @Suppress("UNCHECKED_CAST")
+        val data = dataFactory.fromFloatArray<T, Float>(shape, query.dtype, outBuf) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(data, query.dtype, query, key, value)
     }
 
 }

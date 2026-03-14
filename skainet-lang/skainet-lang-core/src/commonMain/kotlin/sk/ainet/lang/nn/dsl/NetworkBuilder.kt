@@ -23,6 +23,7 @@ import sk.ainet.lang.nn.transformer.RoPE
 import sk.ainet.lang.nn.transformer.SwiGLUFFN
 import sk.ainet.lang.nn.transformer.XIELUActivation
 import sk.ainet.lang.nn.layers.Embedding
+import sk.ainet.lang.nn.layers.EmbeddingAdapter
 import sk.ainet.lang.nn.layers.EmbeddingParams
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -1521,8 +1522,7 @@ public class StageImpl<T : DType, V>(
             params = EmbeddingParams(numEmbeddings = vocabSize, embeddingDim = dim),
             name = getDefaultName(id, "Embedding", modules.size)
         )
-        @Suppress("UNCHECKED_CAST")
-        modules += emb as Module<T, V>
+        modules += EmbeddingAdapter(emb)
         lastDimension = dim
     }
 
@@ -1943,8 +1943,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
             params = EmbeddingParams(numEmbeddings = vocabSize, embeddingDim = dim),
             name = getDefaultName(id, "Embedding", modules.size)
         )
-        @Suppress("UNCHECKED_CAST")
-        modules += emb as Module<T, V>
+        modules += EmbeddingAdapter(emb)
         lastDimension = dim
     }
 
