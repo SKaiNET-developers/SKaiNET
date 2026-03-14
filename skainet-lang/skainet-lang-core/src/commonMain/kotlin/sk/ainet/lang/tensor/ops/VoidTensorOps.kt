@@ -415,6 +415,44 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> gather(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
+        // Gather selects rows along dim — output shape replaces dim with indices length
+        val resultDims = input.shape.dimensions.copyOf()
+        resultDims[dim] = indices.shape.dimensions[0]
+        val resultData = dataFactory.zeros<T, V>(Shape(resultDims), input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
+    override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
+        val resultDims = input.shape.dimensions.copyOf()
+        resultDims[dim] = indices.shape.dimensions[0]
+        val resultData = dataFactory.zeros<T, V>(Shape(resultDims), input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
+    override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> scaledDotProductAttention(
+        query: Tensor<T, V>,
+        key: Tensor<T, V>,
+        value: Tensor<T, V>,
+        mask: Tensor<T, V>?,
+        scale: Float,
+        causal: Boolean
+    ): Tensor<T, V> {
+        // Output shape matches query shape: [batch, nHeads, seqLen, headDim]
+        val resultData = dataFactory.zeros<T, V>(query.shape, query.dtype)
+        return VoidOpsTensor(resultData, query.dtype)
+    }
+
     /**
      * Validates shapes for matrix multiplication.
      * For 2D matrices: (m, k) × (k, n) -> (m, n)

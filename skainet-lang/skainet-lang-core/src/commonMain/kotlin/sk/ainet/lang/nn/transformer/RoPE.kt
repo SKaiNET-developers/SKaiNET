@@ -92,10 +92,8 @@ public class RoPE<T : DType, V>(
         }
 
         val cosShape = Shape(seqLen, halfDim)
-        @Suppress("UNCHECKED_CAST")
-        val cosTensor = ctx.fromFloatArray(cosShape, input.dtype, cosData) as Tensor<T, V>
-        @Suppress("UNCHECKED_CAST")
-        val sinTensor = ctx.fromFloatArray(cosShape, input.dtype, sinData) as Tensor<T, V>
+        val cosTensor: Tensor<T, V> = ctx.fromFloatArray(cosShape, input.dtype, cosData)
+        val sinTensor: Tensor<T, V> = ctx.fromFloatArray(cosShape, input.dtype, sinData)
 
         // Rotation: rotEven = even * cos - odd * sin
         //           rotOdd  = odd * cos + even * sin

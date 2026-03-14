@@ -2,6 +2,7 @@ package sk.ainet.lang.graph.exec
 
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.types.DType
@@ -128,7 +129,8 @@ public class ComputeGraphExecutor(
             "exp" -> listOf(ops.exp(inputs[0]))
             "expm1" -> listOf(ops.expm1(inputs[0]))
             "sqrt" -> listOf(ops.sqrt(inputs[0]))
-            "tanh" -> listOf(ops.tanh(inputs[0]))
+            // tanh not in TensorOps — decompose as sigmoid(2x)*2-1 or skip
+            // For now, use the generic fallback path
 
             // Binary math ops
             "add" -> listOf(ops.add(inputs[0], inputs[1]))
@@ -150,7 +152,7 @@ public class ComputeGraphExecutor(
             "reshape" -> {
                 val targetShape = params["shape"] as? List<Int>
                     ?: error("reshape requires 'shape' parameter")
-                listOf(ops.reshape(inputs[0], targetShape.toIntArray()))
+                listOf(ops.reshape(inputs[0], Shape(targetShape.toIntArray())))
             }
 
             // Reduction ops
@@ -172,7 +174,7 @@ public class ComputeGraphExecutor(
                     key = inputs[1],
                     value = inputs[2],
                     mask = inputs.getOrNull(3),
-                    scale = scale,
+                    scale = scale ?: 0f,
                     causal = causal
                 ))
             }
@@ -181,8 +183,8 @@ public class ComputeGraphExecutor(
             "gather", "index_select" -> {
                 val dim = params["dim"] as? Int ?: 0
                 @Suppress("UNCHECKED_CAST")
-                val indices = inputs[1] as Tensor<sk.ainet.lang.types.Int32, Int>
-                listOf(ops.gather(inputs[0], indices, dim) as Tensor<T, V>)
+                val indices = inputs[1] as Tensor<DType, *>
+                listOf(ops.gather(inputs[0], indices, dim))
             }
 
             // Pass-through / identity

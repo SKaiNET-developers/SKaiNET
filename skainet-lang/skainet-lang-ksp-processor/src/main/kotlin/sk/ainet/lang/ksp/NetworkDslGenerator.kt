@@ -61,15 +61,10 @@ class NetworkDslGenerator(
             appendLine()
             appendLine("import sk.ainet.lang.types.DType")
             appendLine("import sk.ainet.lang.tensor.Tensor")
-            // Import extension functions for Tensor (relu, leakyRelu, elu, etc.)
-            appendLine("import sk.ainet.lang.tensor.relu")
-            appendLine("import sk.ainet.lang.tensor.leakyRelu")
-            appendLine("import sk.ainet.lang.tensor.elu")
-            appendLine("import sk.ainet.lang.tensor.sigmoid")
-            appendLine("import sk.ainet.lang.tensor.silu")
-            appendLine("import sk.ainet.lang.tensor.gelu")
-            appendLine("import sk.ainet.lang.tensor.softmax")
-            appendLine("import sk.ainet.lang.tensor.logSoftmax")
+            // Import extension functions for Tensor — dynamically from activation methods
+            for (method in methods) {
+                appendLine("import sk.ainet.lang.tensor.${method.name}")
+            }
             appendLine()
             appendLine("/**")
             appendLine(" * Automatically generated Network DSL activation extensions.")

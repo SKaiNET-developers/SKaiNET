@@ -203,7 +203,7 @@ public interface TensorOps {
      *  Primary use: embedding lookup (dim=0, indices=token IDs). */
     public fun <T : DType, V> gather(
         input: Tensor<T, V>,
-        indices: Tensor<out DType, *>,
+        indices: Tensor<DType, *>,
         dim: Int = 0
     ): Tensor<T, V>
 
@@ -211,7 +211,7 @@ public interface TensorOps {
      *  Similar to gather but for general index selection patterns. */
     public fun <T : DType, V> indexSelect(
         input: Tensor<T, V>,
-        indices: Tensor<out DType, *>,
+        indices: Tensor<DType, *>,
         dim: Int = 0
     ): Tensor<T, V>
 
@@ -242,12 +242,13 @@ public interface TensorOps {
      * @param causal if true, apply causal masking (ignore [mask] parameter)
      * @return       [batch, nHeads, seqLen, headDim]
      */
+    @Diff
     public fun <T : DType, V> scaledDotProductAttention(
         query: Tensor<T, V>,
         key: Tensor<T, V>,
         value: Tensor<T, V>,
         mask: Tensor<T, V>? = null,
-        scale: Float? = null,
+        scale: Float = 0f,
         causal: Boolean = false
     ): Tensor<T, V>
 }
