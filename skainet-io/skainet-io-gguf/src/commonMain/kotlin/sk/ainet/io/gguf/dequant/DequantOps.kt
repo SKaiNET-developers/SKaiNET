@@ -247,6 +247,33 @@ public object DequantOps {
         }
     }
 
+    /**
+     * Returns (bytesPerBlock, elemsPerBlock) for a given quantization type.
+     * Useful for chunked dequantization on single-threaded platforms (WASM).
+     */
+    public fun blockInfoFor(type: GGMLQuantizationType): Pair<Int, Int> = when (type) {
+        GGMLQuantizationType.F16  -> Pair(2, 1)
+        GGMLQuantizationType.BF16 -> Pair(2, 1)
+        GGMLQuantizationType.F32  -> Pair(4, 1)
+        GGMLQuantizationType.Q4_0 -> Pair(18, 32)
+        GGMLQuantizationType.Q4_1 -> Pair(20, 32)
+        GGMLQuantizationType.Q5_0 -> Pair(22, 32)
+        GGMLQuantizationType.Q5_1 -> Pair(24, 32)
+        GGMLQuantizationType.Q8_0 -> Pair(34, 32)
+        GGMLQuantizationType.Q8_1 -> Pair(40, 32)
+        GGMLQuantizationType.IQ4_NL -> Pair(18, 32)
+        GGMLQuantizationType.IQ4_XS -> Pair(2 + 2 + QK_K / 2 + QK_K / 64, QK_K)
+        GGMLQuantizationType.Q2_K -> Pair(2 + 2 + QK_K / 16 + QK_K / 4, QK_K)
+        GGMLQuantizationType.Q3_K -> Pair(2 + QK_K / 4 + QK_K / 8 + 12, QK_K)
+        GGMLQuantizationType.Q4_K -> Pair(144, QK_K)
+        GGMLQuantizationType.Q5_K -> Pair(176, QK_K)
+        GGMLQuantizationType.Q6_K -> Pair(210, QK_K)
+        GGMLQuantizationType.Q8_K -> Pair(292, QK_K)
+        GGMLQuantizationType.TQ1_0 -> Pair(54, 256)
+        GGMLQuantizationType.TQ2_0 -> Pair(66, 256)
+        else -> error("Block info for $type not available")
+    }
+
     // ========== ByteArray-based quantization implementations ==========
 
     @Suppress("UNUSED_PARAMETER")
