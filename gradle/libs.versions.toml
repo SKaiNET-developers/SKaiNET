@@ -2,7 +2,7 @@
 agp = "9.1.0"
 jacksonDatabind = "2.21.1"
 jsonSchemaValidator = "3.0.1"
-jsonSchemaValidatorVersion = "0.5.3"
+jsonSchemaValidatorVersion = "0.5.4"
 junit = "4.13.2"
 junitJupiter = "6.0.3"
 kotlin = "2.3.0"
