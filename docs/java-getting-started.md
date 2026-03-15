@@ -1,0 +1,287 @@
+# Java Getting Started Guide
+
+This guide gets you from zero to running tensor operations with SKaiNET in under 5 minutes. SKaiNET is a Kotlin Multiplatform AI framework, but every JVM-facing API is designed for idiomatic Java usage -- no Kotlin knowledge required.
+
+## Prerequisites
+
+- **JDK 21 or later** (required for Vector API and virtual threads)
+- **Maven 3.8+** or **Gradle 8.4+**
+
+## JVM Flags
+
+SKaiNET uses the Java Vector API for SIMD-accelerated tensor operations. You must pass two flags every time you run your application:
+
+```
+--enable-preview --add-modules jdk.incubator.vector
+```
+
+For Maven Surefire / exec-maven-plugin, add them to `<jvmArgs>`. For Gradle, add them to `jvmArgs` in your run task. Examples are shown below.
+
+---
+
+## Maven Setup
+
+### 1. Import the BOM
+
+The `skainet-bom` manages all SKaiNET module versions so you never have to keep them in sync manually. Add it to your `<dependencyManagement>` section:
+
+```xml
+<project>
+    <properties>
+        <skainet.version>0.13.0</skainet.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>sk.ainet</groupId>
+                <artifactId>skainet-bom</artifactId>
+                <version>${skainet.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Core tensor library (SKaiNET, TensorJavaOps, Losses, Optimizers) -->
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-lang-core-jvm</artifactId>
+        </dependency>
+
+        <!-- CPU backend (SIMD-accelerated) -->
+        <dependency>
+            <groupId>sk.ainet</groupId>
+            <artifactId>skainet-backend-cpu-jvm</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.example.HelloTensor</mainClass>
+                    <arguments/>
+                    <jvmArgs>
+                        <jvmArg>--enable-preview</jvmArg>
+                        <jvmArg>--add-modules</jvmArg>
+                        <jvmArg>jdk.incubator.vector</jvmArg>
+                    </jvmArgs>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+### 2. Add More Modules as Needed
+
+Because the BOM is imported, you can add any module without repeating the version:
+
+```xml
+<!-- LLM inference (KLlama) -->
+<dependency>
+    <groupId>sk.ainet</groupId>
+    <artifactId>skainet-kllama-jvm</artifactId>
+</dependency>
+
+<!-- BERT embeddings -->
+<dependency>
+    <groupId>sk.ainet</groupId>
+    <artifactId>skainet-bert-jvm</artifactId>
+</dependency>
+
+<!-- MNIST dataset loader -->
+<dependency>
+    <groupId>sk.ainet</groupId>
+    <artifactId>skainet-data-simple-jvm</artifactId>
+</dependency>
+
+<!-- Agent / tool-calling -->
+<dependency>
+    <groupId>sk.ainet</groupId>
+    <artifactId>skainet-kllama-agent-jvm</artifactId>
+</dependency>
+```
+
+---
+
+## Gradle Kotlin DSL Setup
+
+```kotlin
+plugins {
+    java
+    application
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Import BOM for version alignment
+    implementation(platform("sk.ainet:skainet-bom:0.13.0"))
+
+    // Core tensor library
+    implementation("sk.ainet:skainet-lang-core-jvm")
+
+    // CPU backend
+    implementation("sk.ainet:skainet-backend-cpu-jvm")
+}
+
+application {
+    mainClass.set("com.example.HelloTensor")
+    applicationDefaultJvmArgs = listOf(
+        "--enable-preview",
+        "--add-modules", "jdk.incubator.vector"
+    )
+}
+
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("--enable-preview"))
+}
+```
+
+---
+
+## Hello Tensor
+
+Create `src/main/java/com/example/HelloTensor.java`:
+
+```java
+package com.example;
+
+import sk.ainet.java.SKaiNET;
+import sk.ainet.java.TensorJavaOps;
+import sk.ainet.lang.types.DType;
+
+public class HelloTensor {
+
+    public static void main(String[] args) {
+        // 1. Create an execution context (CPU, eval mode)
+        var ctx = SKaiNET.context();
+
+        // 2. Create two 2x3 matrices
+        var a = SKaiNET.tensor(ctx,
+                new int[]{2, 3},
+                DType.fp32(),
+                new float[]{1, 2, 3, 4, 5, 6});
+
+        var b = SKaiNET.tensor(ctx,
+                new int[]{3, 2},
+                DType.fp32(),
+                new float[]{7, 8, 9, 10, 11, 12});
+
+        // 3. Matrix multiply: (2x3) x (3x2) -> (2x2)
+        var c = TensorJavaOps.matmul(a, b);
+
+        // 4. Apply ReLU activation
+        var d = TensorJavaOps.relu(c);
+
+        System.out.println("matmul result shape: " + c.getShape());
+        System.out.println("after relu:          " + d);
+    }
+}
+```
+
+Run it:
+
+```bash
+# Maven
+mvn compile exec:java
+
+# Gradle
+./gradlew run
+```
+
+---
+
+## Key Entry Points
+
+All Java-facing classes live in the `sk.ainet.java` package:
+
+| Class             | Purpose                                                |
+|-------------------|--------------------------------------------------------|
+| `SKaiNET`         | Static factory -- `context()`, `tensor()`, `zeros()`, `ones()`, `randn()`, `full()` |
+| `TensorJavaOps`   | Static tensor ops -- `matmul()`, `relu()`, `softmax()`, `add()`, `reshape()`, ... |
+| `Losses`          | Loss function factory -- `crossEntropy()`, `mse()`, `binaryCrossEntropy()`, ...     |
+| `Optimizers`      | Optimizer factory -- `adam()`, `adamw()`, `sgd()`                                    |
+| `DType`           | Data type selectors -- `DType.fp32()`, `DType.fp16()`, `DType.bf16()`, `DType.int32()`, ... |
+
+---
+
+## Data Types
+
+Access data types through static methods on `DType` (from `sk.ainet.lang.types`):
+
+```java
+import sk.ainet.lang.types.DType;
+
+DType f32  = DType.fp32();    // 32-bit float (default)
+DType f16  = DType.fp16();    // 16-bit float
+DType bf16 = DType.bf16();    // BFloat16
+DType f64  = DType.fp64();    // 64-bit float
+DType i8   = DType.int8();    // 8-bit integer
+DType i32  = DType.int32();   // 32-bit integer
+DType i64  = DType.int64();   // 64-bit integer
+DType u8   = DType.uint8();   // unsigned 8-bit
+```
+
+You can also use the constant fields if you prefer: `DType.FP32_TYPE`, `DType.INT32_TYPE`, etc.
+
+---
+
+## Common Tensor Operations
+
+```java
+var ctx = SKaiNET.context();
+
+// Creation
+var zeros = SKaiNET.zeros(ctx, new int[]{4, 4});                    // default fp32
+var ones  = SKaiNET.ones(ctx, new int[]{3, 3}, DType.fp16());
+var rand  = SKaiNET.randn(ctx, new int[]{2, 5});                    // normal distribution
+var full  = SKaiNET.full(ctx, new int[]{2, 2}, DType.fp32(), 3.14); // filled with 3.14
+
+// Arithmetic
+var sum  = TensorJavaOps.add(a, b);
+var diff = TensorJavaOps.subtract(a, b);
+var prod = TensorJavaOps.multiply(a, b);
+var quot = TensorJavaOps.divide(a, b);
+
+// Scalar ops
+var scaled = TensorJavaOps.mulScalar(a, 2.0);
+var biased = TensorJavaOps.addScalar(a, 1.0);
+
+// Linear algebra
+var mm   = TensorJavaOps.matmul(a, b);
+var aT   = TensorJavaOps.transpose(a);
+
+// Activations
+var r    = TensorJavaOps.relu(a);
+var s    = TensorJavaOps.sigmoid(a);
+var sw   = TensorJavaOps.silu(a);          // SiLU / Swish
+var g    = TensorJavaOps.gelu(a);
+var sm   = TensorJavaOps.softmax(a, -1);
+var lsm  = TensorJavaOps.logSoftmax(a, -1);
+
+// Reductions
+var total = TensorJavaOps.sum(a, null);     // sum all elements
+var avg   = TensorJavaOps.mean(a, 0);       // mean along dim 0
+
+// Shape manipulation
+var flat = TensorJavaOps.flatten(a);
+var resh = TensorJavaOps.reshape(a, new int[]{1, -1});
+var sq   = TensorJavaOps.squeeze(a, 0);
+var usq  = TensorJavaOps.unsqueeze(a, 0);
+```
+
+---
+
+## Next Steps
+
+- [LLM Inference Guide](java-llm-inference.md) -- load GGUF/SafeTensors models, generate text, run BERT embeddings, and build tool-calling agents.
+- [Model Training Guide](java-model-training.md) -- build sequential models, train on MNIST, and run async training loops.

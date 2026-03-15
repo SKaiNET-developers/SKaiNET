@@ -1,9 +1,17 @@
+# models
+*.gguf
+*.onnx
+model-371/
+
 local.properties
 .gradle
 .gradle*
 build/
 !gradle/wrapper/gradle-wrapper.jar
 .kotlin
+
+.kiro/
+.claude/
 
 ## antora
 _public
@@ -39,3 +47,6 @@ out/
 !.brokk/review.md
 !.brokk/project.properties
 **.onnx
+
+### Build artifacts ###
+com/

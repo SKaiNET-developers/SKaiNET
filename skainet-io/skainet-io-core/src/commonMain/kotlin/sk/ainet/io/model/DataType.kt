@@ -25,6 +25,10 @@ public enum class DataType(public val displayName: String, public val sizeInByte
     UINT16("uint16", 2),
     UINT8("uint8", 1),
 
+    // Quantized types (non-standard, used by frameworks like TinyFoA)
+    QUANT4("quant4", null),   // 4-bit quantized, variable block size
+    QUANT8("quant8", null),   // 8-bit quantized, variable block size
+
     // Other types
     BOOL("bool", 1),
     STRING("string", null),  // Variable size

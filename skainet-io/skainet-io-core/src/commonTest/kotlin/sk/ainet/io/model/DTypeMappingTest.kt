@@ -147,7 +147,7 @@ class DTypeMappingTest {
     @Test
     fun testNativelySupportedTypesCount() {
         val supported = DTypeMapping.nativelySupportedTypes()
-        assertEquals(12, supported.size, "Should have 12 natively supported types")
+        assertEquals(14, supported.size, "Should have 14 natively supported types")
     }
 
     @Test

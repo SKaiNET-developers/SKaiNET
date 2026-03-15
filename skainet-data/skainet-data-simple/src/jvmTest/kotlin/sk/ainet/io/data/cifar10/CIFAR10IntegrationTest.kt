@@ -26,7 +26,7 @@ class CIFAR10IntegrationTest {
     fun downloadSplitAndTensorize() = runBlocking {
         // always ignore cache to force download as requested
         val config = CIFAR10LoaderConfig(
-            cacheDir = createTempDir(prefix = "cifar10-it-").absolutePath,
+            cacheDir = kotlin.io.path.createTempDirectory(prefix = "cifar10-it-").toFile().absolutePath,
             useCache = false
         )
 
@@ -85,7 +85,7 @@ class CIFAR10IntegrationTest {
     @Test
     fun downloadTestDataset() = runBlocking {
         val config = CIFAR10LoaderConfig(
-            cacheDir = createTempDir(prefix = "cifar10-it-test-").absolutePath,
+            cacheDir = kotlin.io.path.createTempDirectory(prefix = "cifar10-it-test-").toFile().absolutePath,
             useCache = false
         )
 

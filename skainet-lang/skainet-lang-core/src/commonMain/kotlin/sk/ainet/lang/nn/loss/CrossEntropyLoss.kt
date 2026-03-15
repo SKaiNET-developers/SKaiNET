@@ -11,7 +11,7 @@ import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
 
-public class CrossEntropyLoss(
+public class CrossEntropyLoss @kotlin.jvm.JvmOverloads constructor(
     private val dim: Int = -1
 ) : Loss {
 

@@ -7,7 +7,7 @@ import kotlin.js.Date
  * Note: Browser JS cannot read local files directly.
  * For sharded models, the index should be fetched via HTTP.
  */
-internal actual fun readTextFile(path: String): String? {
+public actual fun readTextFile(path: String): String? {
     // JS/Browser cannot read local files
     return null
 }

@@ -56,6 +56,19 @@ class NormalizationLayersTest {
     }
 
     @Test
+    fun testRMSNormalizationCreation() {
+        val rmsNorm = RMSNormalization<FP32, Float>(
+            normalizedShape = intArrayOf(128),
+            eps = 1e-5,
+            name = "test_rms_norm"
+        )
+
+        assertNotNull(rmsNorm)
+        assertEquals("test_rms_norm", rmsNorm.name)
+        assertEquals(emptyList(), rmsNorm.modules)
+    }
+
+    @Test
     fun testGroupNormalizationValidation() {
         // Test that invalid group configuration throws an error
         var exceptionThrown = false

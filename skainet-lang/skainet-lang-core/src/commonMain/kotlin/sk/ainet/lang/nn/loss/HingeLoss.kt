@@ -18,7 +18,7 @@ import kotlin.math.max
  *
  * @param margin The margin parameter. Default is 1.0.
  */
-public class HingeLoss(
+public class HingeLoss @kotlin.jvm.JvmOverloads constructor(
     private val margin: Float = 1.0f
 ) : Loss {
 
@@ -83,7 +83,7 @@ public class HingeLoss(
  *
  * @param margin The margin parameter. Default is 1.0.
  */
-public class SquaredHingeLoss(
+public class SquaredHingeLoss @kotlin.jvm.JvmOverloads constructor(
     private val margin: Float = 1.0f
 ) : Loss {
 

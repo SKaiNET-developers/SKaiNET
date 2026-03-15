@@ -22,6 +22,7 @@ includeBuild("build-logic")
 
 // ====== LANG
 include("skainet-lang:skainet-lang-core")
+//include("skainet-lang:skainet-lang-audio") // TODO: directory does not exist yet
 include("skainet-lang:skainet-lang-models")
 include("skainet-lang:skainet-lang-ksp-annotations")
 include("skainet-lang:skainet-lang-ksp-processor")
@@ -32,6 +33,7 @@ include("skainet-lang:skainet-lang-dag")
 // ====== COMPILE
 include("skainet-compile:skainet-compile-core")
 include("skainet-compile:skainet-compile-dag")
+include("skainet-compile:skainet-compile-opt")
 include("skainet-compile:skainet-compile-json")
 include("skainet-compile:skainet-compile-hlo")
 include("skainet-compile:skainet-compile-c")
@@ -56,6 +58,7 @@ include("skainet-io:skainet-io-core")
 include("skainet-io:skainet-io-gguf")
 include("skainet-io:skainet-io-image")
 include("skainet-io:skainet-io-onnx")
+//include("skainet-io:skainet-io-wav") // TODO: directory does not exist yet
 
 // ====== models
 include("skainet-models:skainet-model-yolo")
@@ -64,11 +67,14 @@ include("skainet-models:skainet-model-yolo")
 //include("skainet-integrations:skainet-simple-cpu")
 
 
+// ====== BOM
+include("skainet-bom")
+
 // ====== TEST
 include("skainet-test:skainet-test-groundtruth")
+include("skainet-test:skainet-test-java")
 
 // ====== APPS
+include("skainet-apps:skainet-grayscale-cli")
 include("skainet-apps:skainet-tensor-tools")
-include("skainet-apps:skainet-kllama")
-include("skainet-apps:skainet-kllama-cli")
 include("skainet-io:skainet-io-safetensors")

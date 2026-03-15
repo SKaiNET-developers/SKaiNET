@@ -5,7 +5,7 @@ import java.io.File
 /**
  * Android implementation: Read a text file.
  */
-internal actual fun readTextFile(path: String): String? {
+public actual fun readTextFile(path: String): String? {
     return try {
         File(path).readText()
     } catch (e: Exception) {

@@ -7,11 +7,24 @@ internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> Tenso
     val jdkOk = isJdk21Plus()
     val vectorAvailable = jdkOk && isVectorApiAvailable()
     val useVector = (JvmCpuBackendConfig.vectorEnabled && vectorAvailable)
+
+    if (useVector) {
+        println("[SKaiNET] Using SIMD-accelerated CPU operations (Vector API)")
+    } else {
+        val reason = when {
+            !jdkOk -> "JDK 21+ required"
+            !vectorAvailable -> "Vector API not available"
+            !JvmCpuBackendConfig.vectorEnabled -> "disabled by configuration"
+            else -> "unknown"
+        }
+        println("[SKaiNET] Using standard CPU operations ($reason)")
+    }
+
     return if (useVector) {
-        { factory -> DefaultCpuOpsJvm(factory) }
+        { factory: TensorDataFactory -> DefaultCpuOpsJvm(factory) }
     } else {
         // Note: BLAS acceleration not yet implemented; falling back to DefaultCpuOps
-        { factory -> DefaultCpuOps(factory) }
+        { factory: TensorDataFactory -> DefaultCpuOps(factory) }
     }
 }
 

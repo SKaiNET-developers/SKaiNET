@@ -1,0 +1,40 @@
+= Similarity
+
+Package: `sk.ainet.lang.tensor`
+
+Modality: Composite
+
+== cosineDistance
+
+=== Signature
+
+[source,kotlin]
+----
+fun cosineDistance(other:Tensor, dim:Int, eps:Double): Tensor
+----
+
+=== Parameters
+
+* `other: Tensor`
+* `dim: Int`
+* `eps: Double`
+
+=== Return Type
+
+`Tensor`
+
+=== Backend Support
+
+[cols="1,1,3", options="header"]
+|===
+| Backend | Status | Notes
+| cpu | implemented | -
+| wasm | implemented | -
+| apple | implemented | -
+|===
+
+=== Notes
+
+TIP: *all*: 
+
+

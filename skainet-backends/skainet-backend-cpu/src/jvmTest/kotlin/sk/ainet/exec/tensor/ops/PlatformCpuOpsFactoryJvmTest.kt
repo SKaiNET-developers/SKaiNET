@@ -23,10 +23,10 @@ class PlatformCpuOpsFactoryJvmTest {
     }
 
     @Test
-    @Ignore
     fun fallsBackToScalarOpsWhenFlagDisabled() {
+        System.setProperty("skainet.cpu.vector.enabled", "false")
         val factory = platformDefaultCpuOpsFactory()
         val ops = factory(DenseTensorDataFactory())
-        assertTrue(ops is DefaultCpuOps)
+        assertTrue(ops !is DefaultCpuOpsJvm)
     }
 }

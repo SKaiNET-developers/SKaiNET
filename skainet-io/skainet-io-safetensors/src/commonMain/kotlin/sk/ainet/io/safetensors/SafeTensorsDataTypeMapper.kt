@@ -30,6 +30,8 @@ object SafeTensorsDataTypeMapper {
             "BF16" -> DataType.BFLOAT16
             "F32" -> DataType.FLOAT32
             "F64" -> DataType.FLOAT64
+            "Q4" -> DataType.QUANT4
+            "Q8" -> DataType.QUANT8
             else -> {
                 println("WARNING: Unknown SafeTensors dtype: $safeTensorsType")
                 DataType.UNKNOWN
@@ -58,6 +60,8 @@ object SafeTensorsDataTypeMapper {
             DataType.BFLOAT16 -> "BF16"
             DataType.FLOAT32 -> "F32"
             DataType.FLOAT64 -> "F64"
+            DataType.QUANT4 -> "Q4"
+            DataType.QUANT8 -> "Q8"
             DataType.STRING -> null  // SafeTensors doesn't support strings
             DataType.UNKNOWN -> null
         }

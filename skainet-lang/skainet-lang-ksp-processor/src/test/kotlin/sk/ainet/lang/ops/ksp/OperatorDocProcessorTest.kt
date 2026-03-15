@@ -4,6 +4,7 @@ package sk.ainet.lang.ops.ksp
 
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
+import com.tschuchort.compiletesting.configureKsp
 import com.tschuchort.compiletesting.symbolProcessorProviders
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.junit.Test
@@ -41,17 +42,18 @@ class OperatorDocProcessorTest {
         
         val compilation = KotlinCompilation().apply {
             sources = listOf(source)
-            symbolProcessorProviders = listOf(OperatorDocProcessorProvider())
+            configureKsp {}
+            symbolProcessorProviders = mutableListOf(OperatorDocProcessorProvider())
             inheritClassPath = true
             messageOutputStream = System.out
         }
-        
+
         val result = compilation.compile()
         val output = result.messages
-        
+
         println("[DEBUG_LOG] Compilation result: ${result.exitCode}")
         println("[DEBUG_LOG] Output messages: $output")
-        
+
         // Check if the processor found the InProgress annotation
         assertTrue(output.contains("Found 2 annotated symbols"),
             "Processor should find the @InProgress annotated functions")
@@ -87,17 +89,18 @@ class OperatorDocProcessorTest {
         
         val compilation = KotlinCompilation().apply {
             sources = listOf(source)
-            symbolProcessorProviders = listOf(OperatorDocProcessorProvider())
+            configureKsp {}
+            symbolProcessorProviders = mutableListOf(OperatorDocProcessorProvider())
             inheritClassPath = true
             messageOutputStream = System.out
         }
-        
+
         val result = compilation.compile()
         val output = result.messages
-        
+
         println("[DEBUG_LOG] Compilation result: ${result.exitCode}")
         println("[DEBUG_LOG] Output messages: $output")
-        
+
         // Check if the processor found the DslOp annotation
         assertTrue(output.contains("Found 1 annotated symbols"),
             "Processor should find the @DslOp annotated function")

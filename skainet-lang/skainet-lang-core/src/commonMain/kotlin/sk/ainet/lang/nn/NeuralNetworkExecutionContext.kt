@@ -6,6 +6,7 @@ import sk.ainet.lang.nn.dsl.NeuralNetworkDslImpl
 import sk.ainet.context.ExecutionContext
 import sk.ainet.context.ExecutionStats
 import sk.ainet.context.MemoryInfo
+import sk.ainet.context.ExecutionObserverRegistry
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.TensorOps
@@ -79,5 +80,8 @@ public class DefaultNeuralNetworkExecutionContext(
         get() = MemoryInfo.getEmptyInfo()
     override val executionStats: ExecutionStats
         get() = ExecutionStats()
+    private val observerRegistry = ExecutionObserverRegistry()
+    override val observers: ExecutionObserverRegistry
+        get() = observerRegistry
 
 }

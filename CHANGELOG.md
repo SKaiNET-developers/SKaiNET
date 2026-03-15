@@ -1,5 +1,135 @@
 # Changelog
 
+## [0.16.0] - 2026-03-08
+
+### Added
+- **Deduplicated LLM infrastructure**: unified `KvCache`, `softmax`, `RoPE`, and `sampling` logic across modules for improved maintainability.
+- **Updated skainet-bom**: Refactored the Bill of Materials (BOM) to use local `project()` references for better build consistency.
+
+### Changed
+- **LLM Module Extraction**: Extracted and moved core LLM modules to the standalone [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) repository to reduce core codebase footprint.
+- **Transformer Code Cleanup**: Removed redundant code that has been moved to the [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) repository.
+
+### Fixed
+- **Dependency Graph**: Resolved inverted dependency issues in the LLM infrastructure.
+
+## [0.15.3] - 2026-03-07
+
+### Added
+- **System Prompt Support (Java)**: Added `systemPrompt` support to `KLlamaJava` and `KLlamaSession` for prepending system instructions to conversations.
+- **Model Module Extraction**: Extracted model-specific code into dedicated `skainet-models` modules for better separation of concerns and maintainability.
+- **Enhanced Smoke Tests**: Refactored `smoke-test.sh` to support multiple runners via JSON configuration and improved LLM loading verification.
+
+### Fixed
+- **Whisper HLO Generation**: Fixed StableHLO MLIR generation for Whisper models.
+- **Compilation**: Fixed various Kotlin/JVM compilation errors.
+
+## [0.14.0] - 2026-03-03
+
+### Added
+- **First-Class Java 21+ Support**: Complete Java API surface with `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition (`SequentialModelBuilder`), `KLlamaJava`/`KBertJava` facades, `JavaAgentLoop` for tool-calling agents, and `TrainingLoop` builder.
+- **Maven BOM**: New `sk.ainet:skainet-bom` artifact for one-line version management across all modules.
+- **Java Documentation**: Added [Getting Started](docs/java-getting-started.md), [LLM Inference](docs/java-llm-inference.md), and [Model Training](docs/java-model-training.md) guides.
+- **Java 25 Performance Documentation**: Added documentation for JVM CPU backend performance advantages.
+- **WasmWasi Target**: Added `wasmWasi` target support across all KMP modules.
+- **StableHLO MLIR Streaming API**: New `HloGenerator` public API with generic Model + Tensor interface and streaming MLIR output.
+- **ReductionOperationsConverter**: Added support for reduction operations in StableHLO export.
+- **JVM Performance (Jlama Techniques)**: MemorySegment-based tensors, SIMD GEMM kernels, paged KV cache, batch attention for prompt prefill, fused QKV projections, and cached quantized weights.
+- **Native RandomAccessSource**: POSIX `pread()`-based source for memory-efficient GGUF parsing.
+- **MemorySegment Weight Conversion**: New `NATIVE_OPTIMIZED` quant policy and `MemSegWeightConverter` pipeline with Arena lifecycle management.
+- **Lazy Transpose**: Added lazy transpose for Q4/Q8 MemorySegment tensors and MemSeg FP32 transpose.
+- **Java CLI App**: New Java-based KLlama CLI application.
+
+### Changed
+- **Android KMP Plugin Migration**: Migrated Android subprojects to `androidMultiplatformLibrary` plugin for AGP 9 compatibility.
+- **Refactored Model Loading**: Extracted shared dequantization, registry, tensor naming, and decoder runtime into reusable components.
+- **JDK Requirement Relaxed**: Allow JDK >= 21 instead of requiring exactly JDK 21.
+- **Gradle Upgrade**: Updated to Gradle 9.3.1.
+- **Kotlin Upgrade**: Bumped Kotlin from 2.2.21 to 2.3.10.
+- **Kotlin Compile Testing**: Replaced abandoned `kotlin-compile-testing` with `kctfork` for Kotlin 2.3.0 compatibility.
+
+### Fixed
+- **StableHLO MLIR Export**: Fixed MLIR export to produce valid IREE-compilable output.
+- **OOM in Dequantization Benchmark**: Fixed out-of-memory in `DEQUANTIZE_TO_FP32` E2E benchmark test.
+- **Quantized MatMul**: Fixed block offset calculation in quantized matrix multiplication.
+- **CI Stability**: Fixed AAPT2 daemon crashes and improved Android build stability.
+- **Documentation CI**: Fixed workflow permissions for PR comments.
+- **Deprecated API Usage**: Fixed `createTempDir()` deprecation in data-simple integration tests.
+
+### Dependencies
+- com.gradleup.shadow: 9.3.1 → 9.3.2.
+- com.fasterxml.jackson.core:jackson-databind: 2.21.0 → 2.21.1.
+- ch.qos.logback:logback-classic: 1.5.27 → 1.5.32.
+- io.github.kotest:kotest: 6.1.3 → 6.1.4.
+- org.jetbrains.kotlinx:kotlinx-io-core: 0.8.2 → 0.9.0.
+- com.vanniktech.maven.publish: → 0.36.0.
+- org.jetbrains.kotlinx.kover: → 0.9.7.
+- actions/setup-node: 4 → 6.
+- actions/upload-artifact: 6 → 7.
+- actions/download-artifact: 7 → 8.
+- junit-platform-launcher added for CI test execution.
+
+### Contributors
+Thank you to the following contributors for their work on this release:
+- **Dhia Chemingui** ([@dhiaspaner](https://github.com/dhiaspaner)) — Android KMP plugin migration (#385, #386)
+
+## [0.13.0] - 2026-02-12
+
+### Added
+- **Tool Calling**: Added support for tool calling in KLlama, including a new `skainet-kllama-agent` module.
+- **Gemma 3n Support**: New `skainet-kgemma` module for Google's Gemma 3n E2B multimodal models.
+- **Extended SafeTensors Support**: Added SafeTensors weight loading support for both KLlama CLI and Gemma models.
+- **HuggingFace Tokenizer**: Initial support for HuggingFace-style tokenizers in Gemma models.
+
+### Changed
+- **Named Arguments**: Refactored various internal APIs to use named arguments for better optional parameter support.
+- **System Prompt Handling**: Improved system prompt formatting and handling in agentic workflows.
+
+## [0.12.0] - 2026-02-10
+
+### Added
+- **BERT Support**: Full support for BERT-based models with `SafeTensors` weight loading.
+- **kbert-cli**: New CLI tool for running BERT inference, supporting text encoding and cosine similarity computation.
+- **WordPiece Tokenizer**: Implementation of WordPiece tokenizer for BERT models.
+
+## [0.11.0] - 2026-02-08
+
+### Added
+- **TinyFoA Support**: Implemented missing operators (`abs`, `sign`, `clamp`, `lt`, `ge`, `narrow`, `pad2d`, `unfold`) to support TinyFoA (AAAI 2025) training pipeline for memory-efficient on-device learning.
+- **Multi-platform KLlama**: Added macOS target support for the KLlama runtime.
+- **Custom Backends Documentation**: Added detailed guide and examples for injecting custom backends into KLlama.
+
+### Fixed
+- Improved robustness of TinyFoA operations with comprehensive unit tests.
+
+## [0.10.1] - 2026-02-01
+
+### Added
+- **Benchmarking DSL**: New `BenchmarkDsl` and `BenchmarkRunner` for measuring model performance and latency.
+- **Execution Observers**: Added `ExecutionObserver` API with `LatencyExecutionObserver` and `MemorySnapshotObserver` for profiling.
+- **New Layers**: Added `RMSNormalization` layer support.
+- **KLlama Enhancements**: Improved weight loading and initial support for GPU-accelerated attention (experimental).
+
+### Changed
+- Refactored `ExecutionContext` to support execution observers and better phase management.
+- Updated KLlama runtime with improved ingestion and benchmarking utilities.
+
+## [0.9.2] - 2026-01-27
+
+### Added
+- **Generative AI Section**: New README section with simple code for GGUF text generation.
+- **Tokenizer Strategies**: Automatic detection of tokenizer type (SentencePiece, BPE, WordPiece) from GGUF metadata.
+- **Improved Token Decoding**: Support for multi-byte UTF-8 character decoding from byte tokens.
+
+### Changed
+- **Llama Runtime**: Rewritten `matmulNoBias` for better performance and support for row-major weights.
+- **GGUF Loading**: Improved dequantization for Q2_K, Q4_K, Q5_K, and Q6_K formats matching llama.cpp logic.
+
+### Fixed
+- **GGUF Storage Order**: Fixed critical bug with column-major storage in GGUF files by implementing proper transposition during loading.
+- **Llama Attention**: Fixed missing attention output projection (wo) in the runtime.
+- **Tokenizer**: Fixed BOS token handling and multi-byte character reconstruction.
+
 ## [0.9.1] - 2026-01-26
 
 ### Added

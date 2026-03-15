@@ -6,7 +6,7 @@ import kotlin.time.TimeSource
  * WASM JS implementation: Read a text file.
  * Note: WASM/Browser cannot read local files directly.
  */
-internal actual fun readTextFile(path: String): String? {
+public actual fun readTextFile(path: String): String? {
     // WASM/Browser cannot read local files
     return null
 }

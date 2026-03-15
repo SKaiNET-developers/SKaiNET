@@ -1,6 +1,7 @@
 package sk.ainet.lang.graph
 
 import sk.ainet.context.ExecutionStats
+import sk.ainet.context.ExecutionObserverRegistry
 import sk.ainet.context.MemoryInfo
 import sk.ainet.context.Phase
 import sk.ainet.lang.graph.exec.GraphExecutionContext
@@ -35,6 +36,8 @@ public class DefaultGraphExecutionContext(
      */
     private val baseSink: OpSink = NoOpSink,
     ) : GraphExecutionContext {
+
+    private val observerRegistry = ExecutionObserverRegistry()
 
     private val _tapes = DefaultTapeStack()
     override val tapeStack: TapeStack get() = _tapes
@@ -104,6 +107,19 @@ public class DefaultGraphExecutionContext(
         _ops // trigger lazy init
         return _session
     }
+
+    /**
+     * Clear cached tensor references from the trace session.
+     * Call between training batches to prevent memory accumulation.
+     */
+    public fun clearSession() {
+        if (::_session.isInitialized) {
+            _session.clear()
+        }
+    }
+
+    override val observers: ExecutionObserverRegistry
+        get() = observerRegistry
 
     /** Convenience helper to record within a block and return the produced tape (and keep existing graph). */
     public inline fun <R> record(block: DefaultGraphExecutionContext.() -> R): Pair<ExecutionTape?, R> {

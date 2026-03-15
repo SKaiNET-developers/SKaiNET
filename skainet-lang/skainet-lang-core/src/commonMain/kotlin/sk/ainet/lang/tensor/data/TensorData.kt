@@ -55,7 +55,7 @@ public interface ItemsAccessor<T> {
 public interface TensorData<T : DType, V> : ItemsAccessor<V> {
     /**
      * The shape descriptor that defines the dimensionality and size of this tensor data.
-     * 
+     *
      * The shape property provides essential metadata about the tensor's structure,
      * including the number of dimensions and the size along each dimension. This
      * information is crucial for:
@@ -63,11 +63,29 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
      * - Memory layout calculations
      * - Broadcasting operations
      * - Tensor operation compatibility verification
-     * 
+     *
      * @return the Shape object describing this tensor's dimensional structure
      */
     public val shape: Shape
 
+    /**
+     * Copies all tensor data to a FloatArray.
+     *
+     * This method provides efficient bulk data transfer from tensor storage to a FloatArray.
+     * Backend implementations (e.g., GPU backends) can override this to provide optimized
+     * bulk copy operations instead of element-by-element access.
+     *
+     * The default implementation iterates over all elements, which may be slow for backends
+     * where individual element access is expensive (e.g., GPU tensors).
+     *
+     * @return a new FloatArray containing all tensor values in row-major order
+     */
+    public fun copyToFloatArray(): FloatArray {
+        val volume = shape.volume
+        return FloatArray(volume) { idx ->
+            (get(idx) as Number).toFloat()
+        }
+    }
 }
 
 /**
@@ -76,6 +94,8 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
  */
 public interface FloatArrayTensorData<T : DType> : TensorData<T, Float> {
     public val buffer: FloatArray
+
+    override fun copyToFloatArray(): FloatArray = buffer.copyOf()
 }
 
 /**

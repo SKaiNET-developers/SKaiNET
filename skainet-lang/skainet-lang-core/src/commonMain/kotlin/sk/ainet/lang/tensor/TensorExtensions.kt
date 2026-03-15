@@ -71,6 +71,16 @@ public fun <T : DType, V> Tensor<T, V>.sum(dim: Int? = null): Tensor<T, V> = ops
 public fun <T : DType, V> Tensor<T, V>.mean(dim: Int? = null): Tensor<T, V> = ops.mean(this, dim)
 public fun <T : DType, V> Tensor<T, V>.variance(dim: Int? = null): Tensor<T, V> = ops.variance(this, dim)
 public fun <T : DType, V> Tensor<T, V>.sqrt(): Tensor<T, V> = ops.sqrt(this)
+public fun <T : DType, V> Tensor<T, V>.abs(): Tensor<T, V> = ops.abs(this)
+public fun <T : DType, V> Tensor<T, V>.sign(): Tensor<T, V> = ops.sign(this)
+public fun <T : DType, V> Tensor<T, V>.clamp(minVal: Float, maxVal: Float): Tensor<T, V> = ops.clamp(this, minVal, maxVal)
+public fun <T : DType, V> Tensor<T, V>.lt(value: Float): Tensor<T, V> = ops.lt(this, value)
+public fun <T : DType, V> Tensor<T, V>.ge(value: Float): Tensor<T, V> = ops.ge(this, value)
+public fun <T : DType, V> Tensor<T, V>.squeeze(dim: Int? = null): Tensor<T, V> = ops.squeeze(this, dim)
+public fun <T : DType, V> Tensor<T, V>.unsqueeze(dim: Int): Tensor<T, V> = ops.unsqueeze(this, dim)
+public fun <T : DType, V> Tensor<T, V>.narrow(dim: Int, start: Int, length: Int): Tensor<T, V> = ops.narrow(this, dim, start, length)
+public fun <T : DType, V> Tensor<T, V>.pad2d(padLeft: Int, padRight: Int, padTop: Int, padBottom: Int): Tensor<T, V> = ops.pad2d(this, padLeft, padRight, padTop, padBottom)
+public fun <T : DType, V> Tensor<T, V>.unfold(dim: Int, size: Int, step: Int): Tensor<T, V> = ops.unfold(this, dim, size, step)
 public fun <T : DType, V> Tensor<T, V>.tril(k: Int = 0): Tensor<T, V> = ops.tril(this, k)
 public fun <T : DType, V> Tensor<T, V>.upsample2d(
     scale: Pair<Int, Int> = 2 to 2,

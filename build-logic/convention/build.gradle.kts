@@ -1,7 +1,7 @@
 plugins {
     `kotlin-dsl`
     kotlin("jvm") version "2.2.21"
-    kotlin("plugin.serialization") version "2.2.21"
+    kotlin("plugin.serialization") version "2.3.10"
 }
 
 repositories {
@@ -15,11 +15,18 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.optimumcode.json.schema.validator)
     implementation(libs.asciidoctorj.core)
+    implementation("org.jetbrains.dokka:dokka-gradle-plugin:2.1.0")
     implementation(gradleApi())
 }
 
 kotlin {
-    jvmToolchain(17)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+    }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(21)
 }
 
 gradlePlugin {

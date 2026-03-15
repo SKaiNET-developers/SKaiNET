@@ -3,6 +3,8 @@ package sk.ainet.exec.tensor.ops
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorOperators
 import jdk.incubator.vector.VectorSpecies
+import java.lang.foreign.MemorySegment
+import java.nio.ByteOrder
 
 /**
  * Thin wrapper over the JDK Vector API. Isolate incubator usage here so call sites stay clean
@@ -845,6 +847,193 @@ internal object JvmVectorKernels {
 
                 output[outputOffset + oc * patchCount + p] = acc + biasVal
             }
+        }
+    }
+    // endregion
+
+    // region MemorySegment-based matmul
+
+    private val BYTE_ORDER = ByteOrder.LITTLE_ENDIAN
+
+    /**
+     * Vectorized matmul for MemorySegment-backed tensors.
+     * Uses FloatVector.fromMemorySegment for SIMD-friendly off-heap access.
+     *
+     * @param m number of rows in A
+     * @param k inner dimension (cols of A = rows of B)
+     * @param n number of cols in B
+     * @param aSeg MemorySegment for matrix A
+     * @param aByteOffset byte offset into aSeg
+     * @param bSeg MemorySegment for matrix B
+     * @param bByteOffset byte offset into bSeg
+     * @param rSeg MemorySegment for result matrix
+     * @param rByteOffset byte offset into rSeg
+     */
+    fun matmulFloatMemSeg(
+        m: Int, k: Int, n: Int,
+        aSeg: MemorySegment, aByteOffset: Long,
+        bSeg: MemorySegment, bByteOffset: Long,
+        rSeg: MemorySegment, rByteOffset: Long,
+    ) {
+        // Transpose B into a temporary FloatArray for contiguous access along K
+        val bt = FloatArray(n * k)
+        for (row in 0 until k) {
+            val srcByteOff = bByteOffset + row.toLong() * n * Float.SIZE_BYTES
+            for (col in 0 until n) {
+                bt[col * k + row] = bSeg.get(
+                    java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER),
+                    srcByteOff + col.toLong() * Float.SIZE_BYTES,
+                )
+            }
+        }
+
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(k)
+        val floatBytes = Float.SIZE_BYTES.toLong()
+
+        for (row in 0 until m) {
+            val aRowByteOff = aByteOffset + row.toLong() * k * floatBytes
+            for (col in 0 until n) {
+                val btOff = col * k
+                var idx = 0
+                var accVec = FloatVector.zero(floatSpecies)
+                while (idx < loopBound) {
+                    val va = FloatVector.fromMemorySegment(
+                        floatSpecies, aSeg, aRowByteOff + idx.toLong() * floatBytes, BYTE_ORDER,
+                    )
+                    val vb = FloatVector.fromArray(floatSpecies, bt, btOff + idx)
+                    accVec = va.fma(vb, accVec)
+                    idx += step
+                }
+                var acc = accVec.reduceLanes(VectorOperators.ADD)
+                while (idx < k) {
+                    acc += aSeg.get(
+                        java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER),
+                        aRowByteOff + idx.toLong() * floatBytes,
+                    ) * bt[btOff + idx]
+                    idx++
+                }
+                rSeg.set(
+                    java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER),
+                    rByteOffset + (row.toLong() * n + col) * floatBytes,
+                    acc,
+                )
+            }
+        }
+    }
+
+    /**
+     * Blocked (tiled) matmul for MemorySegment-backed tensors.
+     * Better cache utilization for larger matrices.
+     */
+    fun matmulFloatBlockedMemSeg(
+        m: Int, k: Int, n: Int,
+        aSeg: MemorySegment, aByteOffset: Long,
+        bSeg: MemorySegment, bByteOffset: Long,
+        rSeg: MemorySegment, rByteOffset: Long,
+        tileM: Int = 8,
+        tileN: Int = 8,
+        tileK: Int = 128,
+    ) {
+        val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER)
+        val floatBytes = Float.SIZE_BYTES.toLong()
+
+        // Transpose B into a temporary FloatArray
+        val bt = FloatArray(n * k)
+        for (kk in 0 until k) {
+            val srcByteOff = bByteOffset + kk.toLong() * n * floatBytes
+            for (nn in 0 until n) {
+                bt[nn * k + kk] = bSeg.get(floatLayout, srcByteOff + nn.toLong() * floatBytes)
+            }
+        }
+
+        // Zero result
+        rSeg.asSlice(rByteOffset, m.toLong() * n * floatBytes).fill(0)
+
+        val step = floatSpecies.length()
+        val mBlocks = (m + tileM - 1) / tileM
+        val nBlocks = (n + tileN - 1) / tileN
+        val kBlocks = (k + tileK - 1) / tileK
+
+        for (bm in 0 until mBlocks) {
+            val mStart = bm * tileM
+            val mEnd = minOf(mStart + tileM, m)
+            for (bn in 0 until nBlocks) {
+                val nStart = bn * tileN
+                val nEnd = minOf(nStart + tileN, n)
+                for (bk in 0 until kBlocks) {
+                    val kStart = bk * tileK
+                    val kEnd = minOf(kStart + tileK, k)
+                    val kLen = kEnd - kStart
+                    val loopBound = floatSpecies.loopBound(kLen)
+
+                    for (mm in mStart until mEnd) {
+                        val aBase = aByteOffset + (mm.toLong() * k + kStart) * floatBytes
+                        for (nn in nStart until nEnd) {
+                            val btBase = nn * k + kStart
+                            var idx = 0
+                            var accVec = FloatVector.zero(floatSpecies)
+                            while (idx < loopBound) {
+                                val va = FloatVector.fromMemorySegment(
+                                    floatSpecies, aSeg, aBase + idx.toLong() * floatBytes, BYTE_ORDER,
+                                )
+                                val vb = FloatVector.fromArray(floatSpecies, bt, btBase + idx)
+                                accVec = va.fma(vb, accVec)
+                                idx += step
+                            }
+                            var acc = accVec.reduceLanes(VectorOperators.ADD)
+                            while (idx < kLen) {
+                                acc += aSeg.get(floatLayout, aBase + idx.toLong() * floatBytes) * bt[btBase + idx]
+                                idx++
+                            }
+                            val rOff = rByteOffset + (mm.toLong() * n + nn) * floatBytes
+                            rSeg.set(floatLayout, rOff, rSeg.get(floatLayout, rOff) + acc)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Batched dot-product for attention score computation on MemorySegment data.
+     * Computes dotProduct(query, key[t]) for t in 0..currentPos.
+     */
+    fun batchDotProductMemSeg(
+        query: MemorySegment, queryByteOffset: Long,
+        keys: MemorySegment, keysByteOffset: Long,
+        headSize: Int,
+        keyStride: Int,
+        positions: Int,
+        scale: Float,
+        output: FloatArray,
+    ) {
+        val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER)
+        val floatBytes = Float.SIZE_BYTES.toLong()
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(headSize)
+
+        for (t in 0 until positions) {
+            val keyOff = keysByteOffset + t.toLong() * keyStride * floatBytes
+            var idx = 0
+            var accVec = FloatVector.zero(floatSpecies)
+            while (idx < loopBound) {
+                val vq = FloatVector.fromMemorySegment(
+                    floatSpecies, query, queryByteOffset + idx.toLong() * floatBytes, BYTE_ORDER,
+                )
+                val vk = FloatVector.fromMemorySegment(
+                    floatSpecies, keys, keyOff + idx.toLong() * floatBytes, BYTE_ORDER,
+                )
+                accVec = vq.fma(vk, accVec)
+                idx += step
+            }
+            var acc = accVec.reduceLanes(VectorOperators.ADD)
+            while (idx < headSize) {
+                acc += query.get(floatLayout, queryByteOffset + idx.toLong() * floatBytes) *
+                    keys.get(floatLayout, keyOff + idx.toLong() * floatBytes)
+                idx++
+            }
+            output[t] = acc * scale
         }
     }
     // endregion

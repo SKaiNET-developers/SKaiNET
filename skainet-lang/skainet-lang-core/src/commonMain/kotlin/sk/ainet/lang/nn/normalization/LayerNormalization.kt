@@ -99,19 +99,33 @@ public class LayerNormalization<T : DType, V>(
         }
 
     private fun calculateLayerMean(input: Tensor<T, V>): Tensor<T, V> {
-        // Calculate mean across the last normalizedShape.size dimensions
-        // This would typically keep the batch and sequence dimensions while averaging over features
-        TODO("Implement layer mean calculation across normalized dimensions")
+        var m = input
+        for (i in normalizedShape.indices.reversed()) {
+            m = m.mean(dim = m.rank - 1)
+        }
+        // Restore reduced dims so broadcasting works against the original input
+        var result = m
+        for (i in normalizedShape.indices) {
+            result = result.unsqueeze(result.rank)
+        }
+        return result
     }
 
     private fun calculateLayerVariance(input: Tensor<T, V>, mean: Tensor<T, V>): Tensor<T, V> {
-        // Calculate variance across the last normalizedShape.size dimensions
-        TODO("Implement layer variance calculation across normalized dimensions")
+        val centered = input - mean
+        var v = centered * centered
+        for (i in normalizedShape.indices.reversed()) {
+            v = v.mean(dim = v.rank - 1)
+        }
+        // Restore reduced dims so broadcasting works against the original input
+        var result = v
+        for (i in normalizedShape.indices) {
+            result = result.unsqueeze(result.rank)
+        }
+        return result
     }
 
     private fun normalize(input: Tensor<T, V>, mean: Tensor<T, V>, variance: Tensor<T, V>): Tensor<T, V> {
-        // normalized = (input - mean) / sqrt(variance)
-        // Note: eps handling would need proper scalar-tensor operations
-        return (input - mean) / variance.sqrt()
+        return (input - mean) / (variance + eps).sqrt()
     }
 }

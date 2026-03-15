@@ -31,13 +31,7 @@ public class ExecutionContextManager {
             verbose = verbose
         )
         
-        // If there are critical errors and GPU is required, throw an error
-        if (!validationResult.success && preferGpu) {
-            val firstError = validationResult.errors.first()
-            throw firstError
-        }
-        
-        // Detect GPU capabilities
+        // Detect GPU capabilities (validation errors will be used for fallback decisions)
         val gpuCapabilities = detectGpuCapabilities(validationResult)
         
         if (verbose) {
@@ -73,11 +67,12 @@ public class ExecutionContextManager {
         val validation = validationResult ?: dependencyValidator.validateAllDependencies(requireGpu = false)
         
         return try {
-            // Use validation results to determine GPU capabilities
-            val cudaAvailable = !validation.errors.any { error ->
-                error is GrayscaleCliError.SystemError.MissingDependency && 
+            // Use both validation errors and actual CUDA detection to determine GPU capabilities
+            val hasCudaError = validation.errors.any { error ->
+                error is GrayscaleCliError.SystemError.MissingDependency &&
                 error.dependency.contains("CUDA", ignoreCase = true)
             }
+            val cudaAvailable = !hasCudaError && detectCudaAvailability()
             
             val memoryMB = if (cudaAvailable) estimateGpuMemory() else 0L
             val computeCapability = if (cudaAvailable) detectComputeCapability() else "N/A"
