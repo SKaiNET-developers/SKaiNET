@@ -25,7 +25,8 @@ import sk.ainet.lang.tensor.ops.ValidationResult
  */
 public class TraceToGraphBuilder(
     private val graph: ComputeGraph,
-    private val session: TraceSession? = null
+    private val session: TraceSession? = null,
+    private val embedWeightData: Boolean = true
 ) {
 
     private var nextNodeId = 0L
@@ -48,9 +49,10 @@ public class TraceToGraphBuilder(
     public fun addTrace(trace: OpTrace) {
         val parameters = trace.attributes.filterValues { it != null }.toMutableMap() as MutableMap<String, Any>
         
-        // If we have a session, try to resolve constant inputs (weights/biases)
-        // for operations that need them during codegen.
-        if (session != null) {
+        // If we have a session and weight embedding is enabled, try to resolve
+        // constant inputs (weights/biases) for operations that need them during codegen.
+        // Disabled for LLM compilation to avoid OOM from large weight arrays.
+        if (session != null && embedWeightData) {
             when (trace.opType.lowercase()) {
                 "matmul" -> {
                     // For Linear layer: input.matmul(weight.t())
@@ -149,7 +151,25 @@ public class TraceToGraphBuilder(
 
         val op = TraceBackedOperation(trace.opType, parameters = parameters)
 
-        val inputSpecs = buildInputSpecs(trace)
+        // Workaround for KSP code-gen bug: operations with List<Tensor> parameters
+        // (like concat, stack) have empty trace.inputs because the KSP generator only
+        // detects direct Tensor parameters, not List<Tensor>. Reconstruct input refs
+        // from the operation's attributes where the actual tensors are stored.
+        val effectiveInputs = if (trace.inputs.isEmpty() && session != null) {
+            when (trace.opType.lowercase()) {
+                "concat", "cat", "concatenate", "stack" -> {
+                    val tensors = trace.attributes["tensors"] as? List<*>
+                    tensors?.mapNotNull { t ->
+                        (t as? sk.ainet.lang.tensor.Tensor<*, *>)?.let { session.refOf(it) }
+                    } ?: emptyList()
+                }
+                else -> emptyList()
+            }
+        } else {
+            trace.inputs
+        }
+
+        val inputSpecs = buildInputSpecs(trace, effectiveInputs)
         val outputSpecs = buildOutputSpecs(trace)
 
         val nodeId = "n${nextNodeId++}_${trace.opType}"
@@ -162,7 +182,7 @@ public class TraceToGraphBuilder(
         graph.addNode(node)
 
         // Wire edges from producers; track unresolved inputs for later finalization
-        trace.inputs.forEachIndexed { idx, tRef ->
+        effectiveInputs.forEachIndexed { idx, tRef ->
             val prod = producersByTensorId[tRef.id]
             if (prod != null) {
                 val edgeId = "e_${prod.node.id}_${prod.outIndex}__${node.id}_$idx"
@@ -219,7 +239,15 @@ public class TraceToGraphBuilder(
      *
      * @param inputTensorIds Tensor IDs that should always become function arguments (model inputs).
      */
-    public fun finalize(inputTensorIds: Set<String> = emptySet()) {
+    /**
+     * Synthesize placeholder nodes for tensor inputs that had no known producer.
+     *
+     * @param inputTensorIds Tensor IDs that should always become function arguments.
+     * @param embedConstants If true, resolved tensors with float data are embedded as weight
+     *   constant nodes. If false, all unresolved tensors become lightweight input placeholders
+     *   (useful for large models where embedding weights would OOM).
+     */
+    public fun finalize(inputTensorIds: Set<String> = emptySet(), embedConstants: Boolean = true) {
         for ((tensorId, refs) in unresolvedByTensorId) {
             val firstRef = refs.first()
             val spec = firstRef.spec
@@ -228,7 +256,7 @@ public class TraceToGraphBuilder(
             val forceInput = inputTensorIds.contains(tensorId)
 
             // Try to resolve as a constant from the session
-            val tensor = if (!forceInput) session?.resolve(firstRef.tensorRef) else null
+            val tensor = if (!forceInput && embedConstants) session?.resolve(firstRef.tensorRef) else null
             val constantValues = tensor?.let { extractFloatArray(it) }
 
             val syntheticNode: GraphNode
@@ -293,14 +321,14 @@ public class TraceToGraphBuilder(
         unresolvedByTensorId.clear()
     }
 
-    private fun buildInputSpecs(trace: OpTrace): List<TensorSpec> {
+    private fun buildInputSpecs(trace: OpTrace, effectiveInputs: List<TensorRef> = trace.inputs): List<TensorSpec> {
         val shapes = (trace.attributes["inputShapes"] as? List<*>)?.map { it as? List<Int> }
         val dtypes = (trace.attributes["inputDTypes"] as? List<*>)?.map { it?.toString() }
-        val count = trace.inputs.size
+        val count = effectiveInputs.size
         return List(count) { i ->
-            val name = trace.inputs[i].id
-            val shape = shapes?.getOrNull(i)
-            val dtype = dtypes?.getOrNull(i) ?: "unknown"
+            val name = effectiveInputs[i].id
+            val shape = shapes?.getOrNull(i) ?: effectiveInputs[i].shape.dimensions.toList()
+            val dtype = dtypes?.getOrNull(i) ?: effectiveInputs[i].dtype::class.simpleName ?: "unknown"
             TensorSpec(name = name, shape = shape, dtype = dtype)
         }
     }

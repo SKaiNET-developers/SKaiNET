@@ -38,6 +38,10 @@ public class LLMFusionPass : GraphOptimizationPass {
 
         val fusedNodeIds = mutableSetOf<String>()
         val replacements = mutableMapOf<String, List<GraphNode>>()
+        // Maps each absorbed (non-anchor) node ID to its anchor node ID
+        val absorbedToAnchor = mutableMapOf<String, String>()
+        // Maps absorbed/anchor node IDs to their output offset within the fused node's combined outputs
+        val outputOffsets = mutableMapOf<String, Int>()
 
         // --- Pattern 1: RMSNorm fusion ---
         for (node in graph.nodes) {
@@ -59,7 +63,12 @@ public class LLMFusionPass : GraphOptimizationPass {
                     operation = fusedOp,
                     outputs = lastNode.outputs
                 )
-                for (n in chainNodes) fusedNodeIds.add(n.id)
+                for (n in chainNodes) {
+                    fusedNodeIds.add(n.id)
+                    if (n.id != anchorNode.id) {
+                        absorbedToAnchor[n.id] = anchorNode.id
+                    }
+                }
                 replacements[anchorNode.id] = listOf(fusedNode)
                 diagnostics.add(
                     "Fused RMSNorm: ${chainNodes.map { it.id }} → fused_rms_norm (${anchorNode.id})"
@@ -84,7 +93,13 @@ public class LLMFusionPass : GraphOptimizationPass {
                     operation = fusedOp,
                     outputs = downMatmul.outputs
                 )
-                fusedNodeIds.addAll(listOf(gateMatmul.id, siluNode.id, upMatmul.id, mulNode.id, downMatmul.id))
+                val allIds = listOf(gateMatmul.id, siluNode.id, upMatmul.id, mulNode.id, downMatmul.id)
+                fusedNodeIds.addAll(allIds)
+                for (id in allIds) {
+                    if (id != gateMatmul.id) {
+                        absorbedToAnchor[id] = gateMatmul.id
+                    }
+                }
                 replacements[gateMatmul.id] = listOf(fusedNode)
                 diagnostics.add(
                     "Fused SwiGLU FFN: gate=${gateMatmul.id}, up=${upMatmul.id}, down=${downMatmul.id}"
@@ -115,6 +130,12 @@ public class LLMFusionPass : GraphOptimizationPass {
                     outputs = combinedOutputs
                 )
                 fusedNodeIds.addAll(listOf(q.id, k.id, v.id))
+                absorbedToAnchor[k.id] = q.id
+                absorbedToAnchor[v.id] = q.id
+                // Track output offsets for multi-output fused node
+                outputOffsets[q.id] = 0
+                outputOffsets[k.id] = q.outputs.size
+                outputOffsets[v.id] = q.outputs.size + k.outputs.size
                 replacements[q.id] = listOf(fusedNode)
                 diagnostics.add(
                     "Fused QKV projections: q=${q.id}, k=${k.id}, v=${v.id} → fused_qkv_proj"
@@ -148,30 +169,44 @@ public class LLMFusionPass : GraphOptimizationPass {
 
         // Rewire edges
         for (edge in graph.edges) {
-            val srcInFused = edge.source.id in fusedNodeIds && edge.source.id !in replacements
-            val dstInFused = edge.destination.id in fusedNodeIds && edge.destination.id !in replacements
+            val srcAbsorbed = edge.source.id in absorbedToAnchor
+            val dstAbsorbed = edge.destination.id in absorbedToAnchor
 
-            // Internal edges within a fused group: drop
-            if (srcInFused && dstInFused) continue
-            // Edge from absorbed node to external consumer: rewire to the fused anchor
-            if (srcInFused) {
-                val anchorId = replacements.keys.firstOrNull { key ->
-                    val rep = replacements[key]?.firstOrNull() ?: return@firstOrNull false
-                    rep.outputs.any { out ->
-                        // The fused node's outputs include the absorbed node's outputs
-                        edge.source.outputs.any { srcOut -> srcOut == out || srcOut.name == out.name }
-                    }
-                } ?: continue
-                val src = nodeMap[anchorId] ?: continue
-                val dst = nodeMap[edge.destination.id] ?: continue
+            // Internal edges within the SAME fused group: drop
+            if (srcAbsorbed && dstAbsorbed) {
+                val srcAnchor = absorbedToAnchor[edge.source.id]!!
+                val dstAnchor = absorbedToAnchor[edge.destination.id]!!
+                if (srcAnchor == dstAnchor) continue
+                // Cross-group edge between two absorbed nodes: rewire both ends
+                val src = nodeMap[srcAnchor] ?: continue
+                val dst = nodeMap[dstAnchor] ?: continue
                 newGraph.addEdge(edge.copy(source = src, destination = dst))
                 continue
             }
-            // Edge to absorbed node from external: rewire to fused anchor
-            if (dstInFused) {
-                val anchorId = replacements.keys.firstOrNull { key ->
-                    replacements[key] != null
-                } ?: continue
+            // Edge from anchor to its own absorbed node: internal, drop
+            if (edge.source.id in replacements && dstAbsorbed &&
+                absorbedToAnchor[edge.destination.id] == edge.source.id) continue
+            // Edge from absorbed node to its own anchor: internal, drop
+            if (srcAbsorbed && edge.destination.id in replacements &&
+                absorbedToAnchor[edge.source.id] == edge.destination.id) continue
+
+            // Edge from absorbed node to external consumer: rewire source to the fused anchor
+            // and adjust sourceOutputIndex for multi-output fused nodes (e.g., QKV)
+            if (srcAbsorbed) {
+                val anchorId = absorbedToAnchor[edge.source.id]!!
+                val src = nodeMap[anchorId] ?: continue
+                val dst = nodeMap[edge.destination.id] ?: continue
+                val outOffset = outputOffsets[edge.source.id] ?: 0
+                newGraph.addEdge(edge.copy(
+                    source = src,
+                    destination = dst,
+                    sourceOutputIndex = edge.sourceOutputIndex + outOffset
+                ))
+                continue
+            }
+            // Edge to absorbed node from external: rewire destination to fused anchor
+            if (dstAbsorbed) {
+                val anchorId = absorbedToAnchor[edge.destination.id]!!
                 val src = nodeMap[edge.source.id] ?: continue
                 val dst = nodeMap[anchorId] ?: continue
                 newGraph.addEdge(edge.copy(source = src, destination = dst))
@@ -180,7 +215,13 @@ public class LLMFusionPass : GraphOptimizationPass {
 
             val src = nodeMap[edge.source.id] ?: continue
             val dst = nodeMap[edge.destination.id] ?: continue
-            newGraph.addEdge(edge.copy(source = src, destination = dst))
+            // Apply output offset for anchor nodes with multi-output fused ops
+            val outOffset = outputOffsets[edge.source.id] ?: 0
+            newGraph.addEdge(edge.copy(
+                source = src,
+                destination = dst,
+                sourceOutputIndex = edge.sourceOutputIndex + outOffset
+            ))
         }
 
         return GraphOptimizationResult(

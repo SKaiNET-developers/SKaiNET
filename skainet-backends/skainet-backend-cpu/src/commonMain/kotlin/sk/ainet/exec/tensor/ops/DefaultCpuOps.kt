@@ -2185,7 +2185,42 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> gather(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
-        TODO("Not yet implemented")
+        require(dim == 0) { "gather: only dim=0 supported currently, got dim=$dim" }
+        // Gather rows from input along dimension 0 using indices
+        // Input: [vocabSize, embeddingDim], Indices: [L] or [N, L]
+        // Output: [L, embeddingDim] or [N, L, embeddingDim]
+        val numIndices = indices.volume
+        val indexList = IntArray(numIndices) { i ->
+            val v = indices.data[i]
+            (v as Number).toInt()
+        }
+
+        if (input.rank == 2) {
+            val embDim = input.shape[1]
+            val outShape = if (indices.rank == 1) {
+                Shape(intArrayOf(numIndices, embDim))
+            } else {
+                // Preserve index shape + embedding dim
+                Shape(IntArray(indices.rank) { indices.shape[it] } + intArrayOf(embDim))
+            }
+            val outData = dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+                // Map multi-dim output index to flat index and embedding position
+                val flatIdx = if (outIdx.size == 2) outIdx[0] else {
+                    var flat = 0
+                    for (d in 0 until outIdx.size - 1) {
+                        flat = flat * (if (d < indices.rank) indices.shape[d] else 1) + outIdx[d]
+                    }
+                    flat
+                }
+                val row = indexList[flatIdx]
+                val col = outIdx[outIdx.size - 1]
+                input.data[row, col]
+            }
+            return newTensor(outData, input.dtype, input)
+        }
+
+        // Fallback for higher-rank inputs
+        error("gather: unsupported input rank ${input.rank}")
     }
 
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {

@@ -94,7 +94,9 @@ public class Embedding<OutT : DType, V>(
 
     override fun forward(input: Tensor<Int32, V>, ctx: ExecutionContext): Tensor<OutT, V> {
         val weight = (params[0] as ModuleParameter.WeightParameter<OutT, V>).value
-        val ops = weight.ops
+        // Use ctx.ops when available so operations are traced in graph-recording contexts.
+        // Fallback to weight.ops for backwards compatibility when ctx has no ops.
+        val ops = ctx.ops
         return sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
             forwardImpl(weight, ops, input)
         }
@@ -122,40 +124,21 @@ public class Embedding<OutT : DType, V>(
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun forwardImpl(weight: Tensor<OutT, V>, ops: TensorOps, input: Tensor<Int32, V>): Tensor<OutT, V> {
+        // Use ops.gather for a single traceable operation (critical for graph compilation).
+        // The gather op indexes into the weight matrix along dim 0 using the input indices.
+        val result = ops.gather(weight, input as Tensor<DType, *>, dim = 0) as Tensor<OutT, V>
         return when (input.rank) {
             1 -> {
-                val L = input.shape[0]
-                val rows = ArrayList<Tensor<OutT, V>>(L)
-                for (i in 0 until L) {
-                    val idx = input.data[i]
-                    if (idx !is Int) error("Embedding($name): expected Int storage for indices")
-                    if (idx < 0 || idx >= numEmbeddings) {
-                        throw IndexOutOfRangeException("Embedding($name): index out of range at position $i: $idx not in [0, $numEmbeddings)")
-                    }
-                    rows += gatherRow(ops, weight, idx) // each row is 1D [embeddingDim]
-                }
-                // Concatenate 1D rows -> 1D [L * embeddingDim], then reshape to [L, embeddingDim]
-                val concatenated = ops.concat(rows, 0)
-                concatenated.reshape(Shape(L, embeddingDim))
+                // gather returns [L, embeddingDim] for 1D input [L]
+                result
             }
             2 -> {
+                // For batched input [N, L], gather on flattened indices then reshape
                 val N = input.shape[0]
                 val L = input.shape[1]
-                val flatRows = ArrayList<Tensor<OutT, V>>(N * L)
-                for (n in 0 until N) {
-                    for (l in 0 until L) {
-                        val v = input.data[n, l]
-                        if (v !is Int) error("Embedding($name): expected Int storage for indices")
-                        if (v < 0 || v >= numEmbeddings) {
-                            throw IndexOutOfRangeException("Embedding($name): index out of range at position ($n,$l): $v not in [0, $numEmbeddings)")
-                        }
-                        flatRows += gatherRow(ops, weight, v) // 1D [embeddingDim]
-                    }
-                }
-                // Concatenate 1D rows -> 1D [N*L*embeddingDim], then reshape
-                val concatenated = ops.concat(flatRows, 0)
-                concatenated.reshape(Shape(N, L, embeddingDim))
+                ops.reshape(result, Shape(N, L, embeddingDim))
             }
             else -> error("Embedding($name): input shape ${input.shape} not supported; expected [L] or [N, L]")
         }

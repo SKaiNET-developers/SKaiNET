@@ -84,18 +84,46 @@ public object LLMFusedOpHandlers {
             inputs: List<Tensor<DType, Any>>,
             params: Map<String, Any>
         ): List<Tensor<DType, Any>> {
-            require(inputs.size >= 4) { "fused_swiglu_ffn requires 4 inputs (x, gate, up, down), got ${inputs.size}" }
-            val x = inputs[0]
-            val gateWeight = inputs[1]
-            val upWeight = inputs[2]
-            val downWeight = inputs[3]
+            // After fusion, edges from absorbed nodes are sorted by destinationInputIndex.
+            // gateMatmul and upMatmul share input x, so the layout is:
+            //   [x, x, gate_weight, up_weight, down_weight]  (5 inputs)
+            // or if x edge is deduplicated:
+            //   [x, gate_weight, up_weight, down_weight]  (4 inputs)
+            val x: Tensor<DType, Any>
+            val gateWeight: Tensor<DType, Any>
+            val upWeight: Tensor<DType, Any>
+            val downWeight: Tensor<DType, Any>
+
+            if (inputs.size >= 5) {
+                x = inputs[0]
+                gateWeight = inputs[2]
+                upWeight = inputs[3]
+                downWeight = inputs[4]
+            } else {
+                require(inputs.size >= 4) { "fused_swiglu_ffn requires at least 4 inputs, got ${inputs.size}" }
+                x = inputs[0]
+                gateWeight = inputs[1]
+                upWeight = inputs[2]
+                downWeight = inputs[3]
+            }
+
+            // Weights may need transposing (stored as [out, in] but matmul needs [in, out])
+            fun maybeTranspose(input: Tensor<DType, Any>, w: Tensor<DType, Any>): Tensor<DType, Any> {
+                val inCols = input.shape[input.rank - 1]
+                val wRows = w.shape[0]
+                return if (wRows != inCols && w.rank == 2 && w.shape[1] == inCols) {
+                    ops.transpose(w)
+                } else {
+                    w
+                }
+            }
 
             // SwiGLU(x) = down_proj(silu(gate_proj(x)) * up_proj(x))
-            val gateOut = ops.matmul(x, gateWeight)
+            val gateOut = ops.matmul(x, maybeTranspose(x, gateWeight))
             val gateActivated = ops.silu(gateOut)
-            val upOut = ops.matmul(x, upWeight)
+            val upOut = ops.matmul(x, maybeTranspose(x, upWeight))
             val gated = ops.multiply(gateActivated, upOut)
-            val result = ops.matmul(gated, downWeight)
+            val result = ops.matmul(gated, maybeTranspose(gated, downWeight))
 
             return listOf(result)
         }
@@ -123,16 +151,46 @@ public object LLMFusedOpHandlers {
             inputs: List<Tensor<DType, Any>>,
             params: Map<String, Any>
         ): List<Tensor<DType, Any>> {
-            require(inputs.size >= 4) { "fused_qkv_proj requires 4 inputs (x, q, k, v weights), got ${inputs.size}" }
-            val x = inputs[0]
-            val qWeight = inputs[1]
-            val kWeight = inputs[2]
-            val vWeight = inputs[3]
+            // The fused QKV node receives edges from all 3 original matmul nodes.
+            // Each original matmul had 2 inputs (input, weight), and the 3 matmuls
+            // shared the same input. After fusion, edges are sorted by destinationInputIndex:
+            //   All index-0 edges first: [x, x, x], then index-1 edges: [q_weight, k_weight, v_weight]
+            //   Total: [x, x, x, q_weight, k_weight, v_weight]  (6 inputs)
+            // Or if edges were deduplicated: [x, q_weight, k_weight, v_weight] (4 inputs)
+            val x: Tensor<DType, Any>
+            val qWeight: Tensor<DType, Any>
+            val kWeight: Tensor<DType, Any>
+            val vWeight: Tensor<DType, Any>
 
-            // Decomposed: 3 independent matmuls
-            val q = ops.matmul(x, qWeight)
-            val k = ops.matmul(x, kWeight)
-            val v = ops.matmul(x, vWeight)
+            if (inputs.size >= 6) {
+                x = inputs[0]
+                qWeight = inputs[3]
+                kWeight = inputs[4]
+                vWeight = inputs[5]
+            } else {
+                require(inputs.size >= 4) { "fused_qkv_proj requires at least 4 inputs, got ${inputs.size}" }
+                x = inputs[0]
+                qWeight = inputs[1]
+                kWeight = inputs[2]
+                vWeight = inputs[3]
+            }
+
+            // Weights may need transposing — the original matmul nodes in the graph
+            // typically compute x @ W^T. If weight shape doesn't align for matmul,
+            // transpose it.
+            fun maybeTranspose(w: Tensor<DType, Any>): Tensor<DType, Any> {
+                val xCols = x.shape[x.rank - 1]
+                val wRows = w.shape[0]
+                return if (wRows != xCols && w.rank == 2 && w.shape[1] == xCols) {
+                    ops.transpose(w)
+                } else {
+                    w
+                }
+            }
+
+            val q = ops.matmul(x, maybeTranspose(qWeight))
+            val k = ops.matmul(x, maybeTranspose(kWeight))
+            val v = ops.matmul(x, maybeTranspose(vWeight))
 
             return listOf(q, k, v)
         }

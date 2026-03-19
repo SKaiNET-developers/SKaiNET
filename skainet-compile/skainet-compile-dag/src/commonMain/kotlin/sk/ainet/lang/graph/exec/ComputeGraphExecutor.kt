@@ -73,7 +73,16 @@ public class ComputeGraphExecutor(
             }
 
             // Dispatch the operation
-            val results = dispatchOp(node, inputTensors)
+            val results = try {
+                dispatchOp(node, inputTensors)
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "Error executing node '${node.id}' (${node.operationName}): ${e.message}\n" +
+                        "  Input shapes: ${inputTensors.map { it.shape }}\n" +
+                        "  Params: ${node.operation.parameters.filterKeys { it !in setOf("tensors", "weights", "bias", "initial_value") }}",
+                    e
+                )
+            }
             nodeOutputs[node.id] = results
         }
 
@@ -129,14 +138,23 @@ public class ComputeGraphExecutor(
             "exp" -> listOf(ops.exp(inputs[0]))
             "expm1" -> listOf(ops.expm1(inputs[0]))
             "sqrt" -> listOf(ops.sqrt(inputs[0]))
-            // tanh not in TensorOps — decompose as sigmoid(2x)*2-1 or skip
-            // For now, use the generic fallback path
 
             // Binary math ops
             "add" -> listOf(ops.add(inputs[0], inputs[1]))
             "subtract" -> listOf(ops.subtract(inputs[0], inputs[1]))
             "multiply" -> listOf(ops.multiply(inputs[0], inputs[1]))
             "divide" -> listOf(ops.divide(inputs[0], inputs[1]))
+            "rdiv" -> {
+                // rdiv(a, b) = b / a
+                if (inputs.size >= 2) listOf(ops.divide(inputs[1], inputs[0]))
+                else listOf(ops.divide(inputs[0], inputs[0])) // fallback: x/x = 1
+            }
+
+            // Scalar ops (unary with scalar parameter)
+            "addScalar", "scalar_add" -> {
+                val scalar = (params["scalar"] as? Number)?.toFloat() ?: 0f
+                listOf(ops.addScalar(inputs[0], scalar))
+            }
 
             // Linear algebra
             "matmul", "linear", "gemm" -> {
@@ -149,10 +167,33 @@ public class ComputeGraphExecutor(
 
             // Shape ops
             "transpose", "permute", "transpose2d" -> listOf(ops.transpose(inputs[0]))
-            "reshape" -> {
-                val targetShape = params["shape"] as? List<Int>
-                    ?: error("reshape requires 'shape' parameter")
+            "reshape", "view" -> {
+                // Shape can come from different parameter keys depending on trace source
+                val targetShape = (params["shape"] as? List<Int>)
+                    ?: (params["newShape"] as? Shape)?.dimensions?.toList()
+                    ?: (params["outputShape"] as? List<Int>)
+                    ?: (params["outputShapes"] as? List<*>)?.firstOrNull()?.let { it as? List<Int> }
+                    ?: error("reshape requires 'shape' or 'newShape' parameter, got keys: ${params.keys}")
                 listOf(ops.reshape(inputs[0], Shape(targetShape.toIntArray())))
+            }
+            "concat", "concatenate", "cat" -> {
+                val dim = params["dim"] as? Int ?: 0
+                listOf(ops.concat(inputs, dim))
+            }
+            "split", "chunk" -> {
+                val splitSize = (params["splitSize"] as? Number)?.toInt()
+                    ?: (params["split_size"] as? Number)?.toInt()
+                    ?: error("split requires 'splitSize' parameter")
+                val dim = (params["dim"] as? Number)?.toInt() ?: 0
+                ops.split(inputs[0], splitSize, dim)
+            }
+            "squeeze" -> {
+                val dim = (params["dim"] as? Number)?.toInt()
+                listOf(ops.squeeze(inputs[0], dim))
+            }
+            "unsqueeze" -> {
+                val dim = (params["dim"] as? Number)?.toInt() ?: 0
+                listOf(ops.unsqueeze(inputs[0], dim))
             }
 
             // Reduction ops
@@ -160,13 +201,17 @@ public class ComputeGraphExecutor(
                 val dim = params["dim"] as? Int ?: -1
                 listOf(ops.mean(inputs[0], dim))
             }
+            "sum" -> {
+                val dim = params["dim"] as? Int ?: -1
+                listOf(ops.sum(inputs[0], dim))
+            }
             "softmax" -> {
                 val dim = params["dim"] as? Int ?: -1
                 listOf(ops.softmax(inputs[0], dim))
             }
 
             // Attention
-            "scaled_dot_product_attention", "sdpa" -> {
+            "scaled_dot_product_attention", "scaledDotProductAttention", "sdpa" -> {
                 val causal = params["causal"] as? Boolean ?: false
                 val scale = params["scale"] as? Float
                 listOf(ops.scaledDotProductAttention(
@@ -188,17 +233,51 @@ public class ComputeGraphExecutor(
             }
 
             // Pass-through / identity
-            "identity", "input", "weight" -> inputs.toList()
+            "identity", "input", "weight", "constant", "parameter" -> {
+                if (inputs.isNotEmpty()) inputs.toList() else listOf()
+            }
 
-            // Fused ops that haven't been registered — try the operation's own execute
+            // Fused ops (produced by optimization passes)
             else -> {
+                // Check if this is a fused elementwise op that we can decompose
+                if (opName.contains("_") && params.containsKey("fused_from")) {
+                    // Fused elementwise ops (e.g., multiply_subtract, divide_multiply)
+                    // Execute the constituent ops sequentially
+                    val fusedOps = (params["fused_from"] as? List<*>)?.map { it.toString() }
+                    if (fusedOps != null && fusedOps.size == 2 && inputs.size >= 2) {
+                        val intermediate = dispatchSingleOp<T, V>(fusedOps[0], inputs, params)
+                        return listOf(dispatchSingleOp<T, V>(fusedOps[1], listOf(intermediate) + inputs.drop(1), params))
+                    }
+                }
                 try {
                     node.operation.execute(inputs)
-                } catch (e: UnsupportedOperationException) {
+                } catch (_: UnsupportedOperationException) {
                     error("Unsupported operation '${opName}' in graph executor. " +
                         "Register a FusedOpHandler or implement Operation.execute().")
                 }
             }
+        }
+    }
+
+    /**
+     * Dispatch a single named operation (used for decomposing fused ops).
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> dispatchSingleOp(
+        opName: String,
+        inputs: List<Tensor<T, V>>,
+        params: Map<String, Any>
+    ): Tensor<T, V> {
+        return when (opName) {
+            "add" -> ops.add(inputs[0], inputs[1])
+            "subtract" -> ops.subtract(inputs[0], inputs[1])
+            "multiply" -> ops.multiply(inputs[0], inputs[1])
+            "divide" -> ops.divide(inputs[0], inputs[1])
+            "relu" -> ops.relu(inputs[0])
+            "silu" -> ops.silu(inputs[0])
+            "sigmoid" -> ops.sigmoid(inputs[0])
+            "sqrt" -> ops.sqrt(inputs[0])
+            else -> error("Cannot decompose fused op component '$opName'")
         }
     }
 

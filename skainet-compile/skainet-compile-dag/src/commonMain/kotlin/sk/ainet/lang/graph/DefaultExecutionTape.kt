@@ -242,16 +242,17 @@ public open class DefaultExecutionTape(
 
     public fun toComputeGraph(
         synthesizeExternalInputs: Boolean = false,
-        inputTensorIds: Set<String> = emptySet()
+        inputTensorIds: Set<String> = emptySet(),
+        embedConstants: Boolean = true
     ): ComputeGraph {
         // Prefer trace-based offline build when traces are available to ensure
         // consistency with online GraphSink wiring rules (PRD FR6).
         if (_traces.isNotEmpty()) {
             val graph = DefaultComputeGraph()
-            val builder = TraceToGraphBuilder(graph, session)
+            val builder = TraceToGraphBuilder(graph, session, embedWeightData = embedConstants)
             builder.addAll(_traces)
             if (synthesizeExternalInputs) {
-                builder.finalize(inputTensorIds)
+                builder.finalize(inputTensorIds, embedConstants = embedConstants)
             }
             return graph
         }
