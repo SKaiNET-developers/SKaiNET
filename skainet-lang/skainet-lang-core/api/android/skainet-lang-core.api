@@ -991,6 +991,11 @@ public final class sk/ainet/lang/nn/activations/Softmax : sk/ainet/lang/nn/Modul
 	public fun getName ()Ljava/lang/String;
 }
 
+public abstract interface class sk/ainet/lang/nn/dsl/ATTENTION : sk/ainet/lang/nn/dsl/NetworkDslItem {
+	public abstract fun kvCache (III)V
+	public abstract fun rope (II)V
+}
+
 public abstract interface class sk/ainet/lang/nn/dsl/AVGPOOL2D : sk/ainet/lang/nn/dsl/NetworkDslItem {
 	public abstract fun getCountIncludePad ()Z
 	public abstract fun getKernelSize ()Lkotlin/Pair;
@@ -1003,6 +1008,14 @@ public abstract interface class sk/ainet/lang/nn/dsl/AVGPOOL2D : sk/ainet/lang/n
 	public abstract fun setPadding (Lkotlin/Pair;)V
 	public abstract fun setStride (Lkotlin/Pair;)V
 	public abstract fun stride (I)V
+}
+
+public final class sk/ainet/lang/nn/dsl/AttentionImpl : sk/ainet/lang/nn/dsl/ATTENTION {
+	public fun <init> (Lsk/ainet/context/ExecutionContext;IIIZZZLjava/lang/String;)V
+	public final fun create ()Lsk/ainet/lang/nn/transformer/MultiHeadAttention;
+	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
+	public fun kvCache (III)V
+	public fun rope (II)V
 }
 
 public final class sk/ainet/lang/nn/dsl/AvgPool2dImpl : sk/ainet/lang/nn/dsl/AVGPOOL2D {
@@ -1331,6 +1344,8 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun embedding (IILjava/lang/String;)V
+	public static synthetic fun embedding$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun flatten$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public abstract fun groupNorm (IIDZLjava/lang/String;)V
@@ -1343,15 +1358,24 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public abstract fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;ILjava/lang/Object;)V
+	public abstract fun multiHeadAttention (IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun multiHeadAttention$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun residual ()V
+	public abstract fun rmsNorm (IFLjava/lang/String;)V
+	public static synthetic fun rmsNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IFLjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun sequential (Lkotlin/jvm/functions/Function1;)V
 	public abstract fun softmax (ILjava/lang/String;)V
 	public static synthetic fun softmax$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public abstract fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun swiGluFFN (IILjava/lang/String;)V
+	public static synthetic fun swiGluFFN$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;ILjava/lang/Object;)V
+	public abstract fun xielu (Ljava/lang/String;)V
+	public static synthetic fun xielu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/NeuralNetworkDsl$DefaultImpls {
@@ -1366,15 +1390,20 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDsl$DefaultImpls {
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun embedding$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun flatten$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun groupNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIDZLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun input$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ZILjava/lang/Object;)V
 	public static synthetic fun layerNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[IDZLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun multiHeadAttention$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun rmsNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IFLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun softmax$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun swiGluFFN$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun xielu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/dsl/NeuralNetworkDsl {
@@ -1391,6 +1420,7 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun embedding (IILjava/lang/String;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
 	public final fun getLastDimension ()I
@@ -1400,13 +1430,18 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public fun layerNorm ([IDZLjava/lang/String;)V
 	public fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
+	public fun multiHeadAttention (IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun residual ()V
+	public fun rmsNorm (IFLjava/lang/String;)V
 	public fun sequential (Lkotlin/jvm/functions/Function1;)V
 	public final fun setLastDimension (I)V
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun swiGluFFN (IILjava/lang/String;)V
 	public fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
+	public fun xielu (Ljava/lang/String;)V
 }
 
 public abstract interface class sk/ainet/lang/nn/dsl/PrecisionResolver {
@@ -1427,6 +1462,7 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun embedding (IILjava/lang/String;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
 	public final fun getInputDimension ()I
@@ -1437,19 +1473,28 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public fun layerNorm ([IDZLjava/lang/String;)V
 	public fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
+	public fun multiHeadAttention (IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun residual ()V
+	public fun rmsNorm (IFLjava/lang/String;)V
 	public fun sequential (Lkotlin/jvm/functions/Function1;)V
 	public final fun setInputDimension (I)V
 	public final fun setLastDimension (I)V
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun swiGluFFN (IILjava/lang/String;)V
 	public fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
+	public fun xielu (Ljava/lang/String;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/TensorOpsNetworkDslKt {
 	public static final fun elu (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;FLjava/lang/String;)V
 	public static synthetic fun elu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;FLjava/lang/String;ILjava/lang/Object;)V
+	public static final fun exp (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;)V
+	public static synthetic fun exp$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
+	public static final fun expm1 (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;)V
+	public static synthetic fun expm1$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 	public static final fun gelu (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;)V
 	public static synthetic fun gelu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 	public static final fun leakyRelu (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;FLjava/lang/String;)V
@@ -1626,6 +1671,16 @@ public final class sk/ainet/lang/nn/layers/Embedding : sk/ainet/lang/nn/DualModu
 }
 
 public final class sk/ainet/lang/nn/layers/Embedding$Companion {
+}
+
+public final class sk/ainet/lang/nn/layers/EmbeddingAdapter : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (Lsk/ainet/lang/nn/layers/Embedding;)V
+	public final fun getEmbedding ()Lsk/ainet/lang/nn/layers/Embedding;
+	public final fun getEmbeddingDim ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public final fun getNumEmbeddings ()I
+	public fun getParams ()Ljava/util/List;
 }
 
 public final class sk/ainet/lang/nn/layers/EmbeddingParams {
@@ -2013,6 +2068,80 @@ public final class sk/ainet/lang/nn/topology/TraversalKt {
 	public static final fun walkDepthFirst (Lsk/ainet/lang/nn/topology/ModuleNode;Lkotlin/jvm/functions/Function1;)V
 }
 
+public final class sk/ainet/lang/nn/transformer/KVCache : sk/ainet/lang/nn/Module {
+	public fun <init> (IIILjava/lang/String;)V
+	public synthetic fun <init> (IIILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHeadDim ()I
+	public final fun getMaxSeqLen ()I
+	public fun getModules ()Ljava/util/List;
+	public final fun getNKVHeads ()I
+	public fun getName ()Ljava/lang/String;
+	public final fun getPosition ()I
+	public final fun reset ()V
+	public final fun update (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lkotlin/Pair;
+}
+
+public final class sk/ainet/lang/nn/transformer/MultiHeadAttention : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IIIZZZLjava/lang/String;Lsk/ainet/lang/nn/transformer/RoPE;Lsk/ainet/lang/nn/transformer/KVCache;)V
+	public synthetic fun <init> (IIIZZZLjava/lang/String;Lsk/ainet/lang/nn/transformer/RoPE;Lsk/ainet/lang/nn/transformer/KVCache;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBias ()Z
+	public final fun getCausal ()Z
+	public final fun getDim ()I
+	public final fun getHeadDim ()I
+	public final fun getKNorm ()Lsk/ainet/lang/nn/normalization/RMSNormalization;
+	public final fun getKvCache ()Lsk/ainet/lang/nn/transformer/KVCache;
+	public final fun getKvDim ()I
+	public fun getModules ()Ljava/util/List;
+	public final fun getNHeads ()I
+	public final fun getNKVHeads ()I
+	public fun getName ()Ljava/lang/String;
+	public fun getParams ()Ljava/util/List;
+	public final fun getQNorm ()Lsk/ainet/lang/nn/normalization/RMSNormalization;
+	public final fun getQkNorm ()Z
+	public final fun getRope ()Lsk/ainet/lang/nn/transformer/RoPE;
+	public final fun setKvCache (Lsk/ainet/lang/nn/transformer/KVCache;)V
+	public final fun setRope (Lsk/ainet/lang/nn/transformer/RoPE;)V
+}
+
+public final class sk/ainet/lang/nn/transformer/ResidualAdd : sk/ainet/lang/nn/Module {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSavedInput ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun setSavedInput (Lsk/ainet/lang/tensor/Tensor;)V
+}
+
+public final class sk/ainet/lang/nn/transformer/RoPE : sk/ainet/lang/nn/Module {
+	public fun <init> (IIFLjava/lang/String;)V
+	public synthetic fun <init> (IIFLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun forward (Lsk/ainet/lang/tensor/Tensor;ILsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun getHeadDim ()I
+	public final fun getMaxSeqLen ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/nn/transformer/SwiGLUFFN : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IILjava/lang/String;)V
+	public synthetic fun <init> (IILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getDim ()I
+	public final fun getHiddenDim ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public fun getParams ()Ljava/util/List;
+}
+
+public final class sk/ainet/lang/nn/transformer/XIELUActivation : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public fun getParams ()Ljava/util/List;
+}
+
 public final class sk/ainet/lang/tensor/ContiguityAnalysis {
 	public fun <init> (ZIIDLjava/util/List;Ljava/lang/String;)V
 	public final fun component1 ()Z
@@ -2317,6 +2446,8 @@ public final class sk/ainet/lang/tensor/TensorExtensionsKt {
 	public static final fun div (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun elu$default (Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun exp (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun expm1 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun flatten$default (Lsk/ainet/lang/tensor/Tensor;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun ge (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3120,6 +3251,8 @@ public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps
 	public abstract fun divScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun divideBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun eluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun expBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun expm1Backward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun flattenBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun geluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun leakyReluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -3135,6 +3268,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps
 	public abstract fun reluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun reshapeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun rsubScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun scaledDotProductAttentionBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun sigmoidBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun siluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun softmaxBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -3208,9 +3342,13 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+	public fun exp (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun expm1 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
+	public fun gather (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun ge (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3225,6 +3363,7 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rsubScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun scaledDotProductAttention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZ)Lsk/ainet/lang/tensor/Tensor;
 	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3390,10 +3529,16 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun elu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun exp (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun expm1 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun flatten$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun gather (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun gather$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun ge (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun indexSelect$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun leakyRelu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
@@ -3412,6 +3557,8 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun rsubScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun scaledDotProductAttention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZ)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun scaledDotProductAttention$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3443,10 +3590,13 @@ public final class sk/ainet/lang/tensor/ops/TensorOps$DefaultImpls {
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun elu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun flatten$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun gather$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun indexSelect$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun leakyRelu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun logSoftmax$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun mean$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun scaledDotProductAttention$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun softmax$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun squeeze$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun sum$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
@@ -3557,9 +3707,13 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+	public fun exp (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun expm1 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
+	public fun gather (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun ge (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3574,6 +3728,7 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rsubScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun scaledDotProductAttention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZ)Lsk/ainet/lang/tensor/Tensor;
 	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;

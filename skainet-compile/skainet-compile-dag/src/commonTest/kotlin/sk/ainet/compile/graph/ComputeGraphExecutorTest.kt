@@ -133,15 +133,18 @@ class ComputeGraphExecutorTest {
  * Used for testing graph execution without needing a full tensor backend.
  */
 @Suppress("UNCHECKED_CAST")
-private class TestTensor(val values: FloatArray) : Tensor<FP32, Float>(
-    data = object : sk.ainet.lang.tensor.TensorData<FP32, Float> {
-        override fun get(vararg indices: Int): Float = values[indices[0]]
+private class TestTensor(val values: FloatArray) : Tensor<FP32, Float> {
+    private val tensorShape = sk.ainet.lang.tensor.Shape(intArrayOf(1, values.size))
+    override val data: sk.ainet.lang.tensor.data.TensorData<FP32, Float> = object : sk.ainet.lang.tensor.data.TensorData<FP32, Float> {
+        override fun get(vararg indices: Int): Float = values[indices.last()]
+        override fun set(vararg indices: Int, value: Float) { values[indices.last()] = value }
         override fun copyToFloatArray(): FloatArray = values.copyOf()
-        override val size: Int get() = values.size
-    },
-    shape = sk.ainet.lang.tensor.Shape(intArrayOf(1, values.size)),
-    dtype = FP32::class
-)
+        override val shape: sk.ainet.lang.tensor.Shape get() = tensorShape
+    }
+    override val ops: TensorOps get() = TestTensorOps()
+    override val dtype: kotlin.reflect.KClass<FP32> = FP32::class
+    override val gradState: sk.ainet.lang.tensor.GradState<FP32, Float> = sk.ainet.lang.tensor.GradState()
+}
 
 /**
  * Minimal TensorOps implementation for testing.
