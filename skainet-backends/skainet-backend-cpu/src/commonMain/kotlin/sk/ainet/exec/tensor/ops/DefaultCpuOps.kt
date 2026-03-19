@@ -2224,15 +2224,42 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
-        TODO("Not yet implemented")
+        require(dim in 0 until input.rank) { "indexSelect: dim=$dim out of range for rank ${input.rank}" }
+        val numIndices = indices.volume
+        val indexList = IntArray(numIndices) { i ->
+            val v = indices.data[i]
+            (v as Number).toInt()
+        }
+
+        val resultDims = input.shape.dimensions.copyOf()
+        resultDims[dim] = numIndices
+        val resultShape = Shape(resultDims)
+
+        val outData = dataFactory.init<T, V>(resultShape, input.dtype) { outIdx ->
+            // Replace the dim-th index with the looked-up value from indexList
+            val srcIdx = outIdx.copyOf()
+            srcIdx[dim] = indexList[outIdx[dim]]
+            input.data.get(*srcIdx)
+        }
+        return newTensor(outData, input.dtype, input)
     }
 
     override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> {
-        TODO("Not yet implemented")
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.exp(x) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> {
-        TODO("Not yet implemented")
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.expm1(x.toDouble()).toFloat() as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
     }
 
     override fun <T : DType, V> scaledDotProductAttention(
