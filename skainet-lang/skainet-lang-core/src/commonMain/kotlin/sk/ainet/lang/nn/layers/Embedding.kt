@@ -126,20 +126,25 @@ public class Embedding<OutT : DType, V>(
 
     @Suppress("UNCHECKED_CAST")
     private fun forwardImpl(weight: Tensor<OutT, V>, ops: TensorOps, input: Tensor<Int32, V>): Tensor<OutT, V> {
+        if (paddingIdx != null) {
+            // Row-by-row with padding zeroing for correctness
+            val vol = input.volume
+            val indices = IntArray(vol) { i -> (input.data[i] as Number).toInt() }
+            val rows = List(vol) { i ->
+                val row = gatherRow(ops, weight, indices[i])
+                ops.unsqueeze(row, dim = 0) // [1, embeddingDim]
+            }
+            val concatenated = ops.concat(rows, dim = 0) // [vol, embeddingDim]
+            return if (input.rank == 2) {
+                ops.reshape(concatenated, Shape(input.shape[0], input.shape[1], embeddingDim))
+            } else concatenated
+        }
+
         // Use ops.gather for a single traceable operation (critical for graph compilation).
-        // The gather op indexes into the weight matrix along dim 0 using the input indices.
         val result = ops.gather(weight, input as Tensor<DType, *>, dim = 0) as Tensor<OutT, V>
         return when (input.rank) {
-            1 -> {
-                // gather returns [L, embeddingDim] for 1D input [L]
-                result
-            }
-            2 -> {
-                // For batched input [N, L], gather on flattened indices then reshape
-                val N = input.shape[0]
-                val L = input.shape[1]
-                ops.reshape(result, Shape(N, L, embeddingDim))
-            }
+            1 -> result
+            2 -> ops.reshape(result, Shape(input.shape[0], input.shape[1], embeddingDim))
             else -> error("Embedding($name): input shape ${input.shape} not supported; expected [L] or [N, L]")
         }
     }
