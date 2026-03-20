@@ -117,7 +117,6 @@ dependencies {
     dokka(project(":skainet-lang:skainet-lang-core"))
     dokka(project(":skainet-lang:skainet-lang-models"))
     dokka(project(":skainet-lang:skainet-lang-ksp-annotations"))
-    dokka(project(":skainet-lang:skainet-kan"))
     dokka(project(":skainet-lang:skainet-lang-dag"))
 
     // skainet-compile

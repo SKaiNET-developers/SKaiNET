@@ -22,11 +22,9 @@ includeBuild("build-logic")
 
 // ====== LANG
 include("skainet-lang:skainet-lang-core")
-//include("skainet-lang:skainet-lang-audio") // TODO: directory does not exist yet
 include("skainet-lang:skainet-lang-models")
 include("skainet-lang:skainet-lang-ksp-annotations")
 include("skainet-lang:skainet-lang-ksp-processor")
-include("skainet-lang:skainet-kan")
 include("skainet-lang:skainet-lang-dag")
 
 
@@ -58,7 +56,6 @@ include("skainet-io:skainet-io-core")
 include("skainet-io:skainet-io-gguf")
 include("skainet-io:skainet-io-image")
 include("skainet-io:skainet-io-onnx")
-//include("skainet-io:skainet-io-wav") // TODO: directory does not exist yet
 
 // ====== models
 include("skainet-models:skainet-model-yolo")

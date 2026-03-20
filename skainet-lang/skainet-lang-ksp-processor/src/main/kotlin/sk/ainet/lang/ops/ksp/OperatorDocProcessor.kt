@@ -277,7 +277,6 @@ class OperatorDocProcessor(
         return when {
             packageName.contains("vision") -> "vision"
             packageName.contains("nlp") || packageName.contains("text") -> "nlp"
-            packageName.contains("audio") -> "audio"
             else -> "core"
         }
     }
