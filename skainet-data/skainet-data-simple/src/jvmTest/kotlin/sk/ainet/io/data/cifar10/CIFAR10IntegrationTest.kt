@@ -8,6 +8,7 @@ import sk.ainet.data.cifar10.createCIFAR10Loader
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.Int8
 import kotlin.random.Random
+import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -22,6 +23,7 @@ import kotlin.test.assertTrue
  */
 class CIFAR10IntegrationTest {
 
+    @Ignore("Integration test — downloads ~170 MB; run manually")
     @Test
     fun downloadSplitAndTensorize() = runBlocking {
         // always ignore cache to force download as requested
@@ -82,6 +84,7 @@ class CIFAR10IntegrationTest {
         assertTrue(nonZeroCount > 0, "Constructed tensor appears to be all zeros — expected some non-zero pixels")
     }
 
+    @Ignore("Integration test — downloads ~170 MB; run manually")
     @Test
     fun downloadTestDataset() = runBlocking {
         val config = CIFAR10LoaderConfig(
