@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
-    alias(libs.plugins.kover)
     id("sk.ainet.dokka")
 }
 
