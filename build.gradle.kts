@@ -55,6 +55,8 @@ subprojects {
     tasks.withType<Test>().configureEach {
         maxHeapSize = "8192m"
     }
+
+    apply(plugin = "org.jetbrains.kotlinx.kover")
 }
 
 kover {
@@ -67,6 +69,12 @@ kover {
                 onCheck = true
             }
         }
+    }
+}
+
+dependencies {
+    subprojects.forEach {
+        kover(it)
     }
 }
 

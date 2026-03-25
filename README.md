@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.16.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.16.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.17.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.17.0")
 }
 ```
 
@@ -37,21 +37,39 @@ val model = nn {
 }
 ```
 
-### Hello LLM
+### Core Tensor Ops
 
 ```kotlin
-val ctx = DirectCpuExecutionContext()
-val ingestion = LlamaIngestion(ctx)
-val weights = ingestion.load { SystemFileSystem.source(Path("model.gguf")).buffered() }
-val tokenizer = GGUFTokenizer.fromSource(SystemFileSystem.source(Path("model.gguf")).buffered())
+val a = tensor(shape(2, 2)) { float(1f, 2f, 3f, 4f) }
+val b = tensor(shape(2, 2)) { float(5f, 6f, 7f, 8f) }
 
-val runtime = LlamaRuntime(ctx, weights)
-runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
-    print(tokenizer.decode(token))
-}
+val c = a matMul b
+val d = c.relu()
+```
+
+### GGUF Model Loading
+
+```kotlin
+val source = SystemFileSystem.source(Path("model.gguf")).buffered()
+val reader = GGUFReader(source)
+
+val tensor = reader.tensors.first { it.name == "token_embd.weight" }
+val weights = reader.materialize(tensor)
 ```
 
 > **More examples:** [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook)
+
+---
+
+## Ecosystem
+
+SKaiNET is a modular ecosystem. While this repository contains the core engine, specialized high-level libraries are maintained in standalone repositories:
+
+| Project | Description |
+|---|---|
+| [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) | Llama, Gemma, and BERT inference runtimes |
+| [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) | Pre-built transformer architectures and layers |
+| [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) | Sample projects and integration demos |
 
 ---
 
@@ -61,7 +79,7 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 |---|---|
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
-| LLM inference (Llama, Gemma) | [docs/kllama-getting-started.md](docs/kllama-getting-started.md) |
+| LLM inference (Llama, Gemma) | [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) |
 | Java 21+ integration | [docs/java-getting-started.md](docs/java-getting-started.md) |
 | Data loading and transforms | [docs/io-readers-guide.md](docs/io-readers-guide.md) |
 | Graph DSL (ResNet, YOLO) | [docs/graph-dsl.md](docs/graph-dsl.md) |
@@ -79,18 +97,15 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 - Targets: JVM, macOS (Native), JS, WASM (Browser + WasmWasi)
 - Single codebase shared across all platforms via Kotlin Multiplatform
 
-### LLM Inference
+### Optimized Execution
 
-- **KLlama**: Llama-family models from GGUF files with streaming generation
-- **KGemma**: Gemma 3n models from SafeTensors with HuggingFace tokenizer
-- **KBert**: BERT and Sentence-Transformers for embeddings
-- JVM acceleration via MemorySegment tensors, SIMD GEMM, paged KV cache
+- **ComputeGraphExecutor**: Optimized engine with fusion passes and trace-to-DAG bridging.
+- **SDPA & Gather**: High-performance Scaled Dot-Product Attention and indexing operations.
 
-### Agentic AI
+### Agentic AI Infrastructure
 
-- Function / tool calling via `skainet-kllama-agent`
-- `AgentLoop` for multi-turn tool-use conversations
-- Java facade: `JavaAgentLoop`
+- **ComputeGraph**: Unified framework for defining agentic workflows and tool-calling loops.
+- Java facade: `JavaAgentLoop` (in `skainet-lang-java`)
 
 ### Neural Network DSL
 
@@ -109,9 +124,8 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 ### Java 21+ Support
 
 - `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition
-- `KLlamaJava` / `KBertJava` facades for blocking and async inference
 - Maven BOM (`sk.ainet:skainet-bom`) for one-line version management
-- Docs: [Getting Started](docs/java-getting-started.md) | [LLM Inference](docs/java-llm-inference.md) | [Model Training](docs/java-model-training.md)
+- Docs: [Getting Started](docs/java-getting-started.md) | [Model Training](docs/java-model-training.md)
 
 ### Edge AI: Arduino / C99 Export
 
@@ -128,12 +142,12 @@ runtime.generate(tokenizer.encode("Once upon a time"), steps = 64) { token ->
 
 ---
 
-## What's New in 0.16.0
+## What's New in 0.17.0
 
-- **Unified LLM core** — deduplicated and optimized implementation of `KvCache`, `softmax`, `RoPE`, and `sampling`
-- **Infrastructure cleanup** — extracted core LLM and transformer code to standalone repositories `SKaiNET-transformers`) to streamline the core project
-- **Consistent BOM** — refactored `skainet-bom` to use local `project()` references for reliable builds
-
+- **Core Engine Focus** — Refactored the repository to focus on the core `ComputeGraph` framework, compiler, and backends. Extracted high-level LLM and transformer implementations to standalone repositories.
+- **LLM-as-DSL** — New high-level DSL for defining and running LLM architectures within the core framework.
+- **Optimized ComputeGraphExecutor** — New executor with support for fusion passes and trace-to-DAG bridging for faster inference.
+- **SDPA & Gather** — Implemented Scaled Dot-Product Attention and `gather`/`indexSelect` ops for improved performance.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 

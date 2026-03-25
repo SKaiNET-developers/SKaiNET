@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.17.0] - 2026-03-25
+
+### Added
+- **Core Engine Focus**: Refactored the repository to focus on the core `ComputeGraph` framework, compiler, and backends.
+- **Standalone Ecosystem**: Extracted high-level LLM and transformer implementations to dedicated repositories ([SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) and [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers)).
+- **LLM-as-DSL**: High-level DSL for defining and running LLM architectures within the core `ComputeGraph` framework.
+- **ComputeGraphExecutor**: New optimized executor with support for fusion passes and trace-to-DAG bridging.
+- **SDPA & Gather**: Implementation of Scaled Dot-Product Attention (SDPA) and `gather`/`indexSelect` ops across backends.
+- **EmbeddingAdapter**: Streamlined embedding layer integration for transformer models.
+
+### Changed
+- **Optimized LLM execution**: Integrated fusion passes for faster inference on supported backends.
+- **Improved Tensor API**: Refined `Tensor` interface and updated `ComputeGraphExecutor` for better type safety and performance.
+- **Dependency Cleanups**: Removed stale references to LLM and transformer code already moved to the standalone `skainet-transformers` repository.
+
+### Fixed
+- **Embedding Padding**: Fixed `paddingIdx` handling in embedding layers.
+- **Concatenation**: Resolved rank-specific issues in tensor concatenation (rank > 1).
+- **Compilation**: Fixed various build and compilation errors after module migrations.
+
 ## [0.16.0] - 2026-03-08
 
 ### Added
