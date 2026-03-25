@@ -25,7 +25,7 @@ import kotlin.math.max
 
 internal class DefaultCpuOpsJvm(
     dataFactory: TensorDataFactory,
-) : DefaultCpuOpsBase(dataFactory), sk.ainet.lang.nn.normalization.FusedRmsNormOps {
+) : DefaultCpuOpsBase(dataFactory) {
 
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 
@@ -504,50 +504,6 @@ internal class DefaultCpuOpsJvm(
         val outData = DenseFloatArrayTensorData<T>(Shape(tensor.shape.dimensions.copyOf()), out)
         @Suppress("UNCHECKED_CAST")
         return CpuTensor(outData as TensorData<T, V>, this, tensor.dtype)
-    }
-
-    /**
-     * Fused RMS normalization: computes mean-of-squares → reciprocal-sqrt → multiply by weight
-     * in a single pass without intermediate tensor allocations.
-     *
-     * Handles both [1, dim] (single token) and [B, dim] (batch) inputs.
-     */
-    override fun <T : DType, V> fusedRmsNorm(
-        input: Tensor<T, V>,
-        weight: Tensor<T, V>,
-        eps: Float,
-    ): Tensor<T, V>? {
-        if (input.dtype != FP32::class) return null
-        val inputData = input.data as? FloatArrayTensorData<T> ?: return null
-        val weightData = weight.data as? FloatArrayTensorData<T> ?: return null
-        val buf = inputData.buffer
-        val wBuf = weightData.buffer
-        val rank = input.shape.rank
-        if (rank < 1 || rank > 2) return null
-
-        val dim = input.shape[rank - 1]
-        if (wBuf.size < dim) return null
-        val batchSize = if (rank == 2) input.shape[0] else 1
-        val out = FloatArray(buf.size)
-
-        for (b in 0 until batchSize) {
-            val off = b * dim
-            // Compute mean of squares
-            var sumSq = 0f
-            for (i in 0 until dim) {
-                val x = buf[off + i]
-                sumSq += x * x
-            }
-            val rms = 1f / kotlin.math.sqrt((sumSq / dim + eps).toDouble()).toFloat()
-            // Normalize and scale by weight
-            for (i in 0 until dim) {
-                out[off + i] = buf[off + i] * rms * wBuf[i]
-            }
-        }
-
-        val outData = DenseFloatArrayTensorData<T>(Shape(input.shape.dimensions.copyOf()), out)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
     }
 
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {

@@ -1851,10 +1851,6 @@ public final class sk/ainet/lang/nn/normalization/BatchNormalization : sk/ainet/
 	public final fun train ()V
 }
 
-public abstract interface class sk/ainet/lang/nn/normalization/FusedRmsNormOps {
-	public abstract fun fusedRmsNorm (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
-}
-
 public final class sk/ainet/lang/nn/normalization/GroupNormalization : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> (IIDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public synthetic fun <init> (IIDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

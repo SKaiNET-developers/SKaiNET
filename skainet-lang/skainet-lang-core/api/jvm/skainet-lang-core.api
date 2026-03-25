@@ -1155,11 +1155,6 @@ public final class sk/ainet/lang/nn/activations/Softmax : sk/ainet/lang/nn/Modul
 	public fun getName ()Ljava/lang/String;
 }
 
-public abstract interface class sk/ainet/lang/nn/dsl/ATTENTION : sk/ainet/lang/nn/dsl/NetworkDslItem {
-	public abstract fun kvCache (III)V
-	public abstract fun rope (II)V
-}
-
 public abstract interface class sk/ainet/lang/nn/dsl/AVGPOOL2D : sk/ainet/lang/nn/dsl/NetworkDslItem {
 	public abstract fun getCountIncludePad ()Z
 	public abstract fun getKernelSize ()Lkotlin/Pair;
@@ -1172,14 +1167,6 @@ public abstract interface class sk/ainet/lang/nn/dsl/AVGPOOL2D : sk/ainet/lang/n
 	public abstract fun setPadding (Lkotlin/Pair;)V
 	public abstract fun setStride (Lkotlin/Pair;)V
 	public abstract fun stride (I)V
-}
-
-public final class sk/ainet/lang/nn/dsl/AttentionImpl : sk/ainet/lang/nn/dsl/ATTENTION {
-	public fun <init> (Lsk/ainet/context/ExecutionContext;IIIZZZLjava/lang/String;)V
-	public final fun create ()Lsk/ainet/lang/nn/transformer/MultiHeadAttention;
-	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
-	public fun kvCache (III)V
-	public fun rope (II)V
 }
 
 public final class sk/ainet/lang/nn/dsl/AvgPool2dImpl : sk/ainet/lang/nn/dsl/AVGPOOL2D {
@@ -1478,6 +1465,10 @@ public final class sk/ainet/lang/nn/dsl/NetworkBuilder {
 	public final fun build ()Lsk/ainet/lang/nn/Module;
 }
 
+public final class sk/ainet/lang/nn/dsl/NetworkBuilderKt {
+	public static final fun getDefaultName (Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;
+}
+
 public abstract interface annotation class sk/ainet/lang/nn/dsl/NetworkDsl : java/lang/annotation/Annotation {
 }
 
@@ -1508,8 +1499,6 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
-	public abstract fun embedding (IILjava/lang/String;)V
-	public static synthetic fun embedding$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun flatten$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public abstract fun groupNorm (IIDZLjava/lang/String;)V
@@ -1522,24 +1511,15 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public abstract fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;ILjava/lang/Object;)V
-	public abstract fun multiHeadAttention (IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public static synthetic fun multiHeadAttention$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
-	public abstract fun residual ()V
-	public abstract fun rmsNorm (IFLjava/lang/String;)V
-	public static synthetic fun rmsNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IFLjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun sequential (Lkotlin/jvm/functions/Function1;)V
 	public abstract fun softmax (ILjava/lang/String;)V
 	public static synthetic fun softmax$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public abstract fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public abstract fun swiGluFFN (IILjava/lang/String;)V
-	public static synthetic fun swiGluFFN$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;ILjava/lang/Object;)V
-	public abstract fun xielu (Ljava/lang/String;)V
-	public static synthetic fun xielu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/NeuralNetworkDsl$DefaultImpls {
@@ -1554,20 +1534,15 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDsl$DefaultImpls {
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
-	public static synthetic fun embedding$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun flatten$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun groupNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIDZLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun input$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ZILjava/lang/Object;)V
 	public static synthetic fun layerNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[IDZLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;ILjava/lang/Object;)V
-	public static synthetic fun multiHeadAttention$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
-	public static synthetic fun rmsNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IFLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun softmax$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ILjava/lang/Object;)V
-	public static synthetic fun swiGluFFN$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IILjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;ILjava/lang/Object;)V
-	public static synthetic fun xielu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/dsl/NeuralNetworkDsl {
@@ -1584,9 +1559,9 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public fun embedding (IILjava/lang/String;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
+	public final fun getKClass ()Lkotlin/reflect/KClass;
 	public final fun getLastDimension ()I
 	public final fun getModules ()Ljava/util/List;
 	public fun groupNorm (IIDZLjava/lang/String;)V
@@ -1594,18 +1569,13 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public fun layerNorm ([IDZLjava/lang/String;)V
 	public fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
-	public fun multiHeadAttention (IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public fun residual ()V
-	public fun rmsNorm (IFLjava/lang/String;)V
 	public fun sequential (Lkotlin/jvm/functions/Function1;)V
 	public final fun setLastDimension (I)V
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public fun swiGluFFN (IILjava/lang/String;)V
 	public fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
-	public fun xielu (Ljava/lang/String;)V
 }
 
 public abstract interface class sk/ainet/lang/nn/dsl/PrecisionResolver {
@@ -1626,10 +1596,10 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public fun embedding (IILjava/lang/String;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
 	public final fun getInputDimension ()I
+	public final fun getKClass ()Lkotlin/reflect/KClass;
 	public final fun getLastDimension ()I
 	public final fun getModules ()Ljava/util/List;
 	public fun groupNorm (IIDZLjava/lang/String;)V
@@ -1637,19 +1607,14 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public fun layerNorm ([IDZLjava/lang/String;)V
 	public fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
-	public fun multiHeadAttention (IIIZZZLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public fun residual ()V
-	public fun rmsNorm (IFLjava/lang/String;)V
 	public fun sequential (Lkotlin/jvm/functions/Function1;)V
 	public final fun setInputDimension (I)V
 	public final fun setLastDimension (I)V
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
-	public fun swiGluFFN (IILjava/lang/String;)V
 	public fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
-	public fun xielu (Ljava/lang/String;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/TensorOpsNetworkDslKt {
@@ -1815,58 +1780,6 @@ public final class sk/ainet/lang/nn/layers/Dropout : sk/ainet/lang/nn/Module {
 	public final fun setTraining (Z)V
 }
 
-public final class sk/ainet/lang/nn/layers/Embedding : sk/ainet/lang/nn/DualModule, sk/ainet/lang/nn/topology/ModuleParameters {
-	public static final field Companion Lsk/ainet/lang/nn/layers/Embedding$Companion;
-	public fun <init> (IILsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;Ljava/lang/String;)V
-	public synthetic fun <init> (IILsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun <init> (Lsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;Lsk/ainet/lang/nn/layers/EmbeddingParams;Ljava/lang/String;FFLkotlin/random/Random;)V
-	public synthetic fun <init> (Lsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;Lsk/ainet/lang/nn/layers/EmbeddingParams;Ljava/lang/String;FFLkotlin/random/Random;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
-	public final fun forward ([ILsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
-	public final fun forward ([JLsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
-	public final fun forwardAny (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;Z)Lsk/ainet/lang/tensor/Tensor;
-	public static synthetic fun forwardAny$default (Lsk/ainet/lang/nn/layers/Embedding;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
-	public final fun getEmbeddingDim ()I
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-	public final fun getNumEmbeddings ()I
-	public final fun getPaddingIdx ()Ljava/lang/Integer;
-	public fun getParams ()Ljava/util/List;
-}
-
-public final class sk/ainet/lang/nn/layers/Embedding$Companion {
-}
-
-public final class sk/ainet/lang/nn/layers/EmbeddingAdapter : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
-	public fun <init> (Lsk/ainet/lang/nn/layers/Embedding;)V
-	public final fun getEmbedding ()Lsk/ainet/lang/nn/layers/Embedding;
-	public final fun getEmbeddingDim ()I
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-	public final fun getNumEmbeddings ()I
-	public fun getParams ()Ljava/util/List;
-}
-
-public final class sk/ainet/lang/nn/layers/EmbeddingParams {
-	public fun <init> (IILjava/lang/Integer;Ljava/lang/Float;Z)V
-	public synthetic fun <init> (IILjava/lang/Integer;Ljava/lang/Float;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()I
-	public final fun component2 ()I
-	public final fun component3 ()Ljava/lang/Integer;
-	public final fun component4 ()Ljava/lang/Float;
-	public final fun component5 ()Z
-	public final fun copy (IILjava/lang/Integer;Ljava/lang/Float;Z)Lsk/ainet/lang/nn/layers/EmbeddingParams;
-	public static synthetic fun copy$default (Lsk/ainet/lang/nn/layers/EmbeddingParams;IILjava/lang/Integer;Ljava/lang/Float;ZILjava/lang/Object;)Lsk/ainet/lang/nn/layers/EmbeddingParams;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getEmbeddingDim ()I
-	public final fun getMaxNorm ()Ljava/lang/Float;
-	public final fun getNumEmbeddings ()I
-	public final fun getPaddingIdx ()Ljava/lang/Integer;
-	public final fun getScaleGradByFreq ()Z
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
 public final class sk/ainet/lang/nn/loss/BCEWithLogitsLoss : sk/ainet/lang/nn/loss/Loss {
 	public fun <init> ()V
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/nn/loss/Reduction;)Lsk/ainet/lang/tensor/Tensor;
@@ -2015,10 +1928,6 @@ public final class sk/ainet/lang/nn/normalization/BatchNormalization : sk/ainet/
 	public final fun train ()V
 }
 
-public abstract interface class sk/ainet/lang/nn/normalization/FusedRmsNormOps {
-	public abstract fun fusedRmsNorm (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
-}
-
 public final class sk/ainet/lang/nn/normalization/GroupNormalization : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> (IIDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public synthetic fun <init> (IIDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -2031,15 +1940,6 @@ public final class sk/ainet/lang/nn/normalization/GroupNormalization : sk/ainet/
 public final class sk/ainet/lang/nn/normalization/LayerNormalization : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> ([IDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public synthetic fun <init> ([IDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-	public fun getParams ()Ljava/util/List;
-}
-
-public final class sk/ainet/lang/nn/normalization/RMSNormalization : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
-	public fun <init> ([IDLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;)V
-	public synthetic fun <init> ([IDLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
 	public fun getModules ()Ljava/util/List;
 	public fun getName ()Ljava/lang/String;
@@ -2230,80 +2130,6 @@ public final class sk/ainet/lang/nn/topology/TraversalKt {
 	public static final fun findById (Lsk/ainet/lang/nn/topology/ModuleNode;Ljava/lang/String;)Lsk/ainet/lang/nn/topology/ModuleNode;
 	public static final fun findByPath (Lsk/ainet/lang/nn/topology/ModuleNode;Ljava/lang/String;)Lsk/ainet/lang/nn/topology/ModuleNode;
 	public static final fun walkDepthFirst (Lsk/ainet/lang/nn/topology/ModuleNode;Lkotlin/jvm/functions/Function1;)V
-}
-
-public final class sk/ainet/lang/nn/transformer/KVCache : sk/ainet/lang/nn/Module {
-	public fun <init> (IIILjava/lang/String;)V
-	public synthetic fun <init> (IIILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun getHeadDim ()I
-	public final fun getMaxSeqLen ()I
-	public fun getModules ()Ljava/util/List;
-	public final fun getNKVHeads ()I
-	public fun getName ()Ljava/lang/String;
-	public final fun getPosition ()I
-	public final fun reset ()V
-	public final fun update (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lkotlin/Pair;
-}
-
-public final class sk/ainet/lang/nn/transformer/MultiHeadAttention : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
-	public fun <init> (IIIZZZLjava/lang/String;Lsk/ainet/lang/nn/transformer/RoPE;Lsk/ainet/lang/nn/transformer/KVCache;)V
-	public synthetic fun <init> (IIIZZZLjava/lang/String;Lsk/ainet/lang/nn/transformer/RoPE;Lsk/ainet/lang/nn/transformer/KVCache;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun getBias ()Z
-	public final fun getCausal ()Z
-	public final fun getDim ()I
-	public final fun getHeadDim ()I
-	public final fun getKNorm ()Lsk/ainet/lang/nn/normalization/RMSNormalization;
-	public final fun getKvCache ()Lsk/ainet/lang/nn/transformer/KVCache;
-	public final fun getKvDim ()I
-	public fun getModules ()Ljava/util/List;
-	public final fun getNHeads ()I
-	public final fun getNKVHeads ()I
-	public fun getName ()Ljava/lang/String;
-	public fun getParams ()Ljava/util/List;
-	public final fun getQNorm ()Lsk/ainet/lang/nn/normalization/RMSNormalization;
-	public final fun getQkNorm ()Z
-	public final fun getRope ()Lsk/ainet/lang/nn/transformer/RoPE;
-	public final fun setKvCache (Lsk/ainet/lang/nn/transformer/KVCache;)V
-	public final fun setRope (Lsk/ainet/lang/nn/transformer/RoPE;)V
-}
-
-public final class sk/ainet/lang/nn/transformer/ResidualAdd : sk/ainet/lang/nn/Module {
-	public fun <init> ()V
-	public fun <init> (Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-	public final fun getSavedInput ()Lsk/ainet/lang/tensor/Tensor;
-	public final fun setSavedInput (Lsk/ainet/lang/tensor/Tensor;)V
-}
-
-public final class sk/ainet/lang/nn/transformer/RoPE : sk/ainet/lang/nn/Module {
-	public fun <init> (IIFLjava/lang/String;)V
-	public synthetic fun <init> (IIFLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun forward (Lsk/ainet/lang/tensor/Tensor;ILsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
-	public final fun getHeadDim ()I
-	public final fun getMaxSeqLen ()I
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/nn/transformer/SwiGLUFFN : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
-	public fun <init> (IILjava/lang/String;)V
-	public synthetic fun <init> (IILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun getDim ()I
-	public final fun getHiddenDim ()I
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-	public fun getParams ()Ljava/util/List;
-}
-
-public final class sk/ainet/lang/nn/transformer/XIELUActivation : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
-	public fun <init> ()V
-	public fun <init> (Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun getModules ()Ljava/util/List;
-	public fun getName ()Ljava/lang/String;
-	public fun getParams ()Ljava/util/List;
 }
 
 public final class sk/ainet/lang/tensor/ContiguityAnalysis {
