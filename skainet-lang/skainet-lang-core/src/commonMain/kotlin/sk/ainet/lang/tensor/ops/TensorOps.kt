@@ -196,4 +196,59 @@ public interface TensorOps {
         tensor: Tensor<TFrom, V>,
         targetType: TTo
     ): Tensor<TTo, V>
+
+    // --- LLM / Transformer primitives ---
+
+    /** Gather rows from [input] along [dim] using integer [indices].
+     *  Primary use: embedding lookup (dim=0, indices=token IDs). */
+    public fun <T : DType, V> gather(
+        input: Tensor<T, V>,
+        indices: Tensor<DType, *>,
+        dim: Int = 0
+    ): Tensor<T, V>
+
+    /** Select elements from [input] along [dim] at the given [indices].
+     *  Similar to gather but for general index selection patterns. */
+    public fun <T : DType, V> indexSelect(
+        input: Tensor<T, V>,
+        indices: Tensor<DType, *>,
+        dim: Int = 0
+    ): Tensor<T, V>
+
+    /** Element-wise exponential: e^x */
+    @Diff
+    @ActivationDsl
+    public fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /** Element-wise exp(x) - 1, numerically stable for small x. */
+    @Diff
+    @ActivationDsl
+    public fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /**
+     * Scaled dot-product attention.
+     *
+     * Computes: softmax((Q @ K^T) * scale + mask) @ V
+     *
+     * This is a first-class op (not a composition) because it maps directly to
+     * platform-specific fused kernels: Flash Attention on CUDA, MPSGraph SDPA on
+     * Apple Silicon, etc.
+     *
+     * @param query  [batch, nHeads, seqLen, headDim]
+     * @param key    [batch, nKVHeads, kvLen, headDim]
+     * @param value  [batch, nKVHeads, kvLen, headDim]
+     * @param mask   optional additive mask [batch, 1, seqLen, kvLen] (e.g. causal)
+     * @param scale  scaling factor, defaults to 1/sqrt(headDim)
+     * @param causal if true, apply causal masking (ignore [mask] parameter)
+     * @return       [batch, nHeads, seqLen, headDim]
+     */
+    @Diff
+    public fun <T : DType, V> scaledDotProductAttention(
+        query: Tensor<T, V>,
+        key: Tensor<T, V>,
+        value: Tensor<T, V>,
+        mask: Tensor<T, V>? = null,
+        scale: Float = 0f,
+        causal: Boolean = false
+    ): Tensor<T, V>
 }

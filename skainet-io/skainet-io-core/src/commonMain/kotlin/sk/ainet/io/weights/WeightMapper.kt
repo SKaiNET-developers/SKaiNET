@@ -11,11 +11,14 @@ import sk.ainet.lang.types.DType
  * @property usePathBasedMatching Whether to use DSL module path for name matching
  * @property fallbackToShapeMatching Whether to fall back to shape-only matching if name matching fails
  * @property debug Whether to print debug information during mapping
+ * @property nameResolver Optional resolver that translates module paths/param names to tensor names.
+ *                        When provided, this takes priority over the default ONNX-style path matching.
  */
 public data class MappingConfig(
     val usePathBasedMatching: Boolean = true,
     val fallbackToShapeMatching: Boolean = true,
-    val debug: Boolean = false
+    val debug: Boolean = false,
+    val nameResolver: WeightNameResolver? = null
 )
 
 /**
@@ -104,13 +107,22 @@ public object WeightMapper {
             val isBiasParam = param is ModuleParameter.BiasParameter
             val pShape = param.value.shape.dimensions.toList()
 
-            // Extract the layer name from DSL module path
-            val layerName = if (config.usePathBasedMatching) {
+            // Strategy 1: Try the explicit name resolver (for LLM and custom mappings)
+            val byResolver = if (config.nameResolver != null) {
+                val resolvedName = config.nameResolver.resolve(pwp.modulePath, param.name)
+                if (resolvedName != null) {
+                    modelTensors.firstOrNull { tensor ->
+                        tensor.name !in used && tensor.name == resolvedName
+                    }
+                } else null
+            } else null
+
+            // Strategy 2: Extract the layer name from DSL module path (ONNX-style)
+            val layerName = if (byResolver == null && config.usePathBasedMatching) {
                 extractLayerNameFromPath(pwp.modulePath)
             } else null
 
-            // First, try to match by name
-            val byName = if (layerName != null) {
+            val byName = if (byResolver == null && layerName != null) {
                 modelTensors.firstOrNull { tensor ->
                     tensor.name !in used &&
                         tensor.isBias == isBiasParam &&
@@ -119,8 +131,8 @@ public object WeightMapper {
                 }
             } else null
 
-            // Fall back to shape-only matching if name matching fails
-            val chosen = byName ?: if (config.fallbackToShapeMatching) {
+            // Strategy 3: Fall back to shape-only matching
+            val chosen = byResolver ?: byName ?: if (config.fallbackToShapeMatching) {
                 modelTensors.firstOrNull { tensor ->
                     tensor.name !in used &&
                         tensor.isBias == isBiasParam &&

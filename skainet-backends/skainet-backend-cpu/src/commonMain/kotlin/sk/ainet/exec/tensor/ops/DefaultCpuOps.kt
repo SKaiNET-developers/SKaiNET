@@ -1242,8 +1242,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         // Normalize dim allowing dim==rank for scalars to create 1D
         val nd = if (dim < 0) dim + maxOf(rank, 1) else dim
         require(nd >= 0 && nd <= rank) { "concat: dim ${dim} out of range for rank ${rank}" }
-        // Disallow concatenation along leading dimension for rank > 1 to match shape semantics tests
-        require(!(rank > 1 && nd == 0)) { "concat: concatenation along dimension 0 is not supported for rank > 1" }
+        // Allow concatenation along any valid dimension (including dim 0 for rank > 1)
         // Validate shapes and dtype, compute output dims
         var concatSize = 0
         val outDims = IntArray(if (rank == 0) 1 else rank) { i -> if (rank == 0) 0 else first.shape[i] }
@@ -2183,6 +2182,188 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         targetType: TTo
     ): Tensor<TTo, V> {
         TODO("Not yet implemented")
+    }
+
+    override fun <T : DType, V> gather(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
+        require(dim == 0) { "gather: only dim=0 supported currently, got dim=$dim" }
+        // Gather rows from input along dimension 0 using indices
+        // Input: [vocabSize, embeddingDim], Indices: [L] or [N, L]
+        // Output: [L, embeddingDim] or [N, L, embeddingDim]
+        val numIndices = indices.volume
+        val indexList = IntArray(numIndices) { i ->
+            val v = indices.data[i]
+            (v as Number).toInt()
+        }
+
+        if (input.rank == 2) {
+            val embDim = input.shape[1]
+            val outShape = if (indices.rank == 1) {
+                Shape(intArrayOf(numIndices, embDim))
+            } else {
+                // Preserve index shape + embedding dim
+                Shape(IntArray(indices.rank) { indices.shape[it] } + intArrayOf(embDim))
+            }
+            val outData = dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+                // Map multi-dim output index to flat index and embedding position
+                val flatIdx = if (outIdx.size == 2) outIdx[0] else {
+                    var flat = 0
+                    for (d in 0 until outIdx.size - 1) {
+                        flat = flat * (if (d < indices.rank) indices.shape[d] else 1) + outIdx[d]
+                    }
+                    flat
+                }
+                val row = indexList[flatIdx]
+                val col = outIdx[outIdx.size - 1]
+                input.data[row, col]
+            }
+            return newTensor(outData, input.dtype, input)
+        }
+
+        // Fallback for higher-rank inputs
+        error("gather: unsupported input rank ${input.rank}")
+    }
+
+    override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
+        require(dim in 0 until input.rank) { "indexSelect: dim=$dim out of range for rank ${input.rank}" }
+        val numIndices = indices.volume
+        val indexList = IntArray(numIndices) { i ->
+            val v = indices.data[i]
+            (v as Number).toInt()
+        }
+
+        val resultDims = input.shape.dimensions.copyOf()
+        resultDims[dim] = numIndices
+        val resultShape = Shape(resultDims)
+
+        val outData = dataFactory.init<T, V>(resultShape, input.dtype) { outIdx ->
+            // Replace the dim-th index with the looked-up value from indexList
+            val srcIdx = outIdx.copyOf()
+            srcIdx[dim] = indexList[outIdx[dim]]
+            input.data.get(*srcIdx)
+        }
+        return newTensor(outData, input.dtype, input)
+    }
+
+    override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.exp(x) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.expm1(x.toDouble()).toFloat() as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    override fun <T : DType, V> scaledDotProductAttention(
+        query: Tensor<T, V>,
+        key: Tensor<T, V>,
+        value: Tensor<T, V>,
+        mask: Tensor<T, V>?,
+        scale: Float,
+        causal: Boolean
+    ): Tensor<T, V> {
+        // Expected shapes: [batch, heads, seqQ, headDim] for Q, [batch, heads, seqKV, headDim] for K/V
+        require(query.rank == 4) { "SDPA: expected rank-4 query, got rank ${query.rank}" }
+        require(key.rank == 4) { "SDPA: expected rank-4 key, got rank ${key.rank}" }
+        require(value.rank == 4) { "SDPA: expected rank-4 value, got rank ${value.rank}" }
+
+        val batch = query.shape[0]
+        val heads = query.shape[1]
+        val seqQ = query.shape[2]
+        val headDim = query.shape[3]
+        val seqKV = key.shape[2]
+
+        val qBuf = query.data.copyToFloatArray()
+        val kBuf = key.data.copyToFloatArray()
+        val vBuf = value.data.copyToFloatArray()
+
+        val outBuf = FloatArray(batch * heads * seqQ * headDim)
+
+        for (b in 0 until batch) {
+            for (h in 0 until heads) {
+                // Compute attention scores: Q @ K^T, then scale
+                val scores = FloatArray(seqQ * seqKV)
+                for (qi in 0 until seqQ) {
+                    for (ki in 0 until seqKV) {
+                        var dot = 0f
+                        val qOff = ((b * heads + h) * seqQ + qi) * headDim
+                        val kOff = ((b * heads + h) * seqKV + ki) * headDim
+                        for (d in 0 until headDim) {
+                            dot += qBuf[qOff + d] * kBuf[kOff + d]
+                        }
+                        scores[qi * seqKV + ki] = dot * scale
+                    }
+                }
+
+                // Apply causal mask (set future positions to -inf)
+                if (causal) {
+                    for (qi in 0 until seqQ) {
+                        // For single-token inference with KV cache: qi indexes from the
+                        // query's perspective. The valid range of ki is [0, seqKV).
+                        // With cache, seqQ=1 and seqKV=pos+1, so all keys are valid (no masking needed).
+                        // Without cache, seqQ=seqKV, and we mask ki > qi.
+                        val maxKi = if (seqQ == seqKV) qi else seqKV - seqQ + qi
+                        for (ki in maxKi + 1 until seqKV) {
+                            scores[qi * seqKV + ki] = Float.NEGATIVE_INFINITY
+                        }
+                    }
+                }
+
+                // Apply external mask if provided
+                if (mask != null) {
+                    val maskBuf = mask.data.copyToFloatArray()
+                    for (i in scores.indices) {
+                        scores[i] += maskBuf[i % maskBuf.size]
+                    }
+                }
+
+                // Softmax over the key dimension for each query position
+                for (qi in 0 until seqQ) {
+                    val off = qi * seqKV
+                    var maxVal = Float.NEGATIVE_INFINITY
+                    for (ki in 0 until seqKV) {
+                        if (scores[off + ki] > maxVal) maxVal = scores[off + ki]
+                    }
+                    var sumExp = 0f
+                    for (ki in 0 until seqKV) {
+                        val e = kotlin.math.exp(scores[off + ki] - maxVal)
+                        scores[off + ki] = e
+                        sumExp += e
+                    }
+                    if (sumExp > 0f) {
+                        for (ki in 0 until seqKV) {
+                            scores[off + ki] /= sumExp
+                        }
+                    }
+                }
+
+                // Compute output: scores @ V
+                for (qi in 0 until seqQ) {
+                    val outOff = ((b * heads + h) * seqQ + qi) * headDim
+                    for (d in 0 until headDim) {
+                        var sum = 0f
+                        for (ki in 0 until seqKV) {
+                            val vOff = ((b * heads + h) * seqKV + ki) * headDim
+                            sum += scores[qi * seqKV + ki] * vBuf[vOff + d]
+                        }
+                        outBuf[outOff + d] = sum
+                    }
+                }
+            }
+        }
+
+        val shape = Shape(batch, heads, seqQ, headDim)
+        @Suppress("UNCHECKED_CAST")
+        val data = dataFactory.fromFloatArray<T, Float>(shape, query.dtype, outBuf) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(data, query.dtype, query, key, value)
     }
 
 }

@@ -39,7 +39,7 @@ The plugin is applied to 21 library modules:
 
 | Group | Modules |
 |-------|---------|
-| skainet-lang | `skainet-lang-core`, `skainet-lang-models`, `skainet-lang-ksp-annotations`, `skainet-kan`, `skainet-lang-dag` |
+| skainet-lang | `skainet-lang-core`, `skainet-lang-models`, `skainet-lang-ksp-annotations`, `skainet-lang-dag` |
 | skainet-compile | `skainet-compile-core`, `skainet-compile-dag`, `skainet-compile-json`, `skainet-compile-hlo`, `skainet-compile-c` |
 | skainet-backends | `skainet-backend-cpu` |
 | skainet-data | `skainet-data-api`, `skainet-data-transform`, `skainet-data-simple`, `skainet-data-media` |

@@ -399,6 +399,11 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> unfold(tensor: Tensor<T, V>, dim: Int, size: Int, step: Int): Tensor<T, V> = base.unfold(tensor, dim, size, step)
     override fun <T : DType, TTo : DType, V> convert(tensor: Tensor<T, V>, targetType: TTo): Tensor<TTo, V> = base.convert(tensor, targetType)
     override fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int): Tensor<T, V> = base.tril(tensor, k)
+    override fun <T : DType, V> gather(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> = base.gather(input, indices, dim)
+    override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> = base.indexSelect(input, indices, dim)
+    override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> = base.exp(tensor)
+    override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> = base.expm1(tensor)
+    override fun <T : DType, V> scaledDotProductAttention(query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>, mask: Tensor<T, V>?, scale: Float, causal: Boolean): Tensor<T, V> = base.scaledDotProductAttention(query, key, value, mask, scale, causal)
 }
 
 private class ConcatRecordingOperation(

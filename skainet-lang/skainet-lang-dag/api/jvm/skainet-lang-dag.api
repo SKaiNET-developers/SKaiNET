@@ -52,12 +52,20 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun divide$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun elu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun elu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun exp (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun exp$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun expm1 (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun expm1$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun flatten (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;IILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun flatten$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;IILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun gather (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun gather$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun ge (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun ge$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun gelu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun gelu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun indexSelect (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun indexSelect$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun leakyRelu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun leakyRelu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun logSoftmax (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
@@ -86,6 +94,8 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun reshape$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/tensor/Shape;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun rsubScalar (Lsk/ainet/lang/dag/DagBuilder;Ljava/lang/Number;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun rsubScalar$default (Lsk/ainet/lang/dag/DagBuilder;Ljava/lang/Number;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun scaledDotProductAttention (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;FZLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun scaledDotProductAttention$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;FZLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun sigmoid (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun sigmoid$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun sign (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
@@ -151,6 +161,14 @@ public final class sk/ainet/lang/dag/GraphProgram {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/dag/GraphProgramSink : sk/ainet/lang/trace/OpSink {
+	public fun <init> ()V
+	public final fun clear ()V
+	public final fun getSize ()I
+	public fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
+	public final fun toGraphProgram ()Lsk/ainet/lang/dag/GraphProgram;
+}
+
 public final class sk/ainet/lang/dag/GraphValue {
 	public fun <init> (Ljava/lang/String;ILsk/ainet/lang/tensor/ops/TensorSpec;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -187,5 +205,9 @@ public final class sk/ainet/lang/dag/SymbolicTensorBuilder {
 	public final fun shape ([ILkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/ops/TensorSpec;
 	public static synthetic fun shape$default (Lsk/ainet/lang/dag/SymbolicTensorBuilder;Ljava/util/List;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/TensorSpec;
 	public static synthetic fun shape$default (Lsk/ainet/lang/dag/SymbolicTensorBuilder;[ILkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/TensorSpec;
+}
+
+public final class sk/ainet/lang/dag/TraceToGraphProgramKt {
+	public static final fun traceToGraphProgram (Ljava/util/List;)Lsk/ainet/lang/dag/GraphProgram;
 }
 

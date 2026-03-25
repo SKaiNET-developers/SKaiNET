@@ -1,0 +1,92 @@
+public abstract interface class sk/ainet/compile/opt/GraphOptimizationPass {
+	public abstract fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public abstract fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/GraphOptimizationPipeline {
+	public static final field Companion Lsk/ainet/compile/opt/GraphOptimizationPipeline$Companion;
+	public fun <init> (Ljava/util/List;I)V
+	public synthetic fun <init> (Ljava/util/List;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun optimize (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationPipelineResult;
+}
+
+public final class sk/ainet/compile/opt/GraphOptimizationPipeline$Companion {
+	public final fun createAggressive ()Lsk/ainet/compile/opt/GraphOptimizationPipeline;
+	public final fun createDefault ()Lsk/ainet/compile/opt/GraphOptimizationPipeline;
+	public final fun createLLM ()Lsk/ainet/compile/opt/GraphOptimizationPipeline;
+}
+
+public final class sk/ainet/compile/opt/GraphOptimizationPipelineResult {
+	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/List;I)V
+	public final fun component1 ()Lsk/ainet/lang/graph/ComputeGraph;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()I
+	public final fun copy (Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/List;I)Lsk/ainet/compile/opt/GraphOptimizationPipelineResult;
+	public static synthetic fun copy$default (Lsk/ainet/compile/opt/GraphOptimizationPipelineResult;Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/List;IILjava/lang/Object;)Lsk/ainet/compile/opt/GraphOptimizationPipelineResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getGraph ()Lsk/ainet/lang/graph/ComputeGraph;
+	public final fun getPassResults ()Ljava/util/List;
+	public final fun getTotalIterations ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/GraphOptimizationResult {
+	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;ZLjava/util/List;)V
+	public synthetic fun <init> (Lsk/ainet/lang/graph/ComputeGraph;ZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/lang/graph/ComputeGraph;
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Lsk/ainet/lang/graph/ComputeGraph;ZLjava/util/List;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public static synthetic fun copy$default (Lsk/ainet/compile/opt/GraphOptimizationResult;Lsk/ainet/lang/graph/ComputeGraph;ZLjava/util/List;ILjava/lang/Object;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChanged ()Z
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getGraph ()Lsk/ainet/lang/graph/ComputeGraph;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/DeadCodeEliminationPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/LLMFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/OperationFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/SharedWeightDeduplicationPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public static final field Companion Lsk/ainet/compile/opt/passes/SharedWeightDeduplicationPass$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/SharedWeightDeduplicationPass$Companion {
+	public final fun getDEFAULT_TIED_PATTERNS ()Ljava/util/List;
+}
+
+public final class sk/ainet/compile/opt/passes/TransposeEliminationPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+

@@ -120,11 +120,23 @@ class DefaultCpuOpsShapeOpsTest {
     }
 
     @Test
-    fun error_cases_concat_mismatch_and_split_dim() {
+    fun concat_along_dim0_valid_shapes() {
         data(ctx) { _ ->
             val a = tensor<FP32, Float> { shape(2, 2) { zeros() } }
             val b = tensor<FP32, Float> { shape(3, 2) { zeros() } }
-            assertFailsWith<IllegalArgumentException> { ops.concat(listOf(a, b), dim = 0) }
+            // Concat along dim 0: non-concat dims (dim 1) match, so this is valid
+            val cat = ops.concat(listOf(a, b), dim = 0)
+            assertEquals(Shape(5, 2), cat.shape)
+        }
+    }
+
+    @Test
+    fun error_cases_concat_mismatch_and_split_dim() {
+        data(ctx) { _ ->
+            val a = tensor<FP32, Float> { shape(2, 2) { zeros() } }
+            val c = tensor<FP32, Float> { shape(2, 3) { zeros() } }
+            // Non-concat dims mismatch: dim 1 is 2 vs 3 when concatenating along dim 0
+            assertFailsWith<IllegalArgumentException> { ops.concat(listOf(a, c), dim = 0) }
             assertFailsWith<IllegalArgumentException> { ops.split(a, splitSize = 0, dim = 1) }
             assertFailsWith<IllegalArgumentException> { ops.split(a, splitSize = 1, dim = 2) }
         }

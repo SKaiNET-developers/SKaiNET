@@ -57,7 +57,7 @@
         },
         "modality": {
           "type": "string",
-          "enum": ["core", "vision", "nlp", "audio"],
+          "enum": ["core", "vision", "nlp"],
           "description": "Modality category of the operator"
         },
         "functions": {

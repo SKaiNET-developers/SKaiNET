@@ -242,16 +242,17 @@ public open class DefaultExecutionTape(
 
     public fun toComputeGraph(
         synthesizeExternalInputs: Boolean = false,
-        inputTensorIds: Set<String> = emptySet()
+        inputTensorIds: Set<String> = emptySet(),
+        embedConstants: Boolean = true
     ): ComputeGraph {
         // Prefer trace-based offline build when traces are available to ensure
         // consistency with online GraphSink wiring rules (PRD FR6).
         if (_traces.isNotEmpty()) {
             val graph = DefaultComputeGraph()
-            val builder = TraceToGraphBuilder(graph, session)
+            val builder = TraceToGraphBuilder(graph, session, embedWeightData = embedConstants)
             builder.addAll(_traces)
             if (synthesizeExternalInputs) {
-                builder.finalize(inputTensorIds)
+                builder.finalize(inputTensorIds, embedConstants = embedConstants)
             }
             return graph
         }
@@ -829,6 +830,24 @@ public class DefaultGradientTape(
         return listOf(ops.narrow(ops.narrow(upstream, 2, padTop, input.shape.dimensions[2]), 3, padLeft, input.shape.dimensions[3]))
     }
 
+    override fun expBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(exp(x))/dx = exp(x) = output
+        return listOf(upstream.ops.multiply(upstream, output))
+    }
+
+    override fun expm1Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(expm1(x))/dx = exp(x) = output + 1
+        val ops = upstream.ops
+        val expX = ops.addScalar(output, 1f)
+        return listOf(ops.multiply(upstream, expX))
+    }
+
+    override fun scaledDotProductAttentionBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // SDPA backward is complex; stub returns null gradients (not differentiable through this path).
+        // Full backward would require recomputing attention weights from Q,K,V.
+        return inputs.map { null }
+    }
+
     private fun buildBackwardFromTrace(
         trace: OpTrace,
         inputs: List<Tensor<DType, Any>>,
@@ -872,6 +891,9 @@ public class DefaultGradientTape(
             "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
             "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }
             "split" -> BackwardOp(inputs, output) { upstream -> splitBackward(upstream, output, inputs, trace.attributes) }
+            "exp" -> BackwardOp(inputs, output) { upstream -> expBackward(upstream, output, inputs, trace.attributes) }
+            "expm1" -> BackwardOp(inputs, output) { upstream -> expm1Backward(upstream, output, inputs, trace.attributes) }
+            "scaledDotProductAttention" -> BackwardOp(inputs, output) { upstream -> scaledDotProductAttentionBackward(upstream, output, inputs, trace.attributes) }
             else -> {
                 // Support custom backward functions passed via trace attributes
                 @Suppress("UNCHECKED_CAST")

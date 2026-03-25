@@ -390,6 +390,9 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
         id: String = ""
     )
 
+    // LLM / Transformer layers (embedding, rmsNorm, multiHeadAttention, swiGluFFN,
+    // residual, xielu) have been moved to skainet-transformers llm-core module.
+
     /**
      * Groups layers into a sequential block for better organization.
      *
@@ -511,6 +514,8 @@ public interface CONV3D<T : DType, V> : NetworkDslItem, WandBTensorValueContext<
     public fun padding(size: Int)
 }
 
+// ATTENTION interface moved to skainet-transformers llm-core TransformerDsl.kt
+
 @NetworkDsl
 public interface AVGPOOL2D<T : DType, V> : NetworkDslItem {
     public var kernelSize: Pair<Int, Int>
@@ -560,7 +565,7 @@ public interface FLATTEN<T : DType, V> : NetworkDslItem {
     public var endDim: Int
 }
 
-private fun getDefaultName(id: String, s: String, size: Int): String {
+public fun getDefaultName(id: String, s: String, size: Int): String {
     if (id.isNotEmpty()) return id
     return "$s-$size"
 }
@@ -1034,11 +1039,13 @@ public class AvgPool2dImpl<T : DType, V>(
     }
 }
 
+// AttentionImpl moved to skainet-transformers llm-core TransformerDsl.kt
+
 // Stage implementation
 public class StageImpl<T : DType, V>(
     override val executionContext: ExecutionContext,
     private val id: String,
-    private val kClass: KClass<T>
+    public val kClass: KClass<T>
 ) : NeuralNetworkDsl<T, V> {
     public val modules: MutableList<Module<T, V>> = mutableListOf<Module<T, V>>()
     public var lastDimension: Int = 0
@@ -1385,11 +1392,13 @@ public class StageImpl<T : DType, V>(
         modules += Softmax<T, V>(dim, getDefaultName(id, "Softmax", modules.size))
         // Softmax does not change feature dimension
     }
+
+    // LLM / Transformer layer implementations moved to skainet-transformers llm-core TransformerDsl.kt
 }
 
 public class NeuralNetworkDslImpl<T : DType, V>(
     override val executionContext: ExecutionContext,
-    private val kClass: KClass<T>
+    public val kClass: KClass<T>
 ) : NeuralNetworkDsl<T, V> {
 
     public val modules: MutableList<Module<T, V>> = mutableListOf<Module<T, V>>()
@@ -1739,6 +1748,8 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         modules += Softmax<T, V>(dim, getDefaultName(id, "Softmax", modules.size))
         // Softmax does not change feature dimension
     }
+
+    // LLM / Transformer layer implementations moved to skainet-transformers llm-core TransformerDsl.kt
 }
 
 
