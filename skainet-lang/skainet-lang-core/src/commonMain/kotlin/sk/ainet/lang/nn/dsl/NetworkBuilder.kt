@@ -14,17 +14,7 @@ import sk.ainet.lang.nn.Upsample2d
 import sk.ainet.lang.nn.normalization.BatchNormalization
 import sk.ainet.lang.nn.normalization.GroupNormalization
 import sk.ainet.lang.nn.normalization.LayerNormalization
-import sk.ainet.lang.nn.normalization.RMSNormalization
 import sk.ainet.lang.nn.topology.MLP
-import sk.ainet.lang.nn.transformer.KVCache
-import sk.ainet.lang.nn.transformer.MultiHeadAttention
-import sk.ainet.lang.nn.transformer.ResidualAdd
-import sk.ainet.lang.nn.transformer.RoPE
-import sk.ainet.lang.nn.transformer.SwiGLUFFN
-import sk.ainet.lang.nn.transformer.XIELUActivation
-import sk.ainet.lang.nn.layers.Embedding
-import sk.ainet.lang.nn.layers.EmbeddingAdapter
-import sk.ainet.lang.nn.layers.EmbeddingParams
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.UpsampleMode
@@ -400,72 +390,8 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
         id: String = ""
     )
 
-    // --- LLM / Transformer layers ---
-
-    /**
-     * Creates an embedding lookup layer.
-     *
-     * @param vocabSize number of embeddings (vocabulary size)
-     * @param dim embedding dimension
-     * @param id optional identifier for the layer
-     */
-    public fun embedding(vocabSize: Int, dim: Int, id: String = "")
-
-    /**
-     * Creates an RMS normalization layer (used by Llama, Apertus).
-     *
-     * @param normalizedShape size of the last dimension to normalize
-     * @param eps numerical stability epsilon
-     * @param id optional identifier for the layer
-     */
-    public fun rmsNorm(normalizedShape: Int, eps: Float = 1e-5f, id: String = "")
-
-    /**
-     * Creates a multi-head attention layer.
-     *
-     * @param dim model dimension
-     * @param nHeads number of query heads
-     * @param nKVHeads number of key-value heads (for GQA; defaults to nHeads)
-     * @param causal whether to apply causal masking
-     * @param qkNorm whether to apply per-head RMSNorm on Q and K
-     * @param bias whether Q/K/V/O projections have bias (true for BERT, false for Llama)
-     * @param id optional identifier for the layer
-     * @param content configuration block for attention sub-components (rope, kvCache)
-     */
-    public fun multiHeadAttention(
-        dim: Int,
-        nHeads: Int,
-        nKVHeads: Int = nHeads,
-        causal: Boolean = true,
-        qkNorm: Boolean = false,
-        bias: Boolean = false,
-        id: String = "",
-        content: ATTENTION<T, V>.() -> Unit = {}
-    )
-
-    /**
-     * Creates a SwiGLU feed-forward network (Llama-style gated FFN).
-     *
-     * @param dim model dimension
-     * @param hiddenDim FFN hidden dimension
-     * @param id optional identifier for the layer
-     */
-    public fun swiGluFFN(dim: Int, hiddenDim: Int, id: String = "")
-
-    /**
-     * Creates an xIELU activation layer with per-layer learned parameters (Apertus).
-     *
-     * @param id optional identifier for the layer
-     */
-    public fun xielu(id: String = "")
-
-    /**
-     * Creates a residual (skip) connection.
-     * Adds the input from before the preceding sublayer to the current output.
-     */
-    public fun residual()
-
-    // --- End LLM / Transformer layers ---
+    // LLM / Transformer layers (embedding, rmsNorm, multiHeadAttention, swiGluFFN,
+    // residual, xielu) have been moved to skainet-transformers llm-core module.
 
     /**
      * Groups layers into a sequential block for better organization.
@@ -588,13 +514,7 @@ public interface CONV3D<T : DType, V> : NetworkDslItem, WandBTensorValueContext<
     public fun padding(size: Int)
 }
 
-@NetworkDsl
-public interface ATTENTION<T : DType, V> : NetworkDslItem {
-    /** Add rotary position embeddings to this attention layer. */
-    public fun rope(headDim: Int, maxSeqLen: Int)
-    /** Add KV cache for autoregressive decoding. */
-    public fun kvCache(maxSeqLen: Int, nKVHeads: Int, headDim: Int)
-}
+// ATTENTION interface moved to skainet-transformers llm-core TransformerDsl.kt
 
 @NetworkDsl
 public interface AVGPOOL2D<T : DType, V> : NetworkDslItem {
@@ -645,7 +565,7 @@ public interface FLATTEN<T : DType, V> : NetworkDslItem {
     public var endDim: Int
 }
 
-private fun getDefaultName(id: String, s: String, size: Int): String {
+public fun getDefaultName(id: String, s: String, size: Int): String {
     if (id.isNotEmpty()) return id
     return "$s-$size"
 }
@@ -1119,53 +1039,13 @@ public class AvgPool2dImpl<T : DType, V>(
     }
 }
 
-public class AttentionImpl<T : DType, V>(
-    override val executionContext: ExecutionContext,
-    private val dim: Int,
-    private val nHeads: Int,
-    private val nKVHeads: Int,
-    private val causal: Boolean,
-    private val qkNorm: Boolean,
-    private val bias: Boolean,
-    private val id: String,
-) : ATTENTION<T, V> {
-
-    private var ropeModule: RoPE<T, V>? = null
-    private var kvCacheModule: KVCache<T, V>? = null
-
-    override fun rope(headDim: Int, maxSeqLen: Int) {
-        ropeModule = RoPE(headDim = headDim, maxSeqLen = maxSeqLen, name = "$id.rope")
-    }
-
-    override fun kvCache(maxSeqLen: Int, nKVHeads: Int, headDim: Int) {
-        kvCacheModule = KVCache(
-            maxSeqLen = maxSeqLen,
-            nKVHeads = nKVHeads,
-            headDim = headDim,
-            name = "$id.kv_cache"
-        )
-    }
-
-    public fun create(): MultiHeadAttention<T, V> {
-        return MultiHeadAttention(
-            dim = dim,
-            nHeads = nHeads,
-            nKVHeads = nKVHeads,
-            causal = causal,
-            qkNorm = qkNorm,
-            bias = bias,
-            name = id,
-            rope = ropeModule,
-            kvCache = kvCacheModule
-        )
-    }
-}
+// AttentionImpl moved to skainet-transformers llm-core TransformerDsl.kt
 
 // Stage implementation
 public class StageImpl<T : DType, V>(
     override val executionContext: ExecutionContext,
     private val id: String,
-    private val kClass: KClass<T>
+    public val kClass: KClass<T>
 ) : NeuralNetworkDsl<T, V> {
     public val modules: MutableList<Module<T, V>> = mutableListOf<Module<T, V>>()
     public var lastDimension: Int = 0
@@ -1513,77 +1393,12 @@ public class StageImpl<T : DType, V>(
         // Softmax does not change feature dimension
     }
 
-    // --- LLM / Transformer layer implementations ---
-
-    override fun embedding(vocabSize: Int, dim: Int, id: String) {
-        val emb = Embedding<T, V>(
-            ctx = executionContext,
-            dtype = kClass,
-            params = EmbeddingParams(numEmbeddings = vocabSize, embeddingDim = dim),
-            name = getDefaultName(id, "Embedding", modules.size)
-        )
-        modules += EmbeddingAdapter(emb)
-        lastDimension = dim
-    }
-
-    override fun rmsNorm(normalizedShape: Int, eps: Float, id: String) {
-        modules += RMSNormalization<T, V>(
-            normalizedShape = intArrayOf(normalizedShape),
-            eps = eps.toDouble(),
-            name = getDefaultName(id, "RMSNorm", modules.size)
-        )
-    }
-
-    override fun multiHeadAttention(
-        dim: Int,
-        nHeads: Int,
-        nKVHeads: Int,
-        causal: Boolean,
-        qkNorm: Boolean,
-        bias: Boolean,
-        id: String,
-        content: ATTENTION<T, V>.() -> Unit
-    ) {
-        val attnName = getDefaultName(id, "MultiHeadAttention", modules.size)
-        val impl = AttentionImpl<T, V>(
-            executionContext = executionContext,
-            dim = dim,
-            nHeads = nHeads,
-            nKVHeads = nKVHeads,
-            causal = causal,
-            qkNorm = qkNorm,
-            bias = bias,
-            id = attnName,
-        )
-        impl.content()
-        modules += impl.create()
-        // Attention does not change feature dimension
-    }
-
-    override fun swiGluFFN(dim: Int, hiddenDim: Int, id: String) {
-        modules += SwiGLUFFN<T, V>(
-            dim = dim,
-            hiddenDim = hiddenDim,
-            name = getDefaultName(id, "SwiGLUFFN", modules.size)
-        )
-    }
-
-    override fun xielu(id: String) {
-        modules += XIELUActivation<T, V>(
-            name = getDefaultName(id, "XIELUActivation", modules.size)
-        )
-    }
-
-    override fun residual() {
-        modules += ResidualAdd<T, V>(
-            name = getDefaultName("", "ResidualAdd", modules.size)
-        )
-    }
+    // LLM / Transformer layer implementations moved to skainet-transformers llm-core TransformerDsl.kt
 }
 
 public class NeuralNetworkDslImpl<T : DType, V>(
     override val executionContext: ExecutionContext,
-    private val kClass: KClass<T>
+    public val kClass: KClass<T>
 ) : NeuralNetworkDsl<T, V> {
 
     public val modules: MutableList<Module<T, V>> = mutableListOf<Module<T, V>>()
@@ -1934,71 +1749,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         // Softmax does not change feature dimension
     }
 
-    // --- LLM / Transformer layer implementations ---
-
-    override fun embedding(vocabSize: Int, dim: Int, id: String) {
-        val emb = Embedding<T, V>(
-            ctx = executionContext,
-            dtype = kClass,
-            params = EmbeddingParams(numEmbeddings = vocabSize, embeddingDim = dim),
-            name = getDefaultName(id, "Embedding", modules.size)
-        )
-        modules += EmbeddingAdapter(emb)
-        lastDimension = dim
-    }
-
-    override fun rmsNorm(normalizedShape: Int, eps: Float, id: String) {
-        modules += RMSNormalization<T, V>(
-            normalizedShape = intArrayOf(normalizedShape),
-            eps = eps.toDouble(),
-            name = getDefaultName(id, "RMSNorm", modules.size)
-        )
-    }
-
-    override fun multiHeadAttention(
-        dim: Int,
-        nHeads: Int,
-        nKVHeads: Int,
-        causal: Boolean,
-        qkNorm: Boolean,
-        bias: Boolean,
-        id: String,
-        content: ATTENTION<T, V>.() -> Unit
-    ) {
-        val attnName = getDefaultName(id, "MultiHeadAttention", modules.size)
-        val impl = AttentionImpl<T, V>(
-            executionContext = executionContext,
-            dim = dim,
-            nHeads = nHeads,
-            nKVHeads = nKVHeads,
-            causal = causal,
-            qkNorm = qkNorm,
-            bias = bias,
-            id = attnName,
-        )
-        impl.content()
-        modules += impl.create()
-    }
-
-    override fun swiGluFFN(dim: Int, hiddenDim: Int, id: String) {
-        modules += SwiGLUFFN<T, V>(
-            dim = dim,
-            hiddenDim = hiddenDim,
-            name = getDefaultName(id, "SwiGLUFFN", modules.size)
-        )
-    }
-
-    override fun xielu(id: String) {
-        modules += XIELUActivation<T, V>(
-            name = getDefaultName(id, "XIELUActivation", modules.size)
-        )
-    }
-
-    override fun residual() {
-        modules += ResidualAdd<T, V>(
-            name = getDefaultName("", "ResidualAdd", modules.size)
-        )
-    }
+    // LLM / Transformer layer implementations moved to skainet-transformers llm-core TransformerDsl.kt
 }
 
 
