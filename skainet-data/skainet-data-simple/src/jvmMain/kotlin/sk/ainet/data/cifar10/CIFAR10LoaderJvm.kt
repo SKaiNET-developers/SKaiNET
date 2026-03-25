@@ -81,9 +81,9 @@ public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon
 
             // Configure timeout for large files (CIFAR-10 is ~170MB)
             install(HttpTimeout) {
-                requestTimeoutMillis = 300000 // 5 minutes
+                requestTimeoutMillis = 600000 // 10 minutes
                 connectTimeoutMillis = 60000 // 60 seconds
-                socketTimeoutMillis = 300000 // 5 minutes
+                socketTimeoutMillis = 600000 // 10 minutes
             }
         }
 
