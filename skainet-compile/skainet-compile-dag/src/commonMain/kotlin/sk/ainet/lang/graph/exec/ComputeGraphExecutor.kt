@@ -195,6 +195,12 @@ public class ComputeGraphExecutor(
                 val dim = (params["dim"] as? Number)?.toInt() ?: 0
                 listOf(ops.unsqueeze(inputs[0], dim))
             }
+            "narrow" -> {
+                val dim = (params["dim"] as? Number)?.toInt() ?: 0
+                val start = (params["start"] as? Number)?.toInt() ?: 0
+                val length = (params["length"] as? Number)?.toInt() ?: 1
+                listOf(ops.narrow(inputs[0], dim, start, length))
+            }
 
             // Reduction ops
             "mean" -> {
