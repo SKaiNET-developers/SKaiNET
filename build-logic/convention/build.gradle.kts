@@ -15,7 +15,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.optimumcode.json.schema.validator)
     implementation(libs.asciidoctorj.core)
-    implementation("org.jetbrains.dokka:dokka-gradle-plugin:2.1.0")
+    implementation("org.jetbrains.dokka:dokka-gradle-plugin:2.2.0")
     implementation(gradleApi())
 }
 
