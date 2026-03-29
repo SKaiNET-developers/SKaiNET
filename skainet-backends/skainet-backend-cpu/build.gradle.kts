@@ -70,16 +70,20 @@ kotlin {
             dependsOn(commonMain)
         }
 
+        val appleMain by creating {
+            dependsOn(nativeMain)
+        }
+
         val linuxMain by creating {
             dependsOn(nativeMain)
         }
 
         val iosMain by creating {
-            dependsOn(nativeMain)
+            dependsOn(appleMain)
         }
 
         val macosMain by creating {
-            dependsOn(nativeMain)
+            dependsOn(appleMain)
         }
 
         val iosArm64Main by getting {
