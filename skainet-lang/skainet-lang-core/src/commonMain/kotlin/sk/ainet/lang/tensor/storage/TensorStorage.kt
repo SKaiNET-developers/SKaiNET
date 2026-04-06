@@ -67,6 +67,61 @@ public data class TensorStorage(
         isMutable = isMutable
     )
 
+    // --- Explicit transfer operations ---
+
+    /**
+     * Create a new [TensorStorage] with an owned copy of this storage's data.
+     * The returned storage is independent of the original buffer.
+     */
+    public fun copyMaterialize(): TensorStorage {
+        val srcBytes = when (val b = buffer) {
+            is BufferHandle.Owned -> b.data.copyOfRange(b.offset, b.offset + sizeBytes())
+            is BufferHandle.Borrowed -> b.data.copyOfRange(b.offset, b.offset + sizeBytes())
+            else -> throw UnsupportedOperationException(
+                "copyMaterialize not yet supported for ${buffer.ownership} buffers"
+            )
+        }
+        return copy(
+            buffer = BufferHandle.Owned(srcBytes),
+            placement = placement.copy(domain = MemoryDomain.HOST_HEAP)
+        )
+    }
+
+    /**
+     * Ensure this storage resides on the host (CPU heap).
+     * If already on host, returns `this`. Otherwise copies to host.
+     */
+    public fun copyToHost(): TensorStorage {
+        if (placement.device == DeviceKind.CPU && placement.domain == MemoryDomain.HOST_HEAP) return this
+        return copyMaterialize()
+    }
+
+    /**
+     * Request a copy of this storage on the specified device.
+     * Currently only CPU is supported — GPU/NPU backends will override.
+     *
+     * @throws UnsupportedOperationException if the target device has no backend
+     */
+    public fun copyToDevice(device: DeviceKind): TensorStorage {
+        if (device == DeviceKind.CPU) return copyToHost()
+        throw UnsupportedOperationException("No backend available for device: $device")
+    }
+
+    /**
+     * Re-encode this storage into a different physical encoding.
+     * Currently a stub — actual transcoding requires backend kernels.
+     *
+     * @throws UnsupportedOperationException always (until backends implement this)
+     */
+    public fun repackTo(targetEncoding: TensorEncoding): TensorStorage {
+        if (encoding == targetEncoding) return this
+        throw UnsupportedOperationException(
+            "Repacking from ${encoding.name} to ${targetEncoding.name} is not yet implemented"
+        )
+    }
+
+    private fun sizeBytes(): Int = physicalBytes.toInt()
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TensorStorage) return false
