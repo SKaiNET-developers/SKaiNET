@@ -1,12 +1,18 @@
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
+import sk.ainet.lang.tensor.data.DenseIntArrayTensorData
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
+import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
+import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Int32
 
 /**
  * Factory methods for constructing [TensorStorage] from existing SKaiNET types
@@ -147,6 +153,88 @@ public object TensorStorageFactory {
                 val floats = data.copyToFloatArray()
                 fromFloatArray(data.shape, floats)
             }
+        }
+    }
+
+    /**
+     * Bridge: create a [TensorData] from a [TensorStorage].
+     *
+     * For dense encodings, this interprets the buffer bytes as float/int arrays.
+     * For packed encodings (Q4_K, Q8_0), this creates the corresponding packed
+     * TensorData directly. The underlying bytes are borrowed (not copied) when
+     * the buffer is Owned or Borrowed.
+     *
+     * For [BufferHandle.FileBacked] or [BufferHandle.DeviceResident], a
+     * [BufferAccessor] must be provided to read the bytes.
+     *
+     * @throws UnsupportedOperationException for FileBacked/DeviceResident without accessor
+     */
+    @Suppress("UNCHECKED_CAST")
+    public fun <T : DType, V> toTensorData(storage: TensorStorage): TensorData<T, V> {
+        val bytes = extractBytes(storage)
+
+        return when (storage.encoding) {
+            is TensorEncoding.Dense -> when (storage.logicalType) {
+                LogicalDType.FLOAT32, LogicalDType.FLOAT16, LogicalDType.BFLOAT16 -> {
+                    val floats = bytesToFloatArray(bytes)
+                    DenseFloatArrayTensorData<T>(storage.shape, floats) as TensorData<T, V>
+                }
+                LogicalDType.INT32 -> {
+                    val ints = bytesToIntArray(bytes)
+                    DenseIntArrayTensorData<T>(storage.shape, ints) as TensorData<T, V>
+                }
+                else -> throw UnsupportedOperationException(
+                    "toTensorData not supported for dense ${storage.logicalType}"
+                )
+            }
+            is TensorEncoding.Q4_K -> {
+                Q4_KBlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.Q8_0 -> {
+                Q8_0BlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            else -> throw UnsupportedOperationException(
+                "toTensorData not supported for encoding ${storage.encoding.name}"
+            )
+        }
+    }
+
+    private fun extractBytes(storage: TensorStorage): ByteArray = when (val b = storage.buffer) {
+        is BufferHandle.Owned -> {
+            if (b.offset == 0 && b.sizeInBytes.toInt() == b.data.size) b.data
+            else b.data.copyOfRange(b.offset, b.offset + b.sizeInBytes.toInt())
+        }
+        is BufferHandle.Borrowed -> {
+            if (b.offset == 0 && b.sizeInBytes.toInt() == b.data.size) b.data
+            else b.data.copyOfRange(b.offset, b.offset + b.sizeInBytes.toInt())
+        }
+        else -> throw UnsupportedOperationException(
+            "Cannot extract bytes from ${b.ownership} buffer. " +
+                "Use a BufferResolver to read FileBacked/DeviceResident handles first."
+        )
+    }
+
+    private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
+        val count = bytes.size / 4
+        return FloatArray(count) { i ->
+            val off = i * 4
+            Float.fromBits(
+                (bytes[off].toInt() and 0xFF) or
+                    ((bytes[off + 1].toInt() and 0xFF) shl 8) or
+                    ((bytes[off + 2].toInt() and 0xFF) shl 16) or
+                    ((bytes[off + 3].toInt() and 0xFF) shl 24)
+            )
+        }
+    }
+
+    private fun bytesToIntArray(bytes: ByteArray): IntArray {
+        val count = bytes.size / 4
+        return IntArray(count) { i ->
+            val off = i * 4
+            (bytes[off].toInt() and 0xFF) or
+                ((bytes[off + 1].toInt() and 0xFF) shl 8) or
+                ((bytes[off + 2].toInt() and 0xFF) shl 16) or
+                ((bytes[off + 3].toInt() and 0xFF) shl 24)
         }
     }
 }
