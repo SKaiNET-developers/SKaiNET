@@ -2,6 +2,7 @@ package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.dense.DenseByteTensorArray
+import sk.ainet.lang.tensor.storage.ActiveMemoryTracker
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -143,11 +144,13 @@ public class DenseTensorDataFactory: TensorDataFactory {
     // Helper methods to create tensor data instances
 
     private fun createIntTensorData(shape: Shape, data: IntArray): TensorData<Int32, Int> {
+        ActiveMemoryTracker.recordCopy("DenseTensorDataFactory.createIntTensorData", data.size.toLong() * 4)
         return DenseIntArrayTensorData(shape, data.copyOf())
     }
 
     @Suppress("UNCHECKED_CAST")
     private fun <T : DType> createFloatTensorData(shape: Shape, data: FloatArray, dtype: T): TensorData<T, Float> {
+        ActiveMemoryTracker.recordCopy("DenseTensorDataFactory.createFloatTensorData", data.size.toLong() * 4)
         return DenseFloatArrayTensorData<T>(shape, data.copyOf()) as TensorData<T, Float>
     }
 
