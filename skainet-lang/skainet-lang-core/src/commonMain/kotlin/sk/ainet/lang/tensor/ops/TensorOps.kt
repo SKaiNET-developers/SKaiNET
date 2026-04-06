@@ -77,6 +77,20 @@ public interface TensorOps {
         groups: Int = 1
     ): Tensor<T, V>
 
+    // Transposed convolutional operations
+    public fun <T : DType, V> convTranspose1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>? = null,
+        stride: Int = 1,
+        padding: Int = 0,
+        outputPadding: Int = 0,
+        dilation: Int = 1,
+        groups: Int = 1
+    ): Tensor<T, V> {
+        throw NotImplementedError("convTranspose1d not implemented by this TensorOps backend")
+    }
+
     // Pooling operations
     @Diff
     public fun <T : DType, V> maxPool2d(
@@ -224,6 +238,19 @@ public interface TensorOps {
     @Diff
     @ActivationDsl
     public fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V>
+
+    // Trigonometric operations
+    public fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
+        throw NotImplementedError("sin not implemented by this TensorOps backend")
+    }
+
+    public fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> {
+        throw NotImplementedError("cos not implemented by this TensorOps backend")
+    }
+
+    public fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
+        throw NotImplementedError("tanh not implemented by this TensorOps backend")
+    }
 
     /**
      * Scaled dot-product attention.

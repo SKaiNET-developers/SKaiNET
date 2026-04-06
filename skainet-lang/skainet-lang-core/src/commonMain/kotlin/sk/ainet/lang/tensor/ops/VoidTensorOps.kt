@@ -191,6 +191,21 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, input.dtype)
     }
 
+    override fun <T : DType, V> convTranspose1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        outputPadding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V> {
+        val resultShape = calculateConvTranspose1dShape(input.shape, weight.shape, stride, padding, outputPadding, dilation)
+        val resultData = dataFactory.zeros<T, V>(resultShape, input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
     override fun <T : DType, V> maxPool2d(
         input: Tensor<T, V>,
         kernelSize: Pair<Int, Int>,
@@ -436,6 +451,21 @@ public class VoidTensorOps : TensorOps {
     }
 
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
         return VoidOpsTensor(resultData, tensor.dtype)
     }
@@ -774,6 +804,23 @@ public class VoidTensorOps : TensorOps {
         val outputWidth = ((inputWidth + 2 * padW - dilationW * (kernelWidth - 1) - 1) / strideW) + 1
 
         return Shape(batch, outChannels, outputDepth, outputHeight, outputWidth)
+    }
+
+    /**
+     * Calculates the result shape for convTranspose1d operation.
+     * Input shape: (batch, in_channels, length)
+     * Weight shape: (in_channels, out_channels_per_group, kernel_size)
+     * Output shape: (batch, out_channels, out_length)
+     */
+    private fun calculateConvTranspose1dShape(
+        inputShape: Shape, weightShape: Shape, stride: Int, padding: Int, outputPadding: Int, dilation: Int
+    ): Shape {
+        val batch = inputShape[0]
+        val outChannels = weightShape[1]
+        val inputLength = inputShape[2]
+        val kernelSize = weightShape[2]
+        val outputLength = (inputLength - 1) * stride - 2 * padding + dilation * (kernelSize - 1) + outputPadding + 1
+        return Shape(batch, outChannels, outputLength)
     }
 
     /**
