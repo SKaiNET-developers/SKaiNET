@@ -11,13 +11,20 @@ import sk.ainet.lang.types.Int32
 import kotlin.reflect.KClass
 
 /**
- * ParametersLoader implementation backed by GGUFReader.
+ * ParametersLoader implementation backed by the legacy [GGUFReader].
  *
  * Notes:
- * - Currently supports loading tensors as FP32 or Int32. Other dtypes can be added as needed.
+ * - Currently supports loading tensors as FP32 or Int32 only.
  * - For quantized GGML tensor payloads, this implementation does not perform dequantization and will throw.
  * - A lightweight progress callback can be provided to observe per-tensor progress (current/total/name).
+ *
+ * @see StreamingGgufParametersLoader for the recommended streaming-based loader
+ *   that supports quantized types and memory-efficient parsing.
  */
+@Deprecated(
+    message = "Use StreamingGgufParametersLoader for memory-efficient loading with quantized type support",
+    replaceWith = ReplaceWith("StreamingGgufParametersLoader(sourceProvider, onProgress)")
+)
 class GgufParametersLoader(
     private val sourceProvider: () -> Source,
     private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> }

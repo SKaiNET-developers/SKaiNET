@@ -147,3 +147,59 @@ public fun <T : DType, V> TensorView<T, V>.estimateMaterializationCost(
 ): Long {
     return strategy.estimateMemoryOverhead(this)
 }
+
+// --- Explicit copy/alias operations (Phase 1b: memory-first) ---
+
+/**
+ * Explicitly copies this view into a standalone contiguous tensor.
+ *
+ * This is the same operation as [materialize] but with a name that makes
+ * the copy semantics unambiguous. Prefer this over [materialize] in new code.
+ *
+ * @return a new Tensor containing a copied, contiguous copy of this view's data
+ */
+public fun <T : DType, V> TensorView<T, V>.copyMaterialize(): Tensor<T, V> {
+    val strategy = CopyMaterializationStrategy<T, V>()
+    return strategy.materialize(this)
+}
+
+/**
+ * Realizes this view as an alias — returns a tensor that shares the parent's
+ * backing data when the view is a simple contiguous slice.
+ *
+ * If the view's [IndexMapper] reports that it is contiguous, this returns
+ * a lightweight tensor backed by the same data (zero-copy). Otherwise it
+ * falls back to [copyMaterialize].
+ *
+ * @return a Tensor that either aliases the parent data or is a copy
+ */
+public fun <T : DType, V> TensorView<T, V>.realizeAlias(): Tensor<T, V> {
+    return if (indexMapping.isContiguous()) {
+        // Contiguous view: create a tensor that shares the parent's data
+        // but uses the view's shape. This is zero-copy.
+        AliasedTensor(
+            data = parentTensor.data,
+            ops = ops,
+            dtype = dtype,
+            gradState = gradState,
+            aliasedShape = viewShape
+        )
+    } else {
+        // Non-contiguous view: must copy
+        copyMaterialize()
+    }
+}
+
+/**
+ * Internal tensor wrapper that aliases parent data with a different shape.
+ * Used by [realizeAlias] for contiguous views.
+ */
+internal class AliasedTensor<T : DType, V>(
+    override val data: sk.ainet.lang.tensor.data.TensorData<T, V>,
+    override val ops: sk.ainet.lang.tensor.ops.TensorOps,
+    override val dtype: kotlin.reflect.KClass<T>,
+    override val gradState: GradState<T, V>,
+    private val aliasedShape: Shape
+) : Tensor<T, V> {
+    override val shape: Shape get() = aliasedShape
+}

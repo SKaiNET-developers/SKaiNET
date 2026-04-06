@@ -647,4 +647,60 @@ public class DenseTensorDataFactory: TensorDataFactory {
             else -> throw IllegalArgumentException("fromByteArray only supports Int8 types with shape: $dtype")
         }
     }
+
+    // --- Zero-copy wrap methods (borrow semantics) ---
+
+    override fun <T : DType, V> wrapFloatArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: FloatArray
+    ): TensorData<T, V> {
+        require(data.size == shape.volume) {
+            "Data size ${data.size} doesn't match shape volume ${shape.volume}"
+        }
+        @Suppress("UNCHECKED_CAST")
+        return when (dtype) {
+            FP32::class -> DenseFloatArrayTensorData<T>(shape, data) as TensorData<T, V>
+            FP16::class -> DenseFloatArrayTensorData<T>(shape, data) as TensorData<T, V>
+            else -> throw IllegalArgumentException("wrapFloatArray only supports floating point types: $dtype")
+        }
+    }
+
+    override fun <T : DType, V> wrapIntArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: IntArray
+    ): TensorData<T, V> {
+        require(data.size == shape.volume) {
+            "Data size ${data.size} doesn't match shape volume ${shape.volume}"
+        }
+        @Suppress("UNCHECKED_CAST")
+        return when (dtype) {
+            Int32::class -> DenseIntArrayTensorData<T>(shape, data) as TensorData<T, V>
+            else -> throw IllegalArgumentException("wrapIntArray only supports Int32 types: $dtype")
+        }
+    }
+
+    override fun <T : DType, V> wrapByteArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: ByteArray
+    ): TensorData<T, V> {
+        require(data.size == shape.volume) {
+            "Data size ${data.size} doesn't match shape volume ${shape.volume}"
+        }
+        @Suppress("UNCHECKED_CAST")
+        return when (dtype) {
+            Int8::class -> {
+                val denseArray = DenseByteTensorArray(shape, data)
+                class WrappedByteTensorData(
+                    private val inner: DenseByteTensorArray
+                ) : TensorData<T, Byte>, ItemsAccessor<Byte> by inner {
+                    override val shape: Shape = inner.shape
+                }
+                WrappedByteTensorData(denseArray) as TensorData<T, V>
+            }
+            else -> throw IllegalArgumentException("wrapByteArray only supports Int8 types: $dtype")
+        }
+    }
 }

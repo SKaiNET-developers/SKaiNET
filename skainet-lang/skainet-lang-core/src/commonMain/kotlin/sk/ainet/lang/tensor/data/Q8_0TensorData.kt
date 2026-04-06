@@ -1,6 +1,8 @@
 package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.PackedBlockStorage
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.DType
 
 /**
@@ -50,13 +52,28 @@ public interface Q8_0TensorData : TensorData<DType, Byte> {
 public class Q8_0BlockTensorData(
     initialShape: Shape,
     private val data: ByteArray
-) : Q8_0TensorData {
+) : Q8_0TensorData, PackedBlockStorage {
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
 
     override val blockCount: Int = (shape.volume + Q8_0TensorData.BLOCK_SIZE - 1) / Q8_0TensorData.BLOCK_SIZE
+
+    // PackedBlockStorage implementation
+    override val encoding: TensorEncoding get() = TensorEncoding.Q8_0
+    override val blockSize: Int get() = Q8_0TensorData.BLOCK_SIZE
+
+    override fun dequantizeBlock(blockIdx: Int, output: FloatArray, outputOffset: Int) {
+        require(blockIdx in 0 until blockCount) { "Block index $blockIdx out of bounds (0..$blockCount)" }
+        val scale = getBlockScale(blockIdx)
+        val elemsInBlock = minOf(Q8_0TensorData.BLOCK_SIZE, shape.volume - blockIdx * Q8_0TensorData.BLOCK_SIZE)
+        for (i in 0 until elemsInBlock) {
+            val outIdx = outputOffset + i
+            if (outIdx >= output.size) return
+            output[outIdx] = getCode(blockIdx, i).toFloat() * scale
+        }
+    }
 
     init {
         val requiredBytes = blockCount * Q8_0TensorData.BYTES_PER_BLOCK

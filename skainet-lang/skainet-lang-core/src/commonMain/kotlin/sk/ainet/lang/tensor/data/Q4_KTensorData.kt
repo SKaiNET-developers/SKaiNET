@@ -1,6 +1,8 @@
 package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.PackedBlockStorage
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.DType
 
 /**
@@ -75,13 +77,35 @@ public interface Q4_KTensorData : TensorData<DType, Byte> {
 public class Q4_KBlockTensorData(
     initialShape: Shape,
     private val data: ByteArray
-) : Q4_KTensorData {
+) : Q4_KTensorData, PackedBlockStorage {
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
 
     override val blockCount: Int = (shape.volume + Q4_KTensorData.BLOCK_SIZE - 1) / Q4_KTensorData.BLOCK_SIZE
+
+    // PackedBlockStorage implementation
+    override val encoding: TensorEncoding get() = TensorEncoding.Q4_K
+    override val blockSize: Int get() = Q4_KTensorData.BLOCK_SIZE
+
+    override fun dequantizeBlock(blockIdx: Int, output: FloatArray, outputOffset: Int) {
+        require(blockIdx in 0 until blockCount) { "Block index $blockIdx out of bounds (0..$blockCount)" }
+        for (subBlockIdx in 0 until Q4_KTensorData.SUB_BLOCKS_PER_BLOCK) {
+            val scale = getSubBlockScale(blockIdx, subBlockIdx)
+            val min = getSubBlockMin(blockIdx, subBlockIdx)
+            val elemsStart = subBlockIdx * Q4_KTensorData.SUB_BLOCK_SIZE
+            for (j in 0 until Q4_KTensorData.SUB_BLOCK_SIZE) {
+                val elementIdx = elemsStart + j
+                val outIdx = outputOffset + elementIdx
+                if (outIdx >= output.size) return
+                val globalIdx = blockIdx * Q4_KTensorData.BLOCK_SIZE + elementIdx
+                if (globalIdx >= shape.volume) return
+                val code = getCode(blockIdx, elementIdx)
+                output[outIdx] = code * scale + min
+            }
+        }
+    }
 
     init {
         val requiredBytes = blockCount * Q4_KTensorData.BYTES_PER_BLOCK
