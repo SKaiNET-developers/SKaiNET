@@ -132,7 +132,7 @@ public data class TensorStorage(
             placement == other.placement &&
             byteOffset == other.byteOffset &&
             isContiguous == other.isContiguous &&
-            strides.contentEquals(other.strides)
+            stridesEqual(strides, other.strides)
     }
 
     override fun hashCode(): Int {
@@ -147,9 +147,9 @@ public data class TensorStorage(
         return result
     }
 
-    private fun LongArray?.contentEquals(other: LongArray?): Boolean = when {
-        this == null && other == null -> true
-        this != null && other != null -> this.contentEquals(other)
+    private fun stridesEqual(a: LongArray?, b: LongArray?): Boolean = when {
+        a == null && b == null -> true
+        a != null && b != null -> a.contentEquals(b)
         else -> false
     }
 }
