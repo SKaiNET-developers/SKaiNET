@@ -2,6 +2,8 @@ package sk.ainet.io.safetensors
 
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.model.DataType
+import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.*
 
 /**
  * Streaming SafeTensors reader that parses metadata without loading tensor data.
@@ -84,6 +86,61 @@ public class StreamingSafeTensorsReader private constructor(
      */
     public fun loadTensorData(tensor: StreamingSafeTensorInfo, buffer: ByteArray, offset: Int = 0): Int {
         return source.readAt(tensor.absoluteDataOffset, buffer, offset, tensor.sizeInBytes)
+    }
+
+    // ========== TensorStorage Loading ==========
+
+    /**
+     * Load a tensor as a [TensorStorage] descriptor with borrowed bytes.
+     */
+    public fun loadTensorStorage(tensor: StreamingSafeTensorInfo): TensorStorage {
+        val bytes = loadTensorData(tensor)
+        val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
+        return TensorStorage(
+            shape = shape,
+            logicalType = safeTensorsTypeToLogical(tensor.dataType),
+            encoding = safeTensorsTypeToEncoding(tensor.dataType),
+            buffer = BufferHandle.Borrowed(bytes, isMutable = false),
+            placement = Placement.CPU_HEAP
+        )
+    }
+
+    /**
+     * Load a tensor by name as a [TensorStorage] descriptor.
+     */
+    public fun loadTensorStorage(name: String): TensorStorage {
+        val tensor = _tensors.firstOrNull { it.name == name }
+            ?: throw IllegalArgumentException("Tensor not found: $name")
+        return loadTensorStorage(tensor)
+    }
+
+    private fun safeTensorsTypeToLogical(type: DataType): LogicalDType = when (type) {
+        DataType.FLOAT32 -> LogicalDType.FLOAT32
+        DataType.FLOAT64 -> LogicalDType.FLOAT64
+        DataType.FLOAT16 -> LogicalDType.FLOAT16
+        DataType.BFLOAT16 -> LogicalDType.BFLOAT16
+        DataType.INT8 -> LogicalDType.INT8
+        DataType.INT16 -> LogicalDType.INT16
+        DataType.INT32 -> LogicalDType.INT32
+        DataType.INT64 -> LogicalDType.INT64
+        DataType.UINT8 -> LogicalDType.UINT8
+        DataType.UINT16 -> LogicalDType.UINT16
+        DataType.UINT32 -> LogicalDType.UINT32
+        DataType.UINT64 -> LogicalDType.UINT64
+        DataType.BOOL -> LogicalDType.UINT8
+        else -> LogicalDType.INT8 // fallback for UNKNOWN
+    }
+
+    private fun safeTensorsTypeToEncoding(type: DataType): TensorEncoding = when (type) {
+        DataType.FLOAT32 -> TensorEncoding.Dense(4)
+        DataType.FLOAT64 -> TensorEncoding.Dense(8)
+        DataType.FLOAT16 -> TensorEncoding.Dense(2)
+        DataType.BFLOAT16 -> TensorEncoding.Dense(2)
+        DataType.INT8, DataType.UINT8, DataType.BOOL -> TensorEncoding.Dense(1)
+        DataType.INT16, DataType.UINT16 -> TensorEncoding.Dense(2)
+        DataType.INT32, DataType.UINT32 -> TensorEncoding.Dense(4)
+        DataType.INT64, DataType.UINT64 -> TensorEncoding.Dense(8)
+        else -> TensorEncoding.Dense(1)
     }
 
     // ========== Parsing Implementation ==========
