@@ -87,6 +87,44 @@ public interface ExecutionContext {
         return fromData(data, dtype)
     }
 
+    /**
+     * Wraps a FloatArray without copying (borrow semantics).
+     * The caller must ensure the array is not mutated while the tensor is in use.
+     */
+    public fun <T : DType, V> wrapFloatArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: FloatArray
+    ): Tensor<T, V> {
+        val tensorData = tensorDataFactory.wrapFloatArray<T, V>(shape, dtype, data)
+        return fromData(tensorData, dtype)
+    }
+
+    /**
+     * Wraps an IntArray without copying (borrow semantics).
+     * The caller must ensure the array is not mutated while the tensor is in use.
+     */
+    public fun <T : DType, V> wrapIntArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: IntArray
+    ): Tensor<T, V> {
+        val tensorData = tensorDataFactory.wrapIntArray<T, V>(shape, dtype, data)
+        return fromData(tensorData, dtype)
+    }
+
+    /**
+     * Wraps a ByteArray without copying (borrow semantics).
+     * The caller must ensure the array is not mutated while the tensor is in use.
+     */
+    public fun <T : DType, V> wrapByteArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: ByteArray
+    ): Tensor<T, V> {
+        val tensorData = tensorDataFactory.wrapByteArray<T, V>(shape, dtype, data)
+        return fromData(tensorData, dtype)
+    }
 
     // runtime information
     public val memoryInfo: MemoryInfo
