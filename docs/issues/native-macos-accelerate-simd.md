@@ -1,0 +1,138 @@
+# Native macOS SIMD acceleration via Apple Accelerate framework
+
+## Problem
+
+The `skainet-backend-cpu` module on Kotlin/Native macOS (macosArm64) uses plain scalar loops
+for all tensor operations (`DefaultCpuOps`). On JVM, the same module uses the JDK Vector API
+for SIMD-accelerated matmul, elementwise ops, and reductions (`DefaultCpuOpsJvm`), which gives
+a significant performance advantage.
+
+When running LLM inference benchmarks via the `llm-performance` native binary, the CPU backend
+is 5-10x slower than it needs to be because every matmul is a triple-nested scalar loop
+(`DefaultCpuOps.kt:264-272`).
+
+## Proposed solution
+
+Add an Accelerate-backed `TensorOps` implementation for the macOS native target, mirroring
+how the JVM target has `DefaultCpuOpsJvm`. Apple's Accelerate framework provides
+hardware-optimized BLAS and vector DSP routines that leverage ARM NEON and AMX under the hood.
+
+### Architecture
+
+```
+PlatformCpuOpsFactory
+  ├── jvmMain   → DefaultCpuOpsJvm (Vector API + optional BLAS)     ← exists
+  ├── nativeMain → DefaultCpuOps (scalar fallback)                   ← exists
+  ├── macosMain  → AccelerateCpuOps (Accelerate framework via cinterop)  ← NEW
+  └── linuxMain  → DefaultCpuOps (scalar, or OpenBLAS in future)    ← unchanged
+```
+
+### Key changes
+
+**1. Cinterop definition** — `src/nativeInterop/cinterop/accelerate.def`
+
+```def
+package = platform.accelerate
+language = C
+headers = Accelerate/Accelerate.h
+compilerOpts = -framework Accelerate
+linkerOpts = -framework Accelerate
+```
+
+**2. New class** — `src/macosMain/kotlin/.../AccelerateCpuOps.kt`
+
+Extends `DefaultCpuOps` and overrides hot-path operations with Accelerate calls:
+
+| Priority | Operation | Accelerate function | Impact |
+|----------|-----------|---------------------|--------|
+| P0 | `matmul` | `cblas_sgemm` | Dominant cost in LLM inference (~90% of forward pass) |
+| P1 | `add` | `vDSP_vadd` | Elementwise add (residual connections) |
+| P1 | `multiply` | `vDSP_vmul` | Elementwise multiply (gates, scaling) |
+| P1 | `subtract` | `vDSP_vsub` | Elementwise subtract |
+| P1 | `divide` | `vDSP_vdiv` | Elementwise divide |
+| P2 | `sum` (global) | `vDSP_sve` | Reduction for normalization |
+| P2 | `mean` (global) | `vDSP_meanv` | Reduction for normalization |
+| P2 | `softmax` | `vDSP_vse` + manual | Attention weights |
+| P3 | `relu` | `vDSP_vthres` / `vDSP_vthr` | Activation function |
+| P3 | `silu` | manual vectorized loop | Activation function (SiLU = x * sigmoid(x)) |
+| P3 | `transpose` | `vDSP_mtrans` | Matrix transpose |
+
+**3. Platform factory** — update `PlatformCpuOpsFactory` for macOS
+
+```kotlin
+// src/macosMain/kotlin/.../PlatformCpuOpsFactory.macos.kt
+internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> TensorOps {
+    println("[SKaiNET] Using Accelerate-backed CPU operations (ARM NEON + AMX)")
+    return { factory -> AccelerateCpuOps(factory) }
+}
+```
+
+This requires splitting the current `nativeMain` expect/actual into separate
+`macosMain` and `linuxMain` actuals (the `macosMain` source set already exists in
+`build.gradle.kts`).
+
+**4. Build changes** — `build.gradle.kts`
+
+Add cinterop configuration for macosArm64 (and optionally iosArm64/iosSimulatorArm64):
+
+```kotlin
+macosArm64 {
+    compilations["main"].cinterops {
+        val accelerate by creating {
+            defFile("src/nativeInterop/cinterop/accelerate.def")
+        }
+    }
+}
+```
+
+Add linker opts for the Accelerate framework to all macOS/iOS binaries.
+
+### Implementation notes
+
+- `AccelerateCpuOps` should extend `DefaultCpuOps` and override only the operations above.
+  Non-accelerated operations fall through to the scalar implementation.
+- The `matmul` override should handle 2D FP32 tensors with `cblas_sgemm` and delegate
+  batched/non-float cases to `super.matmul()`.
+- `vDSP_*` functions operate on contiguous `FloatArray` buffers. Tensors backed by
+  `FloatArrayTensorData` can be passed directly; others need a `toFloatArray()` copy.
+- Broadcasting logic (e.g., bias add, scalar multiply) should remain in the Kotlin layer
+  and only dispatch the contiguous inner loop to Accelerate.
+- The same approach works for iOS targets (`iosArm64`, `iosSimulatorArm64`) since
+  Accelerate is available on all Apple platforms.
+
+### Testing
+
+- Existing `DefaultCpuOps` tests in `commonTest` should pass unchanged (numerical equivalence).
+- Add macOS-specific tests verifying Accelerate dispatch actually occurs (e.g., check log output
+  or add a query method).
+- Benchmark comparison: run `llm-performance` native benchmark with the current scalar backend
+  vs Accelerate backend on the same model.
+
+### Expected impact
+
+Based on JVM BLAS vs scalar measurements and Apple's published Accelerate performance data:
+
+- **matmul**: 10-50x speedup (NEON + AMX vs scalar loop)
+- **elementwise**: 4-8x speedup (NEON vectorization)
+- **reductions**: 4-8x speedup (NEON vectorization)
+- **overall LLM inference**: 5-20x speedup on native macOS CPU backend
+
+### Files to create/modify
+
+```
+skainet-backends/skainet-backend-cpu/
+├── build.gradle.kts                                          # add cinterop
+├── src/nativeInterop/cinterop/accelerate.def                 # NEW
+├── src/macosMain/kotlin/.../AccelerateCpuOps.kt              # NEW
+├── src/macosMain/kotlin/.../PlatformCpuOpsFactory.macos.kt   # NEW
+├── src/linuxMain/kotlin/.../PlatformCpuOpsFactory.linux.kt   # NEW (move from nativeMain)
+└── src/nativeMain/kotlin/.../PlatformCpuOpsFactory.native.kt # REMOVE (split to platform-specific)
+```
+
+### References
+
+- JVM SIMD implementation: `src/jvmMain/kotlin/.../DefaultCpuOpsJvm.kt`
+- JVM BLAS integration: `src/jvmMain/kotlin/.../JvmBlas.kt`
+- Apple Accelerate docs: https://developer.apple.com/documentation/accelerate
+- CBLAS reference: https://developer.apple.com/documentation/accelerate/blas
+- vDSP reference: https://developer.apple.com/documentation/accelerate/vdsp
