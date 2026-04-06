@@ -126,6 +126,31 @@ public class StreamingGGUFReader private constructor(
         return loadTensorStorage(tensor)
     }
 
+    /**
+     * Create a file-backed [TensorStorage] that references the tensor's bytes
+     * in the original file without loading them into heap.
+     *
+     * Requires the source to be file-based. The returned storage uses
+     * [BufferHandle.FileBacked] with the tensor's absolute file offset.
+     *
+     * @param tensor  The tensor info from [tensors] list
+     * @param filePath  Path to the GGUF file (needed for the FileBacked handle)
+     */
+    public fun loadTensorStorageMapped(tensor: StreamingTensorInfo, filePath: String): TensorStorage {
+        val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
+        return TensorStorage(
+            shape = shape,
+            logicalType = ggmlTypeToLogical(tensor.tensorType),
+            encoding = ggmlTypeToEncoding(tensor.tensorType),
+            buffer = BufferHandle.FileBacked(
+                path = filePath,
+                fileOffset = tensor.absoluteDataOffset,
+                sizeInBytes = tensor.nBytes.toLong()
+            ),
+            placement = Placement.MMAP_WEIGHTS
+        )
+    }
+
     private fun ggmlTypeToLogical(type: GGMLQuantizationType): LogicalDType = when (type) {
         GGMLQuantizationType.F32 -> LogicalDType.FLOAT32
         GGMLQuantizationType.F16 -> LogicalDType.FLOAT16

@@ -114,6 +114,28 @@ public class StreamingSafeTensorsReader private constructor(
         return loadTensorStorage(tensor)
     }
 
+    /**
+     * Create a file-backed [TensorStorage] that references the tensor's bytes
+     * in the original file without loading them into heap.
+     *
+     * @param tensor   The tensor info from [tensors] list
+     * @param filePath Path to the SafeTensors file
+     */
+    public fun loadTensorStorageMapped(tensor: StreamingSafeTensorInfo, filePath: String): TensorStorage {
+        val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
+        return TensorStorage(
+            shape = shape,
+            logicalType = safeTensorsTypeToLogical(tensor.dataType),
+            encoding = safeTensorsTypeToEncoding(tensor.dataType),
+            buffer = BufferHandle.FileBacked(
+                path = filePath,
+                fileOffset = tensor.absoluteDataOffset,
+                sizeInBytes = tensor.sizeInBytes.toLong()
+            ),
+            placement = Placement.MMAP_WEIGHTS
+        )
+    }
+
     private fun safeTensorsTypeToLogical(type: DataType): LogicalDType = when (type) {
         DataType.FLOAT32 -> LogicalDType.FLOAT32
         DataType.FLOAT64 -> LogicalDType.FLOAT64
