@@ -420,7 +420,12 @@ class GGUFReader(
             // Divide first to avoid overflow, then multiply. For quantized tensors,
             // nElems must be divisible by blockSize, so this is exact.
             val numBlocks = nElems.toLong() / blockSize
-            val nBytes = (numBlocks * typeSize).toInt()
+            val nBytesLong = numBlocks * typeSize.toLong()
+            require(nBytesLong <= Int.MAX_VALUE) {
+                "Tensor '$tensorName' is $nBytesLong bytes (> 2 GB). " +
+                "Use StreamingGGUFReader with loadTensorStorageMapped() instead."
+            }
+            val nBytes = nBytesLong.toInt()
             val dataOffs = startOffs + offsetTensor[0].toInt()
 
             // For non-native/quantized types (including unknown), tensor payload is stored as bytes
