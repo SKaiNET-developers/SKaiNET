@@ -49,8 +49,8 @@ class QuantizedModelLoadTest {
 
                 // Verify nBytes calculation: (nElements / blockSize) * typeSize
                 val (blockSize, typeSize) = GGML_QUANT_SIZES[tensor.tensorType]!!
-                val expectedBytes = (tensor.nElements / blockSize) * typeSize
-                assertEquals(expectedBytes.toInt(), tensor.nBytes,
+                val expectedBytes = (tensor.nElements.toLong() / blockSize) * typeSize
+                assertEquals(expectedBytes, tensor.nBytes,
                     "Tensor ${tensor.name}: nBytes mismatch - expected $expectedBytes, got ${tensor.nBytes}")
             }
 
@@ -59,7 +59,7 @@ class QuantizedModelLoadTest {
             if (smallTensor != null) {
                 println("\nLoading smallest tensor: ${smallTensor.name} (${smallTensor.nBytes} bytes)")
                 val data = reader.loadTensorData(smallTensor)
-                assertEquals(smallTensor.nBytes, data.size,
+                assertEquals(smallTensor.nBytes, data.size.toLong(),
                     "Loaded data size should match nBytes")
                 println("Successfully loaded ${data.size} bytes!")
             }

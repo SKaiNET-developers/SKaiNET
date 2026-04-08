@@ -130,7 +130,7 @@ class StreamingGGUFReaderTest {
             val data = reader.loadTensor(firstTensor.name)
 
             // Verify data size matches expected
-            assertEquals(firstTensor.nBytes, data.size,
+            assertEquals(firstTensor.nBytes, data.size.toLong(),
                 "Loaded data size ${data.size} doesn't match expected ${firstTensor.nBytes}")
 
             // Load same tensor again using TensorInfo directly
@@ -151,12 +151,12 @@ class StreamingGGUFReaderTest {
             assertTrue(reader.tensors.isNotEmpty(), "No tensors to test")
 
             val tensor = reader.tensors.first()
-            val buffer = ByteArray(tensor.nBytes + 100) // Extra space
+            val buffer = ByteArray(tensor.nBytes.toInt() + 100) // Extra space
 
             // Load into buffer at offset
             val bytesRead = reader.loadTensorData(tensor, buffer, 10)
 
-            assertEquals(tensor.nBytes, bytesRead, "Bytes read mismatch")
+            assertEquals(tensor.nBytes, bytesRead.toLong(), "Bytes read mismatch")
 
             // First 10 bytes should be zero (untouched)
             for (i in 0 until 10) {
@@ -165,7 +165,7 @@ class StreamingGGUFReaderTest {
 
             // Compare with direct load
             val directData = reader.loadTensorData(tensor)
-            for (i in 0 until tensor.nBytes) {
+            for (i in 0 until tensor.nBytes.toInt()) {
                 assertEquals(directData[i], buffer[10 + i],
                     "Data mismatch at index $i")
             }
@@ -181,7 +181,7 @@ class StreamingGGUFReaderTest {
             // Try to load each tensor and verify size matches expected
             for (tensor in streamingReader.tensors) {
                 val data = streamingReader.loadTensorData(tensor)
-                assertEquals(tensor.nBytes, data.size,
+                assertEquals(tensor.nBytes, data.size.toLong(),
                     "Data size mismatch for tensor '${tensor.name}': expected ${tensor.nBytes}, got ${data.size}")
             }
         }

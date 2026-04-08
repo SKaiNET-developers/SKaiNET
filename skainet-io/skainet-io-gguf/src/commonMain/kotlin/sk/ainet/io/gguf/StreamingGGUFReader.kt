@@ -83,7 +83,11 @@ public class StreamingGGUFReader private constructor(
      * @return Raw bytes for the tensor
      */
     public fun loadTensorData(tensor: StreamingTensorInfo): ByteArray {
-        return source.readAt(tensor.absoluteDataOffset, tensor.nBytes)
+        require(tensor.nBytes <= Int.MAX_VALUE) {
+            "Tensor '${tensor.name}' is ${tensor.nBytes} bytes (> 2 GB). " +
+            "Use loadTensorStorageMapped() for file-backed zero-copy access instead."
+        }
+        return source.readAt(tensor.absoluteDataOffset, tensor.nBytes.toInt())
     }
 
     /**
@@ -96,7 +100,11 @@ public class StreamingGGUFReader private constructor(
      * @return Number of bytes read
      */
     public fun loadTensorData(tensor: StreamingTensorInfo, buffer: ByteArray, offset: Int = 0): Int {
-        return source.readAt(tensor.absoluteDataOffset, buffer, offset, tensor.nBytes)
+        require(tensor.nBytes <= Int.MAX_VALUE) {
+            "Tensor '${tensor.name}' is ${tensor.nBytes} bytes (> 2 GB). " +
+            "Use loadTensorStorageMapped() for file-backed zero-copy access instead."
+        }
+        return source.readAt(tensor.absoluteDataOffset, buffer, offset, tensor.nBytes.toInt())
     }
 
     // ========== TensorStorage Loading ==========
@@ -145,7 +153,7 @@ public class StreamingGGUFReader private constructor(
             buffer = BufferHandle.FileBacked(
                 path = filePath,
                 fileOffset = tensor.absoluteDataOffset,
-                sizeInBytes = tensor.nBytes.toLong()
+                sizeInBytes = tensor.nBytes
             ),
             placement = Placement.MMAP_WEIGHTS
         )
@@ -339,24 +347,24 @@ public class StreamingGGUFReader private constructor(
         for ((index, info) in parsedTensors.withIndex()) {
             val nElements = if (info.dims.isEmpty()) 0L else info.dims.fold(1UL) { acc, d -> acc * d }.toLong()
 
-            val nBytes: Int = if (info.ggmlType.isUnknown) {
+            val nBytes: Long = if (info.ggmlType.isUnknown) {
                 // For unknown types, estimate size from next tensor's offset
                 val sortedIndex = sortedByOffset.indexOfFirst { it.name == info.name }
                 if (sortedIndex < sortedByOffset.size - 1) {
                     // Use gap to next tensor as size estimate
                     val nextOffset = sortedByOffset[sortedIndex + 1].relativeOffset
-                    (nextOffset - info.relativeOffset).toInt()
+                    nextOffset - info.relativeOffset
                 } else {
                     // Last tensor - estimate from element count assuming 1 byte per element
                     // This is a rough fallback; actual loading may need adjustment
-                    nElements.toInt()
+                    nElements
                 }
             } else {
                 // Known type - calculate from quantization parameters
                 val (blockSize, typeSize) = GGML_QUANT_SIZES[info.ggmlType]
                     ?: (1 to 1) // Fallback for types in enum but not in size map
                 val numBlocks = nElements / blockSize
-                (numBlocks * typeSize).toInt()
+                numBlocks * typeSize.toLong()
             }
 
             _tensors.add(
@@ -534,7 +542,7 @@ public data class StreamingTensorInfo(
     /** Total number of elements */
     val nElements: Long,
     /** Size in bytes (estimated for unknown types) */
-    val nBytes: Int,
+    val nBytes: Long,
     /** Offset relative to data section start */
     val relativeOffset: Long,
     /** Absolute byte offset in file (set after parsing) */
