@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.18.0] - 2026-04-08
+
+### Added
+- **TurboQuant KV-Cache Compression**: Runtime KV-cache compression for LLM inference using rotation-based quantization (Google Research TurboQuant paper). Supports PolarOnly and PolarPlusQjl variants with 2/3/4/8-bit encoding.
+  - `TurboQuantCodec`: End-to-end encode/decode pipeline (random rotation, scalar quantization, QJL residual, bit-packing).
+  - `TurboQuantKvCacheStore`: Compressed KV cache with per-head TurboQuant blocks and asymmetric K/V policies.
+  - `TurboQuantPresets`: Named presets — `safe-lowbit` (Q8_0-K + TQ4-V), `balanced` (TQ4/TQ4), `experimental-max` (TQ3/TQ3).
+  - `KvCacheStore.turboQuant("balanced", ...)`: One-line factory for skainet-transformers integration.
+  - `CompressedKvAttention`: SDPA bridge with FULL_TILE and RAW_STORAGE dequant strategies.
+  - `@KvCache` and `@KvCacheBypass` DSL annotations for declarative KV cache configuration.
+  - `KvCacheAnnotationResolver`: Resolve annotations to cache instances.
+  - `TurboQuantUsage`: Documented integration guide with compilable examples.
+- **Memory Architecture Hardening**: First-class storage and placement abstractions for zero-copy, quantization-preserving tensor management.
+  - `TensorStorage`: Runtime descriptor replacing ad-hoc array passing (logical type, physical encoding, buffer ownership, placement).
+  - `TensorEncoding`: Sealed hierarchy — `Dense`, `Q4_K`, `Q8_0`, `TernaryPacked`, `TurboQuantPolar`, `TurboQuantPolarQjl`, `Opaque`.
+  - `BufferHandle`: Five ownership modes — `Owned`, `Borrowed`, `Aliased`, `FileBacked`, `DeviceResident`.
+  - `Placement`: Device/memory-domain intent with fallback policies (`CPU_HEAP`, `MMAP_WEIGHTS`, `GPU_PREFERRED`).
+  - `LogicalDType`: Semantic numeric types separate from physical encoding.
+  - `PackedBlockStorage`: Unified contract for all packed quantized formats.
+  - `MemoryPlanner`, `MemoryTracker`, `ActiveMemoryTracker`: Placement resolution and copy diagnostics.
+- **KV-Cache Subsystem**: `KvCacheStore` interface with append-by-token writes, layer/head addressing, eviction, and `DefaultKvCacheStore` (dense FP32 baseline).
+- **Quantization-Preserving Loaders**: `StreamingGGUFReader` and `StreamingSafeTensorsReader` produce `TensorStorage` with `FileBacked` or `Borrowed` handles (no forced densification).
+  - `StorageAwareSafeTensorsLoader`: Zero-copy file-backed SafeTensors loading.
+  - Completed `Quants.kt` port: `byteShapeToQuantShape`, `quantByteSize`, `isBlockQuantized`, `validateQuantizedBytes`.
+- **Tekken Tokenizer**: Mistral Tekken (tiktoken-based BPE) tokenizer support.
+- **CPU SIMD TurboQuant Kernels**: `JvmTurboQuantKernels` with Java Vector API acceleration for abs-max, quantize, dequantize, and Walsh-Hadamard butterfly.
+- **JMH Benchmarks**: TurboQuant encode/decode throughput, bit-packing, rotation, and KV cache append/read benchmarks (`TurboQuantBenchmarks.kt`).
+- **Storage Benchmarks**: Dequantization throughput (Q4_K, Q8_0, Ternary), buffer accessor, and TensorData bridge benchmarks (`StorageBenchmarks.kt`).
+- **New Ops**: `sin`, `cos`, `tanh`, `convTranspose1d`.
+- **New Layers**: `TransposedConv1d`, `Snake` activation, `LayerScale`.
+
+### Changed
+- **Streaming GGUF as Default**: `StreamingGGUFReader` is now the recommended GGUF loading path (memory-efficient, supports quantized types).
+- **DSL Annotations**: Extended `PlacementAnnotations.kt` with `@KvCache(preset=...)` and `@KvCacheBypass` for TurboQuant configuration.
+
+### Fixed
+- **Int Overflow for Large Tensors**: Fixed `StreamingTensorInfo.nBytes` and `StreamingSafeTensorInfo.sizeInBytes` from `Int` to `Long`, preventing silent overflow for tensors > 2 GB. Fixes loading of Gemma 4 E4B and future large models. (#452)
+- **Legacy GGUFReader Overflow Guard**: Added explicit overflow check with actionable error message for tensors > 2 GB in the legacy eager loader.
+
+### Dependencies
+- io.github.kotest:kotest: 6.1.9 → 6.1.11.
+- com.squareup:kotlinpoet: 2.2.0 → 2.3.0.
+
 ## [0.17.0] - 2026-03-25
 
 ### Added

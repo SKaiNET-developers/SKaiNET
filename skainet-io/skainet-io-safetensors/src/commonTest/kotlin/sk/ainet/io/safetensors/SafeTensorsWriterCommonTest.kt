@@ -271,7 +271,7 @@ class SafeTensorsWriterCommonTest {
             assertEquals(1, reader.tensors.size)
             val tensor = reader.tensors[0]
             assertEquals(listOf(100L, 100L), tensor.shape)
-            assertEquals(size * 4, tensor.sizeInBytes)
+            assertEquals(size * 4L, tensor.sizeInBytes)
 
             val readData = bytesToFloatArray(reader.loadTensorData(tensor))
             assertEquals(size, readData.size)

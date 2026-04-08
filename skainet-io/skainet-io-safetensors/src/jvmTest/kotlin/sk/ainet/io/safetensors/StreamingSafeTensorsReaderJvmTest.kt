@@ -193,7 +193,7 @@ class StreamingSafeTensorsReaderJvmTest {
             var tensorIndex = 0
             for (tensor in reader.tensors) {
                 val data = reader.loadTensorData(tensor)
-                assertEquals(tensor.sizeInBytes, data.size)
+                assertEquals(tensor.sizeInBytes, data.size.toLong())
 
                 // Verify the pattern we wrote
                 for (i in data.indices) {

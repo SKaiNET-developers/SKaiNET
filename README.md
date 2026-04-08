@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.17.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.17.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.18.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.18.0")
 }
 ```
 
@@ -107,6 +107,7 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 - **ComputeGraphExecutor**: Optimized engine with fusion passes and trace-to-DAG bridging.
 - **SDPA & Gather**: High-performance Scaled Dot-Product Attention and indexing operations.
+- **TurboQuant**: Runtime KV-cache compression (~8x at 4-bit) for long-context LLM inference. Presets: `safe-lowbit`, `balanced`, `experimental-max`. See `TurboQuantUsage` for integration guide.
 
 ### Agentic AI Infrastructure
 
@@ -148,12 +149,14 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.17.0
+## What's New in 0.18.0
 
-- **Core Engine Focus** — Refactored the repository to focus on the core `ComputeGraph` framework, compiler, and backends. Extracted high-level LLM and transformer implementations to standalone repositories.
-- **LLM-as-DSL** — New high-level DSL for defining and running LLM architectures within the core framework.
-- **Optimized ComputeGraphExecutor** — New executor with support for fusion passes and trace-to-DAG bridging for faster inference.
-- **SDPA & Gather** — Implemented Scaled Dot-Product Attention and `gather`/`indexSelect` ops for improved performance.
+- **TurboQuant KV-Cache Compression** — Runtime KV-cache compression for LLM inference: ~8x memory reduction with 4-bit, works with any model (LLaMA, Mistral, Gemma, Qwen). One-line integration via `KvCacheStore.turboQuant("balanced", ...)`.
+- **Memory Architecture Hardening** — First-class storage/placement abstractions (`TensorStorage`, `TensorEncoding`, `BufferHandle`, `Placement`), zero-copy ownership semantics, quantization-preserving loaders.
+- **KV-Cache Subsystem** — Dedicated `KvCacheStore` with append-by-token writes, layer/head addressing, asymmetric K/V encoding policies, and `CompressedKvAttention` SDPA bridge.
+- **Mistral Tokenizer** — Tekken (tiktoken-based BPE) tokenizer support for Mistral models.
+- **Large Tensor Fix** — Fixed Int overflow in GGUF and SafeTensors loaders for tensors > 2 GB (Gemma 4 E4B support).
+- **CPU SIMD Kernels** — Java Vector API acceleration for TurboQuant encode/decode/rotation operations.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
@@ -162,7 +165,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 ## Roadmap
 
 - **Q1 2026**: Comprehensive documentation ✅
-- **Q2 2026**: Reference-based validation of computation correctness
+- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0)
 - **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
 - **Q4 2026**: Federated learning support for multi-device training
 

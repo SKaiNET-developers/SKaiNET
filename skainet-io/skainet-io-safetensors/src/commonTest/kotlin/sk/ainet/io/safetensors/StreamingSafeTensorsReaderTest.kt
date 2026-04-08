@@ -243,7 +243,7 @@ class StreamingSafeTensorsReaderTest {
         StreamingSafeTensorsReader.open(source).use { reader ->
             val tensor = reader.tensors[0]
             val tensorData = reader.loadTensorData(tensor)
-            assertEquals(tensor.sizeInBytes, tensorData.size)
+            assertEquals(tensor.sizeInBytes, tensorData.size.toLong())
         }
     }
 
@@ -302,7 +302,7 @@ class StreamingSafeTensorsReaderTest {
         StreamingSafeTensorsReader.open(source).use { reader ->
             for (tensor in reader.tensors) {
                 val tensorData = reader.loadTensorData(tensor)
-                assertEquals(tensor.sizeInBytes, tensorData.size,
+                assertEquals(tensor.sizeInBytes, tensorData.size.toLong(),
                     "Size mismatch for tensor ${tensor.name}")
             }
         }

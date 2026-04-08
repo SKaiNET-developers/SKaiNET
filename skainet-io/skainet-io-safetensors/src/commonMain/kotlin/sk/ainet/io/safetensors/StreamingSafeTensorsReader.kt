@@ -73,7 +73,11 @@ public class StreamingSafeTensorsReader private constructor(
      * @return Raw bytes for the tensor
      */
     public fun loadTensorData(tensor: StreamingSafeTensorInfo): ByteArray {
-        return source.readAt(tensor.absoluteDataOffset, tensor.sizeInBytes)
+        require(tensor.sizeInBytes <= Int.MAX_VALUE) {
+            "Tensor '${tensor.name}' is ${tensor.sizeInBytes} bytes (> 2 GB). " +
+            "Use loadTensorStorageMapped() for file-backed zero-copy access instead."
+        }
+        return source.readAt(tensor.absoluteDataOffset, tensor.sizeInBytes.toInt())
     }
 
     /**
@@ -85,7 +89,11 @@ public class StreamingSafeTensorsReader private constructor(
      * @return Number of bytes read
      */
     public fun loadTensorData(tensor: StreamingSafeTensorInfo, buffer: ByteArray, offset: Int = 0): Int {
-        return source.readAt(tensor.absoluteDataOffset, buffer, offset, tensor.sizeInBytes)
+        require(tensor.sizeInBytes <= Int.MAX_VALUE) {
+            "Tensor '${tensor.name}' is ${tensor.sizeInBytes} bytes (> 2 GB). " +
+            "Use loadTensorStorageMapped() for file-backed zero-copy access instead."
+        }
+        return source.readAt(tensor.absoluteDataOffset, buffer, offset, tensor.sizeInBytes.toInt())
     }
 
     // ========== TensorStorage Loading ==========
@@ -130,7 +138,7 @@ public class StreamingSafeTensorsReader private constructor(
             buffer = BufferHandle.FileBacked(
                 path = filePath,
                 fileOffset = tensor.absoluteDataOffset,
-                sizeInBytes = tensor.sizeInBytes.toLong()
+                sizeInBytes = tensor.sizeInBytes
             ),
             placement = Placement.MMAP_WEIGHTS
         )
@@ -396,7 +404,7 @@ public class StreamingSafeTensorsReader private constructor(
 
         val elementCount = if (shape.isEmpty()) 1L else shape.fold(1L) { acc, d -> acc * d }
         val bytesPerElement = SafeTensorsDataTypes.sizeOf(dtype) ?: 1
-        val sizeInBytes = (dataOffsets.second - dataOffsets.first).toInt()
+        val sizeInBytes = dataOffsets.second - dataOffsets.first
         val mappedDataType = SafeTensorsDataTypeMapper.toDataType(dtype)
 
         _tensors.add(
@@ -529,7 +537,7 @@ public data class StreamingSafeTensorInfo(
     /** End offset relative to data section */
     val dataOffsetEnd: Long,
     /** Size in bytes */
-    val sizeInBytes: Int,
+    val sizeInBytes: Long,
     /** Absolute byte offset in file */
     val absoluteDataOffset: Long
 ) {

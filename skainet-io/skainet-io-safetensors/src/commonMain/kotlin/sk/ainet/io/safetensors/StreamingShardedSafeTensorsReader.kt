@@ -342,7 +342,7 @@ public data class ShardedTensorInfo(
     val elementCount: Long get() = base.elementCount
     val dataOffsetStart: Long get() = base.dataOffsetStart
     val dataOffsetEnd: Long get() = base.dataOffsetEnd
-    val sizeInBytes: Int get() = base.sizeInBytes
+    val sizeInBytes: Long get() = base.sizeInBytes
     val absoluteDataOffset: Long get() = base.absoluteDataOffset
     val isUnknownType: Boolean get() = base.isUnknownType
 
