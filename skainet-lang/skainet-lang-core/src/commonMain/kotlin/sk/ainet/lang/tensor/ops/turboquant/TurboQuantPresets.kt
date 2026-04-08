@@ -102,6 +102,40 @@ public object TurboQuantPresets {
      * List all available preset names.
      */
     public val availablePresets: List<String> = listOf("safe-lowbit", "balanced", "experimental-max")
+
+    /**
+     * Look up a preset by name and apply model dimensions.
+     *
+     * This is the primary entry point for skainet-transformers and other
+     * consumers that want to enable TurboQuant with a single call.
+     *
+     * Example:
+     * ```kotlin
+     * val preset = TurboQuantPresets.forModel("balanced", numLayers=32, numHeads=32, headDim=128, maxSeqLen=4096)
+     * val cache = KvCacheStore.fromPreset(preset)
+     * ```
+     *
+     * @param preset     One of "safe-lowbit", "balanced", "experimental-max"
+     * @param numLayers  Number of transformer layers
+     * @param numHeads   Number of KV heads per layer
+     * @param headDim    Dimension per head
+     * @param maxSeqLen  Maximum sequence length
+     * @throws IllegalArgumentException if preset name is unknown
+     */
+    public fun forModel(
+        preset: String,
+        numLayers: Int,
+        numHeads: Int,
+        headDim: Int,
+        maxSeqLen: Int
+    ): TurboQuantPreset = when (preset) {
+        "safe-lowbit" -> safeLowbit(numLayers, numHeads, headDim, maxSeqLen)
+        "balanced" -> balanced(numLayers, numHeads, headDim, maxSeqLen)
+        "experimental-max" -> experimentalMax(numLayers, numHeads, headDim, maxSeqLen)
+        else -> throw IllegalArgumentException(
+            "Unknown TurboQuant preset: '$preset'. Available: $availablePresets"
+        )
+    }
 }
 
 /**

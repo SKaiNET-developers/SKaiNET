@@ -1,6 +1,9 @@
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.ops.turboquant.TurboQuantConfig
+import sk.ainet.lang.tensor.ops.turboquant.TurboQuantPreset
+import sk.ainet.lang.tensor.ops.turboquant.TurboQuantPresets
 
 /**
  * Dedicated KV-cache storage abstraction for inference.
@@ -118,6 +121,95 @@ public interface KvCacheStore {
      * Memory report for the entire cache.
      */
     public fun memoryReport(): KvCacheMemoryReport
+
+    public companion object {
+        /**
+         * Create an uncompressed FP32 KV cache (baseline).
+         *
+         * Use this when you don't need compression or as a reference
+         * for quality comparison.
+         */
+        public fun dense(
+            numLayers: Int,
+            numHeads: Int,
+            headDim: Int,
+            maxSeqLen: Int
+        ): KvCacheStore = DefaultKvCacheStore(
+            KvCacheConfig.dense(numLayers, numHeads, headDim, maxSeqLen)
+        )
+
+        /**
+         * Create a TurboQuant-compressed KV cache from a named preset.
+         *
+         * Available presets: "safe-lowbit", "balanced", "experimental-max".
+         *
+         * Example:
+         * ```kotlin
+         * val cache = KvCacheStore.turboQuant("balanced", numLayers=32, numHeads=32, headDim=128, maxSeqLen=4096)
+         * ```
+         *
+         * @param preset    Preset name (see [TurboQuantPresets.availablePresets])
+         * @param numLayers Number of transformer layers
+         * @param numHeads  Number of KV heads per layer
+         * @param headDim   Dimension per head
+         * @param maxSeqLen Maximum sequence length
+         */
+        public fun turboQuant(
+            preset: String,
+            numLayers: Int,
+            numHeads: Int,
+            headDim: Int,
+            maxSeqLen: Int
+        ): KvCacheStore {
+            val resolved = TurboQuantPresets.forModel(preset, numLayers, numHeads, headDim, maxSeqLen)
+            return fromPreset(resolved)
+        }
+
+        /**
+         * Create a TurboQuant-compressed KV cache with custom bit budgets.
+         *
+         * Example:
+         * ```kotlin
+         * // 8-bit keys, 4-bit values (safe-lowbit style)
+         * val cache = KvCacheStore.turboQuant(
+         *     numLayers=32, numHeads=32, headDim=128, maxSeqLen=4096,
+         *     keyBits=8, valueBits=4
+         * )
+         * ```
+         */
+        public fun turboQuant(
+            numLayers: Int,
+            numHeads: Int,
+            headDim: Int,
+            maxSeqLen: Int,
+            keyBits: Int = 4,
+            valueBits: Int = 4,
+            useQjl: Boolean = false
+        ): KvCacheStore {
+            val config = KvCacheConfig(
+                numLayers = numLayers,
+                numHeads = numHeads,
+                headDim = headDim,
+                maxSeqLen = maxSeqLen,
+                keyEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = keyBits),
+                valueEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = valueBits)
+            )
+            val keyConfig = if (useQjl) TurboQuantConfig.polarPlusQjl(bits = keyBits)
+                            else TurboQuantConfig.polarOnly(bits = keyBits)
+            val valueConfig = if (useQjl) TurboQuantConfig.polarPlusQjl(bits = valueBits)
+                              else TurboQuantConfig.polarOnly(bits = valueBits)
+            return TurboQuantKvCacheStore(config, keyConfig, valueConfig)
+        }
+
+        /**
+         * Create a KV cache from a [TurboQuantPreset].
+         */
+        public fun fromPreset(preset: TurboQuantPreset): KvCacheStore {
+            val keyConfig = preset.keyQuantConfig ?: TurboQuantConfig.polarOnly(bits = 4)
+            val valueConfig = preset.valueQuantConfig ?: TurboQuantConfig.polarOnly(bits = 4)
+            return TurboQuantKvCacheStore(preset.cacheConfig, keyConfig, valueConfig)
+        }
+    }
 }
 
 /**
