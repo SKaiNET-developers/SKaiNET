@@ -148,13 +148,14 @@ Allow SafeTensors loaders to wrap or map buffers instead of always converting to
 - [x] **TQ-019: Role-aware K/V policies** — Asymmetric key/value configs in `TurboQuantKvCacheStore`
 - [x] **TQ-020: Presets** — `TurboQuantPresets` with safe-lowbit, balanced, experimental-max
 
+- [x] **TQ-021: DSL/annotation support** — `@KvCache`, `@KvCacheBypass` annotations
+- [x] **TQ-022: CPU SIMD optimization** — `JvmTurboQuantKernels` with Java Vector API
+- [x] **TQ-025: JMH benchmarks** — Encode/decode/pack/rotate/KV cache benchmarks
+
 ### Remaining
 
-- [ ] **TQ-021: DSL/annotation support** — Low priority
-- [ ] **TQ-022: CPU SIMD optimization** — Medium priority
-- [ ] **TQ-023: Metal/Apple Silicon backend** — Medium priority
-- [ ] **TQ-024: Fused dequant+attention kernels** — Low priority
-- [ ] **TQ-025: JMH benchmarks** — Medium priority
+- [ ] **TQ-023: Metal/Apple Silicon backend** — Requires Metal shader development
+- [ ] **TQ-024: Fused dequant+attention kernels** — Depends on TQ-023
 
 ---
 
@@ -428,7 +429,7 @@ Implement named preset configurations:
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Recommended implementation order item 7 |
 | **Priority** | Low |
 | **Dependencies** | TQ-020 |
@@ -451,7 +452,7 @@ Extend SKaiNET DSL/annotations (`@Place`, `@Weights`) to support TurboQuant KV c
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 5 |
 | **Priority** | Medium |
 | **Dependencies** | TQ-016 |
@@ -520,7 +521,7 @@ Fuse TurboQuant decompression with attention score computation to avoid material
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Acceptance criteria |
 | **Priority** | High — validates the whole effort |
 | **Dependencies** | TQ-016 |
