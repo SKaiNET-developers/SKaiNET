@@ -59,6 +59,39 @@ public interface TensorDataFactory {
         dtype: KClass<T>,
         data: ByteArray
     ): TensorData<T, V>
+
+    /**
+     * Wraps a FloatArray without copying. The caller must ensure the array
+     * is not mutated while the returned TensorData is in use.
+     * Default implementation falls back to [fromFloatArray] (which copies).
+     */
+    public fun <T : DType, V> wrapFloatArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: FloatArray
+    ): TensorData<T, V> = fromFloatArray(shape, dtype, data)
+
+    /**
+     * Wraps an IntArray without copying. The caller must ensure the array
+     * is not mutated while the returned TensorData is in use.
+     * Default implementation falls back to [fromIntArray] (which copies).
+     */
+    public fun <T : DType, V> wrapIntArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: IntArray
+    ): TensorData<T, V> = fromIntArray(shape, dtype, data)
+
+    /**
+     * Wraps a ByteArray without copying. The caller must ensure the array
+     * is not mutated while the returned TensorData is in use.
+     * Default implementation falls back to [fromByteArray] (which copies).
+     */
+    public fun <T : DType, V> wrapByteArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: ByteArray
+    ): TensorData<T, V> = fromByteArray(shape, dtype, data)
 }
 
 /**

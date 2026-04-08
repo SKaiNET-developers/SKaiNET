@@ -50,11 +50,17 @@ val d = c.relu()
 ### GGUF Model Loading
 
 ```kotlin
-val source = SystemFileSystem.source(Path("model.gguf")).buffered()
-val reader = GGUFReader(source)
-
-val tensor = reader.tensors.first { it.name == "token_embd.weight" }
-val weights = reader.materialize(tensor)
+// Recommended: streaming reader — memory-efficient, supports quantized types
+val source = JvmRandomAccessSource.open("model.gguf")
+StreamingGGUFReader.open(source).use { reader ->
+    println("Tensors: ${reader.tensorCount}")
+    
+    // Load specific tensor on demand (no whole-file loading)
+    val bytes = reader.loadTensor("token_embd.weight")
+    
+    // Or get a TensorStorage descriptor with encoding/placement metadata
+    val storage = reader.loadTensorStorage("token_embd.weight")
+}
 ```
 
 > **More examples:** [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook)

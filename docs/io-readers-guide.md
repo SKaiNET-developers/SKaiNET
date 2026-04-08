@@ -35,6 +35,38 @@ dependencies {
 
 ## GGUF Reader Usage
 
+> **Recommended:** For large model files, use `StreamingGGUFReader` instead of `GGUFReader`.
+> The streaming reader parses only metadata (~1 MB) and loads tensors on-demand, supporting
+> files over 100 GB without heap-loading the entire file. It also supports quantized types
+> (Q4_K, Q8_0, etc.) via `StreamingGgufParametersLoader`. See the streaming examples below.
+
+### Streaming GGUF Reading (Recommended)
+
+```kotlin
+import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.io.gguf.StreamingGGUFReader
+
+fun readLargeModel(filePath: String) {
+    val source = JvmRandomAccessSource.open(filePath)
+    StreamingGGUFReader.open(source).use { reader ->
+        println("Tensors: ${reader.tensorCount}")
+        println("Architecture: ${reader.fields["general.architecture"]}")
+
+        // Load specific tensor on demand
+        val weights = reader.loadTensor("token_embd.weight")
+
+        // Or get a TensorStorage descriptor with metadata
+        val storage = reader.loadTensorStorage("token_embd.weight")
+        println("Encoding: ${storage.encoding.name}, Physical: ${storage.physicalBytes} bytes")
+    }
+}
+```
+
+### Legacy GGUF Reading
+
+> **Note:** The legacy `GGUFReader` loads the entire file into memory and only supports
+> F32/I32 tensors. Prefer `StreamingGGUFReader` for new code.
+
 ### Basic GGUF Reading
 
 ```kotlin

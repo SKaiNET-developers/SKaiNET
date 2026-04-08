@@ -769,6 +769,72 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         }
     }
 
+    override fun <T : DType, V> convTranspose1d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Int,
+        padding: Int,
+        outputPadding: Int,
+        dilation: Int,
+        groups: Int
+    ): Tensor<T, V> {
+        // input: [batch, inChannels, inLength]
+        // weight: [inChannels, outChannels/groups, kernelSize]
+        val batch = input.shape[0]
+        val inChannels = input.shape[1]
+        val inLength = input.shape[2]
+        val outChannelsPerGroup = weight.shape[1]
+        val kernelSize = weight.shape[2]
+        val outChannels = outChannelsPerGroup * groups
+        val outLength = (inLength - 1) * stride - 2 * padding + dilation * (kernelSize - 1) + outputPadding + 1
+
+        val outData = dataFactory.zeros<T, V>(Shape(batch, outChannels, outLength), input.dtype)
+
+        val inData = input.data
+        val wData = weight.data
+
+        val inChPerGroup = inChannels / groups
+
+        for (b in 0 until batch) {
+            for (g in 0 until groups) {
+                for (ic in 0 until inChPerGroup) {
+                    for (oc in 0 until outChannelsPerGroup) {
+                        for (il in 0 until inLength) {
+                            val inputVal = inData.get(b, g * inChPerGroup + ic, il) as Float
+                            if (inputVal == 0f) continue
+                            for (k in 0 until kernelSize) {
+                                val ol = il * stride - padding + k * dilation
+                                if (ol < 0 || ol >= outLength) continue
+                                val weightVal = wData.get(g * inChPerGroup + ic, oc, k) as Float
+                                val existing = outData.get(b, g * outChannelsPerGroup + oc, ol) as Float
+                                @Suppress("UNCHECKED_CAST")
+                                outData.set(b, g * outChannelsPerGroup + oc, ol, value = (existing + inputVal * weightVal) as V)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add bias
+        if (bias != null) {
+            val biasData = bias.data
+            for (b in 0 until batch) {
+                for (oc in 0 until outChannels) {
+                    val biasVal = biasData.get(oc) as Float
+                    for (ol in 0 until outLength) {
+                        val existing = outData.get(b, oc, ol) as Float
+                        @Suppress("UNCHECKED_CAST")
+                        outData.set(b, oc, ol, value = (existing + biasVal) as V)
+                    }
+                }
+            }
+        }
+
+        return newTensor(outData, input.dtype, input)
+    }
+
     @TensorOp()
     override fun <T : DType, V> conv3d(
         input: Tensor<T, V>,
@@ -2258,6 +2324,33 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val x = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
             kotlin.math.expm1(x.toDouble()).toFloat() as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    override fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.sin(x) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    override fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.cos(x) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.tanh(x).toFloat() as V
         }
         return newTensor(outData, tensor.dtype, tensor)
     }

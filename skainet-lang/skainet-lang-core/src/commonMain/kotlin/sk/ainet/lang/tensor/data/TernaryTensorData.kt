@@ -1,6 +1,8 @@
 package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.PackedBlockStorage
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.Ternary
 
 /**
@@ -45,11 +47,29 @@ public class Ternary2BitTensorData(
     initialShape: Shape,
     private val data: ByteArray,
     override val scale: Float = 1.0f
-) : TernaryTensorData {
+) : TernaryTensorData, PackedBlockStorage {
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
+
+    // PackedBlockStorage — treat the whole tensor as a single block
+    override val encoding: TensorEncoding get() = TensorEncoding.TernaryPacked
+    override val blockSize: Int get() = shape.volume
+    override val blockCount: Int get() = 1
+
+    override fun dequantizeBlock(blockIdx: Int, output: FloatArray, outputOffset: Int) {
+        require(blockIdx == 0) { "Ternary has a single block, got index $blockIdx" }
+        for (i in 0 until shape.volume) {
+            val byteIndex = i / 4
+            val bitOffset = (i % 4) * 2
+            val encoded = (data[byteIndex].toInt() ushr bitOffset) and 0x03
+            val ternary = encoded - 1 // decode: 0→-1, 1→0, 2→+1
+            val outIdx = outputOffset + i
+            if (outIdx >= output.size) return
+            output[outIdx] = ternary.toFloat() * scale
+        }
+    }
 
     init {
         val requiredBytes = (shape.volume + 3) / 4  // 4 values per byte

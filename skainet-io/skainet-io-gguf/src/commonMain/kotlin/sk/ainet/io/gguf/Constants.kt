@@ -5,8 +5,6 @@ package sk.ainet.io.gguf
  * of github repo "https://github.com/ggerganov/llama.cpp"
  */
 
-//TODO convert the rest of file from constants.py
-
 const val GGUF_MAGIC = 0x46554747u
 const val GGUF_VERSION = 3
 const val GGUF_DEFAULT_ALIGNMENT = 32

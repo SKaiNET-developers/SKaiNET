@@ -25,6 +25,10 @@ import kotlin.reflect.KClass
  * - I8/U8 tensors -> Int8
  * - F16/BF16 tensors -> FP32 (with dequantization)
  *
+ * Where possible, decoded arrays are wrapped (borrowed) rather than copied
+ * into TensorData, avoiding a second allocation. The raw-byte decode step
+ * (little-endian bytes → typed array) is still necessary.
+ *
  * @param sourceProvider Factory providing RandomAccessSource to the SafeTensors file
  * @param onProgress Optional progress callback (current, total, tensorName)
  */
@@ -54,7 +58,8 @@ class SafeTensorsParametersLoader(
                             "SafeTensors F32 tensor '${tensorInfo.name}' requires FP32 dtype, got ${dtype.simpleName}"
                         }
                         val floats = bytesToFloatArray(bytes)
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        // Wrap the decoded array (zero-copy) — it was freshly allocated by bytesToFloatArray
+                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
                     }
 
                     DataType.FLOAT64 -> {
@@ -64,7 +69,7 @@ class SafeTensorsParametersLoader(
                         println("WARNING: Downcasting F64 tensor '${tensorInfo.name}' to F32")
                         val doubles = bytesToDoubleArray(bytes)
                         val floats = FloatArray(doubles.size) { doubles[it].toFloat() }
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
                     }
 
                     DataType.FLOAT16 -> {
@@ -72,7 +77,7 @@ class SafeTensorsParametersLoader(
                             "SafeTensors F16 tensor '${tensorInfo.name}' requires FP32 dtype (dequant), got ${dtype.simpleName}"
                         }
                         val floats = dequantF16(bytes)
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
                     }
 
                     DataType.BFLOAT16 -> {
@@ -80,7 +85,7 @@ class SafeTensorsParametersLoader(
                             "SafeTensors BF16 tensor '${tensorInfo.name}' requires FP32 dtype (dequant), got ${dtype.simpleName}"
                         }
                         val floats = dequantBF16(bytes)
-                        ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
                     }
 
                     DataType.INT32 -> {
@@ -88,7 +93,7 @@ class SafeTensorsParametersLoader(
                             "SafeTensors I32 tensor '${tensorInfo.name}' requires Int32 dtype, got ${dtype.simpleName}"
                         }
                         val ints = bytesToIntArray(bytes)
-                        ctx.fromIntArray<T, Int>(shape, dtype, ints) as Tensor<T, V>
+                        ctx.wrapIntArray<T, Int>(shape, dtype, ints) as Tensor<T, V>
                     }
 
                     DataType.INT64 -> {
@@ -98,7 +103,7 @@ class SafeTensorsParametersLoader(
                         println("WARNING: Downcasting I64 tensor '${tensorInfo.name}' to I32")
                         val longs = bytesToLongArray(bytes)
                         val ints = IntArray(longs.size) { longs[it].toInt() }
-                        ctx.fromIntArray<T, Int>(shape, dtype, ints) as Tensor<T, V>
+                        ctx.wrapIntArray<T, Int>(shape, dtype, ints) as Tensor<T, V>
                     }
 
                     DataType.INT8 -> {

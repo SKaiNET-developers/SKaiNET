@@ -2,6 +2,7 @@ package sk.ainet.lang.tensor
 
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.ops.TensorOps
+import sk.ainet.lang.tensor.storage.ActiveMemoryTracker
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -65,6 +66,9 @@ public class CopyMaterializationStrategy<T : DType, V> : MaterializationStrategy
 
         // Copy all elements from the view to the new array
         copyViewElements(view, materializedData, viewShape)
+
+        // Record the copy for memory tracking
+        ActiveMemoryTracker.recordCopy("CopyMaterializationStrategy", viewVolume.toLong() * 4)
 
         // Create and return the materialized tensor
         return createMaterializedTensor(view, materializedData, viewShape)
