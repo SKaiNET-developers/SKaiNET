@@ -165,7 +165,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 ## Roadmap
 
 - **Q1 2026**: Comprehensive documentation ✅
-- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0), Metal/Apple Silicon backend (in progress)
+- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0)
 - **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
 - **Q4 2026**: Federated learning support for multi-device training
 
