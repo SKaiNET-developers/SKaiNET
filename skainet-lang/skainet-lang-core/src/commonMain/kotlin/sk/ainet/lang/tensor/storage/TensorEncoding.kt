@@ -60,6 +60,87 @@ public sealed interface TensorEncoding {
     }
 
     /**
+     * TurboQuant PolarOnly encoding: rotation + scalar quantization + bit-packing.
+     *
+     * Backend-friendly variant that omits the QJL residual stage.
+     * Configurable bits per element (2, 3, 4, or 8).
+     *
+     * Block layout: [rotationSeed(4B)] [scales(numGroups * 2B)] [codes(packed bits)]
+     *
+     * @param bitsPerElement Number of bits per quantized code (2, 3, 4, or 8)
+     * @param blockSize Number of elements per block (must be power of 2, typically 64 or 128)
+     */
+    public data class TurboQuantPolar(
+        val bitsPerElement: Int = 4,
+        val blockSize: Int = 128
+    ) : TensorEncoding {
+        init {
+            require(bitsPerElement in setOf(2, 3, 4, 8)) {
+                "bitsPerElement must be 2, 3, 4, or 8, got $bitsPerElement"
+            }
+            require(blockSize > 0 && (blockSize and (blockSize - 1)) == 0) {
+                "blockSize must be a positive power of 2, got $blockSize"
+            }
+        }
+
+        /** Number of quantization groups per block (each group has its own scale). */
+        val numGroups: Int get() = blockSize / 32
+
+        override val name: String get() = "TurboQuant-Polar-${bitsPerElement}b"
+
+        override fun physicalBytes(elementCount: Long): Long {
+            val blocks = (elementCount + blockSize - 1) / blockSize
+            val seedBytes = 4L                                    // rotation seed per block
+            val scaleBytes = numGroups * 2L                       // FP16 scale per group
+            val codeBytes = (blockSize.toLong() * bitsPerElement + 7) / 8  // packed codes
+            return blocks * (seedBytes + scaleBytes + codeBytes)
+        }
+    }
+
+    /**
+     * TurboQuant PolarPlusQjl encoding: rotation + scalar quantization +
+     * QJL residual + bit-packing.
+     *
+     * Closest to the official TurboQuant paper. The QJL residual stage
+     * preserves inner-product accuracy at the cost of additional storage.
+     *
+     * @param bitsPerElement Bits for the primary quantization (2, 3, 4, or 8)
+     * @param residualBits Bits for the QJL residual (typically 1 or 2)
+     * @param blockSize Elements per block
+     */
+    public data class TurboQuantPolarQjl(
+        val bitsPerElement: Int = 4,
+        val residualBits: Int = 1,
+        val blockSize: Int = 128
+    ) : TensorEncoding {
+        init {
+            require(bitsPerElement in setOf(2, 3, 4, 8)) {
+                "bitsPerElement must be 2, 3, 4, or 8, got $bitsPerElement"
+            }
+            require(residualBits in 1..4) {
+                "residualBits must be 1-4, got $residualBits"
+            }
+            require(blockSize > 0 && (blockSize and (blockSize - 1)) == 0) {
+                "blockSize must be a positive power of 2, got $blockSize"
+            }
+        }
+
+        val numGroups: Int get() = blockSize / 32
+
+        override val name: String
+            get() = "TurboQuant-PolarQjl-${bitsPerElement}b+${residualBits}r"
+
+        override fun physicalBytes(elementCount: Long): Long {
+            val blocks = (elementCount + blockSize - 1) / blockSize
+            val seedBytes = 4L
+            val scaleBytes = numGroups * 2L
+            val codeBytes = (blockSize.toLong() * bitsPerElement + 7) / 8
+            val residualBytes = (blockSize.toLong() * residualBits + 7) / 8
+            return blocks * (seedBytes + scaleBytes + codeBytes + residualBytes)
+        }
+    }
+
+    /**
      * Opaque / unknown encoding. Used as a fallback for formats the runtime
      * cannot yet interpret but still wants to carry through without error.
      */

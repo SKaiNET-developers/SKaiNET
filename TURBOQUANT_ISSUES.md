@@ -135,13 +135,34 @@ Allow SafeTensors loaders to wrap or map buffers instead of always converting to
 
 ## Step 2: TurboQuant Introduction (PRD sections 1-5)
 
+### Completed
+
+- [x] **TQ-010: TurboQuant encoding types** — `TurboQuantPolar`, `TurboQuantPolarQjl` in `TensorEncoding`
+- [x] **TQ-011: Random rotation kernel** — `RandomRotation` with Walsh-Hadamard + sign flips
+- [x] **TQ-012: Scalar quantizer** — `ScalarQuantizer` with per-group scales, 2/3/4/8-bit
+- [x] **TQ-013: QJL residual** — `QjlResidual` with 1-4 bit residual encoding
+- [x] **TQ-014: Bit-packing** — `BitPacker` for 2/3/4/8-bit codes
+- [x] **TQ-015: KV block APIs** — `TurboQuantCodec` encode/decode + `TurboQuantKvCacheStore`
+- [x] **TQ-016: PolarOnly e2e** — Full pipeline: rotation → quant → pack → unpack → dequant → inverse rotation
+- [x] **TQ-017+018: SDPA write/read** — `CompressedKvAttention` + `TurboQuantKvCacheStore` integration
+- [x] **TQ-019: Role-aware K/V policies** — Asymmetric key/value configs in `TurboQuantKvCacheStore`
+- [x] **TQ-020: Presets** — `TurboQuantPresets` with safe-lowbit, balanced, experimental-max
+
+### Remaining
+
+- [ ] **TQ-021: DSL/annotation support** — Low priority
+- [ ] **TQ-022: CPU SIMD optimization** — Medium priority
+- [ ] **TQ-023: Metal/Apple Silicon backend** — Medium priority
+- [ ] **TQ-024: Fused dequant+attention kernels** — Low priority
+- [ ] **TQ-025: JMH benchmarks** — Medium priority
+
 ---
 
 ### TQ-010: TurboQuant Encoding Types
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Product definition |
 | **Priority** | High — blocks all TurboQuant kernels |
 | **Dependencies** | None |
@@ -165,7 +186,7 @@ Add TurboQuant variants to the sealed `TensorEncoding` hierarchy: `TurboQuantPol
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 1 |
 | **Priority** | High |
 | **Dependencies** | TQ-010 |
@@ -189,7 +210,7 @@ Implement random rotation generation in common Kotlin. This is the first stage o
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 1 |
 | **Priority** | High |
 | **Dependencies** | TQ-011 |
@@ -213,7 +234,7 @@ Implement scalar quantization with codebook lookup for the rotated vectors. Supp
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 1 |
 | **Priority** | Medium — only needed for PolarPlusQjl variant |
 | **Dependencies** | TQ-012 |
@@ -237,7 +258,7 @@ Implement the QJL (Quantized Johnson-Lindenstrauss) residual stage for the Polar
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 1 |
 | **Priority** | High |
 | **Dependencies** | TQ-012 |
@@ -261,7 +282,7 @@ Implement bit-packing/unpacking for TurboQuant codes into compact byte arrays. M
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 1 |
 | **Priority** | High |
 | **Dependencies** | TQ-001, TQ-014 |
@@ -286,7 +307,7 @@ Implement append and read APIs that connect TurboQuant encoding/decoding to the 
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Supported variants |
 | **Priority** | High — primary production variant |
 | **Dependencies** | TQ-011, TQ-012, TQ-014, TQ-015 |
@@ -310,7 +331,7 @@ Wire together rotation + scalar quantization + bit-packing into the complete Pol
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 2 |
 | **Priority** | High |
 | **Dependencies** | TQ-002, TQ-016 |
@@ -333,7 +354,7 @@ Integrate TurboQuant compression into the SDPA write path so K/V are automatical
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 2 |
 | **Priority** | High |
 | **Dependencies** | TQ-002, TQ-016 |
@@ -356,7 +377,7 @@ Integrate TurboQuant decompression into the SDPA read path so attention is compu
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Functional requirement 3 |
 | **Priority** | Medium |
 | **Dependencies** | TQ-001, TQ-016 |
@@ -381,7 +402,7 @@ Support independent compression policies for keys and values — different bit b
 
 | Field | Value |
 |---|---|
-| **Status** | TODO |
+| **Status** | DONE |
 | **PRD section** | Step 2, Presets |
 | **Priority** | Medium |
 | **Dependencies** | TQ-019 |
