@@ -34,7 +34,7 @@ public class TekkenTokenizer(
     private val specialTokensById: Map<Int, String>,
     private val numSpecialTokens: Int = 1000,
     private val pattern: Regex
-) {
+) : Tokenizer {
     /** BPE rank lookup: byte sequence → rank (merge priority). */
     private val bytesToRank: HashMap<ByteArrayKey, Int> = HashMap(vocabTokenBytes.size * 2)
 
@@ -45,16 +45,16 @@ public class TekkenTokenizer(
     }
 
     /** Number of vocab tokens (excluding special tokens). */
-    public val vocabSize: Int get() = vocabTokenBytes.size
+    override val vocabSize: Int get() = vocabTokenBytes.size
 
     /** Total token count (vocab + special tokens). */
     public val totalTokens: Int get() = vocabTokenBytes.size + numSpecialTokens
 
     /** BOS token ID. */
-    public val bosTokenId: Int get() = specialTokens["<s>"] ?: 1
+    override val bosTokenId: Int get() = specialTokens["<s>"] ?: 1
 
     /** EOS token ID. */
-    public val eosTokenId: Int get() = specialTokens["</s>"] ?: 2
+    override val eosTokenId: Int get() = specialTokens["</s>"] ?: 2
 
     /**
      * Encode text to token IDs.
@@ -63,7 +63,7 @@ public class TekkenTokenizer(
      * 2. For each chunk, convert to bytes and apply BPE merges
      * 3. Offset ranks by numSpecialTokens to get final IDs
      */
-    public fun encode(text: String): IntArray {
+    override fun encode(text: String): IntArray {
         val tokens = mutableListOf<Int>()
 
         // Check for special tokens in the text first
@@ -112,11 +112,11 @@ public class TekkenTokenizer(
     /**
      * Decode token IDs to text.
      */
-    public fun decode(tokens: IntArray): String {
+    override fun decode(ids: IntArray): String {
         val bytes = mutableListOf<Byte>()
         val result = StringBuilder()
 
-        for (id in tokens) {
+        for (id in ids) {
             if (id < numSpecialTokens) {
                 // Flush accumulated bytes
                 if (bytes.isNotEmpty()) {
