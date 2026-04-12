@@ -2,6 +2,7 @@
 
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.URI
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -74,6 +75,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.coroutines)
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
+                implementation(project(":skainet-io:skainet-io-gguf"))
             }
         }
 
@@ -96,4 +98,48 @@ kotlin {
             }
         }
     }
+}
+
+// ============================================================================
+// Test fixtures for QwenByteLevelBpeTokenizer end-to-end tests (#463).
+//
+// Downloads a small public Qwen2.5 model + tokenizer.json into
+// build/test-fixtures/. Tests check for file presence and skip cleanly
+// when absent, so offline/CI builds without network still stay green.
+//
+// Run `./gradlew :skainet-io:skainet-io-core:downloadQwenTokenizerFixtures`
+// once before running the fixture-gated tests.
+// ============================================================================
+val fixturesDir = layout.buildDirectory.dir("test-fixtures")
+
+val downloadQwenTokenizerFixtures by tasks.registering {
+    group = "verification"
+    description = "Download Qwen2.5-0.5B GGUF + tokenizer.json for #463 tests"
+    val outDir = fixturesDir
+    outputs.dir(outDir)
+    doLast {
+        val dir = outDir.get().asFile.apply { mkdirs() }
+        val files = listOf(
+            "Qwen2.5-0.5B-Instruct-Q8_0.gguf" to
+                "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf",
+            "tokenizer.json" to
+                "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/main/tokenizer.json",
+        )
+        for ((name, url) in files) {
+            val target = dir.resolve(name)
+            if (target.exists() && target.length() > 0) {
+                logger.lifecycle("fixture already present: ${target.name}")
+                continue
+            }
+            logger.lifecycle("downloading $name from $url")
+            URI(url).toURL().openStream().use { input ->
+                target.outputStream().use { out -> input.copyTo(out) }
+            }
+            logger.lifecycle("  -> ${target.length()} bytes")
+        }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty("skainet.test.fixturesDir", fixturesDir.get().asFile.absolutePath)
 }
