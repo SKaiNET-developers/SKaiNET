@@ -1,5 +1,12 @@
 package sk.ainet.io.tokenizer
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 /**
  * GPT-2-style byte-level BPE tokenizer (Qwen, GPT-2, Mistral-Nemo, …).
  *
@@ -168,5 +175,105 @@ public class QwenByteLevelBpeTokenizer(
         private val PRETOKENIZE_REGEX = Regex(
             "'(?:[sdmt]|ll|ve|re)| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+"
         )
+
+        /**
+         * Build from GGUF metadata fields (see `GgufModelMetadata.rawFields`).
+         *
+         * Treats every token whose token_type code is `3` (control/special)
+         * as an atomic special token. Merges arrive as space-separated
+         * `"first second"` strings in GGUF.
+         */
+        @Suppress("UNCHECKED_CAST")
+        public fun fromGgufFields(fields: Map<String, Any?>): QwenByteLevelBpeTokenizer {
+            val tokens = (fields["tokenizer.ggml.tokens"] as? List<*>)
+                ?.filterIsInstance<String>()
+                ?: error("tokenizer.ggml.tokens missing or malformed")
+            val mergesRaw = (fields["tokenizer.ggml.merges"] as? List<*>)
+                ?.filterIsInstance<String>()
+                ?: error("tokenizer.ggml.merges missing — required for byte-level BPE")
+            val tokenTypes = (fields["tokenizer.ggml.token_type"] as? List<*>)
+                ?.mapNotNull { (it as? Number)?.toInt() }
+
+            val merges = mergesRaw.map { line ->
+                val sp = line.indexOf(' ')
+                require(sp > 0) { "malformed merge line: '$line'" }
+                line.substring(0, sp) to line.substring(sp + 1)
+            }
+
+            val specialTokens = HashMap<String, Int>()
+            if (tokenTypes != null) {
+                for (i in tokens.indices) {
+                    if (i < tokenTypes.size && tokenTypes[i] == TOKEN_TYPE_CONTROL) {
+                        specialTokens[tokens[i]] = i
+                    }
+                }
+            }
+
+            return QwenByteLevelBpeTokenizer(
+                tokens = tokens,
+                merges = merges,
+                specialTokens = specialTokens,
+                bosTokenId = (fields["tokenizer.ggml.bos_token_id"] as? Number)?.toInt(),
+                eosTokenId = (fields["tokenizer.ggml.eos_token_id"] as? Number)?.toInt(),
+            )
+        }
+
+        /**
+         * Build from a parsed HuggingFace `tokenizer.json` root object.
+         *
+         * Expects `model.type == "BPE"`. The caller ([TokenizerFactory]) is
+         * responsible for dispatch; this builder trusts the shape and fails
+         * loudly if required keys are missing.
+         */
+        public fun fromTokenizerJson(root: JsonObject): QwenByteLevelBpeTokenizer {
+            val model = root["model"]?.jsonObject
+                ?: error("tokenizer.json missing 'model'")
+            val vocab = model["vocab"]?.jsonObject
+                ?: error("tokenizer.json missing 'model.vocab'")
+
+            // Build tokens[] indexed by id. Vocab is a string -> id map; we
+            // invert it into an array. Gaps (should not happen in practice)
+            // are filled with empty strings so ids stay contiguous.
+            val maxId = vocab.values.maxOf { it.jsonPrimitive.int }
+            val tokens = Array(maxId + 1) { "" }
+            for ((tok, idEl) in vocab) {
+                tokens[idEl.jsonPrimitive.int] = tok
+            }
+
+            val mergesJson = model["merges"]?.jsonArray
+                ?: error("tokenizer.json missing 'model.merges'")
+            val merges = mergesJson.map { el ->
+                when (el) {
+                    is JsonObject -> error("tokenizer.json merges: object form not supported")
+                    else -> {
+                        val line = el.jsonPrimitive.content
+                        val sp = line.indexOf(' ')
+                        require(sp > 0) { "malformed merge line: '$line'" }
+                        line.substring(0, sp) to line.substring(sp + 1)
+                    }
+                }
+            }
+
+            val specialTokens = HashMap<String, Int>()
+            val added = root["added_tokens"]?.jsonArray
+            if (added != null) {
+                for (entry in added) {
+                    val obj = entry.jsonObject
+                    val content = obj["content"]?.jsonPrimitive?.content ?: continue
+                    val id = obj["id"]?.jsonPrimitive?.int ?: continue
+                    val isSpecial = obj["special"]?.jsonPrimitive?.boolean ?: true
+                    if (isSpecial) specialTokens[content] = id
+                }
+            }
+
+            return QwenByteLevelBpeTokenizer(
+                tokens = tokens.toList(),
+                merges = merges,
+                specialTokens = specialTokens,
+            )
+        }
+
+        /** GGUF token type codes (ggml convention). */
+        private const val TOKEN_TYPE_CONTROL = 3
     }
 }
