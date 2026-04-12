@@ -56,8 +56,38 @@ public data class GgufModelMetadata(
     /** Number of layers */
     val layerCount: Int?,
 
-    /** Vocabulary size */
+    /** Vocabulary size — derived from the tokenizer tokens list when present. */
     val vocabSize: Int?,
+
+    /**
+     * Tokenizer model identifier (`tokenizer.ggml.model`), e.g. `"gpt2"`,
+     * `"llama"`, `"bert"`. Used by `TokenizerFactory` to dispatch to the
+     * right tokenizer implementation regardless of file format.
+     */
+    val tokenizerModel: String? = null,
+
+    /** Full vocab as stored in `tokenizer.ggml.tokens` (index = token id). */
+    val tokenizerTokens: List<String>? = null,
+
+    /**
+     * Merge list from `tokenizer.ggml.merges`, each entry formatted as
+     * `"first second"` (space-separated). Priority order — index 0 is the
+     * highest-priority merge.
+     */
+    val tokenizerMerges: List<String>? = null,
+
+    /**
+     * Per-token type codes from `tokenizer.ggml.token_type`. GGUF convention:
+     * 1 = normal, 2 = unknown, 3 = control/special, 4 = user-defined,
+     * 5 = unused, 6 = byte.
+     */
+    val tokenizerTokenTypes: List<Int>? = null,
+
+    /** BOS token id from `tokenizer.ggml.bos_token_id`, if present. */
+    val bosTokenId: Int? = null,
+
+    /** EOS token id from `tokenizer.ggml.eos_token_id`, if present. */
+    val eosTokenId: Int? = null,
 
     /** All raw metadata fields for custom access */
     val rawFields: Map<String, Any?>
@@ -80,6 +110,7 @@ public data class GgufModelMetadata(
          * @return Structured metadata
          */
         public fun from(fields: Map<String, Any?>): GgufModelMetadata {
+            val tokenizerTokens = fields.getStringList("tokenizer.ggml.tokens")
             return GgufModelMetadata(
                 architecture = fields.getString("general.architecture"),
                 name = fields.getString("general.name"),
@@ -123,10 +154,14 @@ public data class GgufModelMetadata(
                     "general.layer_count",
                     "model.layer_count"
                 ),
-                vocabSize = fields.getInt(
-                    "llama.vocab_size",
-                    "tokenizer.ggml.tokens"
-                )?.let { if (it > 0) it else null },
+                vocabSize = tokenizerTokens?.size
+                    ?: fields.getInt("llama.vocab_size")?.takeIf { it > 0 },
+                tokenizerModel = fields.getString("tokenizer.ggml.model"),
+                tokenizerTokens = tokenizerTokens,
+                tokenizerMerges = fields.getStringList("tokenizer.ggml.merges"),
+                tokenizerTokenTypes = fields.getIntList("tokenizer.ggml.token_type"),
+                bosTokenId = fields.getInt("tokenizer.ggml.bos_token_id"),
+                eosTokenId = fields.getInt("tokenizer.ggml.eos_token_id"),
                 rawFields = fields
             )
         }
@@ -148,6 +183,21 @@ public data class GgufModelMetadata(
                     is Number -> return value.toInt()
                     is String -> value.toIntOrNull()?.let { return it }
                 }
+            }
+            return null
+        }
+
+        private fun Map<String, Any?>.getIntList(vararg keys: String): List<Int>? {
+            for (key in keys) {
+                val value = this[key] ?: continue
+                val ints = when (value) {
+                    is List<*> -> value.mapNotNull { (it as? Number)?.toInt() }
+                    is Array<*> -> value.mapNotNull { (it as? Number)?.toInt() }
+                    is IntArray -> value.toList()
+                    is LongArray -> value.map { it.toInt() }
+                    else -> null
+                }
+                if (ints != null && ints.isNotEmpty()) return ints
             }
             return null
         }
