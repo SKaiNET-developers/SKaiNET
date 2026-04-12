@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Qwen / GPT-2 Byte-Level BPE Tokenizer**: `QwenByteLevelBpeTokenizer` implements the full GPT-2-style pipeline — byte-to-unicode mapping, GPT-2 pretokenization regex, merge-rank BPE, and atomic special-token splitting. Builds from either GGUF metadata (`fromGgufFields`) or a HuggingFace `tokenizer.json` (`fromTokenizerJson`). Verified against Qwen2.5-0.5B reference token IDs from HuggingFace `transformers`.
+- **`TokenizerFactory` with Per-Architecture Dispatch**: Tokenizer selection is now **per-architecture, not per file format**. `TokenizerFactory.fromGguf(fields)` and `.fromTokenizerJson(json)` inspect `tokenizer.ggml.model` / `model.type` and dispatch to the right implementation — so a Qwen model uses byte-level BPE whether its weights come from `.gguf` or `.safetensors`.
+- **`Tokenizer` Interface**: Common surface implemented by `TekkenTokenizer` and `QwenByteLevelBpeTokenizer` (`encode`, `decode`, `vocabSize`, `bosTokenId`, `eosTokenId`).
+- **GGUF Tokenizer Metadata**: `GgufModelMetadata` now exposes `tokenizerModel`, `tokenizerTokens`, `tokenizerMerges`, `tokenizerTokenTypes`, `bosTokenId`, and `eosTokenId` so callers can build a tokenizer without re-parsing the raw field map.
+
+### Fixed
+- **Byte-Level BPE Broken for Qwen/GPT-2 Models**: Previously there was no GPT-2-style byte-level BPE tokenizer in the repo, and `GgufModelMetadata` ignored `tokenizer.ggml.merges` entirely — so any Qwen / GPT-2 / Mistral-Nemo model encoded text into garbage tokens (byte-level chars instead of merged vocab IDs), blocking chat mode and tool calling. The new `QwenByteLevelBpeTokenizer` + `TokenizerFactory` dispatch fix the issue for both GGUF and SafeTensors sources. SentencePiece / LLaMA support is tracked separately in #464. (#463)
+
 ## [0.18.0] - 2026-04-08
 
 ### Added
