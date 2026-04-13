@@ -111,10 +111,18 @@ public class StableHloConverter(
         inputNodes.forEachIndexed { idx, node ->
             val valueName = "%arg$idx"
             context.setValueName(node.id, valueName)
-            
+
             // Add comment for clarity
             node.outputs.firstOrNull()?.let { spec ->
                 context.emitComment("input ${node.id}: ${spec.name} : ${typeMapper.mapTensorType(spec)}")
+            }
+
+            // Preserve any physical storage encoding carried on the input
+            // spec (Q4_K / Q8_0 / TernaryPacked / TurboQuant / …) as an
+            // MLIR comment so downstream tools see that quantization
+            // flowed through. No-op when the spec has no encoding.
+            node.outputs.forEachIndexed { outIdx, spec ->
+                context.emitEncodingAnnotation(role = "input", index = outIdx, spec = spec)
             }
         }
     }
@@ -138,11 +146,19 @@ public class StableHloConverter(
     private fun processNode(node: GraphNode, context: ConversionContext) {
         val converter = registry.getConverter(node.operation.name)
             ?: throw UnsupportedOperationException("No converter found for operation: ${node.operation.name}")
-        
+
         // Get input operands from context
         val inputNodes = context.getInputNodes(node)
         val operands = inputNodes.mapNotNull { context.getValueName(it.id) }
-        
+
+        // Surface any physical storage encoding declared on this node's
+        // result specs as an MLIR comment before the operation is
+        // emitted. Converters that want finer-grained placement can call
+        // ConversionContext.emitEncodingAnnotation themselves.
+        node.outputs.forEachIndexed { outIdx, spec ->
+            context.emitEncodingAnnotation(role = "result", index = outIdx, spec = spec)
+        }
+
         // Convert the operation
         val result = converter.convert(node, operands, context)
         
