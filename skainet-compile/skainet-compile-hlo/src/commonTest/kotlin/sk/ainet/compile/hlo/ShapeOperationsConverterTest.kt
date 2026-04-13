@@ -21,20 +21,36 @@ class ShapeOperationsConverterTest {
     
     @Test
     fun testSupportedOperations() {
-        val expectedOperations = setOf("reshape", "flatten", "squeeze", "unsqueeze")
-        assertEquals(expectedOperations, converter.supportedOperations)
+        // Core reshape family — the originals.
+        val coreOperations = setOf("reshape", "flatten", "squeeze", "unsqueeze")
+        assertTrue(
+            converter.supportedOperations.containsAll(coreOperations),
+            "converter must still cover the core reshape family"
+        )
+        // Structural companions added in #489.
+        val structuralOperations = setOf("concat", "concatenate", "cat", "stack", "slice")
+        assertTrue(
+            converter.supportedOperations.containsAll(structuralOperations),
+            "converter must cover the structural companions (concat/slice) added in #489"
+        )
     }
-    
+
     @Test
     fun testRegistryIntegration() {
         // Test that shape operations are supported
         val registry = StableHloOperationRegistry()
         registry.register(ShapeOperationsConverter())
-        
+
         assertTrue(registry.isSupported("reshape"))
         assertTrue(registry.isSupported("flatten"))
         assertTrue(registry.isSupported("squeeze"))
         assertTrue(registry.isSupported("unsqueeze"))
+        // Structural companions added in #489.
+        assertTrue(registry.isSupported("concat"))
+        assertTrue(registry.isSupported("concatenate"))
+        assertTrue(registry.isSupported("cat"))
+        assertTrue(registry.isSupported("stack"))
+        assertTrue(registry.isSupported("slice"))
     }
     
     @Test
