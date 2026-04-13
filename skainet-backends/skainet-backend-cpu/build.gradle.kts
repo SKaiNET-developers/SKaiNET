@@ -44,6 +44,9 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            // Every concrete backend should go through the neutral api
+            // module; it transitively brings in skainet-lang-core.
+            implementation(project(":skainet-backends:skainet-backend-api"))
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-compile:skainet-compile-core"))
             implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
