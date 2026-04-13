@@ -1,0 +1,32 @@
+* xref:index.adoc[Overview]
+
+.Tutorials
+* xref:tutorials/java-getting-started.adoc[Java getting started]
+* xref:tutorials/kllama-getting-started.adoc[KLlama getting started]
+* xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
+* xref:tutorials/graph-dsl.adoc[Graph DSL]
+
+.How-to guides
+* xref:how-to/build.adoc[Build from source]
+* xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
+* xref:how-to/java-cli-app.adoc[Build a Java CLI app]
+* xref:how-to/java-llm-inference.adoc[Run LLM inference]
+* xref:how-to/java-model-training.adoc[Train a model]
+* xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino]
+
+.Reference
+* xref:reference/architecture.adoc[Architecture]
+* xref:reference/operators/generated/index.adoc[Operator reference]
+* xref:reference/ops-status-matrix.adoc[Operator coverage matrix]
+* xref:reference/api.adoc[API reference (Dokka)]
+
+.Explanation
+* xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
+* xref:explanation/operator-design.adoc[Operator documentation system]
+* xref:explanation/theory/index.adoc[Mathematical theory]
+** xref:explanation/theory/matmul.adoc[Matrix multiplication]
+* xref:explanation/examples/index.adoc[Worked examples]
+** xref:explanation/examples/matmul.adoc[Matrix multiplication examples]
+* xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
+* xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU backend notes]
+* xref:explanation/issues/native-macos-accelerate-simd.adoc[Native macOS Accelerate SIMD issues]

@@ -100,10 +100,12 @@ tasks.register("generateOperatorDocs") {
     }
 }
 
-// Documentation plugin configuration
+// Documentation plugin configuration — emits operator doc fragments
+// into the Antora ROOT module so the published site can surface them
+// under Reference > Operator coverage.
 documentation {
     inputFile.set(file("skainet-lang/skainet-lang-core/build/generated/ksp/metadata/commonMain/resources/operators.json"))
-    outputDirectory.set(file("docs/modules/operators/_generated_"))
+    outputDirectory.set(file("docs/modules/ROOT/pages/reference/operators/generated"))
     includeBackendStatus.set(true)
     generateIndex.set(true)
 }
@@ -153,4 +155,17 @@ dependencies {
     // Other
     dokka(project(":skainet-pipeline"))
     dokka(project(":skainet-models:skainet-model-yolo"))
+}
+
+// Copy the Dokka-generated HTML aggregate into the Antora site
+// output as a sibling `/api/` path. Invoked by .github/workflows/docs.yml
+// AFTER Antora has populated `docs/build/site/`; intentionally NOT
+// wired into the `build` lifecycle so that running `./gradlew build`
+// locally never silently creates a half-populated site directory.
+tasks.register<Copy>("bundleDokkaIntoSite") {
+    group = "documentation"
+    description = "Copy build/dokka/html into docs/build/site/api for GitHub Pages publish"
+    dependsOn("dokkaGenerate")
+    from(layout.buildDirectory.dir("dokka/html"))
+    into(layout.projectDirectory.dir("docs/build/site/api"))
 }

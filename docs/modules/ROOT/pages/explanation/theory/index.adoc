@@ -1,0 +1,36 @@
+= Mathematical Theory Reference
+
+This section contains mathematical definitions and theoretical foundations for SKaiNET operators.
+
+[#operator-theory]
+== Operator Theory
+
+=== Linear Algebra Operations
+
+include::matmul.adoc[leveloffset=+2]
+
+=== Activation Functions
+
+// TODO: Add theory for activation functions
+// include::activations.adoc[leveloffset=+2]
+
+=== Convolution Operations
+
+// TODO: Add theory for convolution operations  
+// include::convolution.adoc[leveloffset=+2]
+
+=== Normalization Operations
+
+// TODO: Add theory for normalization operations
+// include::normalization.adoc[leveloffset=+2]
+
+=== Loss Functions
+
+// TODO: Add theory for loss functions
+// include::losses.adoc[leveloffset=+2]
+
+[#cross-references]
+== Cross-References
+
+* xref:explanation/examples/index.adoc[Usage Examples]
+// Operator reference lands in a later commit of the Antora migration.

@@ -1,0 +1,11 @@
+= Architecture
+:description: How SKaiNET's compile and execution layers are organized.
+
+SKaiNET uses a hybrid backend strategy that separates development
+iteration from production deployment.
+
+image::SKaiNET-compiler.svg[Architecture diagram of the SKaiNET compiler pipeline]
+
+// The original ARCHITECTURE.md at the repo root was a 4-line stub
+// pointing at the compiler diagram. If you are looking for a
+// deeper architecture write-up, contribute it as a PR to this page.

@@ -1,0 +1,34 @@
+= SKaiNET
+:description: Kotlin Multiplatform tensor engine with a graph IR, pluggable backends, and StableHLO export.
+
+SKaiNET is a Kotlin Multiplatform tensor / compile / graph engine.
+It provides a tensor DSL, execution contexts, a graph IR, model
+loaders (GGUF, SafeTensors, ONNX), quantization primitives
+(Q4_K, Q8_0, ternary, TurboQuant), a StableHLO emitter for cross-
+platform compile targets, and a pluggable backend API that CPU,
+GPU, and NPU backends can implement independently.
+
+This documentation site is organized following the
+https://diataxis.fr/[Diátaxis / Divio framework]:
+
+Tutorials:: Learning-oriented. Start here if you are new to SKaiNET.
+How-to guides:: Task-oriented. Recipes for solving specific problems.
+Reference:: Information-oriented. Looking up APIs and op coverage.
+Explanation:: Understanding-oriented. Background on design decisions.
+
+[NOTE]
+====
+LLM-specific runtimes (Llama, Gemma, Qwen, BERT) live in the
+sibling https://github.com/SKaiNET-developers/SKaiNET-transformers[SKaiNET-transformers]
+repository and its own documentation site. This site covers the
+engine layer only.
+====
+
+== Quick links
+
+* link:../api/index.html[API reference (Dokka)] (bundled at publish time)
+
+// The Tutorials / How-to / Reference / Explanation pages plus the
+// operator coverage xref land in follow-up commits (#2 and #3 of
+// the Antora migration). This page ships the landing copy first so
+// the scaffold build succeeds with a real start_page.

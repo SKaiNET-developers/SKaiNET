@@ -1,0 +1,122 @@
+name: Docs
+
+# Build the Antora site (with generated operator pages and the
+# cross-backend coverage matrix) on every PR, and publish to GitHub
+# Pages on pushes to develop. Dokka API bundling is wired in
+# commit 6 of the docs-to-Antora migration (see issue #494).
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+      - 'build.gradle.kts'
+      - 'build-logic/**'
+      - 'skainet-lang/skainet-lang-core/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+      - 'build.gradle.kts'
+      - 'build-logic/**'
+      - 'skainet-lang/skainet-lang-core/**'
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # JDK 25 matches the version used by every other workflow in
+      # this repo. Runs on the RUNNER, not inside the Docker
+      # container, so the Gradle wrapper cache works and generateDocs
+      # / dokkaGenerate see the right JDK.
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # Emit the KSP-driven operator fragments and the coverage
+      # matrix into docs/modules/ROOT/pages/reference/operators/.
+      # Also generate the full Dokka API aggregate so commit 6 can
+      # bundle it; running both here means commit 6 is a pure
+      # workflow-step + Gradle-task-registration change with no
+      # Gradle re-run cost.
+      - name: Generate operator docs and Dokka
+        run: ./gradlew --no-daemon generateDocs dokkaGenerate
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The Chromium layer makes the image ~400 MB. First build is
+      # ~3–5 minutes; subsequent runs are sub-minute via the GHA
+      # cache. Transformers skipped caching here — this workflow
+      # improves on that.
+      - name: Build Antora image
+        uses: docker/build-push-action@v5
+        with:
+          context: docs/.docker
+          tags: skainet-antora:local
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Antora site
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/antora" \
+            --workdir /antora/docs \
+            skainet-antora:local \
+            --stacktrace \
+            antora-playbook.yml
+
+      # Bundle Dokka HTML under a sibling `/api/` path of the
+      # Antora site. Must run AFTER Antora has populated
+      # docs/build/site/, never before — bundleDokkaIntoSite is a
+      # plain Copy task that would otherwise pre-create the target
+      # directory and the later Antora run would wipe it.
+      - name: Bundle Dokka API into site
+        run: ./gradlew --no-daemon bundleDokkaIntoSite
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build/site
+
+  deploy-docs:
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    needs: build-docs
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
