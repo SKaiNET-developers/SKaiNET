@@ -285,7 +285,7 @@ public class SentencePieceTokenizer(
                 "GGUF tokens (${tokens.size}) and scores (${scores.size}) disagree"
             }
 
-            var unknownId = (fields["tokenizer.ggml.unknown_token_id"] as? Number)?.toInt()
+            var unknownId = fields["tokenizer.ggml.unknown_token_id"]?.toIntFlexible()
             if (unknownId == null) {
                 // Fall back to scanning token_type for the UNKNOWN entry.
                 val tokenTypes = (fields["tokenizer.ggml.token_type"] as? List<*>)
@@ -307,8 +307,8 @@ public class SentencePieceTokenizer(
                 tokens = tokens,
                 scores = scores,
                 unknownTokenId = unknownId,
-                bosTokenId = (fields["tokenizer.ggml.bos_token_id"] as? Number)?.toInt(),
-                eosTokenId = (fields["tokenizer.ggml.eos_token_id"] as? Number)?.toInt(),
+                bosTokenId = fields["tokenizer.ggml.bos_token_id"]?.toIntFlexible(),
+                eosTokenId = fields["tokenizer.ggml.eos_token_id"]?.toIntFlexible(),
                 addSpacePrefix = addSpacePrefix,
             )
         }
