@@ -3,6 +3,7 @@ package sk.ainet.io.tokenizer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.jvm.JvmStatic
 
 /**
  * Selects the right [Tokenizer] implementation for a model.
@@ -33,6 +34,7 @@ public object TokenizerFactory {
      * `ggufModelMetadata.rawFields` — this keeps `skainet-io-core` free of a
      * dependency on `skainet-io-gguf`.
      */
+    @JvmStatic
     public fun fromGguf(fields: Map<String, Any?>): Tokenizer {
         val model = (fields["tokenizer.ggml.model"] as? String)?.lowercase()
             ?: throw UnsupportedTokenizerException(
@@ -57,6 +59,7 @@ public object TokenizerFactory {
      * to [QwenByteLevelBpeTokenizer]; `"Unigram"` (SentencePiece) and
      * `"WordPiece"` currently throw.
      */
+    @JvmStatic
     public fun fromTokenizerJson(json: String): Tokenizer {
         val root = JSON.parseToJsonElement(json).jsonObject
         val modelType = root["model"]?.jsonObject?.get("type")?.jsonPrimitive?.content

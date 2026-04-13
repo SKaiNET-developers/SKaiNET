@@ -9,6 +9,7 @@ import sk.ainet.compile.hlo.converters.MathOperationsConverter
 import sk.ainet.compile.hlo.converters.NeuralNetOperationsConverter
 import sk.ainet.compile.hlo.converters.ReductionOperationsConverter
 import sk.ainet.compile.hlo.converters.ShapeOperationsConverter
+import kotlin.jvm.JvmStatic
 
 /**
  * Factory for creating StableHLO converters with default configurations.
@@ -21,6 +22,7 @@ public object StableHloConverterFactory {
     /**
      * Create a converter with basic operations support (add, matmul, relu)
      */
+    @JvmStatic
     public fun createBasic(): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -57,6 +59,7 @@ public object StableHloConverterFactory {
     /**
      * Create a converter with extended operations support
      */
+    @JvmStatic
     public fun createExtended(): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -96,6 +99,7 @@ public object StableHloConverterFactory {
     /**
      * Create a converter without validation (for performance)
      */
+    @JvmStatic
     public fun createFast(): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -115,6 +119,8 @@ public object StableHloConverterFactory {
     /**
      * Create a custom converter with the provided components
      */
+    @JvmStatic
+    @kotlin.jvm.JvmOverloads
     public fun createCustom(
         registry: StableHloOperationRegistry,
         typeMapper: TypeMapper = TypeMapper(),

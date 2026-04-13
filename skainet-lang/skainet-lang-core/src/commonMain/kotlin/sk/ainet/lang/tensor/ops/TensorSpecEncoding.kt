@@ -1,8 +1,11 @@
+@file:JvmName("TensorSpecs")
+
 package sk.ainet.lang.tensor.ops
 
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
+import kotlin.jvm.JvmName
 
 /**
  * Metadata key used to carry a [TensorEncoding] on a [TensorSpec].
