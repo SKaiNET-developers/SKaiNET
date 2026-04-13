@@ -4,15 +4,13 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
-    alias(libs.plugins.vanniktech.mavenPublish)
-    alias(libs.plugins.binary.compatibility.validator)
     id("sk.ainet.dokka")
 }
 
 kotlin {
     explicitApi()
     android {
-        namespace = "sk.ainet.backend.cpu"
+        namespace = "sk.ainet.backend.api"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions {
@@ -22,9 +20,9 @@ kotlin {
 
     iosArm64()
     iosSimulatorArm64()
-    macosArm64 ()
-    linuxX64 ()
-    linuxArm64 ()
+    macosArm64()
+    linuxX64()
+    linuxArm64()
 
     jvm()
 
@@ -44,26 +42,15 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // Every concrete backend should go through the neutral api
-            // module; it transitively brings in skainet-lang-core.
-            implementation(project(":skainet-backends:skainet-backend-api"))
-            implementation(project(":skainet-lang:skainet-lang-core"))
-            implementation(project(":skainet-compile:skainet-compile-core"))
-            implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
-
-        }
-
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(project(":skainet-lang:skainet-lang-models"))
+            // Neutral backend API is an `api` re-export of the tensor op and
+            // storage interfaces already defined in skainet-lang-core. Any
+            // concrete backend (CPU, IREE, Metal, NPU, ...) should depend on
+            // this module instead of pulling in skainet-backend-cpu just to
+            // reach TensorOps / TensorDataFactory / TensorData.
+            api(project(":skainet-lang:skainet-lang-core"))
         }
 
         val jvmMain by getting
-        val jvmTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
-            }
-        }
         val androidMain by getting
         val wasmJsMain by getting
 
@@ -109,12 +96,4 @@ kotlin {
             dependsOn(linuxMain)
         }
     }
-}
-
-tasks.withType<Test>().configureEach {
-    jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
-}
-
-tasks.withType<JavaExec>().configureEach {
-    jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
 }
