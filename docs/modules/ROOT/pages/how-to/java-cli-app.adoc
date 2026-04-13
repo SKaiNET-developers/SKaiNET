@@ -32,7 +32,7 @@ Create a `pom.xml`:
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <skainet.version>0.13.0</skainet.version>
+        <skainet.version>0.19.0</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -137,7 +137,7 @@ repositories {
 }
 
 dependencies {
-    implementation platform('sk.ainet:skainet-bom:0.13.0')
+    implementation platform('sk.ainet:skainet-bom:0.19.0')
     implementation 'sk.ainet:skainet-kllama-jvm'
     implementation 'sk.ainet:skainet-backend-cpu-jvm'
 }
