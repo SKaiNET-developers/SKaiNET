@@ -67,20 +67,34 @@ class GatherConverterTest {
             "gather must emit a dimension_numbers attribute"
         )
         assertTrue(
-            module.content.contains("offset_dims"),
-            "gather must declare offset_dims for the non-gathered axes"
+            module.content.contains("offset_dims = [1]"),
+            "gather must declare offset_dims = [1] for an axis-0 row gather on a 2-D weight"
         )
         assertTrue(
-            module.content.contains("collapsed_slice_dims"),
-            "gather must declare collapsed_slice_dims for the gathered axis"
+            module.content.contains("collapsed_slice_dims = [0]"),
+            "gather must declare collapsed_slice_dims = [0] for the gathered axis"
         )
         assertTrue(
-            module.content.contains("start_index_map"),
-            "gather must declare start_index_map"
+            module.content.contains("start_index_map = [0]"),
+            "gather must declare start_index_map = [0]"
         )
         assertTrue(
-            module.content.contains("slice_sizes"),
-            "gather must declare slice_sizes matching the weight row shape"
+            module.content.contains("slice_sizes = array<i64: 1, 4>"),
+            "gather must declare slice_sizes = [1, hidden_size=4] matching the weight row shape"
+        )
+
+        // Tight regression check: the gather operands must be the
+        // actual SSA value names, not a bracketed list expression.
+        // (Earlier draft accidentally emitted
+        //  `stablehlo.gather([%arg0, %arg1][0], [%arg0, %arg1][1])`
+        // because of a `$operands[0]` Kotlin string-template pitfall.)
+        assertTrue(
+            module.content.contains("stablehlo.gather(%arg0, %arg1)"),
+            "gather must reference operands as bare SSA values, not `[%arg0, %arg1][0]`"
+        )
+        assertFalse(
+            module.content.contains("stablehlo.gather([%"),
+            "gather must not emit operand lists as Kotlin-string `[..., ...][0]` junk"
         )
     }
 
