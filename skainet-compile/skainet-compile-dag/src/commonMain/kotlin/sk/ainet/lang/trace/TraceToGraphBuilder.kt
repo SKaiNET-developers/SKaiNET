@@ -6,6 +6,8 @@ import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
+import sk.ainet.lang.tensor.ops.inferTensorEncoding
+import sk.ainet.lang.tensor.ops.withTensorEncoding
 
 /**
  * Shared builder to convert OpTrace streams into a ComputeGraph.
@@ -258,8 +260,14 @@ public class TraceToGraphBuilder(
             // Try to resolve as a constant from the session
             val tensor = if (!forceInput && embedConstants) session?.resolve(firstRef.tensorRef) else null
             val constantValues = tensor?.let { extractFloatArray(it) }
+            // Resolved tensors that carry a concrete storage encoding (Q4_K,
+            // Q8_0, TernaryPacked, TurboQuant, …) propagate it onto the
+            // produced spec so later compile stages can preserve the
+            // quantization instead of silently re-materializing FP32.
+            val encoding = tensor?.data?.inferTensorEncoding()
 
             val syntheticNode: GraphNode
+            val producedSpec: TensorSpec
             if (constantValues != null) {
                 // Create a constant/weight node with embedded values
                 val weightShape = tensor!!.shape.dimensions.toList()
@@ -273,15 +281,16 @@ public class TraceToGraphBuilder(
                         "trainable" to false
                     )
                 )
+                producedSpec = TensorSpec(
+                    name = tensorId,
+                    shape = weightShape,
+                    dtype = weightDtype
+                ).withTensorEncoding(encoding)
                 syntheticNode = GraphNode(
                     id = nodeId,
                     operation = op,
                     inputs = emptyList(),
-                    outputs = listOf(TensorSpec(
-                        name = tensorId,
-                        shape = weightShape,
-                        dtype = weightDtype
-                    ))
+                    outputs = listOf(producedSpec)
                 )
             } else {
                 // Create an input placeholder node
@@ -291,17 +300,19 @@ public class TraceToGraphBuilder(
                     type = "input",
                     parameters = emptyMap()
                 )
+                producedSpec = spec.withTensorEncoding(encoding)
                 syntheticNode = GraphNode(
                     id = nodeId,
                     operation = op,
                     inputs = emptyList(),
-                    outputs = listOf(spec)
+                    outputs = listOf(producedSpec)
                 )
             }
 
             graph.addNode(syntheticNode)
 
-            // Wire edges to all consumers
+            // Wire edges to all consumers, propagating the encoding on the
+            // edge tensor spec so every consumer sees the quantization hint.
             for (ref in refs) {
                 graph.addEdge(
                     GraphEdge(
@@ -310,13 +321,13 @@ public class TraceToGraphBuilder(
                         destination = ref.consumerNode,
                         sourceOutputIndex = 0,
                         destinationInputIndex = ref.inputIndex,
-                        tensorSpec = ref.spec
+                        tensorSpec = ref.spec.withTensorEncoding(encoding)
                     )
                 )
             }
 
             // Register as producer
-            producersByTensorId[tensorId] = Producer(syntheticNode, 0, spec)
+            producersByTensorId[tensorId] = Producer(syntheticNode, 0, producedSpec)
         }
         unresolvedByTensorId.clear()
     }
