@@ -200,17 +200,22 @@ public class StableHloConverter(
      * `name -> encoding` map of every tensor that carries a non-null
      * [TensorEncoding]. Duplicates (the same name appearing in multiple
      * nodes) collapse to a single entry — first-writer-wins.
+     *
+     * Implementation note: uses an explicit `!in` check rather than
+     * `MutableMap.putIfAbsent` because the latter is a JVM-only
+     * extension and does not exist in Kotlin common-stdlib for WasmJS
+     * / JS / Native targets.
      */
     private fun collectTensorEncodings(nodes: List<GraphNode>): Map<String, TensorEncoding> {
         val result = linkedMapOf<String, TensorEncoding>()
         for (node in nodes) {
             for (spec in node.outputs) {
                 val encoding = spec.tensorEncoding ?: continue
-                result.putIfAbsent(spec.name, encoding)
+                if (spec.name !in result) result[spec.name] = encoding
             }
             for (spec in node.inputs) {
                 val encoding = spec.tensorEncoding ?: continue
-                result.putIfAbsent(spec.name, encoding)
+                if (spec.name !in result) result[spec.name] = encoding
             }
         }
         return result
