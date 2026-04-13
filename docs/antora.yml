@@ -3,3 +3,15 @@ title: SKaiNET
 version: ~
 nav:
   - modules/ROOT/nav.adoc
+
+# Component-level attributes flow to every page. Defined here so the
+# operator-design article (and any future page) can reference them
+# without each page declaring its own attributes block. If you need
+# to override a value on a per-page basis, declare it above the
+# first section heading on that page.
+asciidoc:
+  attributes:
+    framework_name: SKaiNET
+    ksp_version: 2.2.21-2.0.5
+    dokka_version: 2.1.0
+    asciidoctorj_version: 3.0.0
