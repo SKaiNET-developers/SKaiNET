@@ -30,7 +30,11 @@ asciidoc:
 
 ui:
   bundle:
-    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    # SKaiNET-branded UI bundle from the shared skainet-docs-ui repo:
+    #   https://github.com/SKaiNET-developers/skainet-docs-ui
+    # Pinned to a specific tag for reproducible builds. Bumping
+    # this URL to a newer version is a one-line PR.
+    url: https://github.com/SKaiNET-developers/skainet-docs-ui/releases/download/v1.1.1/ui-bundle.zip
     snapshot: true
 
 output:
