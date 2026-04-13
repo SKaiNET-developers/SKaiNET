@@ -2,6 +2,7 @@ package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ActivationOperationsConverter
 import sk.ainet.compile.hlo.converters.ConstantOperationsConverter
+import sk.ainet.compile.hlo.converters.GatherOperationsConverter
 import sk.ainet.compile.hlo.converters.LegacyOperationsConverter
 import sk.ainet.compile.hlo.converters.LinalgOperationsConverter
 import sk.ainet.compile.hlo.converters.MathOperationsConverter
@@ -46,6 +47,10 @@ public object StableHloConverterFactory {
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
 
+        // Register gather / embedding / index_select converter — the
+        // LLM front-door op for token-id \u2192 embedding lookups.
+        registry.register(GatherOperationsConverter())
+
         return StableHloConverter(registry, typeMapper, validator)
     }
 
@@ -80,6 +85,10 @@ public object StableHloConverterFactory {
 
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
+
+        // Register gather / embedding / index_select converter — the
+        // LLM front-door op for token-id \u2192 embedding lookups.
+        registry.register(GatherOperationsConverter())
 
         return StableHloConverter(registry, typeMapper, validator)
     }
