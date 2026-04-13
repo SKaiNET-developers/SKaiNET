@@ -37,6 +37,7 @@ include("skainet-compile:skainet-compile-hlo")
 include("skainet-compile:skainet-compile-c")
 
 // ====== BACKENDS
+include("skainet-backends:skainet-backend-api")
 include("skainet-backends:skainet-backend-cpu")
 
 // ====== BENCHMARKS
