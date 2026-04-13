@@ -2,6 +2,7 @@ package sk.ainet.compile.hlo
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertEquals
 import sk.ainet.lang.graph.DefaultComputeGraph
@@ -65,6 +66,34 @@ class ActivationOperationsConverterTest {
         assertTrue(module.content.contains("stablehlo.exponential"))
         assertTrue(module.content.contains("stablehlo.divide"))
         assertTrue(module.content.contains("tensor<2x3xf32>"))
+
+        // Regression: softmax must NOT hardcode its max/sum terms as constants
+        // (issue #467 — the fake-max `dense<0.0>` and fake-sum `dense<1.0>` at
+        // full output shape produced numerically wrong MLIR).
+        assertFalse(
+            module.content.contains("stablehlo.constant dense<0.0> : tensor<2x3xf32>"),
+            "softmax must not emit a fake-max constant at output shape"
+        )
+        assertFalse(
+            module.content.contains("stablehlo.constant dense<1.0> : tensor<2x3xf32>"),
+            "softmax must not emit a fake-sum constant at output shape"
+        )
+
+        // The corrected lowering invokes real reductions (via custom_call for
+        // now — matching ReductionOperationsConverter style) plus a broadcast
+        // back to the input shape before the subtract/divide.
+        assertTrue(
+            module.content.contains("@reduce_max"),
+            "softmax must lower max(x) to a real reduction"
+        )
+        assertTrue(
+            module.content.contains("@reduce_sum"),
+            "softmax must lower sum(exp(...)) to a real reduction"
+        )
+        assertTrue(
+            module.content.contains("stablehlo.broadcast_in_dim"),
+            "softmax must broadcast reduced values back to the input shape"
+        )
     }
 
     @Test
