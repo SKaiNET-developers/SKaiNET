@@ -100,10 +100,12 @@ tasks.register("generateOperatorDocs") {
     }
 }
 
-// Documentation plugin configuration
+// Documentation plugin configuration — emits operator doc fragments
+// into the Antora ROOT module so the published site can surface them
+// under Reference > Operator coverage.
 documentation {
     inputFile.set(file("skainet-lang/skainet-lang-core/build/generated/ksp/metadata/commonMain/resources/operators.json"))
-    outputDirectory.set(file("docs/modules/operators/_generated_"))
+    outputDirectory.set(file("docs/modules/ROOT/pages/reference/operators/generated"))
     includeBackendStatus.set(true)
     generateIndex.set(true)
 }

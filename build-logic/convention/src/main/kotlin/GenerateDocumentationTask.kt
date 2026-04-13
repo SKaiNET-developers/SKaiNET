@@ -87,6 +87,14 @@ abstract class GenerateDocumentationTask : DefaultTask() {
     
     private fun generateMainIndex(module: OperatorDocModule, outputDir: File) {
         val indexFile = File(outputDir, "index.adoc")
+        // When the output directory sits under an Antora module's
+        // `modules/<name>/pages/` tree, xrefs in the emitted index
+        // must be resolved relative to that `pages/` root, not the
+        // current file. Auto-derive the prefix from the output path
+        // so the generator works both with Antora and with flat doc
+        // layouts (empty prefix -> bare filenames, the original
+        // behavior).
+        val xrefPrefix = deriveAntoraXrefPrefix(outputDir)
         indexFile.writeText(buildString {
             appendLine("= AI-NET Operators Reference")
             appendLine("")
@@ -94,17 +102,40 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("== Operators by Modality")
             appendLine("")
-            
+
             val operatorsByModality = module.operators.groupBy { it.modality }
             operatorsByModality.forEach { (modality, operators) ->
                 appendLine("=== ${modality.capitalize()}")
                 appendLine("")
                 operators.forEach { operator ->
-                    appendLine("* xref:${operator.name.lowercase()}.adoc[${operator.name}]")
+                    appendLine("* xref:$xrefPrefix${operator.name.lowercase()}.adoc[${operator.name}]")
                 }
                 appendLine("")
             }
         })
+    }
+
+    /**
+     * If [outputDir] lives under an Antora `modules/<name>/pages/...`
+     * tree, return the path segment from `pages/` down to the output
+     * directory, suffixed with `/`. Otherwise return an empty string,
+     * so the generator emits bare-filename xrefs (the pre-Antora
+     * behavior).
+     *
+     * Example:
+     * ```
+     * /repo/docs/modules/ROOT/pages/reference/operators/generated
+     *                                → "reference/operators/generated/"
+     * /repo/docs/operators/generated → ""
+     * ```
+     */
+    private fun deriveAntoraXrefPrefix(outputDir: File): String {
+        val path = outputDir.absolutePath.replace(File.separatorChar, '/')
+        val marker = "/pages/"
+        val idx = path.indexOf(marker)
+        if (idx < 0) return ""
+        val tail = path.substring(idx + marker.length)
+        return if (tail.isEmpty()) "" else "$tail/"
     }
     
     private fun generateOperatorPage(operator: OperatorDoc, module: OperatorDocModule, outputDir: File) {
