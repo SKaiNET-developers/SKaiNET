@@ -37,6 +37,29 @@ class ActivationOperationsConverterTest {
         assertTrue(registry.isSupported("tanh"))
         assertTrue(registry.isSupported("gelu"))
         assertTrue(registry.isSupported("swish"))
+        // silu / SiLU is the Llama-family alias for the same
+        // x * sigmoid(x) lowering that swish uses.
+        assertTrue(registry.isSupported("silu"))
+        assertTrue(registry.isSupported("SiLU"))
+    }
+
+    @Test
+    fun testSiluAliasLowersLikeSwish() {
+        val graph = createActivationGraph("silu")
+        val converter = StableHloConverterFactory.createExtended()
+        val module = converter.convert(graph, "test_silu")
+
+        // silu == swish: x * sigmoid(x). The emitted MLIR must
+        // contain the same ops the swish path produces — the
+        // sigmoid expansion (negate, exp, constant 1.0, add, divide)
+        // plus the final multiply with the original input.
+        assertTrue(module.content.contains("stablehlo.negate"))
+        assertTrue(module.content.contains("stablehlo.exponential"))
+        assertTrue(module.content.contains("stablehlo.constant dense<1.0>"))
+        assertTrue(module.content.contains("stablehlo.add"))
+        assertTrue(module.content.contains("stablehlo.divide"))
+        assertTrue(module.content.contains("stablehlo.multiply"))
+        assertTrue(module.content.contains("tensor<2x3xf32>"))
     }
 
     @Test

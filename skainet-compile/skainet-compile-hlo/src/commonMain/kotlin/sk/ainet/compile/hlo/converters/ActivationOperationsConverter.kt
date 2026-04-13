@@ -22,12 +22,18 @@ import sk.ainet.lang.graph.GraphNode
 public class ActivationOperationsConverter : StableHloOperationConverter {
     
     override val supportedOperations: Set<String> = setOf(
-        "sigmoid", "softmax", "tanh", "gelu", "swish"
+        "sigmoid", "softmax", "tanh", "gelu", "swish",
+        // SiLU (Sigmoid Linear Unit) is the name every Llama / Mistral /
+        // Qwen / Gemma family model uses for the same x * sigmoid(x)
+        // activation that PyTorch historically called swish. Register
+        // the alias so traced LLM graphs don't fall through to the
+        // "no converter found" path.
+        "silu", "SiLU"
     )
-    
+
     override fun convert(
-        node: GraphNode, 
-        operands: List<String>, 
+        node: GraphNode,
+        operands: List<String>,
         context: ConversionContext
     ): ConversionResult {
         return when (node.operation.name.lowercase()) {
@@ -35,7 +41,7 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
             "softmax" -> convertSoftmax(node, operands, context)
             "tanh" -> convertTanh(node, operands, context)
             "gelu" -> convertGelu(node, operands, context)
-            "swish" -> convertSwish(node, operands, context)
+            "swish", "silu" -> convertSwish(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by ActivationOperationsConverter"
