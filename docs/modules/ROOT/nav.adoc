@@ -16,7 +16,8 @@
 
 .Reference
 * xref:reference/architecture.adoc[Architecture]
-* xref:reference/operators/generated/index.adoc[Operator coverage]
+* xref:reference/operators/generated/index.adoc[Operator reference]
+* xref:reference/ops-status-matrix.adoc[Operator coverage matrix]
 * xref:reference/api.adoc[API reference (Dokka)]
 
 .Explanation
