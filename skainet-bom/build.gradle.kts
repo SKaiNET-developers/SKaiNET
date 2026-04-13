@@ -15,7 +15,8 @@ dependencies {
         // Core language module
         api(project(":skainet-lang:skainet-lang-core"))
 
-        // CPU backend
+        // Backend abstraction + CPU backend
+        api(project(":skainet-backends:skainet-backend-api"))
         api(project(":skainet-backends:skainet-backend-cpu"))
 
         // IO modules
