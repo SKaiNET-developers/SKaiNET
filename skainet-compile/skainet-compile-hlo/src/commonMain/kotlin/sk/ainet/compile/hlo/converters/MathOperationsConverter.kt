@@ -30,30 +30,72 @@ public class MathOperationsConverter : StableHloOperationConverter {
         // Additional mathematical operations
         "pow", "mod", "remainder",
         // Element-wise operations
-        "element_add", "element_sub", "element_mul", "element_div"
+        "element_add", "element_sub", "element_mul", "element_div",
+        // Element-wise type conversion. Not strictly "math", but
+        // MathOperationsConverter already owns the elementwise-op
+        // family and cast is an elementwise primitive.
+        "cast", "convert", "to"
     )
-    
+
     override fun convert(
-        node: GraphNode, 
-        operands: List<String>, 
+        node: GraphNode,
+        operands: List<String>,
         context: ConversionContext
     ): ConversionResult {
         // Delegate basic math operations to BasicMathConverter
         if (basicMathConverter.supportedOperations.contains(node.operation.name.lowercase())) {
             return basicMathConverter.convert(node, operands, context)
         }
-        
+
         // Handle additional mathematical operations
         return when (node.operation.name.lowercase()) {
             "pow" -> convertPower(node, operands, context)
             "mod", "remainder" -> convertRemainder(node, operands, context)
-            "element_add", "element_sub", "element_mul", "element_div" -> 
+            "element_add", "element_sub", "element_mul", "element_div" ->
                 convertElementWise(node, operands, context)
+            "cast", "convert", "to" -> convertCast(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by MathOperationsConverter"
             )
         }
+    }
+
+    /**
+     * Convert cast / convert / to to stablehlo.convert.
+     *
+     * Reads the target dtype from `to`, `to_dtype`, or `dtype`
+     * parameter — or, when absent, from the output spec's dtype,
+     * which is the normal tracing path. Emits the MLIR type-
+     * transition signature `(<from_type>) -> <to_type>`.
+     */
+    private fun convertCast(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Cast operation requires exactly 1 operand, got ${operands.size}",
+                "Unsupported cast arity for node ${node.id}"
+            )
+        }
+
+        val typeMapper = context.getTypeMapper()
+        val inputSpec = node.inputs.firstOrNull()
+        val outputSpec = node.outputs.firstOrNull()
+
+        val inputType = inputSpec?.let { typeMapper.mapTensorType(it) } ?: "tensor<?xf32>"
+        val outputType = outputSpec?.let { typeMapper.mapTensorType(it) } ?: "tensor<?xf32>"
+
+        val resultValue = context.nextTempValue()
+        val operation = "$resultValue = stablehlo.convert ${operands[0]} : ($inputType) -> $outputType"
+        context.emitOperation(operation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
     }
     
     private fun convertPower(

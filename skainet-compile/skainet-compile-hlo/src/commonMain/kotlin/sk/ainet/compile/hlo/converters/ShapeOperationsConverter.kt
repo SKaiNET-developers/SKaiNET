@@ -22,12 +22,17 @@ import sk.ainet.lang.graph.GraphNode
 public class ShapeOperationsConverter : StableHloOperationConverter {
     
     override val supportedOperations: Set<String> = setOf(
-        "reshape", "flatten", "squeeze", "unsqueeze"
+        "reshape", "flatten", "squeeze", "unsqueeze",
+        // Structural tensor ops — generic companions to reshape /
+        // flatten / squeeze. concat glues tensors along an axis,
+        // slice extracts a static window of a tensor.
+        "concat", "concatenate", "cat", "stack",
+        "slice"
     )
-    
+
     override fun convert(
-        node: GraphNode, 
-        operands: List<String>, 
+        node: GraphNode,
+        operands: List<String>,
         context: ConversionContext
     ): ConversionResult {
         return when (node.operation.name.lowercase()) {
@@ -35,11 +40,114 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             "flatten" -> convertFlatten(node, operands, context)
             "squeeze" -> convertSqueeze(node, operands, context)
             "unsqueeze" -> convertUnsqueeze(node, operands, context)
+            "concat", "concatenate", "cat", "stack" -> convertConcat(node, operands, context)
+            "slice" -> convertSlice(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by ShapeOperationsConverter"
             )
         }
+    }
+
+    /**
+     * Convert concat / concatenate / cat / stack to stablehlo.concatenate.
+     *
+     * Reads the join axis from `axis` or `dim` parameter (default 0)
+     * and emits:
+     *
+     *     %out = stablehlo.concatenate %a, %b, ..., dim = <axis> : <type>
+     */
+    private fun convertConcat(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.isEmpty()) {
+            return ConversionResult.Failure(
+                "Concat operation requires at least 1 operand, got 0",
+                "Unsupported concat arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+
+        val rank = node.inputs.firstOrNull()?.shape?.size
+            ?: outputSpec?.shape?.size ?: 0
+        val rawAxis = node.operation.parameters["axis"] as? Int
+            ?: node.operation.parameters["dim"] as? Int
+            ?: 0
+        val axis = if (rawAxis < 0 && rank > 0) rank + rawAxis else rawAxis
+
+        val resultValue = context.nextTempValue()
+        val operandList = operands.joinToString(", ")
+        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : $outputType"
+        context.emitOperation(operation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
+    }
+
+    /**
+     * Convert slice to stablehlo.slice.
+     *
+     * Reads per-dim `start_indices`, `limit_indices`, and `strides`
+     * from parameters and emits a static slice:
+     *
+     *     %out = stablehlo.slice %x [s0:l0:d0, s1:l1:d1, ...] : <type>
+     *
+     * Strides default to 1 per dim when not supplied. Dynamic slice
+     * (runtime bounds) is explicitly out of scope for this first pass.
+     */
+    private fun convertSlice(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Slice operation requires exactly 1 operand, got ${operands.size}",
+                "Unsupported slice arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+
+        val inputShape = node.inputs.firstOrNull()?.shape ?: emptyList()
+        val rank = inputShape.size
+
+        @Suppress("UNCHECKED_CAST")
+        val starts = (node.operation.parameters["start_indices"] as? List<Int>)
+            ?: (node.operation.parameters["starts"] as? List<Int>)
+            ?: List(rank) { 0 }
+        @Suppress("UNCHECKED_CAST")
+        val limits = (node.operation.parameters["limit_indices"] as? List<Int>)
+            ?: (node.operation.parameters["limits"] as? List<Int>)
+            ?: inputShape
+        @Suppress("UNCHECKED_CAST")
+        val strides = (node.operation.parameters["strides"] as? List<Int>)
+            ?: List(rank) { 1 }
+
+        val startsAttr = starts.joinToString(", ")
+        val limitsAttr = limits.joinToString(", ")
+        val stridesAttr = strides.joinToString(", ")
+
+        val resultValue = context.nextTempValue()
+        val operation = "$resultValue = stablehlo.slice ${operands[0]} " +
+            "{start_indices = [$startsAttr], " +
+            "limit_indices = [$limitsAttr], " +
+            "strides = [$stridesAttr]} : $outputType"
+        context.emitOperation(operation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
     }
     
     /**
