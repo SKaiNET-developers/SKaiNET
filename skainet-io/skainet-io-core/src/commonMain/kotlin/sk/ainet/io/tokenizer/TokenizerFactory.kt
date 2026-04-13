@@ -14,9 +14,15 @@ import kotlinx.serialization.json.jsonPrimitive
  * `tokenizer.json` string, and this factory inspects the tokenizer type
  * (`tokenizer.ggml.model` or `model.type`) to dispatch.
  *
- * Currently supported: Qwen / GPT-2-style byte-level BPE. SentencePiece
- * (LLaMA/Gemma/TinyLlama) and WordPiece (BERT) throw
- * [UnsupportedTokenizerException] — see #464.
+ * Currently supported:
+ *   - **Byte-level BPE** (Qwen, GPT-2, Mistral-Nemo) — via
+ *     [QwenByteLevelBpeTokenizer]. Dispatched when
+ *     `tokenizer.ggml.model == "gpt2"` or `model.type == "BPE"`.
+ *   - **SentencePiece** (LLaMA, Gemma, TinyLlama, Mistral v0.1) — via
+ *     [SentencePieceTokenizer]. Dispatched when
+ *     `tokenizer.ggml.model == "llama"` or `model.type == "Unigram"`.
+ *
+ * WordPiece (BERT) still throws [UnsupportedTokenizerException].
  */
 public object TokenizerFactory {
 
@@ -34,9 +40,7 @@ public object TokenizerFactory {
             )
         return when (model) {
             "gpt2", "bpe" -> QwenByteLevelBpeTokenizer.fromGgufFields(fields)
-            "llama", "sentencepiece" -> throw UnsupportedTokenizerException(
-                "SentencePiece/LLaMA tokenizer not yet implemented (see #464)"
-            )
+            "llama", "sentencepiece" -> SentencePieceTokenizer.fromGgufFields(fields)
             "bert", "wordpiece" -> throw UnsupportedTokenizerException(
                 "WordPiece/BERT tokenizer not yet implemented"
             )
@@ -59,9 +63,7 @@ public object TokenizerFactory {
             ?: throw UnsupportedTokenizerException("tokenizer.json has no model.type")
         return when (modelType) {
             "BPE" -> QwenByteLevelBpeTokenizer.fromTokenizerJson(root)
-            "Unigram" -> throw UnsupportedTokenizerException(
-                "Unigram/SentencePiece tokenizer.json not yet implemented (see #464)"
-            )
+            "Unigram" -> SentencePieceTokenizer.fromTokenizerJson(root)
             "WordPiece" -> throw UnsupportedTokenizerException(
                 "WordPiece tokenizer.json not yet implemented"
             )

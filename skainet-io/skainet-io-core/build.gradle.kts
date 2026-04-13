@@ -140,6 +140,34 @@ val downloadQwenTokenizerFixtures by tasks.registering {
     }
 }
 
+val downloadTinyLlamaTokenizerFixtures by tasks.registering {
+    group = "verification"
+    description = "Download TinyLlama-1.1B GGUF + tokenizer.json for #464 tests"
+    val outDir = fixturesDir
+    outputs.dir(outDir)
+    doLast {
+        val dir = outDir.get().asFile.apply { mkdirs() }
+        val files = listOf(
+            "tinyllama-1.1b-chat-v1.0.Q8_0.gguf" to
+                "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q8_0.gguf",
+            "tinyllama-tokenizer.json" to
+                "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/tokenizer.json",
+        )
+        for ((name, url) in files) {
+            val target = dir.resolve(name)
+            if (target.exists() && target.length() > 0) {
+                logger.lifecycle("fixture already present: ${target.name}")
+                continue
+            }
+            logger.lifecycle("downloading $name from $url")
+            URI(url).toURL().openStream().use { input ->
+                target.outputStream().use { out -> input.copyTo(out) }
+            }
+            logger.lifecycle("  -> ${target.length()} bytes")
+        }
+    }
+}
+
 tasks.withType<Test>().configureEach {
     systemProperty("skainet.test.fixturesDir", fixturesDir.get().asFile.absolutePath)
 }

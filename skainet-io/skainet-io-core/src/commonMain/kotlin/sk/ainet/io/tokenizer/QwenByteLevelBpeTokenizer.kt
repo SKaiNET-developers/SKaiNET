@@ -213,8 +213,8 @@ public class QwenByteLevelBpeTokenizer(
                 tokens = tokens,
                 merges = merges,
                 specialTokens = specialTokens,
-                bosTokenId = (fields["tokenizer.ggml.bos_token_id"] as? Number)?.toInt(),
-                eosTokenId = (fields["tokenizer.ggml.eos_token_id"] as? Number)?.toInt(),
+                bosTokenId = fields["tokenizer.ggml.bos_token_id"]?.toIntFlexible(),
+                eosTokenId = fields["tokenizer.ggml.eos_token_id"]?.toIntFlexible(),
             )
         }
 

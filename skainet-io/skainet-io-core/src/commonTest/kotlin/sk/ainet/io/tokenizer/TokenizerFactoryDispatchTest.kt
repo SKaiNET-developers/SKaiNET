@@ -51,9 +51,20 @@ class TokenizerFactoryDispatchTest {
     }
 
     @Test
-    fun `gguf llama throws UnsupportedTokenizerException`() {
+    fun `gguf llama dispatches to SentencePiece`() {
+        val fields = mapOf<String, Any?>(
+            "tokenizer.ggml.model" to "llama",
+            "tokenizer.ggml.tokens" to listOf("<unk>", "<s>", "</s>", "\u2581", "a"),
+            "tokenizer.ggml.scores" to listOf(0.0f, 0.0f, 0.0f, -1.0f, -1.0f),
+        )
+        val tok = TokenizerFactory.fromGguf(fields)
+        assertTrue(tok is SentencePieceTokenizer)
+    }
+
+    @Test
+    fun `gguf bert still throws UnsupportedTokenizerException`() {
         assertFailsWith<UnsupportedTokenizerException> {
-            TokenizerFactory.fromGguf(mapOf("tokenizer.ggml.model" to "llama"))
+            TokenizerFactory.fromGguf(mapOf("tokenizer.ggml.model" to "bert"))
         }
     }
 
@@ -88,8 +99,23 @@ class TokenizerFactoryDispatchTest {
     }
 
     @Test
-    fun `tokenizer_json Unigram throws`() {
-        val json = """{"model":{"type":"Unigram","vocab":[]}}"""
+    fun `tokenizer_json Unigram dispatches to SentencePiece`() {
+        val json = """
+            {
+              "model": {
+                "type": "Unigram",
+                "unk_id": 0,
+                "vocab": [["<unk>", 0.0], ["\u2581", -1.0], ["a", -1.0]]
+              }
+            }
+        """.trimIndent()
+        val tok = TokenizerFactory.fromTokenizerJson(json)
+        assertTrue(tok is SentencePieceTokenizer)
+    }
+
+    @Test
+    fun `tokenizer_json WordPiece still throws`() {
+        val json = """{"model":{"type":"WordPiece","vocab":{}}}"""
         assertFailsWith<UnsupportedTokenizerException> {
             TokenizerFactory.fromTokenizerJson(json)
         }
