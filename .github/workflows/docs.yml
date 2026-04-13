@@ -95,6 +95,14 @@ jobs:
             --stacktrace \
             antora-playbook.yml
 
+      # Bundle Dokka HTML under a sibling `/api/` path of the
+      # Antora site. Must run AFTER Antora has populated
+      # docs/build/site/, never before — bundleDokkaIntoSite is a
+      # plain Copy task that would otherwise pre-create the target
+      # directory and the later Antora run would wipe it.
+      - name: Bundle Dokka API into site
+        run: ./gradlew --no-daemon bundleDokkaIntoSite
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

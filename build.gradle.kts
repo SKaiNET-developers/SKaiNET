@@ -156,3 +156,16 @@ dependencies {
     dokka(project(":skainet-pipeline"))
     dokka(project(":skainet-models:skainet-model-yolo"))
 }
+
+// Copy the Dokka-generated HTML aggregate into the Antora site
+// output as a sibling `/api/` path. Invoked by .github/workflows/docs.yml
+// AFTER Antora has populated `docs/build/site/`; intentionally NOT
+// wired into the `build` lifecycle so that running `./gradlew build`
+// locally never silently creates a half-populated site directory.
+tasks.register<Copy>("bundleDokkaIntoSite") {
+    group = "documentation"
+    description = "Copy build/dokka/html into docs/build/site/api for GitHub Pages publish"
+    dependsOn("dokkaGenerate")
+    from(layout.buildDirectory.dir("dokka/html"))
+    into(layout.projectDirectory.dir("docs/build/site/api"))
+}
