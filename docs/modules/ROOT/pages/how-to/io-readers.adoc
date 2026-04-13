@@ -20,7 +20,7 @@ Add the following dependencies to your `build.gradle.kts`:
 [source,kotlin]
 ----
 dependencies {
-    implementation("sk.ainet.core:skainet-io-gguf:0.5.0")
+    implementation("sk.ainet:skainet-io-gguf:0.19.0")
     implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
 }
 ----
@@ -30,7 +30,7 @@ dependencies {
 [source,kotlin]
 ----
 dependencies {
-    implementation("sk.ainet.core:skainet-io-onnx:0.5.0")
+    implementation("sk.ainet:skainet-io-onnx:0.19.0")
     implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
     implementation("pro.streem.pbandk:pbandk-runtime:0.16.0")
 }

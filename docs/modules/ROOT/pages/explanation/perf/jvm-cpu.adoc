@@ -20,12 +20,12 @@ Source files:
 
 ===== Prerequisites
 
-* JDK 21{plus} (JDK 22 toolchain configured by Gradle)
-* Gradle will pass required JVM flags:
+* JDK 21{plus} (CI builds on JDK 25)
+* Gradle passes the required JVM flags automatically:
 ** `--enable-preview`
 ** `--add-modules jdk.incubator.vector`
 
-For Java 25-specific performance advantages, see link:java-25-cpu-backend.md[Java 25 CPU Backend].
+For JDK 25-specific performance advantages, see xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU Backend notes].
 
 ===== Feature flags
 

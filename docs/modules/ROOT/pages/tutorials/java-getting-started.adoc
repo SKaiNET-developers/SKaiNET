@@ -4,7 +4,7 @@ This guide gets you from zero to running tensor operations with SKaiNET in under
 
 === Prerequisites
 
-* *JDK 21 or later* (required for Vector API and virtual threads)
+* *JDK 21 or later* (CI builds on JDK 25; Vector API and virtual threads require 21{plus})
 * *Maven 3.8{plus}* or *Gradle 8.4{plus}*
 
 === JVM Flags
@@ -29,7 +29,7 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
 ----
 <project>
     <properties>
-        <skainet.version>0.13.0</skainet.version>
+        <skainet.version>0.19.0</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -127,7 +127,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.13.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.19.0"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")
