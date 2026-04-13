@@ -4,7 +4,7 @@ This guide gets you from zero to running tensor operations with SKaiNET in under
 
 === Prerequisites
 
-* *JDK 21 or later* (required for Vector API and virtual threads)
+* *JDK 21 or later* (CI builds on JDK 25; Vector API and virtual threads require 21{plus})
 * *Maven 3.8{plus}* or *Gradle 8.4{plus}*
 
 === JVM Flags

@@ -4,7 +4,7 @@ This guide covers building neural networks, defining loss functions and optimize
 
 === Prerequisites
 
-* JDK 21{plus} with `--enable-preview --add-modules jdk.incubator.vector`
+* JDK 21{plus} (CI builds on JDK 25); Gradle passes `--enable-preview --add-modules jdk.incubator.vector` automatically
 * See link:java-getting-started.md[Java Getting Started] for project setup
 
 ==== Maven Dependencies
