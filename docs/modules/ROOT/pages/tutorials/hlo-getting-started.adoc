@@ -168,15 +168,15 @@ sequenceDiagram
     participant DAG as Compute Graph
     participant Conv as HLO Converter
     participant HLO as StableHLO IR
-    participant Opt as Optimizer
-    
+    participant Optimizer
+
     DSL->>DAG: rgb2GrayScaleMatMul()
     DAG->>Conv: MatMul + Transpose ops
     Conv->>HLO: stablehlo.dot_general
     Conv->>HLO: stablehlo.transpose
-    HLO->>Opt: Unoptimized IR
-    Opt->>HLO: Optimized IR
-    
+    HLO->>Optimizer: Unoptimized IR
+    Optimizer->>HLO: Optimized IR
+
     Note over Conv,HLO: Type inference:<br/>tensor<BxCxHxWxf32> → tensor<Bx1xHxWxf32>
 ----
 
