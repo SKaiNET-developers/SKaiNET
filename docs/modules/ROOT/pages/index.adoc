@@ -9,26 +9,35 @@ platform compile targets, and a pluggable backend API that CPU,
 GPU, and NPU backends can implement independently.
 
 This documentation site is organized following the
-https://diataxis.fr/[Diátaxis / Divio framework]:
+https://diataxis.fr/[Diátaxis / Divio framework] — pick the
+section that matches what you're trying to do:
 
-Tutorials:: Learning-oriented. Start here if you are new to SKaiNET.
-How-to guides:: Task-oriented. Recipes for solving specific problems.
-Reference:: Information-oriented. Looking up APIs and op coverage.
-Explanation:: Understanding-oriented. Background on design decisions.
+[.card-grid]
+* xref:tutorials/java-getting-started.adoc[*Tutorials*]
++
+Learning-oriented walkthroughs. Start here if you are new to
+SKaiNET — set up a project, build your first tensor, run a
+forward pass.
+* xref:how-to/build.adoc[*How-to guides*]
++
+Task-oriented recipes. Build from source, load a GGUF model,
+generate C for Arduino, train a small network from Java.
+* xref:reference/architecture.adoc[*Reference*]
++
+Information-oriented lookup: architecture, the
+xref:reference/operators/generated/index.adoc[operator catalog],
+the xref:reference/ops-status-matrix.adoc[backend coverage matrix],
+and the link:../api/index.html[Dokka API reference].
+* xref:explanation/skainet-for-ai.adoc[*Explanation*]
++
+Understanding-oriented background: SKaiNET for AI/ML, the
+operator documentation system, mathematical theory, performance
+notes.
 
 [NOTE]
 ====
 LLM-specific runtimes (Llama, Gemma, Qwen, BERT) live in the
 sibling https://github.com/SKaiNET-developers/SKaiNET-transformers[SKaiNET-transformers]
-repository and its own documentation site. This site covers the
-engine layer only.
+repository and its own documentation site. Mainline SKaiNET
+covers the engine layer only.
 ====
-
-== Quick links
-
-* link:../api/index.html[API reference (Dokka)] (bundled at publish time)
-
-// The Tutorials / How-to / Reference / Explanation pages plus the
-// operator coverage xref land in follow-up commits (#2 and #3 of
-// the Antora migration). This page ships the landing copy first so
-// the scaffold build succeeds with a real start_page.
