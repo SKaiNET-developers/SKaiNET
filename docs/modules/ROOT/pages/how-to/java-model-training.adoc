@@ -1,15 +1,16 @@
-# Java Model Training Guide
+== Java Model Training Guide
 
 This guide covers building neural networks, defining loss functions and optimizers, loading datasets, and running training loops -- all from plain Java.
 
-## Prerequisites
+=== Prerequisites
 
-- JDK 21+ with `--enable-preview --add-modules jdk.incubator.vector`
-- See [Java Getting Started](java-getting-started.md) for project setup
+* JDK 21{plus} with `--enable-preview --add-modules jdk.incubator.vector`
+* See link:java-getting-started.md[Java Getting Started] for project setup
 
-### Maven Dependencies
+==== Maven Dependencies
 
-```xml
+[source,xml]
+----
 <dependencyManagement>
     <dependencies>
         <dependency>
@@ -41,15 +42,16 @@ This guide covers building neural networks, defining loss functions and optimize
         <artifactId>skainet-data-simple-jvm</artifactId>
     </dependency>
 </dependencies>
-```
+----
 
----
+'''''
 
-## Building a Model with SequentialModelBuilder
+=== Building a Model with SequentialModelBuilder
 
 `SequentialModelBuilder` provides a fluent API for stacking dense layers and activations. It lives in `sk.ainet.java`.
 
-```java
+[source,java]
+----
 import sk.ainet.java.SKaiNET;
 import sk.ainet.java.SequentialModelBuilder;
 import sk.ainet.lang.nn.Module;
@@ -63,39 +65,43 @@ Module model = new SequentialModelBuilder(ctx)
         .relu()           // ReLU activation
         .dense(10)        // fully connected: 128 -> 10 (digit classes)
         .build();
-```
+----
 
-### Available Layers and Activations
+==== Available Layers and Activations
 
-| Method                  | Description                              |
-|-------------------------|------------------------------------------|
-| `.input(size)`          | Set the input dimension (must be first)  |
-| `.dense(outputSize)`    | Fully connected (linear) layer           |
-| `.relu()`               | ReLU activation: max(0, x)               |
-| `.sigmoid()`            | Sigmoid activation                       |
-| `.silu()`               | SiLU / Swish activation: x * sigmoid(x) |
-| `.gelu()`               | GELU activation                          |
-| `.softmax(dim)`         | Softmax along a dimension (default: -1)  |
-| `.flatten(start, end)`  | Flatten dimensions                       |
+[cols=",",options="header",]
+|===
+|Method |Description
+|`.input(size)` |Set the input dimension (must be first)
+|`.dense(outputSize)` |Fully connected (linear) layer
+|`.relu()` |ReLU activation: max(0, x)
+|`.sigmoid()` |Sigmoid activation
+|`.silu()` |SiLU / Swish activation: x ++*++ sigmoid(x)
+|`.gelu()` |GELU activation
+|`.softmax(dim)` |Softmax along a dimension (default: -1)
+|`.flatten(start, end)` |Flatten dimensions
+|===
 
 Weights are initialized using Xavier initialization. The data type defaults to FP32; pass a `DType` to the constructor to change it:
 
-```java
+[source,java]
+----
 Module model = new SequentialModelBuilder(ctx, DType.fp16())
         .input(784)
         .dense(256)
         .gelu()
         .dense(10)
         .build();
-```
+----
 
----
+'''''
 
-## Losses
+=== Losses
 
 The `Losses` factory (in `sk.ainet.java`) creates loss function instances:
 
-```java
+[source,java]
+----
 import sk.ainet.java.Losses;
 import sk.ainet.lang.nn.loss.Loss;
 
@@ -110,15 +116,16 @@ Loss hub  = Losses.huber(1.0f);                      // Huber / Smooth L1
 Loss hin  = Losses.hinge(1.0f);                      // hinge loss
 Loss shin = Losses.squaredHinge(1.0f);               // squared hinge
 Loss poi  = Losses.poisson();                        // Poisson NLL
-```
+----
 
----
+'''''
 
-## Optimizers
+=== Optimizers
 
 The `Optimizers` factory (in `sk.ainet.java`) creates optimizer instances:
 
-```java
+[source,java]
+----
 import sk.ainet.java.Optimizers;
 import sk.ainet.lang.nn.optim.Optimizer;
 
@@ -136,15 +143,16 @@ Optimizer sgd = Optimizers.sgd(0.01, 0.9);
 
 // SGD with momentum and weight decay
 Optimizer sgdWd = Optimizers.sgd(0.01, 0.9, 0.0001);
-```
+----
 
----
+'''''
 
-## TrainingLoop
+=== TrainingLoop
 
 `TrainingLoop` ties together a model, loss function, optimizer, and execution context. Build it with the static builder:
 
-```java
+[source,java]
+----
 import sk.ainet.java.TrainingLoop;
 
 TrainingLoop loop = TrainingLoop.builder()
@@ -153,22 +161,25 @@ TrainingLoop loop = TrainingLoop.builder()
         .optimizer(Optimizers.adam(0.001))
         .context(ctx)
         .build();
-```
+----
 
-### Single Training Step
+==== Single Training Step
 
 `step(x, y)` performs one forward pass, computes the loss, backpropagates, and updates weights. It returns the loss as a `float`:
 
-```java
+[source,java]
+----
 float loss = loop.step(inputBatch, targetBatch);
 System.out.printf("Step loss: %.4f%n", loss);
-```
+----
 
-### Full Training with `.train()`
+[[full-training-with-train]]
+==== Full Training with `.train()`
 
 `train()` accepts a `Supplier` that produces an `Iterator` of `(input, target)` pairs for each epoch:
 
-```java
+[source,java]
+----
 import sk.ainet.java.TrainingResult;
 import kotlin.Pair;
 
@@ -179,15 +190,17 @@ TrainingResult result = loop.train(
 
 System.out.printf("Trained %d epochs, final loss: %.4f%n",
         result.getEpochs(), result.getFinalLoss());
-```
+----
 
 Each call to the supplier should return a fresh iterator over the training batches for that epoch. This allows reshuffling between epochs.
 
-### Async Training with `.trainAsync()`
+[[async-training-with-trainasync]]
+==== Async Training with `.trainAsync()`
 
-`trainAsync()` runs the training loop on a virtual thread and returns a `CompletableFuture<TrainingResult>`:
+`trainAsync()` runs the training loop on a virtual thread and returns a `CompletableFuture++<++TrainingResult++>++`:
 
-```java
+[source,java]
+----
 import java.util.concurrent.CompletableFuture;
 
 CompletableFuture<TrainingResult> future = loop.trainAsync(
@@ -199,23 +212,25 @@ CompletableFuture<TrainingResult> future = loop.trainAsync(
 
 TrainingResult result = future.join();
 System.out.printf("Final loss: %.4f%n", result.getFinalLoss());
-```
+----
 
 You can also compose the future:
 
-```java
+[source,java]
+----
 loop.trainAsync(() -> batches.iterator(), 10)
     .thenAccept(r -> System.out.println("Done! Loss: " + r.getFinalLoss()))
     .exceptionally(ex -> { ex.printStackTrace(); return null; });
-```
+----
 
----
+'''''
 
-## Loading MNIST Data
+=== Loading MNIST Data
 
 The MNIST dataset loader lives in `sk.ainet.data.mnist`. The `MNISTBlocking` class provides blocking (non-suspend) methods for Java:
 
-```java
+[source,java]
+----
 import sk.ainet.data.mnist.MNISTBlocking;
 import sk.ainet.data.mnist.MNISTDataset;
 
@@ -225,34 +240,37 @@ MNISTDataset test  = MNISTBlocking.loadTest();
 
 System.out.println("Training samples: " + train.getImages().size());  // 60000
 System.out.println("Test samples:     " + test.getImages().size());   // 10000
-```
+----
 
 The first call downloads the dataset from the internet and caches it. Subsequent calls load from disk.
 
-### Custom Cache Directory
+==== Custom Cache Directory
 
-```java
+[source,java]
+----
 import sk.ainet.data.mnist.MNISTLoaderConfig;
 
 MNISTLoaderConfig config = new MNISTLoaderConfig("/tmp/my-mnist-cache", true);
 MNISTDataset train = MNISTBlocking.loadTrain(config);
-```
+----
 
-### Working with MNIST Data
+==== Working with MNIST Data
 
-Each `MNISTDataset` contains a list of `MNISTImage` objects. Each image has a `byte[]` of 784 pixels (28x28) and a `byte` label (0-9):
+Each `MNISTDataset` contains a list of `MNISTImage` objects. Each image has a `byte++[]++` of 784 pixels (28x28) and a `byte` label (0-9):
 
-```java
+[source,java]
+----
 var firstImage = train.getImages().get(0);
 byte label = firstImage.getLabel();       // e.g. 5
 byte[] pixels = firstImage.getImage();    // 784 bytes, 0-255
-```
+----
 
-### Creating Tensor Batches
+==== Creating Tensor Batches
 
 To feed MNIST data into the training loop, convert images to tensors:
 
-```java
+[source,java]
+----
 import sk.ainet.java.SKaiNET;
 import sk.ainet.lang.types.DType;
 import kotlin.Pair;
@@ -287,15 +305,16 @@ for (int i = 0; i < images.size(); i += batchSize) {
     var y = SKaiNET.tensor(ctx, new int[]{actual}, DType.fp32(), yData);
     batches.add(new Pair<>(x, y));
 }
-```
+----
 
----
+'''''
 
-## Complete MNIST Training Example
+=== Complete MNIST Training Example
 
 Putting it all together:
 
-```java
+[source,java]
+----
 package com.example;
 
 import sk.ainet.java.*;
@@ -382,23 +401,25 @@ public class MnistTraining {
         return batches;
     }
 }
-```
+----
 
 Run with:
 
-```bash
+[source,bash]
+----
 java --enable-preview --add-modules jdk.incubator.vector \
      -cp target/classes:target/dependency/* \
      com.example.MnistTraining
-```
+----
 
----
+'''''
 
-## Async Training Example
+=== Async Training Example
 
 For non-blocking training, use `trainAsync()` and handle the result with `CompletableFuture`:
 
-```java
+[source,java]
+----
 var future = loop.trainAsync(() -> (Iterator) batches.iterator(), 10);
 
 // Monitor progress or do other work
@@ -408,23 +429,25 @@ future.thenAccept(result -> {
     System.out.printf("Finished: %d epochs, loss %.4f%n",
             result.getEpochs(), result.getFinalLoss());
 }).join();
-```
+----
 
----
+'''''
 
-## Package Reference
+=== Package Reference
 
-| Package               | Key Classes                                          |
-|-----------------------|------------------------------------------------------|
-| `sk.ainet.java`      | `SKaiNET`, `SequentialModelBuilder`, `TrainingLoop`, `TrainingResult`, `Losses`, `Optimizers`, `TensorJavaOps` |
-| `sk.ainet.data.mnist` | `MNISTBlocking`, `MNISTDataset`, `MNISTImage`, `MNISTLoaderConfig` |
-| `sk.ainet.lang.types` | `DType`                                              |
-| `sk.ainet.lang.nn.loss` | `Loss` (interface returned by `Losses` factory)    |
-| `sk.ainet.lang.nn.optim` | `Optimizer` (interface returned by `Optimizers` factory) |
+[cols=",",options="header",]
+|===
+|Package |Key Classes
+|`sk.ainet.java` |`SKaiNET`, `SequentialModelBuilder`, `TrainingLoop`, `TrainingResult`, `Losses`, `Optimizers`, `TensorJavaOps`
+|`sk.ainet.data.mnist` |`MNISTBlocking`, `MNISTDataset`, `MNISTImage`, `MNISTLoaderConfig`
+|`sk.ainet.lang.types` |`DType`
+|`sk.ainet.lang.nn.loss` |`Loss` (interface returned by `Losses` factory)
+|`sk.ainet.lang.nn.optim` |`Optimizer` (interface returned by `Optimizers` factory)
+|===
 
----
+'''''
 
-## Next Steps
+=== Next Steps
 
-- [Java Getting Started](java-getting-started.md) -- tensor operations, project setup, and dependency management.
-- [LLM Inference Guide](java-llm-inference.md) -- load GGUF/SafeTensors models, generate text, and build agents.
+* link:java-getting-started.md[Java Getting Started] -- tensor operations, project setup, and dependency management.
+* link:java-llm-inference.md[LLM Inference Guide] -- load GGUF/SafeTensors models, generate text, and build agents.

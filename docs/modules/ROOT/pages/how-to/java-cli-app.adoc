@@ -1,22 +1,23 @@
-# Building a Java CLI App with KLlama
+== Building a Java CLI App with KLlama
 
-This guide walks you through creating a standalone Java 21+ command-line application that loads a LLaMA model and generates text using the KLlama library.
+This guide walks you through creating a standalone Java 21{plus} command-line application that loads a LLaMA model and generates text using the KLlama library.
 
-## Prerequisites
+=== Prerequisites
 
-- **JDK 21 or later** (required for Vector API and virtual threads)
-- **Maven 3.8+** or **Gradle 8.4+**
-- A GGUF model file (e.g., [TinyLlama-1.1B-Chat GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF))
+* *JDK 21 or later* (required for Vector API and virtual threads)
+* *Maven 3.8{plus}* or *Gradle 8.4{plus}*
+* A GGUF model file (e.g., https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF[TinyLlama-1.1B-Chat GGUF])
 
----
+'''''
 
-## Project Setup
+=== Project Setup
 
-### Maven
+==== Maven
 
 Create a `pom.xml`:
 
-```xml
+[source,xml]
+----
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
@@ -112,13 +113,14 @@ Create a `pom.xml`:
         </plugins>
     </build>
 </project>
-```
+----
 
-### Gradle
+==== Gradle
 
 Create a `build.gradle` (Groovy DSL):
 
-```groovy
+[source,groovy]
+----
 plugins {
     id 'java'
     id 'application'
@@ -151,15 +153,16 @@ application {
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add('--enable-preview')
 }
-```
+----
 
----
+'''''
 
-## Source Code
+=== Source Code
 
 Create `src/main/java/com/example/KLlamaCli.java`:
 
-```java
+[source,java]
+----
 package com.example;
 
 import sk.ainet.apps.kllama.java.GenerationConfig;
@@ -194,15 +197,16 @@ public class KLlamaCli {
         }
     }
 }
-```
+----
 
----
+'''''
 
-## Building and Running
+=== Building and Running
 
-### With Maven
+==== With Maven
 
-```bash
+[source,bash]
+----
 # Run directly
 mvn compile exec:java -Dexec.args="model.gguf 'Once upon a time' 128 0.7"
 
@@ -213,11 +217,12 @@ mvn package
 java --enable-preview --add-modules jdk.incubator.vector \
      -jar target/kllama-cli-1.0-SNAPSHOT.jar \
      model.gguf "Once upon a time" 128 0.7
-```
+----
 
-### With Gradle
+==== With Gradle
 
-```bash
+[source,bash]
+----
 # Run directly
 ./gradlew run --args="model.gguf 'Once upon a time' 128 0.7"
 
@@ -227,28 +232,30 @@ java --enable-preview --add-modules jdk.incubator.vector \
 # Run from distribution
 ./build/install/kllama-cli/bin/kllama-cli \
      model.gguf "Once upon a time" 128 0.7
-```
+----
 
----
+'''''
 
-## Loading SafeTensors Models
+=== Loading SafeTensors Models
 
 To load a HuggingFace model directory instead of GGUF, use `loadSafeTensors` and point to the directory containing `model.safetensors`, `config.json`, and `tokenizer.json`:
 
-```java
+[source,java]
+----
 try (KLlamaSession session = KLlamaJava.loadSafeTensors(Path.of("./my-llama-model/"))) {
     session.generate("Hello", config, token -> System.out.print(token));
     System.out.println();
 }
-```
+----
 
----
+'''''
 
-## Async Generation
+=== Async Generation
 
 Use `generateAsync` to run generation on a virtual thread and get a `CompletableFuture`:
 
-```java
+[source,java]
+----
 import java.util.concurrent.CompletableFuture;
 
 try (KLlamaSession session = KLlamaJava.loadGGUF(modelPath)) {
@@ -262,20 +269,21 @@ try (KLlamaSession session = KLlamaJava.loadGGUF(modelPath)) {
     String result = future.join();
     System.out.println(result);
 }
-```
+----
 
 You can also compose futures:
 
-```java
+[source,java]
+----
 session.generateAsync("Translate to French: Hello world")
        .thenAccept(translation -> System.out.println("Translation: " + translation))
        .exceptionally(ex -> { ex.printStackTrace(); return null; });
-```
+----
 
----
+'''''
 
-## Next Steps
+=== Next Steps
 
-- [Java LLM Inference Guide](java-llm-inference.md) — BERT embeddings, agent/tool-calling, and more.
-- [Java Getting Started](java-getting-started.md) — tensor operations, full Maven/Gradle setup.
-- [KLlama Library](../skainet-apps/skainet-kllama/README.md) — custom backends and Kotlin embedding.
+* link:java-llm-inference.md[Java LLM Inference Guide] — BERT embeddings, agent/tool-calling, and more.
+* link:java-getting-started.md[Java Getting Started] — tensor operations, full Maven/Gradle setup.
+* link:../skainet-apps/skainet-kllama/README.md[KLlama Library] — custom backends and Kotlin embedding.

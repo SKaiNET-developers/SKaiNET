@@ -1,31 +1,33 @@
-# Java Getting Started Guide
+== Java Getting Started Guide
 
 This guide gets you from zero to running tensor operations with SKaiNET in under 5 minutes. SKaiNET is a Kotlin Multiplatform AI framework, but every JVM-facing API is designed for idiomatic Java usage -- no Kotlin knowledge required.
 
-## Prerequisites
+=== Prerequisites
 
-- **JDK 21 or later** (required for Vector API and virtual threads)
-- **Maven 3.8+** or **Gradle 8.4+**
+* *JDK 21 or later* (required for Vector API and virtual threads)
+* *Maven 3.8{plus}* or *Gradle 8.4{plus}*
 
-## JVM Flags
+=== JVM Flags
 
 SKaiNET uses the Java Vector API for SIMD-accelerated tensor operations. You must pass two flags every time you run your application:
 
-```
+....
 --enable-preview --add-modules jdk.incubator.vector
-```
+....
 
-For Maven Surefire / exec-maven-plugin, add them to `<jvmArgs>`. For Gradle, add them to `jvmArgs` in your run task. Examples are shown below.
+For Maven Surefire / exec-maven-plugin, add them to `++<++jvmArgs++>++`. For Gradle, add them to `jvmArgs` in your run task. Examples are shown below.
 
----
+'''''
 
-## Maven Setup
+=== Maven Setup
 
-### 1. Import the BOM
+[[1-import-the-bom]]
+==== 1. Import the BOM
 
-The `skainet-bom` manages all SKaiNET module versions so you never have to keep them in sync manually. Add it to your `<dependencyManagement>` section:
+The `skainet-bom` manages all SKaiNET module versions so you never have to keep them in sync manually. Add it to your `++<++dependencyManagement++>++` section:
 
-```xml
+[source,xml]
+----
 <project>
     <properties>
         <skainet.version>0.13.0</skainet.version>
@@ -76,13 +78,15 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
         </plugins>
     </build>
 </project>
-```
+----
 
-### 2. Add More Modules as Needed
+[[2-add-more-modules-as-needed]]
+==== 2. Add More Modules as Needed
 
 Because the BOM is imported, you can add any module without repeating the version:
 
-```xml
+[source,xml]
+----
 <!-- LLM inference (KLlama) -->
 <dependency>
     <groupId>sk.ainet</groupId>
@@ -106,13 +110,14 @@ Because the BOM is imported, you can add any module without repeating the versio
     <groupId>sk.ainet</groupId>
     <artifactId>skainet-kllama-agent-jvm</artifactId>
 </dependency>
-```
+----
 
----
+'''''
 
-## Gradle Kotlin DSL Setup
+=== Gradle Kotlin DSL Setup
 
-```kotlin
+[source,kotlin]
+----
 plugins {
     java
     application
@@ -144,15 +149,16 @@ application {
 tasks.withType<JavaCompile> {
     options.compilerArgs.addAll(listOf("--enable-preview"))
 }
-```
+----
 
----
+'''''
 
-## Hello Tensor
+=== Hello Tensor
 
 Create `src/main/java/com/example/HelloTensor.java`:
 
-```java
+[source,java]
+----
 package com.example;
 
 import sk.ainet.java.SKaiNET;
@@ -186,39 +192,43 @@ public class HelloTensor {
         System.out.println("after relu:          " + d);
     }
 }
-```
+----
 
 Run it:
 
-```bash
+[source,bash]
+----
 # Maven
 mvn compile exec:java
 
 # Gradle
 ./gradlew run
-```
+----
 
----
+'''''
 
-## Key Entry Points
+=== Key Entry Points
 
 All Java-facing classes live in the `sk.ainet.java` package:
 
-| Class             | Purpose                                                |
-|-------------------|--------------------------------------------------------|
-| `SKaiNET`         | Static factory -- `context()`, `tensor()`, `zeros()`, `ones()`, `randn()`, `full()` |
-| `TensorJavaOps`   | Static tensor ops -- `matmul()`, `relu()`, `softmax()`, `add()`, `reshape()`, ... |
-| `Losses`          | Loss function factory -- `crossEntropy()`, `mse()`, `binaryCrossEntropy()`, ...     |
-| `Optimizers`      | Optimizer factory -- `adam()`, `adamw()`, `sgd()`                                    |
-| `DType`           | Data type selectors -- `DType.fp32()`, `DType.fp16()`, `DType.bf16()`, `DType.int32()`, ... |
+[cols=",",options="header",]
+|===
+|Class |Purpose
+|`SKaiNET` |Static factory -- `context()`, `tensor()`, `zeros()`, `ones()`, `randn()`, `full()`
+|`TensorJavaOps` |Static tensor ops -- `matmul()`, `relu()`, `softmax()`, `add()`, `reshape()`, ...
+|`Losses` |Loss function factory -- `crossEntropy()`, `mse()`, `binaryCrossEntropy()`, ...
+|`Optimizers` |Optimizer factory -- `adam()`, `adamw()`, `sgd()`
+|`DType` |Data type selectors -- `DType.fp32()`, `DType.fp16()`, `DType.bf16()`, `DType.int32()`, ...
+|===
 
----
+'''''
 
-## Data Types
+=== Data Types
 
 Access data types through static methods on `DType` (from `sk.ainet.lang.types`):
 
-```java
+[source,java]
+----
 import sk.ainet.lang.types.DType;
 
 DType f32  = DType.fp32();    // 32-bit float (default)
@@ -229,15 +239,16 @@ DType i8   = DType.int8();    // 8-bit integer
 DType i32  = DType.int32();   // 32-bit integer
 DType i64  = DType.int64();   // 64-bit integer
 DType u8   = DType.uint8();   // unsigned 8-bit
-```
+----
 
-You can also use the constant fields if you prefer: `DType.FP32_TYPE`, `DType.INT32_TYPE`, etc.
+You can also use the constant fields if you prefer: `DType.FP32++_++TYPE`, `DType.INT32++_++TYPE`, etc.
 
----
+'''''
 
-## Common Tensor Operations
+=== Common Tensor Operations
 
-```java
+[source,java]
+----
 var ctx = SKaiNET.context();
 
 // Creation
@@ -277,11 +288,11 @@ var flat = TensorJavaOps.flatten(a);
 var resh = TensorJavaOps.reshape(a, new int[]{1, -1});
 var sq   = TensorJavaOps.squeeze(a, 0);
 var usq  = TensorJavaOps.unsqueeze(a, 0);
-```
+----
 
----
+'''''
 
-## Next Steps
+=== Next Steps
 
-- [LLM Inference Guide](java-llm-inference.md) -- load GGUF/SafeTensors models, generate text, run BERT embeddings, and build tool-calling agents.
-- [Model Training Guide](java-model-training.md) -- build sequential models, train on MNIST, and run async training loops.
+* link:java-llm-inference.md[LLM Inference Guide] -- load GGUF/SafeTensors models, generate text, run BERT embeddings, and build tool-calling agents.
+* link:java-model-training.md[Model Training Guide] -- build sequential models, train on MNIST, and run async training loops.

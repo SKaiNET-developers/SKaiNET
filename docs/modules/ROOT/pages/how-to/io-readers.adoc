@@ -1,48 +1,54 @@
-# SKaiNET I/O Readers Guide
+== SKaiNET I/O Readers Guide
 
 This guide demonstrates how to use SKaiNET's GGUF and ONNX readers in your Kotlin Multiplatform projects.
 
-## Overview
+=== Overview
 
 SKaiNET provides two main I/O modules for reading AI model formats:
-- **skainet-io-gguf**: For reading GGUF (GPT-Generated Unified Format) files
-- **skainet-io-onnx**: For reading ONNX (Open Neural Network Exchange) files
+
+* *skainet-io-gguf*: For reading GGUF (GPT-Generated Unified Format) files
+* *skainet-io-onnx*: For reading ONNX (Open Neural Network Exchange) files
 
 Both modules are built on Kotlin Multiplatform and support JVM, Android, iOS, JS, WASM, and Native platforms.
 
-## Dependencies
+=== Dependencies
 
 Add the following dependencies to your `build.gradle.kts`:
 
-### For GGUF Support
+==== For GGUF Support
 
-```kotlin
+[source,kotlin]
+----
 dependencies {
     implementation("sk.ainet.core:skainet-io-gguf:0.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
 }
-```
+----
 
-### For ONNX Support
+==== For ONNX Support
 
-```kotlin
+[source,kotlin]
+----
 dependencies {
     implementation("sk.ainet.core:skainet-io-onnx:0.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
     implementation("pro.streem.pbandk:pbandk-runtime:0.16.0")
 }
-```
+----
 
-## GGUF Reader Usage
+=== GGUF Reader Usage
 
-> **Recommended:** For large model files, use `StreamingGGUFReader` instead of `GGUFReader`.
-> The streaming reader parses only metadata (~1 MB) and loads tensors on-demand, supporting
-> files over 100 GB without heap-loading the entire file. It also supports quantized types
-> (Q4_K, Q8_0, etc.) via `StreamingGgufParametersLoader`. See the streaming examples below.
+____
+*Recommended:* For large model files, use `StreamingGGUFReader` instead of `GGUFReader`.
+The streaming reader parses only metadata (~1 MB) and loads tensors on-demand, supporting
+files over 100 GB without heap-loading the entire file. It also supports quantized types
+(Q4++_++K, Q8++_++0, etc.) via `StreamingGgufParametersLoader`. See the streaming examples below.
+____
 
-### Streaming GGUF Reading (Recommended)
+==== Streaming GGUF Reading (Recommended)
 
-```kotlin
+[source,kotlin]
+----
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.StreamingGGUFReader
 
@@ -60,16 +66,19 @@ fun readLargeModel(filePath: String) {
         println("Encoding: ${storage.encoding.name}, Physical: ${storage.physicalBytes} bytes")
     }
 }
-```
+----
 
-### Legacy GGUF Reading
+==== Legacy GGUF Reading
 
-> **Note:** The legacy `GGUFReader` loads the entire file into memory and only supports
-> F32/I32 tensors. Prefer `StreamingGGUFReader` for new code.
+____
+*Note:* The legacy `GGUFReader` loads the entire file into memory and only supports
+F32/I32 tensors. Prefer `StreamingGGUFReader` for new code.
+____
 
-### Basic GGUF Reading
+==== Basic GGUF Reading
 
-```kotlin
+[source,kotlin]
+----
 import kotlinx.io.Source
 import kotlinx.io.asSource
 import kotlinx.io.buffered
@@ -114,11 +123,12 @@ suspend fun readGGUFModel(filePath: String) {
         }
     }
 }
-```
+----
 
-### Working with Tensor Data
+==== Working with Tensor Data
 
-```kotlin
+[source,kotlin]
+----
 import sk.ainet.io.gguf.GGUFReader
 import sk.ainet.io.gguf.GGMLQuantizationType
 
@@ -155,11 +165,12 @@ fun processTensorData(reader: GGUFReader) {
         }
     }
 }
-```
+----
 
-### Lazy Loading for Large Models
+==== Lazy Loading for Large Models
 
-```kotlin
+[source,kotlin]
+----
 import sk.ainet.io.gguf.GGUFReader
 
 fun readGGUFMetadataOnly(filePath: String) {
@@ -184,13 +195,14 @@ fun readGGUFMetadataOnly(filePath: String) {
         }
     }
 }
-```
+----
 
-## ONNX Reader Usage
+=== ONNX Reader Usage
 
-### Basic ONNX Reading
+==== Basic ONNX Reading
 
-```kotlin
+[source,kotlin]
+----
 import kotlinx.io.Source
 import kotlinx.io.asSource
 import sk.ainet.io.onnx.OnnxLoader
@@ -229,11 +241,12 @@ suspend fun readONNXModel(filePath: String) {
         println("  Outputs: ${graph.output.size}")
     }
 }
-```
+----
 
-### Working with ONNX Graph Structure
+==== Working with ONNX Graph Structure
 
-```kotlin
+[source,kotlin]
+----
 import onnx.ModelProto
 import onnx.NodeProto
 import onnx.TensorProto
@@ -286,11 +299,12 @@ fun getAttributeValue(attr: onnx.AttributeProto): String {
 fun getTensorShapeString(tensor: TensorProto): String {
     return tensor.dims.joinToString("x") { it.toString() }
 }
-```
+----
 
-### Custom ONNX Loader with Error Handling
+==== Custom ONNX Loader with Error Handling
 
-```kotlin
+[source,kotlin]
+----
 import kotlinx.io.Source
 import sk.ainet.io.onnx.OnnxLoader
 import sk.ainet.io.onnx.OnnxLoadedModel
@@ -352,13 +366,14 @@ suspend fun safeLoadOnnx(filePath: String) {
             println("Failed to load ONNX model: ${error.message}")
         }
 }
-```
+----
 
-## Platform-Specific Considerations
+=== Platform-Specific Considerations
 
-### JVM Platform
+==== JVM Platform
 
-```kotlin
+[source,kotlin]
+----
 // JVM-specific file reading
 import java.io.File
 import java.nio.file.Path
@@ -366,11 +381,12 @@ import java.nio.file.Path
 fun readFromFile(path: Path): Source {
     return path.toFile().inputStream().asSource().buffered()
 }
-```
+----
 
-### Android Platform
+==== Android Platform
 
-```kotlin
+[source,kotlin]
+----
 // Android-specific asset reading
 import android.content.Context
 import android.content.res.AssetManager
@@ -378,11 +394,12 @@ import android.content.res.AssetManager
 fun readFromAssets(context: Context, fileName: String): Source {
     return context.assets.open(fileName).asSource().buffered()
 }
-```
+----
 
-### iOS/Native Platform
+==== iOS/Native Platform
 
-```kotlin
+[source,kotlin]
+----
 // Native platform file reading
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -391,13 +408,14 @@ fun readFromNativePath(pathString: String): Source {
     val path = Path(pathString)
     return SystemFileSystem.source(path).buffered()
 }
-```
+----
 
-## Performance Tips
+=== Performance Tips
 
-### Memory Management
+==== Memory Management
 
-```kotlin
+[source,kotlin]
+----
 // For large models, consider streaming or chunked processing
 fun processLargeModel(reader: GGUFReader) {
     // Process tensors one at a time to manage memory
@@ -411,11 +429,12 @@ fun processLargeModel(reader: GGUFReader) {
         }
     }
 }
-```
+----
 
-### Lazy Loading Strategy
+==== Lazy Loading Strategy
 
-```kotlin
+[source,kotlin]
+----
 class ModelManager {
     private var reader: GGUFReader? = null
     private val tensorCache = mutableMapOf<String, List<Any>>()
@@ -431,11 +450,12 @@ class ModelManager {
         }
     }
 }
-```
+----
 
-## Error Handling Best Practices
+=== Error Handling Best Practices
 
-```kotlin
+[source,kotlin]
+----
 sealed class ModelLoadResult<T> {
     data class Success<T>(val model: T) : ModelLoadResult<T>()
     data class Error<T>(val message: String, val cause: Throwable? = null) : ModelLoadResult<T>()
@@ -459,13 +479,14 @@ suspend fun loadModelSafely(filePath: String): ModelLoadResult<GGUFReader> {
         ModelLoadResult.Error("Failed to load model: ${e.message}", e)
     }
 }
-```
+----
 
-## Integration Examples
+=== Integration Examples
 
-### Using with Coroutines
+==== Using with Coroutines
 
-```kotlin
+[source,kotlin]
+----
 import kotlinx.coroutines.*
 
 class AsyncModelLoader {
@@ -495,6 +516,6 @@ class AsyncModelLoader {
 }
 
 data class ProcessedTensor(val name: String, val size: Int)
-```
+----
 
 This guide provides comprehensive examples for using SKaiNET's I/O readers in your projects. The readers are designed to be efficient, multiplatform-compatible, and easy to integrate into existing Kotlin applications.

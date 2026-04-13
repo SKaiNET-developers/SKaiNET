@@ -1,15 +1,16 @@
-# Java LLM Inference Guide
+== Java LLM Inference Guide
 
 This guide covers loading and running large language models (LLaMA, BERT) from Java using SKaiNET's blocking, streaming, and async APIs.
 
-## Prerequisites
+=== Prerequisites
 
-- JDK 21+ with `--enable-preview --add-modules jdk.incubator.vector`
-- See [Java Getting Started](java-getting-started.md) for project setup
+* JDK 21{plus} with `--enable-preview --add-modules jdk.incubator.vector`
+* See link:java-getting-started.md[Java Getting Started] for project setup
 
-### Maven Dependencies
+==== Maven Dependencies
 
-```xml
+[source,xml]
+----
 <dependencyManagement>
     <dependencies>
         <dependency>
@@ -47,19 +48,20 @@ This guide covers loading and running large language models (LLaMA, BERT) from J
         <artifactId>skainet-backend-cpu-jvm</artifactId>
     </dependency>
 </dependencies>
-```
+----
 
----
+'''''
 
-## LLaMA Inference
+=== LLaMA Inference
 
 All LLaMA Java classes live in `sk.ainet.apps.kllama.java`.
 
-### Loading a GGUF Model
+==== Loading a GGUF Model
 
 The simplest way to get started is to load a GGUF file. `KLlamaJava.loadGGUF()` handles context creation, weight loading, quantization dispatch, and tokenizer setup behind the scenes.
 
-```java
+[source,java]
+----
 import sk.ainet.apps.kllama.java.KLlamaJava;
 import sk.ainet.apps.kllama.java.KLlamaSession;
 import sk.ainet.apps.kllama.java.GenerationConfig;
@@ -73,50 +75,54 @@ public class LlamaExample {
         }
     }
 }
-```
+----
 
 `KLlamaSession` implements `AutoCloseable`, so `try-with-resources` properly releases the off-heap memory arenas when you are done.
 
-### Loading SafeTensors (HuggingFace Format)
+==== Loading SafeTensors (HuggingFace Format)
 
 If you have a HuggingFace model directory containing `model.safetensors`, `config.json`, and `tokenizer.json`:
 
-```java
+[source,java]
+----
 try (KLlamaSession session = KLlamaJava.loadSafeTensors(Path.of("./my-llama-model/"))) {
     String response = session.generate("Once upon a time");
     System.out.println(response);
 }
-```
+----
 
 The directory must contain:
-- `model.safetensors` -- the model weights
-- `config.json` -- model architecture config (hidden size, layers, heads, etc.)
-- `tokenizer.json` -- HuggingFace tokenizer definition
 
----
+* `model.safetensors` -- the model weights
+* `config.json` -- model architecture config (hidden size, layers, heads, etc.)
+* `tokenizer.json` -- HuggingFace tokenizer definition
 
-## GenerationConfig
+'''''
+
+=== GenerationConfig
 
 Control generation parameters with the builder pattern:
 
-```java
+[source,java]
+----
 GenerationConfig config = GenerationConfig.builder()
         .maxTokens(256)       // maximum tokens to generate (default: 256)
         .temperature(0.7f)    // sampling temperature (default: 0.8)
         .build();
 
 String response = session.generate("Explain quantum computing", config);
-```
+----
 
 Use `GenerationConfig.defaults()` for the default configuration (256 max tokens, 0.8 temperature).
 
----
+'''''
 
-## Streaming Generation
+=== Streaming Generation
 
-Pass a `Consumer<String>` to receive each token as it is generated. This is useful for displaying output in real time:
+Pass a `Consumer++<++String++>++` to receive each token as it is generated. This is useful for displaying output in real time:
 
-```java
+[source,java]
+----
 GenerationConfig config = GenerationConfig.builder()
         .maxTokens(512)
         .temperature(0.9f)
@@ -129,17 +135,18 @@ String fullResponse = session.generate(
 );
 
 System.out.println();  // newline after streaming
-```
+----
 
-The `generate` overload with a `Consumer<String>` still returns the complete generated text as its return value.
+The `generate` overload with a `Consumer++<++String++>++` still returns the complete generated text as its return value.
 
----
+'''''
 
-## Async Generation
+=== Async Generation
 
-`generateAsync` offloads generation to a virtual thread and returns a `CompletableFuture<String>`:
+`generateAsync` offloads generation to a virtual thread and returns a `CompletableFuture++<++String++>++`:
 
-```java
+[source,java]
+----
 import java.util.concurrent.CompletableFuture;
 
 CompletableFuture<String> future = session.generateAsync(
@@ -150,27 +157,29 @@ CompletableFuture<String> future = session.generateAsync(
 // Do other work while generation runs...
 String result = future.join();  // block when you need the result
 System.out.println(result);
-```
+----
 
 You can also compose futures:
 
-```java
+[source,java]
+----
 session.generateAsync("Translate to French: Hello world")
        .thenAccept(translation -> System.out.println("Translation: " + translation))
        .exceptionally(ex -> { ex.printStackTrace(); return null; });
-```
+----
 
----
+'''''
 
-## BERT Encoding and Similarity
+=== BERT Encoding and Similarity
 
 All BERT Java classes live in `sk.ainet.apps.bert.java`.
 
-### Loading a BERT Model
+==== Loading a BERT Model
 
 Load a BERT model from a HuggingFace directory containing `model.safetensors` and `vocab.txt`:
 
-```java
+[source,java]
+----
 import sk.ainet.apps.bert.java.KBertJava;
 import sk.ainet.apps.bert.java.KBertSession;
 import java.nio.file.Path;
@@ -180,18 +189,20 @@ try (KBertSession bert = KBertJava.loadSafeTensors(Path.of("./bert-base-uncased/
     float[] embedding = bert.encode("SKaiNET is a tensor framework");
     System.out.println("Embedding dimension: " + embedding.length);
 }
-```
+----
 
 The directory must contain:
-- `model.safetensors` -- BERT model weights
-- `vocab.txt` -- WordPiece vocabulary
-- `config.json` (optional) -- model config; defaults are used if absent
 
-### Similarity Scoring
+* `model.safetensors` -- BERT model weights
+* `vocab.txt` -- WordPiece vocabulary
+* `config.json` (optional) -- model config; defaults are used if absent
+
+==== Similarity Scoring
 
 Compute cosine similarity between two texts directly:
 
-```java
+[source,java]
+----
 try (KBertSession bert = KBertJava.loadSafeTensors(Path.of("./bert-base-uncased/"))) {
     float score = bert.similarity(
             "The cat sat on the mat",
@@ -206,21 +217,22 @@ try (KBertSession bert = KBertJava.loadSafeTensors(Path.of("./bert-base-uncased/
     );
     System.out.printf("Unrelated:  %.4f%n", low);    // e.g. 0.1247
 }
-```
+----
 
-The returned value is cosine similarity in the range [-1, 1].
+The returned value is cosine similarity in the range ++[++-1, 1++]++.
 
----
+'''''
 
-## Agent Loop and Tool Calling
+=== Agent Loop and Tool Calling
 
 All agent/tool classes live in `sk.ainet.apps.kllama.chat.java`.
 
 The `JavaAgentLoop` lets the LLM call tools in a loop until it produces a final answer. You define tools by implementing the `JavaTool` interface.
 
-### Defining a Tool
+==== Defining a Tool
 
-```java
+[source,java]
+----
 import sk.ainet.apps.kllama.chat.java.JavaTool;
 import sk.ainet.apps.kllama.chat.ToolDefinition;
 import java.util.Map;
@@ -255,11 +267,12 @@ public class CalculatorTool implements JavaTool {
         return 0.0;
     }
 }
-```
+----
 
-### Building and Using the Agent
+==== Building and Using the Agent
 
-```java
+[source,java]
+----
 import sk.ainet.apps.kllama.java.KLlamaJava;
 import sk.ainet.apps.kllama.java.KLlamaSession;
 import sk.ainet.apps.kllama.chat.java.JavaAgentLoop;
@@ -285,24 +298,26 @@ try (KLlamaSession session = KLlamaJava.loadGGUF(Path.of("model.gguf"))) {
     // Reset conversation history (keeps system prompt)
     agent.reset();
 }
-```
+----
 
-### Streaming Agent Responses
+==== Streaming Agent Responses
 
-```java
+[source,java]
+----
 String answer = agent.chat(
         "What is the square root of 144?",
         token -> System.out.print(token)
 );
-```
+----
 
----
+'''''
 
-## Resource Management
+=== Resource Management
 
 Both `KLlamaSession` and `KBertSession` implement `AutoCloseable`. Always use `try-with-resources` to ensure off-heap memory arenas and other native resources are released promptly:
 
-```java
+[source,java]
+----
 // Single session
 try (KLlamaSession session = KLlamaJava.loadGGUF(path)) {
     session.generate("Hello");
@@ -315,23 +330,25 @@ try (KLlamaSession llama = KLlamaJava.loadGGUF(llamaPath);
     String text = llama.generate("Write a summary of quantum mechanics");
     float[] embedding = bert.encode(text);
 }
-```
+----
 
 Failing to close sessions will leak off-heap memory allocated via `java.lang.foreign.Arena`.
 
----
+'''''
 
-## Package Reference
+=== Package Reference
 
-| Package                                | Key Classes                                 |
-|----------------------------------------|---------------------------------------------|
-| `sk.ainet.apps.kllama.java`           | `KLlamaJava`, `KLlamaSession`, `GenerationConfig` |
-| `sk.ainet.apps.bert.java`             | `KBertJava`, `KBertSession`                 |
-| `sk.ainet.apps.kllama.chat.java`      | `JavaAgentLoop`, `JavaTool`                 |
+[cols=",",options="header",]
+|===
+|Package |Key Classes
+|`sk.ainet.apps.kllama.java` |`KLlamaJava`, `KLlamaSession`, `GenerationConfig`
+|`sk.ainet.apps.bert.java` |`KBertJava`, `KBertSession`
+|`sk.ainet.apps.kllama.chat.java` |`JavaAgentLoop`, `JavaTool`
+|===
 
----
+'''''
 
-## Next Steps
+=== Next Steps
 
-- [Java Getting Started](java-getting-started.md) -- tensor operations, project setup, and dependency management.
-- [Model Training Guide](java-model-training.md) -- build and train neural networks from Java.
+* link:java-getting-started.md[Java Getting Started] -- tensor operations, project setup, and dependency management.
+* link:java-model-training.md[Model Training Guide] -- build and train neural networks from Java.

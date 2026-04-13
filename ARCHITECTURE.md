@@ -1,4 +1,4 @@
-# 🏗️ Architecture
-SKaiNET uses a hybrid backend strategy that separates development iteration from production deployment.
+# Architecture
 
-![Architecture diagram of SKaiNET compiler](docs/SKaiNET-compiler.svg)
+See the published site:
+https://skainet-developers.github.io/SKaiNET/skainet/reference/architecture.html

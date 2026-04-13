@@ -101,7 +101,7 @@ Your article must be written in AsciiDoc and include the following sections (use
 - Show how fragments embed:
   • An API signature block
   • A status table by backend
-  • Pointers (xref::) to human-written math/semantics sections
+  • Pointers (`xref:`) to human-written math/semantics sections
 
 - Provide example AsciiDoc fragment:
   [source,adoc]
@@ -126,7 +126,7 @@ Your article must be written in AsciiDoc and include the following sections (use
   See xref:theory/matmul.adoc#definition[MatMul semantics] and xref:examples/matmul.adoc#examples[Examples].
   ----
 
-- Demonstrate combining generated and human-written docs via include:: and xref::, with a small folder layout:
+- Demonstrate combining generated and human-written docs via `include::` and `xref:`, with a small folder layout:
   [source,text]
   ----
   docs/
@@ -147,7 +147,7 @@ Your article must be written in AsciiDoc and include the following sections (use
   • Human-written caveats that reference generated statuses via xref anchors.
 - Show a synchronization flow as a Mermaid diagram:
 
-  [source,mermaid]
+  [mermaid]
   ----
   flowchart LR
     A[Operator Interfaces (KMP)] --> B[KSP Processor]
@@ -226,7 +226,7 @@ Your article must be written in AsciiDoc and include the following sections (use
   ----
 
 - Show the KSP-produced JSON excerpt and the corresponding generated AsciiDoc fragment for at least one function (e.g., relu).
-- Give a minimal human-written math section for MatMul (dimensions, shapes, complexity), and show how it’s included via xref:: from the generated fragment.
+- Give a minimal human-written math section for MatMul (dimensions, shapes, complexity), and show how it is included via `xref:` from the generated fragment.
 
 == 8. Summary and Benefits
 - Summarize benefits:
@@ -246,7 +246,7 @@ APPENDIX (OPTIONAL BUT STRONGLY RECOMMENDED)
 
 OUTPUT FORMAT REQUIREMENTS
 - Write the entire article as **AsciiDoc**.
-- Use code blocks with language tags: [source,kotlin], [source,gradle], [source,json], [source,adoc], [source,mermaid], [source,plantuml] (PlantUML optional).
+- Use code blocks with language tags: [source,kotlin], [source,gradle], [source,json], [source,adoc], [mermaid], [source,plantuml] (PlantUML optional).
 - Use short paragraphs and bullet lists; avoid filler or marketing language.
 - Include at least:
   • One Mermaid diagram (the pipeline).
@@ -260,7 +260,7 @@ ACCEPTANCE CHECKLIST (the output must satisfy all)
 - [ ] Clear definition of “reflective documentation” and how it differs from classic docgen.
 - [ ] KSP plan, annotation semantics, and JSON Schema included.
 - [ ] Example Operator (TensorOps) + generated metadata + generated AsciiDoc fragment.
-- [ ] Demonstrated include:: and xref:: usage.
+- [ ] Demonstrated `include::` and `xref:` usage.
 - [ ] Mermaid pipeline diagram present.
 - [ ] Gradle/Dokka/AsciiDoctorJ integration details with code.
 - [ ] Summary articulates benefits and risks.

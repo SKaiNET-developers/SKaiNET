@@ -1,12 +1,13 @@
-# SKaiNET Graph DSL
+== SKaiNET Graph DSL
 
 The SKaiNET Graph DSL provides a way to define complex directed acyclic graphs (DAGs) for machine learning models. Unlike the sequential `nn` DSL, the `dag` DSL allows for arbitrary wiring of nodes, multi-output graphs, and reusable modules.
 
-## Basic Usage
+=== Basic Usage
 
 To define a graph, use the `dag` block:
 
-```kotlin
+[source,kotlin]
+----
 val program = dag {
     val x = input<FP32>("input", TensorSpec("input", listOf(1, 3, 224, 224), "FP32"))
     
@@ -18,33 +19,35 @@ val program = dag {
     
     output(activated)
 }
-```
+----
 
-## Key Concepts
+=== Key Concepts
 
-### Inputs, Parameters, and Constants
+==== Inputs, Parameters, and Constants
 
-- `input<T>(name, spec)`: Defines an input node for the graph.
-- `parameter<T, V>(name) { ... }`: Defines a learnable parameter node. You can use a builder to specify shape and initialization.
-- `constant<T, V>(name) { ... }`: Defines a constant node (e.g., fixed biases or weights).
+* `input++<++T++>++(name, spec)`: Defines an input node for the graph.
+* `parameter++<++T, V++>++(name) ++{++ ... }`: Defines a learnable parameter node. You can use a builder to specify shape and initialization.
+* `constant++<++T, V++>++(name) ++{++ ... }`: Defines a constant node (e.g., fixed biases or weights).
 
-### Operations
+==== Operations
 
 Standard operations like `conv2d`, `relu`, `matmul`, `add`, etc., are available as extension functions within the `DagBuilder` (operations are in sync with TensorOps and implemented extention method via KSP).
 
-### Outputs
+==== Outputs
 
 A graph can have one or more outputs, defined using the `output()` function.
 
-```kotlin
+[source,kotlin]
+----
 output(branch1, branch2)
-```
+----
 
-## Reusable Modules
+=== Reusable Modules
 
 You can define reusable graph components using `dagModule`:
 
-```kotlin
+[source,kotlin]
+----
 val residualBlock = dagModule { inputs ->
     val x = inputs[0]
     val conv1 = conv2d(x, w1, b1, padding = 1 to 1)
@@ -59,25 +62,27 @@ val program = dag {
     val out = module(residualBlock, listOf(x))
     output(out[0])
 }
-```
+----
 
-## Compiling and Validating
+=== Compiling and Validating
 
 Once a `GraphProgram` is built, it can be converted to a `ComputeGraph` for execution or compilation:
 
-```kotlin
+[source,kotlin]
+----
 val graph = program.toComputeGraph()
 val validation = graph.validate()
 if (validation is ValidationResult.Valid) {
     // proceed to execution or compilation
 }
-```
+----
 
-## YOLO-style Example
+=== YOLO-style Example
 
 The Graph DSL is particularly useful for complex architectures like YOLO heads:
 
-```kotlin
+[source,kotlin]
+----
 val program = dag {
     val input = input<FP32>("input", TensorSpec("input", listOf(1, 3, 640, 640), "FP32"))
 
@@ -90,4 +95,4 @@ val program = dag {
 
     output(c2, head) // Multi-scale outputs
 }
-```
+----

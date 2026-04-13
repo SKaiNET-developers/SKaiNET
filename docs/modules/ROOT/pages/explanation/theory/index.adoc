@@ -5,10 +5,6 @@ This section contains mathematical definitions and theoretical foundations for S
 [#operator-theory]
 == Operator Theory
 
-=== Architecture
-
-include::composite-ops.adoc[leveloffset=+2]
-
 === Linear Algebra Operations
 
 include::matmul.adoc[leveloffset=+2]
@@ -36,5 +32,5 @@ include::matmul.adoc[leveloffset=+2]
 [#cross-references]
 == Cross-References
 
-* xref:../examples/index.adoc[Usage Examples]
-* xref:../modules/operators/_generated_/index.adoc[Generated API Reference]
+* xref:explanation/examples/index.adoc[Usage Examples]
+// Operator reference lands in a later commit of the Antora migration.
