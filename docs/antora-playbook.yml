@@ -1,0 +1,26 @@
+site:
+  title: SKaiNET
+  start_page: skainet::index.adoc
+
+content:
+  sources:
+    - url: /antora
+      start_path: docs
+      branches: HEAD
+
+asciidoc:
+  extensions:
+    - asciidoctor-kroki
+  attributes:
+    # Use local mermaid-cli via Kroki (no external server needed when
+    # built with the custom Docker image in docs/.docker/Dockerfile —
+    # copied verbatim from SKaiNET-transformers).
+    kroki-fetch-diagram: true
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+
+output:
+  dir: ./build/site

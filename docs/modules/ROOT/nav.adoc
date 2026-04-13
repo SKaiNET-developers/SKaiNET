@@ -1,0 +1,13 @@
+* xref:index.adoc[Overview]
+
+.Tutorials
+* (pages migrated in a later commit)
+
+.How-to guides
+* (pages migrated in a later commit)
+
+.Reference
+* (pages migrated in a later commit)
+
+.Explanation
+* (pages migrated in a later commit)
