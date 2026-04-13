@@ -87,8 +87,16 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build Antora site
+        # Run the container as the runner user (not root) so the
+        # files under docs/build/site/ are owned by the same user
+        # that the subsequent Gradle `bundleDokkaIntoSite` step runs
+        # as. Without this the Copy task fails with
+        # "Failed to create directory docs/build/site/api" because
+        # the Antora container otherwise writes the site tree as
+        # root and Gradle running as runner can't mkdir inside it.
         run: |
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/antora" \
             --workdir /antora/docs \
             skainet-antora:local \

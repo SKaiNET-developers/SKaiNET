@@ -2,6 +2,16 @@ site:
   title: SKaiNET
   start_page: skainet::index.adoc
 
+# Keep Antora's content cache inside the project tree so the
+# container can be run as a non-root user (via `docker run --user
+# $(id -u):$(id -g)`). Without this, Antora defaults to
+# `$HOME/.cache/antora` which is unwritable when the container
+# process has no matching passwd entry and $HOME falls back to `/`.
+# The `.cache/` path is already gitignored via the pre-staged
+# `## antora` section in the repo root .gitignore.
+runtime:
+  cache_dir: ./.cache/antora
+
 content:
   sources:
     - url: /antora
