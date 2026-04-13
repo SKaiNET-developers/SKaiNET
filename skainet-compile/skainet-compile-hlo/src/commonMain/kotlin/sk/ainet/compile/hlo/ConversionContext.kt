@@ -2,6 +2,8 @@ package sk.ainet.compile.hlo
 
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.tensorEncoding
 
 /**
  * Context object for maintaining state during StableHLO conversion.
@@ -53,6 +55,38 @@ public class ConversionContext(
      */
     public fun emitComment(comment: String) {
         stringBuilder.appendLine("    // $comment")
+    }
+
+    /**
+     * Emit a `tensor_encoding` diagnostic comment when [spec] carries a
+     * non-null `tensorEncoding` (set via [sk.ainet.lang.tensor.ops.withTensorEncoding]).
+     *
+     * The emitted line has the shape:
+     *
+     * ```mlir
+     *     // tensor_encoding: role=<role> index=<i> name=<spec.name> encoding=<enc.name>
+     * ```
+     *
+     * MLIR tools ignore comments but text round-trips preserve them, so
+     * this is the cheapest way to keep SKaiNET's quantization metadata
+     * visible through the StableHLO emit boundary until a structured
+     * attribute or quant-dialect lowering lands. Emits nothing when the
+     * spec has no encoding — a `null` [sk.ainet.lang.tensor.storage.TensorEncoding]
+     * is the unknown / not-carried state, intentionally distinct from
+     * `TensorEncoding.Dense`.
+     *
+     * @param role Logical slot the spec occupies for the node being
+     *     emitted (e.g. `"input"` for function arguments, `"result"` for
+     *     node outputs). Free-form so individual converters can use
+     *     finer-grained tags if they call this helper directly.
+     * @param index Positional index of the spec within its role, e.g.
+     *     the output port index for a multi-result node.
+     */
+    public fun emitEncodingAnnotation(role: String, index: Int, spec: TensorSpec) {
+        val encoding = spec.tensorEncoding ?: return
+        emitComment(
+            "tensor_encoding: role=$role index=$index name=${spec.name} encoding=${encoding.name}"
+        )
     }
     
     /**
