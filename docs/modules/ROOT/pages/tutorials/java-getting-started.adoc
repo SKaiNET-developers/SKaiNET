@@ -21,7 +21,6 @@ For Maven Surefire / exec-maven-plugin, add them to `++<++jvmArgs++>++`. For Gra
 
 === Maven Setup
 
-[[1-import-the-bom]]
 ==== 1. Import the BOM
 
 The `skainet-bom` manages all SKaiNET module versions so you never have to keep them in sync manually. Add it to your `++<++dependencyManagement++>++` section:
@@ -80,7 +79,6 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
 </project>
 ----
 
-[[2-add-more-modules-as-needed]]
 ==== 2. Add More Modules as Needed
 
 Because the BOM is imported, you can add any module without repeating the version:

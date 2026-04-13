@@ -173,7 +173,6 @@ float loss = loop.step(inputBatch, targetBatch);
 System.out.printf("Step loss: %.4f%n", loss);
 ----
 
-[[full-training-with-train]]
 ==== Full Training with `.train()`
 
 `train()` accepts a `Supplier` that produces an `Iterator` of `(input, target)` pairs for each epoch:
@@ -194,7 +193,6 @@ System.out.printf("Trained %d epochs, final loss: %.4f%n",
 
 Each call to the supplier should return a fresh iterator over the training batches for that epoch. This allows reshuffling between epochs.
 
-[[async-training-with-trainasync]]
 ==== Async Training with `.trainAsync()`
 
 `trainAsync()` runs the training loop on a virtual thread and returns a `CompletableFuture++<++TrainingResult++>++`:

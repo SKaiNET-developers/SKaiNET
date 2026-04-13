@@ -98,7 +98,6 @@ flowchart LR
 
 === Building Blocks
 
-[[1-hlo-converters]]
 ==== 1. HLO Converters
 
 Converters transform SKaiNET operations into StableHLO operations:
@@ -109,7 +108,6 @@ Converters transform SKaiNET operations into StableHLO operations:
 * *NeuralNetOperationsConverter*: High-level NN operations
 * *ConstantOperationsConverter*: Constant value operations
 
-[[2-type-system]]
 ==== 2. Type System
 
 HLO uses a strict type system for tensors:
@@ -123,7 +121,6 @@ Tensor<Float32, Shape4D> // Batch, Channel, Height, Width
 tensor<1x3x224x224xf32> // StableHLO representation
 ----
 
-[[3-optimization-framework]]
 ==== 3. Optimization Framework
 
 The optimization pipeline includes:
