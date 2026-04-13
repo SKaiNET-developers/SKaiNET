@@ -27,12 +27,13 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         "maxPool2d", "avgPool2d", "averagePool2d",
         // Normalization operations
         "batchNorm", "batchNormalization", "BatchNormalization",
-        "layerNorm", "layerNormalization", "LayerNormalization"
+        "layerNorm", "layerNormalization", "LayerNormalization",
+        "rmsNorm", "rms_norm", "RMSNorm", "RmsNorm"
     )
-    
+
     override fun convert(
-        node: GraphNode, 
-        operands: List<String>, 
+        node: GraphNode,
+        operands: List<String>,
         context: ConversionContext
     ): ConversionResult {
         return when (node.operation.name.lowercase()) {
@@ -42,6 +43,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             "avgpool2d", "averagepool2d" -> convertAvgPool2d(node, operands, context)
             "batchnorm", "batchnormalization" -> convertBatchNorm(node, operands, context)
             "layernorm", "layernormalization" -> convertLayerNorm(node, operands, context)
+            "rmsnorm", "rms_norm" -> convertRmsNorm(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by NeuralNetOperationsConverter"
@@ -320,6 +322,133 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         )
     }
     
+    /**
+     * Lower RMSNorm to real StableHLO elementwise ops. This is the
+     * normalization every Llama / Mistral / Qwen / Gemma family
+     * transformer uses — it drops the mean-centering and the additive
+     * offset of LayerNorm, leaving:
+     *
+     *     rms  = sqrt(mean(x^2, axis) + eps)
+     *     out  = scale * x / rms      (scale operand is optional)
+     *
+     * The reductions are emitted as `stablehlo.custom_call @reduce_mean`
+     * to match the style already used by `ReductionOperationsConverter`
+     * and by the softmax lowering in `ActivationOperationsConverter`.
+     * Migrating every reduction to proper `stablehlo.reduce` regions is
+     * a separate, larger refactor.
+     */
+    private fun convertRmsNorm(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.isEmpty()) {
+            return ConversionResult.Failure(
+                "RMSNorm operation requires at least 1 operand (input), got ${operands.size}",
+                "Unsupported rmsNorm arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+        val elementType = outputSpec?.let { context.getTypeMapper().mapDType(it.dtype) }
+            ?: "f32"
+
+        val inputShape = node.inputs.firstOrNull()?.shape ?: outputSpec?.shape ?: emptyList()
+        val rank = inputShape.size
+
+        // Normalize the axis parameter against rank. Default to the
+        // last dimension, consistent with softmax and every LLM RMSNorm
+        // implementation in the wild.
+        val rawAxis = node.operation.parameters["axis"] as? Int
+            ?: (node.operation.parameters["normalized_shape"] as? IntArray)?.firstOrNull()
+            ?: -1
+        val axis = when {
+            rank == 0 -> 0
+            rawAxis < 0 -> rank + rawAxis
+            else -> rawAxis
+        }.coerceIn(0, (rank - 1).coerceAtLeast(0))
+
+        // Reduced tensor shape: input with `axis` removed. Matches the
+        // same reduced-type convention `convertSoftmax` uses.
+        val reducedShape = if (rank > 0) {
+            inputShape.filterIndexed { i, _ -> i != axis }
+        } else {
+            emptyList()
+        }
+        val reducedType = if (reducedShape.isEmpty()) {
+            "tensor<$elementType>"
+        } else {
+            "tensor<${reducedShape.joinToString("x")}x$elementType>"
+        }
+
+        // Dimensions kept for broadcast_in_dim: every input dim except
+        // `axis`, mapped to its position in the reduced tensor.
+        val broadcastDims = (0 until rank).filter { it != axis }.joinToString(", ")
+
+        val eps = (node.operation.parameters["eps"] as? Double)
+            ?: (node.operation.parameters["epsilon"] as? Double)
+            ?: 1e-6  // Llama family default; LayerNorm typically uses 1e-5
+
+        val xInput = operands[0]
+        val scaleOperand: String? = if (operands.size >= 2) operands[1] else null
+
+        val xSquared = context.nextTempValue()
+        val meanSquared = context.nextTempValue()
+        val epsConst = context.nextTempValue()
+        val epsBroadcast = context.nextTempValue()
+        val meanPlusEps = context.nextTempValue()
+        val rms = context.nextTempValue()
+        val rmsBroadcast = context.nextTempValue()
+        val normalized = context.nextTempValue()
+        val resultValue = context.nextTempValue()
+
+        val operations = mutableListOf<String>()
+
+        // x^2
+        operations += "$xSquared = stablehlo.multiply $xInput, $xInput : $outputType"
+
+        // reduce_mean(x^2, axis)
+        operations += "$meanSquared = stablehlo.custom_call @reduce_mean($xSquared) " +
+            "{dimensions = [$axis], keepdim = false} : $reducedType"
+
+        // eps constant broadcast into the reduced shape
+        operations += "$epsConst = stablehlo.constant dense<$eps> : tensor<$elementType>"
+        operations += "$epsBroadcast = stablehlo.broadcast_in_dim $epsConst, " +
+            "dims = [] : (tensor<$elementType>) -> $reducedType"
+
+        // mean + eps
+        operations += "$meanPlusEps = stablehlo.add $meanSquared, $epsBroadcast : $reducedType"
+
+        // rms = sqrt(mean + eps)
+        operations += "$rms = stablehlo.sqrt $meanPlusEps : $reducedType"
+
+        // Broadcast rms back to the input shape for the elementwise divide.
+        operations += "$rmsBroadcast = stablehlo.broadcast_in_dim $rms, " +
+            "dims = [$broadcastDims] : ($reducedType) -> $outputType"
+
+        // x / rms
+        operations += "$normalized = stablehlo.divide $xInput, $rmsBroadcast : $outputType"
+
+        // Final scale multiply is optional — when the caller did not
+        // pass a scale operand we return the normalized value directly.
+        val finalValue: String
+        if (scaleOperand != null) {
+            operations += "$resultValue = stablehlo.multiply $normalized, $scaleOperand : $outputType"
+            finalValue = resultValue
+        } else {
+            finalValue = normalized
+        }
+
+        operations.forEach { context.emitOperation(it) }
+
+        return ConversionResult.Success(
+            outputValueName = finalValue,
+            emittedOperations = operations
+        )
+    }
+
     // Helper functions for parameter extraction
     
     private fun extractStride(params: Map<String, Any>): Pair<Int, Int> {
