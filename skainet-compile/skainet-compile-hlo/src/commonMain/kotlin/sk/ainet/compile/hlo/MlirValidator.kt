@@ -36,22 +36,28 @@ public class MlirValidator {
         
         for ((lineNum, line) in lines.withIndex()) {
             val trimmed = line.trim()
-            
+
             // Skip empty lines and comments
             if (trimmed.isEmpty() || trimmed.startsWith("//")) continue
-            
+
             // Check brace balance
             braceCount += trimmed.count { it == '{' }
             braceCount -= trimmed.count { it == '}' }
-            
+
             // Check module structure
             if (trimmed.startsWith("module")) {
                 if (inModule) {
                     errors.add("Line ${lineNum + 1}: Nested modules not allowed")
                 }
                 inModule = true
+                // Module headers may carry a `module attributes { ... } {`
+                // preamble whose attribute dict contains `name = "value"`
+                // entries. These aren't SSA assignments and must not be
+                // fed into validateSSAValue, so stop processing this line
+                // here.
+                continue
             }
-            
+
             // Check function structure
             if (trimmed.contains("func.func")) {
                 if (!inModule) {
@@ -59,7 +65,7 @@ public class MlirValidator {
                 }
                 inFunction = true
             }
-            
+
             // Check for basic SSA value format
             if (trimmed.contains(" = ") && !validateSSAValue(trimmed)) {
                 errors.add("Line ${lineNum + 1}: Invalid SSA value format")
@@ -90,10 +96,13 @@ public class MlirValidator {
         
         for ((lineNum, line) in lines.withIndex()) {
             val trimmed = line.trim()
-            
-            // Skip empty lines and comments
-            if (trimmed.isEmpty() || trimmed.startsWith("//")) continue
-            
+
+            // Skip empty lines, comments, and module header lines (which
+            // may carry a `module attributes { ... }` dictionary whose
+            // `name = "value"` entries look like SSA assignments but are
+            // not).
+            if (trimmed.isEmpty() || trimmed.startsWith("//") || trimmed.startsWith("module")) continue
+
             // Extract defined SSA values
             if (trimmed.contains(" = ")) {
                 val parts = trimmed.split(" = ", limit = 2)
@@ -162,8 +171,10 @@ public class MlirValidator {
      */
     public fun validateModule(content: String): List<String> {
         val errors = mutableListOf<String>()
-        
-        if (!content.contains("module {")) {
+
+        // Accept both the bare `module {` and the attributes-carrying
+        // `module attributes { ... } {` header forms.
+        if (!content.contains("module {") && !content.contains("module attributes")) {
             errors.add("Missing module declaration")
         }
         

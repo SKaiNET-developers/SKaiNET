@@ -3,6 +3,8 @@ package sk.ainet.compile.hlo
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.tensorEncoding
+import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
  * Main converter class that orchestrates the conversion process from ComputeGraph to StableHLO MLIR.
@@ -45,9 +47,26 @@ public class StableHloConverter(
         
         // Build function signature with proper return types
         val functionSignature = buildFunctionSignature(inputNodes, outputSpecs, functionName)
-        
-        // Start building MLIR content
-        context.emitLine("module {")
+
+        // Collect every TensorSpec with a non-null tensorEncoding into a
+        // single name -> encoding map. Emitting this as a structured
+        // MLIR attribute on the module header lets downstream tools
+        // enumerate every encoded tensor via one attribute lookup
+        // instead of string-matching against scattered comments.
+        val tensorEncodings = collectTensorEncodings(topo)
+
+        // Start building MLIR content — promote to `module attributes`
+        // only when we have at least one encoded tensor. Dense graphs
+        // keep the bare `module {` header for byte-for-byte backward
+        // compatibility with existing round-trip tests.
+        if (tensorEncodings.isNotEmpty()) {
+            val dictEntries = tensorEncodings.entries
+                .sortedBy { it.key }
+                .joinToString(", ") { (name, encoding) -> "$name = \"${encoding.name}\"" }
+            context.emitLine("module attributes {skainet.tensor_encodings = {$dictEntries}} {")
+        } else {
+            context.emitLine("module {")
+        }
         context.emitLine("  func.func $functionSignature {")
         
         // Initialize input values in context
@@ -176,6 +195,27 @@ public class StableHloConverter(
         }
     }
     
+    /**
+     * Walk every node's input and output specs once and collect the
+     * `name -> encoding` map of every tensor that carries a non-null
+     * [TensorEncoding]. Duplicates (the same name appearing in multiple
+     * nodes) collapse to a single entry — first-writer-wins.
+     */
+    private fun collectTensorEncodings(nodes: List<GraphNode>): Map<String, TensorEncoding> {
+        val result = linkedMapOf<String, TensorEncoding>()
+        for (node in nodes) {
+            for (spec in node.outputs) {
+                val encoding = spec.tensorEncoding ?: continue
+                result.putIfAbsent(spec.name, encoding)
+            }
+            for (spec in node.inputs) {
+                val encoding = spec.tensorEncoding ?: continue
+                result.putIfAbsent(spec.name, encoding)
+            }
+        }
+        return result
+    }
+
     /**
      * Determine output specifications from output nodes
      */
