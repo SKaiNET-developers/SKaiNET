@@ -2,16 +2,13 @@
 
 .Tutorials
 * xref:tutorials/java-getting-started.adoc[Java getting started]
-* xref:tutorials/kllama-getting-started.adoc[KLlama getting started]
 * xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
 * xref:tutorials/graph-dsl.adoc[Graph DSL]
 
 .How-to guides
 * xref:how-to/build.adoc[Build from source]
 * xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
-* xref:how-to/java-cli-app.adoc[Build a Java CLI app]
-* xref:how-to/java-llm-inference.adoc[Run LLM inference]
-* xref:how-to/java-model-training.adoc[Train a model]
+* xref:how-to/java-model-training.adoc[Train a model from Java]
 * xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino]
 
 .Reference

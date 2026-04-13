@@ -1,26 +1,28 @@
-== KLlama Getting Started
+= KLlama is in SKaiNET-transformers now
+:description: LLM runtimes moved to the sibling repo on 2026-04-13.
 
-KLlama is a pure Kotlin LLaMA inference runtime that runs on JVM, Native, JS, and WebAssembly. It supports GGUF, SafeTensors, and Karpathy .bin model formats with on-the-fly quantization support.
+[CAUTION]
+====
+**This content moved.** LLM runtimes (KLlama, KBert, chat, tools,
+agent loop) now live in the sibling
+https://github.com/SKaiNET-developers/SKaiNET-transformers[`SKaiNET-transformers`]
+repository. Mainline `SKaiNET` kept the engine layer only
+(tensors, graph IR, compile / StableHLO, backends, tokenizers,
+model loaders).
+====
 
-____
-*Early Stage Development*: The project is in active development. We appreciate your feedback and bug reports!
-____
+The getting-started guide for KLlama now lives alongside the
+runtime it documents. Start here instead:
 
-=== Choose Your Path
+* https://github.com/SKaiNET-developers/SKaiNET-transformers[`SKaiNET-transformers` GitHub]
+* https://skainet-developers.github.io/SKaiNET-transformers/[`SKaiNET-transformers` documentation site]
 
-[cols=",",options="header",]
-|===
-|Goal |Guide
-|*Run models from the command line* |link:../skainet-apps/skainet-kllama-cli/README.md[KLlama CLI]
-|*Embed in a Kotlin application* |link:../skainet-apps/skainet-kllama/README.md[KLlama Library]
-|*Embed in a Java application* |link:java-llm-inference.md[Java LLM Inference Guide]
-|*Build a standalone Java CLI app* |link:java-cli-app.md[Java CLI App Guide]
-|*Java project setup (Maven / Gradle)* |link:java-getting-started.md[Java Getting Started]
-|===
+If you were looking for the **tokenizer** side of LLM inference
+(Qwen byte-level BPE, SentencePiece for LLaMA / Gemma / TinyLlama),
+that still lives in mainline — see
+xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
+and the
+https://github.com/SKaiNET-developers/SKaiNET/blob/develop/skainet-io/skainet-io-core/src/commonMain/kotlin/sk/ainet/io/tokenizer/TokenizerFactory.kt[`TokenizerFactory` source].
 
-=== Quick Links
-
-* link:++../skainet-apps/skainet-kllama/README.md#supported-formats--quantization++[Supported formats & quantization]
-* link:../skainet-apps/skainet-kllama/README.md#custom-backend-integration[Custom backend integration]
-* link:java-llm-inference.md#agent-loop-and-tool-calling[Agent & tool calling]
-* link:java-llm-inference.md#bert-encoding-and-similarity[BERT embeddings & similarity]
+If you were looking for the **Java entry point** for running
+tensor ops on CPU, see xref:tutorials/java-getting-started.adoc[Java getting started].
