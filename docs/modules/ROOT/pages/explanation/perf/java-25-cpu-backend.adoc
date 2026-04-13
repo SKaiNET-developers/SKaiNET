@@ -21,7 +21,6 @@ Required flags remain:
 --enable-preview --add-modules jdk.incubator.vector
 ....
 
-[[jit--c2-improvements-mapped-to-skainet-ops]]
 ===== JIT / C2 improvements mapped to SKaiNET ops
 
 These are automatic — the JIT produces better native code for existing bytecode.

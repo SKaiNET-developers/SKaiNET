@@ -2,6 +2,16 @@ site:
   title: SKaiNET
   start_page: skainet::index.adoc
 
+# Keep Antora's content cache inside the project tree so the
+# container can be run as a non-root user (via `docker run --user
+# $(id -u):$(id -g)`). Without this, Antora defaults to
+# `$HOME/.cache/antora` which is unwritable when the container
+# process has no matching passwd entry and $HOME falls back to `/`.
+# The `.cache/` path is already gitignored via the pre-staged
+# `## antora` section in the repo root .gitignore.
+runtime:
+  cache_dir: ./.cache/antora
+
 content:
   sources:
     - url: /antora
@@ -10,12 +20,13 @@ content:
 
 asciidoc:
   extensions:
-    - asciidoctor-kroki
-  attributes:
-    # Use local mermaid-cli via Kroki (no external server needed when
-    # built with the custom Docker image in docs/.docker/Dockerfile —
-    # copied verbatim from SKaiNET-transformers).
-    kroki-fetch-diagram: true
+    # Local mermaid block processor — renders every `[mermaid]` block
+    # inline by invoking the @mermaid-js/mermaid-cli binary baked into
+    # the Docker image at /opt/antora/node_modules/.bin/mmdc. Replaces
+    # asciidoctor-kroki so builds don't depend on kroki.io at all,
+    # which eliminates the GET-URL length limit (4 KB) that was
+    # rejecting the large diagrams in hlo-getting-started.adoc.
+    - /opt/antora/local-mermaid-extension.js
 
 ui:
   bundle:

@@ -1,10 +1,8 @@
-[[skainet-core-technology-tensor--data-guide]]
-== SKaiNET Core Technology: Tensor & Data Guide
+= SKaiNET Core Technology: Tensor & Data Guide
 
 This document provides technical instructions for AI agents and developers on using SKaiNET's Tensor and Data API as a modern, type-safe replacement for NDArray or Python's NumPy library.
 
-[[1-fundamental-architecture-tensor-composition]]
-=== 1. Fundamental Architecture: Tensor Composition
+== 1. Fundamental Architecture: Tensor Composition
 
 Unlike traditional libraries where a Tensor is a monolithic object, SKaiNET adopts a *compositional architecture*. A `Tensor++<++T, V++>++` is composed of two primary components:
 
@@ -24,12 +22,11 @@ interface Tensor<T : DType, V> {
 }
 ----
 
-[[2-type-safe-tensor-creation-dsl]]
-=== 2. Type-Safe Tensor Creation (DSL)
+== 2. Type-Safe Tensor Creation (DSL)
 
 SKaiNET provides a powerful Type-Safe DSL for tensor creation. It ensures that the data provided matches the specified `DType` at compile-time (or through the DSL's internal validation).
 
-==== Creation with `ExecutionContext`
+=== Creation with `ExecutionContext`
 
 Tensors are always created within an `ExecutionContext`, which provides the necessary `TensorOps` and `TensorDataFactory`.
 
@@ -41,7 +38,7 @@ val ones = ctx.ones(Shape(1, 10), Int32::class)
 val full = ctx.full(Shape(5, 5), FP32::class, 42.0f)
 ----
 
-==== Expressive Tensor DSL
+=== Expressive Tensor DSL
 
 For more complex initializations, use the `tensor` DSL:
 
@@ -66,17 +63,16 @@ val customInit = tensor(ctx, Int32::class) {
 }
 ----
 
-[[3-slicing-dsl-api]]
-=== 3. Slicing DSL API
+== 3. Slicing DSL API
 
 SKaiNET offers a sophisticated Slicing DSL that allows for creating views or copies of tensor segments with high precision and readability.
 
-==== `sliceView` vs `sliceCopy`
+=== `sliceView` vs `sliceCopy`
 
 * *`sliceView`*: Creates a `TensorView`, which is a window into the original data (no data copying).
 * *`sliceCopy`*: Creates a new `Tensor` with a copy of the sliced data.
 
-==== Slicing DSL Syntax
+=== Slicing DSL Syntax
 
 The `SegmentBuilder` provides several ways to define slices for each dimension:
 
@@ -98,8 +94,7 @@ val view = source.sliceView {
 }
 ----
 
-[[4-core-operations-tensorops]]
-=== 4. Core Operations (`TensorOps`)
+== 4. Core Operations (`TensorOps`)
 
 All mathematical operations are dispatched through the `TensorOps` interface. SKaiNET supports:
 
@@ -109,7 +104,7 @@ All mathematical operations are dispatched through the `TensorOps` interface. SK
 * *Reductions*: `sum`, `mean`, `variance`.
 * *Shape Ops*: `reshape`, `flatten`, `concat`, `squeeze`, `unsqueeze`.
 
-==== Operator Overloading
+=== Operator Overloading
 
 When a tensor is "bound" to ops (e.g., via `OpsBoundTensor`), you can use standard Kotlin operators:
 
@@ -119,8 +114,7 @@ val c = a + b  // Calls ops.add(a, b)
 val d = a * 10 // Calls ops.mulScalar(a, 10)
 ----
 
-[[5-summary-table-skainet-vs-numpy]]
-=== 5. Summary Table: SKaiNET vs NumPy
+== 5. Summary Table: SKaiNET vs NumPy
 
 [cols="<,<,<",options="header",]
 |===
@@ -133,8 +127,7 @@ val d = a * 10 // Calls ops.mulScalar(a, 10)
 |*Reshape* |`a.reshape(new++_++shape)` |`ctx.ops.reshape(a, Shape(new++_++shape))`
 |===
 
-[[6-best-practices-for-ai-integration]]
-=== 6. Best Practices for AI Integration
+== 6. Best Practices for AI Integration
 
 [arabic]
 . *Context Awareness*: Always pass the `ExecutionContext` to functions that create or manipulate tensors.
