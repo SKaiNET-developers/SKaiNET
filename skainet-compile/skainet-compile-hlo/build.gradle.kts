@@ -54,8 +54,10 @@ kotlin {
         }
 
         jvmMain.dependencies {
+            // HloGenerator records traces with VoidTensorOps from
+            // skainet-lang-core — the JVM production path never needs a
+            // real backend implementation. No CPU-specific imports here.
             implementation(project(":skainet-lang:skainet-lang-models"))
-            implementation(project(":skainet-backends:skainet-backend-cpu"))
             implementation(libs.kotlinx.coroutines)
         }
 
