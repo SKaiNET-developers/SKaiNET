@@ -17,6 +17,11 @@ kotlin {
     linuxX64 ()
     linuxArm64 ()
 
+    // Android Native targets for vendor-specific backends linking directly against
+    // libneuralnetworks.so / libOpenCL.so / etc. (e.g. skainet-backend-nnapi).
+    androidNativeArm32()
+    androidNativeArm64()
+
     jvm()
 
     js {
