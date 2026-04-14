@@ -78,7 +78,7 @@ jobs:
       # cache. Transformers skipped caching here — this workflow
       # improves on that.
       - name: Build Antora image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: docs/.docker
           tags: skainet-antora:local
