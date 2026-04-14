@@ -27,6 +27,10 @@ kotlin {
     linuxX64()
     linuxArm64()
 
+    // Android Native targets for vendor-specific backends linking native device libs.
+    androidNativeArm32()
+    androidNativeArm64()
+
     jvm()
 
     js {
