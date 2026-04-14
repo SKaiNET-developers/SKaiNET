@@ -1,36 +1,18 @@
 = Matrix Multiplication Theory
 
+The theory and intuition below are the single source of truth for `matmul`
+and are also embedded into the generated operator reference at
+xref:reference/operators/generated/tensorops.adoc#matmul[TensorOps.matmul].
+
 [#matmul-definition]
 == Mathematical Definition
 
-Matrix multiplication is a binary operation that produces a matrix from two matrices.
-Given two matrices A ∈ ℝ^(m×k) and B ∈ ℝ^(k×n), the matrix product C = AB is defined as:
-
-[stem]
-++++
-C_{ij} = \sum_{l=1}^{k} A_{il} \cdot B_{lj}
-++++
-
-Where:
-- C ∈ ℝ^(m×n) is the resulting matrix
-- i ranges from 1 to m (row index)
-- j ranges from 1 to n (column index)
-- l is the summation index over the shared dimension k
+include::partial$ops/tensorops/matmul.adoc[tag=math]
 
 [#matmul-properties]
-== Properties
+== Intuition and Properties
 
-* **Associativity**: (AB)C = A(BC)
-* **Distributivity**: A(B + C) = AB + AC and (A + B)C = AC + BC
-* **Non-commutativity**: Generally AB ≠ BA
-* **Identity element**: AI = IA = A where I is the identity matrix
-
-[#matmul-complexity]
-== Computational Complexity
-
-* Standard algorithm: O(mnk) operations
-* Strassen's algorithm: O(n^2.807) for square matrices
-* Current best known: O(n^2.373) (theoretical)
+include::partial$ops/tensorops/matmul.adoc[tag=intuition]
 
 [#matmul-applications]
 == Applications
@@ -39,3 +21,8 @@ Where:
 * Linear transformations in computer graphics
 * Solving systems of linear equations
 * Principal component analysis (PCA)
+
+[#matmul-references]
+== References
+
+include::partial$ops/tensorops/matmul.adoc[tag=references]

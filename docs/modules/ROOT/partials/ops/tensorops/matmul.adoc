@@ -1,0 +1,41 @@
+// tag::math[]
+Given two matrices stem:[A \in \mathbb{R}^{m \times k}] and stem:[B \in \mathbb{R}^{k \times n}], the matrix product stem:[C = AB] is defined as:
+
+[stem]
+++++
+C_{ij} = \sum_{l=1}^{k} A_{il} \cdot B_{lj}
+++++
+
+Where stem:[C \in \mathbb{R}^{m \times n}], stem:[i] ranges over rows stem:[1..m], stem:[j] over columns stem:[1..n], and stem:[l] is the summation index over the shared dimension stem:[k].
+// end::math[]
+
+// tag::intuition[]
+Matrix multiplication composes two linear transformations: each output element is the dot product of a row of stem:[A] with a column of stem:[B]. It is the core primitive behind fully-connected layers, attention projections, and any linear map in a neural network's forward pass.
+
+Key properties:
+
+* *Associativity*: stem:[(AB)C = A(BC)]
+* *Distributivity*: stem:[A(B + C) = AB + AC]
+* *Non-commutativity*: in general stem:[AB \neq BA]
+* *Identity*: stem:[AI = IA = A]
+
+Complexity:
+
+* Standard algorithm: stem:[O(mnk)]
+* Strassen's algorithm: stem:[O(n^{2.807})] for square matrices
+* Current theoretical best: stem:[O(n^{2.373})]
+// end::intuition[]
+
+// tag::examples[]
+[source,kotlin]
+----
+val a: Tensor<FP32, FloatArray> = tensor(shape(2, 3)) { ... }
+val b: Tensor<FP32, FloatArray> = tensor(shape(3, 4)) { ... }
+val c = ops.matmul(a, b)   // shape(2, 4)
+----
+// end::examples[]
+
+// tag::references[]
+* https://en.wikipedia.org/wiki/Matrix_multiplication[Matrix multiplication — Wikipedia]
+* Strassen, V. (1969). _Gaussian elimination is not optimal_. Numerische Mathematik.
+// end::references[]

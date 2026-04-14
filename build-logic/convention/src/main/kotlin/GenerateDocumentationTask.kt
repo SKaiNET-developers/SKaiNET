@@ -268,14 +268,24 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Modality: ${operator.modality.capitalize()}")
             appendLine("")
-            
+
             operator.functions.forEach { function ->
-                generateFunctionSection(function, this)
+                generateFunctionSection(operator, function, this)
             }
         })
     }
-    
-    private fun generateFunctionSection(function: FunctionDoc, builder: StringBuilder) {
+
+    /**
+     * Per-function section layout fuses auto-derived facts (signature,
+     * parameters, return type, backend matrix) with optional hand-written
+     * prose pulled from a partial at
+     * `partials/ops/<operator>/<function>.adoc`. The partial is sliced by
+     * AsciiDoc tags — `math`, `intuition`, `examples`, `references` — so a
+     * single file per function carries all the human content, and missing
+     * tags render as empty via `optional`, keeping un-prosed ops valid.
+     */
+    private fun generateFunctionSection(operator: OperatorDoc, function: FunctionDoc, builder: StringBuilder) {
+        val partialBase = "ops/${operator.name.lowercase()}/${function.name.lowercase()}.adoc"
         builder.apply {
             appendLine("== ${function.name}")
             appendLine("")
@@ -286,7 +296,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine(function.signature)
             appendLine("----")
             appendLine("")
-            
+
             if (function.parameters.isNotEmpty()) {
                 appendLine("=== Parameters")
                 appendLine("")
@@ -298,16 +308,32 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                 }
                 appendLine("")
             }
-            
+
             appendLine("=== Return Type")
             appendLine("")
             appendLine("`${function.returnType}`")
             appendLine("")
-            
+
+            // Human prose: math first so LaTeX sits right under the signature,
+            // then intuition and examples before the backend table, references
+            // last. All optional — ops with no partial still render cleanly.
+            appendLine("=== Definition")
+            appendLine("")
+            appendLine("include::partial\$$partialBase[tag=math,optional]")
+            appendLine("")
+            appendLine("=== Intuition")
+            appendLine("")
+            appendLine("include::partial\$$partialBase[tag=intuition,optional]")
+            appendLine("")
+            appendLine("=== Examples")
+            appendLine("")
+            appendLine("include::partial\$$partialBase[tag=examples,optional]")
+            appendLine("")
+
             if (includeBackendStatus.getOrElse(true) && function.statusByBackend.isNotEmpty()) {
                 generateBackendStatusTable(function, this)
             }
-            
+
             if (function.notes.isNotEmpty()) {
                 appendLine("=== Notes")
                 appendLine("")
@@ -316,7 +342,10 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                     appendLine("")
                 }
             }
-            
+
+            appendLine("=== References")
+            appendLine("")
+            appendLine("include::partial\$$partialBase[tag=references,optional]")
             appendLine("")
         }
     }

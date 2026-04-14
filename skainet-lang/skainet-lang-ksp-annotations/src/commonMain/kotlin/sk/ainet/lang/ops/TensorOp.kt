@@ -51,3 +51,22 @@ public annotation class InProgress(
     val owner: String = "",
     val issue: String = ""
 )
+
+/**
+ * Marks a class as a concrete compute backend implementation of the
+ * `TensorOps` interface. The docs KSP processor uses this to derive the
+ * `statusByBackend` map for each operator automatically, so adding a new
+ * backend is one annotation instead of N hand-edits to `@InProgress`.
+ *
+ * @param id Stable identifier used as a column key in the ops status
+ *   matrix (e.g. `"cpu"`, `"apple"`, `"wasm"`, `"cuda"`). Keep it short
+ *   and lowercase.
+ * @param displayName Human-readable label for rendered tables. Defaults
+ *   to [id] if left empty.
+ */
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.SOURCE)
+public annotation class Backend(
+    val id: String,
+    val displayName: String = ""
+)

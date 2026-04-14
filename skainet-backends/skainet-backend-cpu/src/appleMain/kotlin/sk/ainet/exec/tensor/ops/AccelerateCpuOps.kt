@@ -19,6 +19,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
+import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
 
@@ -30,6 +31,7 @@ import sk.ainet.lang.types.FP32
  * Falls through to [DefaultCpuOpsBase] for non-FP32, non-contiguous,
  * or complex broadcasting cases.
  */
+@Backend(id = "apple", displayName = "Apple Accelerate")
 public class AccelerateCpuOps(
     dataFactory: TensorDataFactory,
 ) : DefaultCpuOpsBase(dataFactory) {

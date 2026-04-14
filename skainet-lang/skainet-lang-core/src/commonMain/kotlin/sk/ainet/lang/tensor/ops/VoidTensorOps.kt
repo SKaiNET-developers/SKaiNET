@@ -1,5 +1,6 @@
 package sk.ainet.lang.tensor.ops
 
+import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.InProgress
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -8,6 +9,7 @@ import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.tensor.data.views.UnsqueezedTensorData
 
+@Backend(id = "void", displayName = "Shape-only")
 public class VoidTensorOps : TensorOps {
     
     private val dataFactory = DenseTensorDataFactory()
