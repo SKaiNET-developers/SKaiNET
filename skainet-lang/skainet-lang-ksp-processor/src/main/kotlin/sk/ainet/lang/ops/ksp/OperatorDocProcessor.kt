@@ -1,5 +1,7 @@
 package sk.ainet.lang.ops.ksp
 
+import com.google.devtools.ksp.getClassDeclarationByName
+import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
@@ -53,7 +55,10 @@ class OperatorDocProcessor(
     private val logger: KSPLogger
 ) : SymbolProcessor {
 
+    private var alreadyGenerated = false
+
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        if (alreadyGenerated) return emptyList()
         logger.info("Starting OperatorDocProcessor...")
 
         val notImplementedSymbols = resolver
@@ -78,15 +83,26 @@ class OperatorDocProcessor(
 
         val allSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols + dslOpSymbols).toList()
 
-        if (allSymbols.isEmpty()) {
-            logger.info("No annotated symbols found")
-            return emptyList()
-        }
-
         logger.info("Found ${allSymbols.size} annotated symbols")
 
-        // Group symbols by their containing class/package to create operators
-        val operatorDocs = groupSymbolsByOperator(allSymbols)
+        // Group annotation-discovered symbols by their containing class/package to create operators
+        val annotationOps = if (allSymbols.isNotEmpty()) groupSymbolsByOperator(allSymbols) else emptyList()
+
+        // Additionally discover the full TensorOps surface by walking the interface
+        // and any `@Backend`-tagged implementors visible in this compilation unit.
+        // This scales coverage beyond the hand-annotated symbols and makes the
+        // backend matrix track ground truth instead of annotation drift.
+        val interfaceOps = discoverTensorOpsSurface(resolver)
+
+        // Prefer interface-scan for the TensorOps operator; keep annotation-derived
+        // operators (like synthetic Similarity from @DslOp) untouched.
+        val interfaceNames = interfaceOps.map { it.name }.toSet()
+        val operatorDocs = interfaceOps + annotationOps.filter { it.name !in interfaceNames }
+
+        if (operatorDocs.isEmpty()) {
+            logger.info("No operators discovered (no annotations and no TensorOps visible)")
+            return emptyList()
+        }
 
         // Create the module documentation
         val module = OperatorDocModule(
@@ -99,8 +115,71 @@ class OperatorDocProcessor(
 
         // Generate JSON output
         generateJsonOutput(module)
+        alreadyGenerated = true
 
         return emptyList() // No symbols need further processing
+    }
+
+    /**
+     * Walk the `TensorOps` interface and every `@Backend`-annotated class
+     * visible in this compilation unit to produce a single `OperatorDoc`
+     * covering the full op surface. Each function's `statusByBackend` maps
+     * every visible backend id to `implemented` when that backend's class
+     * declares an override of the method, or `inherited` otherwise.
+     *
+     * Returns an empty list when `TensorOps` is not on the compilation
+     * classpath — non-`skainet-lang-core` modules simply fall back to the
+     * annotation-driven path.
+     */
+    private fun discoverTensorOpsSurface(resolver: Resolver): List<OperatorDoc> {
+        val tensorOpsName = resolver.getKSNameFromString("sk.ainet.lang.tensor.ops.TensorOps")
+        val tensorOps = resolver.getClassDeclarationByName(tensorOpsName) ?: return emptyList()
+
+        val backendClasses: List<Pair<String, KSClassDeclaration>> = resolver
+            .getSymbolsWithAnnotation("sk.ainet.lang.ops.Backend")
+            .filterIsInstance<KSClassDeclaration>()
+            .mapNotNull { cls ->
+                val ann = cls.annotations.find { it.shortName.asString() == "Backend" } ?: return@mapNotNull null
+                val id = ann.arguments.find { it.name?.asString() == "id" }?.value?.toString()
+                    ?: return@mapNotNull null
+                id to cls
+            }
+            .toList()
+
+        logger.info("Discovered ${backendClasses.size} @Backend classes for TensorOps surface scan")
+
+        // Interface methods only — skip default implementations authored on
+        // the interface (they still show up here but their status defaults
+        // to "inherited" for every backend unless overridden).
+        val interfaceFunctions = tensorOps.getDeclaredFunctions().toList()
+
+        val functionDocs = interfaceFunctions.map { fn ->
+            val statusByBackend = mutableMapOf<String, String>()
+            for ((backendId, backendClass) in backendClasses) {
+                val overrides = backendClass.getAllFunctions().any { candidate ->
+                    candidate.simpleName.asString() == fn.simpleName.asString() &&
+                        candidate.findOverridee()?.simpleName?.asString() == fn.simpleName.asString()
+                }
+                statusByBackend[backendId] = if (overrides) "implemented" else "inherited"
+            }
+            FunctionDoc(
+                name = fn.simpleName.asString(),
+                signature = fn.toSignatureString(),
+                parameters = extractParameters(fn),
+                returnType = extractReturnType(fn),
+                statusByBackend = statusByBackend,
+                notes = emptyList()
+            )
+        }
+
+        return listOf(
+            OperatorDoc(
+                name = "TensorOps",
+                packageName = tensorOps.packageName.asString(),
+                modality = "core",
+                functions = functionDocs
+            )
+        )
     }
 
     private fun groupSymbolsByOperator(symbols: List<KSDeclaration>): List<OperatorDoc> {
@@ -386,7 +465,7 @@ class OperatorDocProcessor(
 
             logger.info("Generated operators.json with ${module.operators.size} operators")
         } catch (e: Exception) {
-            logger.error("Failed to generate JSON output: ${e.message}")
+            logger.error("Failed to generate JSON output: ${e::class.simpleName}: ${e.message}")
         }
     }
 }

@@ -1,19 +1,74 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `1.0.0` on 2026-04-13.
+Generated from `operators.json` version `1.0.0` on 2026-04-14.
 
 Rows are `Operator.function` pairs; columns are backends that appear in any function's `statusByBackend` map. A missing entry means the backend makes no claim about the function — treat it as "unknown", not "not supported".
 
-[cols="2,1,1,1,1", options="header"]
+[cols="2,1,1,1,1,1", options="header"]
 |===
-| Operator.function | Metal | apple | cpu | wasm 
+| Operator.function | Metal | apple | cpu | void | wasm 
 
-| `VoidTensorOps.matmul` | 🚧 | — | — | — 
-| `VoidTensorOps.transpose` | 🚧 | — | — | — 
-| `Similarity.cosineDistance` | — | ✅ | ✅ | ✅ 
+| `TensorOps.add` | — | — | — | ✅ | — 
+| `TensorOps.subtract` | — | — | — | ✅ | — 
+| `TensorOps.multiply` | — | — | — | ✅ | — 
+| `TensorOps.divide` | — | — | — | ✅ | — 
+| `TensorOps.addScalar` | — | — | — | ✅ | — 
+| `TensorOps.subScalar` | — | — | — | ✅ | — 
+| `TensorOps.mulScalar` | — | — | — | ✅ | — 
+| `TensorOps.divScalar` | — | — | — | ✅ | — 
+| `TensorOps.rsubScalar` | — | — | — | ✅ | — 
+| `TensorOps.rdivScalar` | — | — | — | ✅ | — 
+| `TensorOps.matmul` | — | — | — | ✅ | — 
+| `TensorOps.transpose` | — | — | — | ✅ | — 
+| `TensorOps.conv1d` | — | — | — | ✅ | — 
+| `TensorOps.conv2d` | — | — | — | ✅ | — 
+| `TensorOps.conv3d` | — | — | — | ✅ | — 
+| `TensorOps.convTranspose1d` | — | — | — | ✅ | — 
+| `TensorOps.maxPool2d` | — | — | — | ✅ | — 
+| `TensorOps.avgPool2d` | — | — | — | ✅ | — 
+| `TensorOps.upsample2d` | — | — | — | ✅ | — 
+| `TensorOps.reshape` | — | — | — | ✅ | — 
+| `TensorOps.flatten` | — | — | — | ✅ | — 
+| `TensorOps.concat` | — | — | — | ✅ | — 
+| `TensorOps.split` | — | — | — | ✅ | — 
+| `TensorOps.squeeze` | — | — | — | ✅ | — 
+| `TensorOps.unsqueeze` | — | — | — | ✅ | — 
+| `TensorOps.relu` | — | — | — | ✅ | — 
+| `TensorOps.leakyRelu` | — | — | — | ✅ | — 
+| `TensorOps.elu` | — | — | — | ✅ | — 
+| `TensorOps.softmax` | — | — | — | ✅ | — 
+| `TensorOps.logSoftmax` | — | — | — | ✅ | — 
+| `TensorOps.sigmoid` | — | — | — | ✅ | — 
+| `TensorOps.silu` | — | — | — | ✅ | — 
+| `TensorOps.gelu` | — | — | — | ✅ | — 
+| `TensorOps.sum` | — | — | — | ✅ | — 
+| `TensorOps.mean` | — | — | — | ✅ | — 
+| `TensorOps.variance` | — | — | — | ✅ | — 
+| `TensorOps.sqrt` | — | — | — | ✅ | — 
+| `TensorOps.abs` | — | — | — | ✅ | — 
+| `TensorOps.sign` | — | — | — | ✅ | — 
+| `TensorOps.clamp` | — | — | — | ✅ | — 
+| `TensorOps.narrow` | — | — | — | ✅ | — 
+| `TensorOps.pad2d` | — | — | — | ✅ | — 
+| `TensorOps.unfold` | — | — | — | ✅ | — 
+| `TensorOps.lt` | — | — | — | ✅ | — 
+| `TensorOps.ge` | — | — | — | ✅ | — 
+| `TensorOps.tril` | — | — | — | ✅ | — 
+| `TensorOps.convert` | — | — | — | ✅ | — 
+| `TensorOps.gather` | — | — | — | ✅ | — 
+| `TensorOps.indexSelect` | — | — | — | ✅ | — 
+| `TensorOps.exp` | — | — | — | ✅ | — 
+| `TensorOps.expm1` | — | — | — | ✅ | — 
+| `TensorOps.sin` | — | — | — | ✅ | — 
+| `TensorOps.cos` | — | — | — | ✅ | — 
+| `TensorOps.tanh` | — | — | — | ✅ | — 
+| `TensorOps.scaledDotProductAttention` | — | — | — | ✅ | — 
+| `VoidTensorOps.matmul` | 🚧 | — | — | — | — 
+| `VoidTensorOps.transpose` | 🚧 | — | — | — | — 
+| `Similarity.cosineDistance` | — | ✅ | ✅ | — | ✅ 
 
-| *Done* | *0 / 3* | *1 / 3* | *1 / 3* | *1 / 3* 
+| *Done* | *0 / 58* | *1 / 58* | *1 / 58* | *55 / 58* | *1 / 58* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].

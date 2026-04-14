@@ -5,6 +5,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.TensorOp
 import sk.ainet.lang.ops.InProgress
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
@@ -13,6 +14,7 @@ import sk.ainet.lang.tensor.ops.UpsampleMode
 import sk.ainet.lang.types.FP32
 import kotlin.math.sqrt
 
+@Backend(id = "cpu", displayName = "CPU")
 @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#defaultcpuops")
 public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory) : TensorOps {
 

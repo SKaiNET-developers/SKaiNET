@@ -22,6 +22,18 @@ fun matmul(a:Tensor, b:Tensor): Tensor
 
 `Tensor`
 
+=== Definition
+
+include::partial$ops/voidtensorops/matmul.adoc[tag=math,optional]
+
+=== Intuition
+
+include::partial$ops/voidtensorops/matmul.adoc[tag=intuition,optional]
+
+=== Examples
+
+include::partial$ops/voidtensorops/matmul.adoc[tag=examples,optional]
+
 === Backend Support
 
 [cols="1,1,3", options="header"]
@@ -36,6 +48,9 @@ TIP: *Metal*:
 
 TIP: *Metal*: 
 
+=== References
+
+include::partial$ops/voidtensorops/matmul.adoc[tag=references,optional]
 
 == transpose
 
@@ -54,6 +69,18 @@ fun transpose(tensor:Tensor): Tensor
 
 `Tensor`
 
+=== Definition
+
+include::partial$ops/voidtensorops/transpose.adoc[tag=math,optional]
+
+=== Intuition
+
+include::partial$ops/voidtensorops/transpose.adoc[tag=intuition,optional]
+
+=== Examples
+
+include::partial$ops/voidtensorops/transpose.adoc[tag=examples,optional]
+
 === Backend Support
 
 [cols="1,1,3", options="header"]
@@ -68,4 +95,7 @@ TIP: *Metal*:
 
 TIP: *Metal*: 
 
+=== References
+
+include::partial$ops/voidtensorops/transpose.adoc[tag=references,optional]
 
