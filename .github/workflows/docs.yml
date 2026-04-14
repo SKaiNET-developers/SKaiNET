@@ -46,7 +46,7 @@ jobs:
       # container, so the Gradle wrapper cache works and generateDocs
       # / dokkaGenerate see the right JDK.
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
