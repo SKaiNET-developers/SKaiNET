@@ -81,9 +81,20 @@ class OperatorDocProcessor(
             .filterIsInstance<KSDeclaration>()
             .filter { it.validate() }
 
-        val allSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols + dslOpSymbols).toList()
+        val rawSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols + dslOpSymbols).toList()
 
-        logger.info("Found ${allSymbols.size} annotated symbols")
+        // Drop symbols whose enclosing class is `@Backend`-tagged: those are
+        // backend implementors of `TensorOps` and their coverage is already
+        // reflected in the TensorOps surface scan's backend matrix. Emitting a
+        // standalone page for them would duplicate info and, worse, produce a
+        // stub page showing only the handful of methods that happen to carry
+        // a status annotation.
+        val allSymbols = rawSymbols.filterNot { symbol ->
+            val parent = (symbol as? KSFunctionDeclaration)?.parentDeclaration as? KSClassDeclaration
+            parent?.annotations?.any { it.shortName.asString() == "Backend" } == true
+        }
+
+        logger.info("Found ${allSymbols.size} annotated symbols (dropped ${rawSymbols.size - allSymbols.size} on @Backend classes)")
 
         // Group annotation-discovered symbols by their containing class/package to create operators
         val annotationOps = if (allSymbols.isNotEmpty()) groupSymbolsByOperator(allSymbols) else emptyList()
@@ -135,11 +146,17 @@ class OperatorDocProcessor(
         val tensorOpsName = resolver.getKSNameFromString("sk.ainet.lang.tensor.ops.TensorOps")
         val tensorOps = resolver.getClassDeclarationByName(tensorOpsName) ?: return emptyList()
 
+        // Backend classes marked `internal = true` are shape/dtype
+        // sentinels or test doubles (e.g. `VoidTensorOps`). Drop them
+        // from the surface scan so they never appear in user-facing
+        // pages or coverage matrices.
         val backendClasses: List<Pair<String, KSClassDeclaration>> = resolver
             .getSymbolsWithAnnotation("sk.ainet.lang.ops.Backend")
             .filterIsInstance<KSClassDeclaration>()
             .mapNotNull { cls ->
                 val ann = cls.annotations.find { it.shortName.asString() == "Backend" } ?: return@mapNotNull null
+                val isInternal = ann.arguments.find { it.name?.asString() == "internal" }?.value as? Boolean == true
+                if (isInternal) return@mapNotNull null
                 val id = ann.arguments.find { it.name?.asString() == "id" }?.value?.toString()
                     ?: return@mapNotNull null
                 id to cls

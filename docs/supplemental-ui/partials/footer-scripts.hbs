@@ -1,0 +1,27 @@
+<script id="site-script" src="{{{uiRootPath}}}/js/site.js" data-ui-root-path="{{{uiRootPath}}}"></script>
+<script async src="{{{uiRootPath}}}/js/vendor/highlight.js"></script>
+{{#if env.SITE_SEARCH_PROVIDER}}
+{{> search-scripts}}
+{{/if}}
+{{!--
+  MathJax v3 loaded from CDN so LaTeX in stem:[…] / [stem] blocks renders
+  as real math instead of literal \$…\$ passthrough. Configured to match
+  Asciidoctor's delimiter output: inline \(…\) and display \[…\]. The
+  `ignoreHtmlClass`/`processHtmlClass` pair scopes the scan to Asciidoctor's
+  stemblock + paragraph nodes so MathJax doesn't rewrite unrelated page
+  chrome. Kept here (supplemental-ui override of the skainet-docs-ui bundle)
+  rather than upstreamed so docs changes don't require a UI bundle release.
+--}}
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['\\[', '\\]']],
+    processEscapes: true,
+  },
+  options: {
+    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+  },
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>

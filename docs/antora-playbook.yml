@@ -19,6 +19,13 @@ content:
       branches: HEAD
 
 asciidoc:
+  attributes:
+    # LaTeX syntax for stem:[…] and [stem] blocks. Without this the
+    # partials under partials/ops/**/*.adoc would be parsed as AsciiMath,
+    # which doesn't understand `\in`, `\mathbb`, `\sum_{…}^{…}` etc. and
+    # passes them through as literal text. MathJax is loaded by
+    # supplemental-ui/partials/footer-scripts.hbs.
+    stem: latexmath
   extensions:
     # Local mermaid block processor — renders every `[mermaid]` block
     # inline by invoking the @mermaid-js/mermaid-cli binary baked into
@@ -36,6 +43,11 @@ ui:
     # this URL to a newer version is a one-line PR.
     url: https://github.com/SKaiNET-developers/skainet-docs-ui/releases/download/v1.1.1/ui-bundle.zip
     snapshot: true
+  # Local overrides layered on top of the UI bundle. The footer-scripts
+  # partial is replaced to inject MathJax so stem:[…] / [stem] blocks
+  # render properly; upstream the change to skainet-docs-ui once the
+  # math-in-ops-docs surface stabilises.
+  supplemental_files: ./supplemental-ui
 
 output:
   dir: ./build/site

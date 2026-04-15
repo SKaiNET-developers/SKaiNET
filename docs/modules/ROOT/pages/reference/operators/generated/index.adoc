@@ -1,13 +1,12 @@
 = AI-NET Operators Reference
 
-Generated from version `1.0.0` on 2026-04-14
+Generated from version `1.0.0` on 2026-04-15
 
 == Operators by Modality
 
 === Core
 
 * xref:reference/operators/generated/tensorops.adoc[TensorOps]
-* xref:reference/operators/generated/voidtensorops.adoc[VoidTensorOps]
 
 === Composite
 

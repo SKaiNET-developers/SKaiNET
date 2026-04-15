@@ -23,33 +23,7 @@ fun cosineDistance(other:Tensor, dim:Int, eps:Double): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| cpu | implemented | -
-| wasm | implemented | -
-| apple | implemented | -
-|===
-
 === Notes
 
 TIP: *all*: 
-
-=== References
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=references,optional]
 
