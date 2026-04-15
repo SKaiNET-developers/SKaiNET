@@ -63,10 +63,16 @@ public annotation class InProgress(
  *   and lowercase.
  * @param displayName Human-readable label for rendered tables. Defaults
  *   to [id] if left empty.
+ * @param internal Marks the backend as internal-only — a shape/dtype
+ *   sentinel, test double, or profiling stub that should never appear in
+ *   user-facing docs or coverage matrices. `VoidTensorOps` is the canonical
+ *   example: it exists so the KMP build and shape propagation work without
+ *   a real compute backend, but it has no runtime on any target.
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.SOURCE)
 public annotation class Backend(
     val id: String,
-    val displayName: String = ""
+    val displayName: String = "",
+    val internal: Boolean = false,
 )

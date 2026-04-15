@@ -22,30 +22,6 @@ fun add(a:Tensor, b:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/add.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/add.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/add.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/add.adoc[tag=references,optional]
-
 == subtract
 
 === Signature
@@ -63,30 +39,6 @@ fun subtract(a:Tensor, b:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/subtract.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/subtract.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/subtract.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/subtract.adoc[tag=references,optional]
 
 == multiply
 
@@ -106,30 +58,6 @@ fun multiply(a:Tensor, b:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/multiply.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/multiply.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/multiply.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/multiply.adoc[tag=references,optional]
-
 == divide
 
 === Signature
@@ -147,30 +75,6 @@ fun divide(a:Tensor, b:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/divide.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/divide.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/divide.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/divide.adoc[tag=references,optional]
 
 == addScalar
 
@@ -190,30 +94,6 @@ fun addScalar(a:Tensor, b:Number): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/addscalar.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/addscalar.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/addscalar.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/addscalar.adoc[tag=references,optional]
-
 == subScalar
 
 === Signature
@@ -231,30 +111,6 @@ fun subScalar(a:Tensor, b:Number): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/subscalar.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/subscalar.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/subscalar.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/subscalar.adoc[tag=references,optional]
 
 == mulScalar
 
@@ -274,30 +130,6 @@ fun mulScalar(a:Tensor, b:Number): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/mulscalar.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/mulscalar.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/mulscalar.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/mulscalar.adoc[tag=references,optional]
-
 == divScalar
 
 === Signature
@@ -315,30 +147,6 @@ fun divScalar(a:Tensor, b:Number): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/divscalar.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/divscalar.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/divscalar.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/divscalar.adoc[tag=references,optional]
 
 == rsubScalar
 
@@ -358,30 +166,6 @@ fun rsubScalar(a:Number, b:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/rsubscalar.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/rsubscalar.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/rsubscalar.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/rsubscalar.adoc[tag=references,optional]
-
 == rdivScalar
 
 === Signature
@@ -400,30 +184,6 @@ fun rdivScalar(a:Number, b:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/rdivscalar.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/rdivscalar.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/rdivscalar.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/rdivscalar.adoc[tag=references,optional]
-
 == matmul
 
 === Signature
@@ -436,7 +196,9 @@ fun matmul(a:Tensor, b:Tensor): Tensor
 === Parameters
 
 * `a: Tensor`
+  left operand, shape `[…, m, k]`. The last dimension `k` must match the second-to-last dimension of [b].
 * `b: Tensor`
+  right operand, shape `[…, k, n]`. Leading dimensions are broadcast against [a] using the usual broadcasting rules.
 
 === Return Type
 
@@ -453,14 +215,6 @@ include::partial$ops/tensorops/matmul.adoc[tag=intuition,optional]
 === Examples
 
 include::partial$ops/tensorops/matmul.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
 
 === References
 
@@ -482,30 +236,6 @@ fun transpose(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/transpose.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/transpose.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/transpose.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/transpose.adoc[tag=references,optional]
 
 == conv1d
 
@@ -530,30 +260,6 @@ fun conv1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, padding:Int, di
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/conv1d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/conv1d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/conv1d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/conv1d.adoc[tag=references,optional]
-
 == conv2d
 
 === Signature
@@ -577,30 +283,6 @@ fun conv2d(input:Tensor, weight:Tensor, bias:Tensor, stride:Pair, padding:Pair, 
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/conv2d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/conv2d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/conv2d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/conv2d.adoc[tag=references,optional]
-
 == conv3d
 
 === Signature
@@ -623,30 +305,6 @@ fun conv3d(input:Tensor, weight:Tensor, bias:Tensor, stride:Triple, padding:Trip
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/conv3d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/conv3d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/conv3d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/conv3d.adoc[tag=references,optional]
 
 == convTranspose1d
 
@@ -672,30 +330,6 @@ fun convTranspose1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, paddin
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/convtranspose1d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/convtranspose1d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/convtranspose1d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/convtranspose1d.adoc[tag=references,optional]
-
 == maxPool2d
 
 === Signature
@@ -715,30 +349,6 @@ fun maxPool2d(input:Tensor, kernelSize:Pair, stride:Pair, padding:Pair): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/maxpool2d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/maxpool2d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/maxpool2d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/maxpool2d.adoc[tag=references,optional]
 
 == avgPool2d
 
@@ -761,30 +371,6 @@ fun avgPool2d(input:Tensor, kernelSize:Pair, stride:Pair, padding:Pair, countInc
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/avgpool2d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/avgpool2d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/avgpool2d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/avgpool2d.adoc[tag=references,optional]
-
 == upsample2d
 
 === Signature
@@ -805,30 +391,6 @@ fun upsample2d(input:Tensor, scale:Pair, mode:UpsampleMode, alignCorners:Boolean
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/upsample2d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/upsample2d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/upsample2d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/upsample2d.adoc[tag=references,optional]
-
 == reshape
 
 === Signature
@@ -846,30 +408,6 @@ fun reshape(tensor:Tensor, newShape:Shape): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/reshape.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/reshape.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/reshape.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/reshape.adoc[tag=references,optional]
 
 == flatten
 
@@ -890,30 +428,6 @@ fun flatten(tensor:Tensor, startDim:Int, endDim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/flatten.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/flatten.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/flatten.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/flatten.adoc[tag=references,optional]
-
 == concat
 
 === Signature
@@ -931,30 +445,6 @@ fun concat(tensors:List, dim:Int): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/concat.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/concat.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/concat.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/concat.adoc[tag=references,optional]
 
 == split
 
@@ -975,30 +465,6 @@ fun split(tensor:Tensor, splitSize:Int, dim:Int): List
 
 `List`
 
-=== Definition
-
-include::partial$ops/tensorops/split.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/split.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/split.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/split.adoc[tag=references,optional]
-
 == squeeze
 
 === Signature
@@ -1016,30 +482,6 @@ fun squeeze(tensor:Tensor, dim:Int): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/squeeze.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/squeeze.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/squeeze.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/squeeze.adoc[tag=references,optional]
 
 == unsqueeze
 
@@ -1059,30 +501,6 @@ fun unsqueeze(tensor:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/unsqueeze.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/unsqueeze.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/unsqueeze.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/unsqueeze.adoc[tag=references,optional]
-
 == relu
 
 === Signature
@@ -1099,30 +517,6 @@ fun relu(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/relu.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/relu.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/relu.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/relu.adoc[tag=references,optional]
 
 == leakyRelu
 
@@ -1142,30 +536,6 @@ fun leakyRelu(tensor:Tensor, negativeSlope:Float): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/leakyrelu.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/leakyrelu.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/leakyrelu.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/leakyrelu.adoc[tag=references,optional]
-
 == elu
 
 === Signature
@@ -1183,30 +553,6 @@ fun elu(tensor:Tensor, alpha:Float): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/elu.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/elu.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/elu.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/elu.adoc[tag=references,optional]
 
 == softmax
 
@@ -1226,30 +572,6 @@ fun softmax(tensor:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/softmax.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/softmax.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/softmax.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/softmax.adoc[tag=references,optional]
-
 == logSoftmax
 
 === Signature
@@ -1268,30 +590,6 @@ fun logSoftmax(tensor:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/logsoftmax.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/logsoftmax.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/logsoftmax.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/logsoftmax.adoc[tag=references,optional]
-
 == sigmoid
 
 === Signature
@@ -1308,30 +606,6 @@ fun sigmoid(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/sigmoid.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/sigmoid.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/sigmoid.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/sigmoid.adoc[tag=references,optional]
 
 == silu
 
@@ -1350,30 +624,6 @@ fun silu(tensor:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/silu.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/silu.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/silu.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/silu.adoc[tag=references,optional]
-
 == gelu
 
 === Signature
@@ -1390,30 +640,6 @@ fun gelu(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/gelu.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/gelu.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/gelu.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/gelu.adoc[tag=references,optional]
 
 == sum
 
@@ -1433,30 +659,6 @@ fun sum(tensor:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/sum.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/sum.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/sum.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/sum.adoc[tag=references,optional]
-
 == mean
 
 === Signature
@@ -1474,30 +676,6 @@ fun mean(tensor:Tensor, dim:Int): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/mean.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/mean.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/mean.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/mean.adoc[tag=references,optional]
 
 == variance
 
@@ -1517,30 +695,6 @@ fun variance(tensor:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/variance.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/variance.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/variance.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/variance.adoc[tag=references,optional]
-
 == sqrt
 
 === Signature
@@ -1557,30 +711,6 @@ fun sqrt(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/sqrt.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/sqrt.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/sqrt.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/sqrt.adoc[tag=references,optional]
 
 == abs
 
@@ -1599,30 +729,6 @@ fun abs(tensor:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/abs.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/abs.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/abs.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/abs.adoc[tag=references,optional]
-
 == sign
 
 === Signature
@@ -1639,30 +745,6 @@ fun sign(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/sign.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/sign.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/sign.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/sign.adoc[tag=references,optional]
 
 == clamp
 
@@ -1683,30 +765,6 @@ fun clamp(tensor:Tensor, minVal:Float, maxVal:Float): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/clamp.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/clamp.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/clamp.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/clamp.adoc[tag=references,optional]
-
 == narrow
 
 === Signature
@@ -1726,30 +784,6 @@ fun narrow(tensor:Tensor, dim:Int, start:Int, length:Int): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/narrow.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/narrow.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/narrow.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/narrow.adoc[tag=references,optional]
 
 == pad2d
 
@@ -1772,30 +806,6 @@ fun pad2d(tensor:Tensor, padLeft:Int, padRight:Int, padTop:Int, padBottom:Int): 
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/pad2d.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/pad2d.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/pad2d.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/pad2d.adoc[tag=references,optional]
-
 == unfold
 
 === Signature
@@ -1816,30 +826,6 @@ fun unfold(tensor:Tensor, dim:Int, size:Int, step:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/unfold.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/unfold.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/unfold.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/unfold.adoc[tag=references,optional]
-
 == lt
 
 === Signature
@@ -1857,30 +843,6 @@ fun lt(tensor:Tensor, value:Float): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/lt.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/lt.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/lt.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/lt.adoc[tag=references,optional]
 
 == ge
 
@@ -1900,30 +862,6 @@ fun ge(tensor:Tensor, value:Float): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/ge.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/ge.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/ge.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/ge.adoc[tag=references,optional]
-
 == tril
 
 === Signature
@@ -1942,30 +880,6 @@ fun tril(tensor:Tensor, k:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/tril.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/tril.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/tril.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/tril.adoc[tag=references,optional]
-
 == convert
 
 === Signature
@@ -1983,30 +897,6 @@ fun convert(tensor:Tensor, targetType:TTo): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/convert.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/convert.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/convert.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/convert.adoc[tag=references,optional]
 
 == gather
 
@@ -2027,30 +917,6 @@ fun gather(input:Tensor, indices:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/gather.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/gather.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/gather.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/gather.adoc[tag=references,optional]
-
 == indexSelect
 
 === Signature
@@ -2070,30 +936,6 @@ fun indexSelect(input:Tensor, indices:Tensor, dim:Int): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/indexselect.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/indexselect.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/indexselect.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/indexselect.adoc[tag=references,optional]
-
 == exp
 
 === Signature
@@ -2110,30 +952,6 @@ fun exp(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/exp.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/exp.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/exp.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/exp.adoc[tag=references,optional]
 
 == expm1
 
@@ -2152,30 +970,6 @@ fun expm1(tensor:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/expm1.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/expm1.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/expm1.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/expm1.adoc[tag=references,optional]
-
 == sin
 
 === Signature
@@ -2192,30 +986,6 @@ fun sin(tensor:Tensor): Tensor
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/sin.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/sin.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/sin.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/sin.adoc[tag=references,optional]
 
 == cos
 
@@ -2234,30 +1004,6 @@ fun cos(tensor:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/cos.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/cos.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/cos.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/cos.adoc[tag=references,optional]
-
 == tanh
 
 === Signature
@@ -2275,30 +1021,6 @@ fun tanh(tensor:Tensor): Tensor
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/tensorops/tanh.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/tanh.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/tanh.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/tanh.adoc[tag=references,optional]
-
 == scaledDotProductAttention
 
 === Signature
@@ -2311,37 +1033,19 @@ fun scaledDotProductAttention(query:Tensor, key:Tensor, value:Tensor, mask:Tenso
 === Parameters
 
 * `query: Tensor`
+  [batch, nHeads, seqLen, headDim]
 * `key: Tensor`
+  [batch, nKVHeads, kvLen, headDim]
 * `value: Tensor`
+  [batch, nKVHeads, kvLen, headDim]
 * `mask: Tensor`
+  optional additive mask [batch, 1, seqLen, kvLen] (e.g. causal)
 * `scale: Float`
+  scaling factor, defaults to 1/sqrt(headDim)
 * `causal: Boolean`
+  if true, apply causal masking (ignore [mask] parameter)
 
 === Return Type
 
 `Tensor`
-
-=== Definition
-
-include::partial$ops/tensorops/scaleddotproductattention.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/tensorops/scaleddotproductattention.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/tensorops/scaleddotproductattention.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| void | implemented | -
-|===
-
-=== References
-
-include::partial$ops/tensorops/scaleddotproductattention.adoc[tag=references,optional]
 

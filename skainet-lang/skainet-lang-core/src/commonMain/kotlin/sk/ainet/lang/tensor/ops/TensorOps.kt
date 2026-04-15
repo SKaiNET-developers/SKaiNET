@@ -38,6 +38,16 @@ public interface TensorOps {
     public fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V>
 
     // Linear algebra operations
+    /**
+     * Matrix product of two tensors. For 2-D inputs this is the standard
+     * matrix multiplication `C = A · B`; for higher-rank inputs the leading
+     * dimensions are broadcast and the last two are contracted.
+     *
+     * @param a left operand, shape `[…, m, k]`. The last dimension `k` must
+     *   match the second-to-last dimension of [b].
+     * @param b right operand, shape `[…, k, n]`. Leading dimensions are
+     *   broadcast against [a] using the usual broadcasting rules.
+     */
     @Diff
     public fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>
     @Diff

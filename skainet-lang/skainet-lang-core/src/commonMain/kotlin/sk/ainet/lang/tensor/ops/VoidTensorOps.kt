@@ -9,7 +9,7 @@ import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.tensor.data.views.UnsqueezedTensorData
 
-@Backend(id = "void", displayName = "Shape-only")
+@Backend(id = "void", displayName = "Shape-only", internal = true)
 public class VoidTensorOps : TensorOps {
     
     private val dataFactory = DenseTensorDataFactory()

@@ -52,7 +52,8 @@ data class Note(
  */
 class OperatorDocProcessor(
     private val codeGenerator: CodeGenerator,
-    private val logger: KSPLogger
+    private val logger: KSPLogger,
+    private val options: Map<String, String> = emptyMap(),
 ) : SymbolProcessor {
 
     private var alreadyGenerated = false
@@ -81,9 +82,20 @@ class OperatorDocProcessor(
             .filterIsInstance<KSDeclaration>()
             .filter { it.validate() }
 
-        val allSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols + dslOpSymbols).toList()
+        val rawSymbols = (notImplementedSymbols + inProgressSymbols + testInProgressSymbols + dslOpSymbols).toList()
 
-        logger.info("Found ${allSymbols.size} annotated symbols")
+        // Drop symbols whose enclosing class is `@Backend`-tagged: those are
+        // backend implementors of `TensorOps` and their coverage is already
+        // reflected in the TensorOps surface scan's backend matrix. Emitting a
+        // standalone page for them would duplicate info and, worse, produce a
+        // stub page showing only the handful of methods that happen to carry
+        // a status annotation.
+        val allSymbols = rawSymbols.filterNot { symbol ->
+            val parent = (symbol as? KSFunctionDeclaration)?.parentDeclaration as? KSClassDeclaration
+            parent?.annotations?.any { it.shortName.asString() == "Backend" } == true
+        }
+
+        logger.info("Found ${allSymbols.size} annotated symbols (dropped ${rawSymbols.size - allSymbols.size} on @Backend classes)")
 
         // Group annotation-discovered symbols by their containing class/package to create operators
         val annotationOps = if (allSymbols.isNotEmpty()) groupSymbolsByOperator(allSymbols) else emptyList()
@@ -135,11 +147,17 @@ class OperatorDocProcessor(
         val tensorOpsName = resolver.getKSNameFromString("sk.ainet.lang.tensor.ops.TensorOps")
         val tensorOps = resolver.getClassDeclarationByName(tensorOpsName) ?: return emptyList()
 
+        // Backend classes marked `internal = true` are shape/dtype
+        // sentinels or test doubles (e.g. `VoidTensorOps`). Drop them
+        // from the surface scan so they never appear in user-facing
+        // pages or coverage matrices.
         val backendClasses: List<Pair<String, KSClassDeclaration>> = resolver
             .getSymbolsWithAnnotation("sk.ainet.lang.ops.Backend")
             .filterIsInstance<KSClassDeclaration>()
             .mapNotNull { cls ->
                 val ann = cls.annotations.find { it.shortName.asString() == "Backend" } ?: return@mapNotNull null
+                val isInternal = ann.arguments.find { it.name?.asString() == "internal" }?.value as? Boolean == true
+                if (isInternal) return@mapNotNull null
                 val id = ann.arguments.find { it.name?.asString() == "id" }?.value?.toString()
                     ?: return@mapNotNull null
                 id to cls
@@ -261,13 +279,61 @@ class OperatorDocProcessor(
     }
 
     private fun extractParameters(function: KSFunctionDeclaration): List<ParameterDoc> {
+        val paramDocs = parseKDocParams(function.docString)
         return function.parameters.map { param ->
+            val name = param.name?.asString() ?: ""
             ParameterDoc(
-                param.name?.asString() ?: "",
-                param.type.resolve().declaration.simpleName.asString(),
-                "" // TODO: Extract from KDoc if available
+                name = name,
+                type = param.type.resolve().declaration.simpleName.asString(),
+                description = paramDocs[name].orEmpty(),
             )
         }
+    }
+
+    /**
+     * Parse `@param <name> <description>` blocks out of a KDoc comment
+     * and return a map from parameter name to description. Descriptions
+     * span subsequent indented continuation lines up until the next
+     * `@<tag>` or a blank line, matching how Dokka reads KDoc.
+     *
+     * Returns an empty map when [docString] is null or contains no
+     * `@param` directives — callers then fall back to no description,
+     * keeping pages for undocumented ops valid.
+     */
+    private fun parseKDocParams(docString: String?): Map<String, String> {
+        if (docString.isNullOrBlank()) return emptyMap()
+        val result = linkedMapOf<String, StringBuilder>()
+        var current: StringBuilder? = null
+        docString.lineSequence().forEach { raw ->
+            // KSP hands back the KDoc with leading `*` markers still
+            // attached on continuation lines; strip the canonical
+            // ` * ` / `*` prefix before pattern-matching.
+            val line = raw.trimStart().removePrefix("*").trimStart()
+            val paramMatch = Regex("^@param\\s+(\\S+)\\s*(.*)$").matchEntire(line)
+            when {
+                paramMatch != null -> {
+                    val (name, rest) = paramMatch.destructured
+                    val sb = StringBuilder(rest.trim())
+                    result[name] = sb
+                    current = sb
+                }
+                line.startsWith("@") -> {
+                    // Another KDoc tag ends the current @param block.
+                    current = null
+                }
+                line.isBlank() -> {
+                    current = null
+                }
+                else -> {
+                    current?.let { sb ->
+                        if (sb.isNotEmpty()) sb.append(' ')
+                        sb.append(line.trim())
+                    }
+                }
+            }
+        }
+        return result.mapValues { (_, sb) -> sb.toString().trim() }
+            .filterValues { it.isNotEmpty() }
     }
 
     private fun extractReturnType(function: KSFunctionDeclaration): String {
@@ -360,10 +426,17 @@ class OperatorDocProcessor(
         }
     }
 
-    private fun extractVersion(): String {
-        // TODO: Extract from project metadata
-        return "1.0.0"
-    }
+    /**
+     * Canonical SKaiNET version stamped into every generated operator
+     * page. Sourced from the `skainet.version` KSP option, which the
+     * `skainet-lang-core` build script populates from the root
+     * `gradle.properties` `VERSION_NAME` (the same value published to
+     * Maven Central). Falls back to `"unknown"` when the option isn't
+     * passed — e.g. when the processor is exercised from a unit test
+     * fixture that doesn't thread the option through.
+     */
+    private fun extractVersion(): String =
+        options["skainet.version"]?.takeIf { it.isNotBlank() } ?: "unknown"
 
     private fun extractCommitSha(): String {
         // TODO: Extract from git metadata
@@ -475,6 +548,6 @@ class OperatorDocProcessor(
  */
 class OperatorDocProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
-        return OperatorDocProcessor(environment.codeGenerator, environment.logger)
+        return OperatorDocProcessor(environment.codeGenerator, environment.logger, environment.options)
     }
 }

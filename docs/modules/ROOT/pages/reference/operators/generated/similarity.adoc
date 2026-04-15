@@ -16,40 +16,17 @@ fun cosineDistance(other:Tensor, dim:Int, eps:Double): Tensor
 === Parameters
 
 * `other: Tensor`
+  The other tensor to calculate the distance to.
 * `dim: Int`
+  The dimension along which to calculate the cosine distance. Default is -1 (last dimension).
 * `eps: Double`
+  A small value to avoid division by zero. Default is 1e-8.
 
 === Return Type
 
 `Tensor`
 
-=== Definition
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=math,optional]
-
-=== Intuition
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=intuition,optional]
-
-=== Examples
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=examples,optional]
-
-=== Backend Support
-
-[cols="1,1,3", options="header"]
-|===
-| Backend | Status | Notes
-| cpu | implemented | -
-| wasm | implemented | -
-| apple | implemented | -
-|===
-
 === Notes
 
 TIP: *all*: 
-
-=== References
-
-include::partial$ops/similarity/cosinedistance.adoc[tag=references,optional]
 

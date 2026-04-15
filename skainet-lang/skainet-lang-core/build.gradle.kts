@@ -82,6 +82,16 @@ dependencies {
     add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
 }
 
+// Pass the canonical SKaiNET version (VERSION_NAME in the root
+// gradle.properties — same value that's published to Maven Central) to
+// the OperatorDocProcessor so generated ops pages stamp a real version
+// instead of the hardcoded "1.0.0" placeholder. Read at configuration
+// time via providers.gradleProperty so build-cache entries invalidate
+// when the version bumps.
+ksp {
+    arg("skainet.version", providers.gradleProperty("VERSION_NAME").getOrElse("unknown"))
+}
+
 tasks.matching { it.name.startsWith("dokka") }.configureEach {
     dependsOn("kspCommonMainKotlinMetadata")
 }

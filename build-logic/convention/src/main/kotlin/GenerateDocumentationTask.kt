@@ -165,9 +165,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
 
     /**
      * Short emoji-only rendering of a backend status, for use in the
-     * compact matrix cells. The long-form wording stays on the
-     * per-function backend-status table produced by
-     * [generateBackendStatusTable].
+     * compact matrix cells.
      *
      * The vocabulary covers both the planning-style strings
      * (`supported` / `partial` / `not_supported` / `planned`) and
@@ -261,6 +259,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
     
     private fun generateOperatorPage(operator: OperatorDoc, module: OperatorDocModule, outputDir: File) {
         val operatorFile = File(outputDir, "${operator.name.lowercase()}.adoc")
+        val partialsRoot = derivePartialsRoot(outputDir)
         operatorFile.writeText(buildString {
             appendLine("= ${operator.name}")
             appendLine("")
@@ -270,9 +269,30 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
 
             operator.functions.forEach { function ->
-                generateFunctionSection(operator, function, this)
+                generateFunctionSection(operator, function, this, partialsRoot)
             }
         })
+    }
+
+    /**
+     * If [outputDir] lives under an Antora `modules/<name>/pages/...` tree,
+     * return the sibling `partials/` directory where hand-written prose
+     * snippets live. Returns `null` for flat doc layouts, in which case the
+     * generator assumes no partials exist and skips include directives.
+     *
+     * Antora resolves `partial$...` through its content catalog, and unlike
+     * plain AsciiDoctor it does *not* honor the `optional` attribute for
+     * missing resources — it logs an "unresolved include" error. So the
+     * generator must only emit include directives for partials that are
+     * actually present on disk.
+     */
+    private fun derivePartialsRoot(outputDir: File): File? {
+        val path = outputDir.absolutePath.replace(File.separatorChar, '/')
+        val marker = "/pages/"
+        val idx = path.indexOf(marker)
+        if (idx < 0) return null
+        val moduleRoot = File(path.substring(0, idx))
+        return File(moduleRoot, "partials")
     }
 
     /**
@@ -284,8 +304,15 @@ abstract class GenerateDocumentationTask : DefaultTask() {
      * single file per function carries all the human content, and missing
      * tags render as empty via `optional`, keeping un-prosed ops valid.
      */
-    private fun generateFunctionSection(operator: OperatorDoc, function: FunctionDoc, builder: StringBuilder) {
-        val partialBase = "ops/${operator.name.lowercase()}/${function.name.lowercase()}.adoc"
+    private fun generateFunctionSection(
+        operator: OperatorDoc,
+        function: FunctionDoc,
+        builder: StringBuilder,
+        partialsRoot: File?,
+    ) {
+        val partialRelative = "ops/${operator.name.lowercase()}/${function.name.lowercase()}.adoc"
+        val partialFile = partialsRoot?.let { File(it, partialRelative) }
+        val hasPartial = partialFile?.isFile == true
         builder.apply {
             appendLine("== ${function.name}")
             appendLine("")
@@ -314,24 +341,24 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("`${function.returnType}`")
             appendLine("")
 
-            // Human prose: math first so LaTeX sits right under the signature,
-            // then intuition and examples before the backend table, references
-            // last. All optional — ops with no partial still render cleanly.
-            appendLine("=== Definition")
-            appendLine("")
-            appendLine("include::partial\$$partialBase[tag=math,optional]")
-            appendLine("")
-            appendLine("=== Intuition")
-            appendLine("")
-            appendLine("include::partial\$$partialBase[tag=intuition,optional]")
-            appendLine("")
-            appendLine("=== Examples")
-            appendLine("")
-            appendLine("include::partial\$$partialBase[tag=examples,optional]")
-            appendLine("")
-
-            if (includeBackendStatus.getOrElse(true) && function.statusByBackend.isNotEmpty()) {
-                generateBackendStatusTable(function, this)
+            // Human prose: only emitted when a partial actually exists on
+            // disk. Antora does not honor the `optional` attribute for
+            // `partial$` resource refs, so emitting includes for missing
+            // partials produces "unresolved include" errors on the
+            // published site.
+            if (hasPartial) {
+                appendLine("=== Definition")
+                appendLine("")
+                appendLine("include::partial\$$partialRelative[tag=math,optional]")
+                appendLine("")
+                appendLine("=== Intuition")
+                appendLine("")
+                appendLine("include::partial\$$partialRelative[tag=intuition,optional]")
+                appendLine("")
+                appendLine("=== Examples")
+                appendLine("")
+                appendLine("include::partial\$$partialRelative[tag=examples,optional]")
+                appendLine("")
             }
 
             if (function.notes.isNotEmpty()) {
@@ -343,42 +370,12 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                 }
             }
 
-            appendLine("=== References")
-            appendLine("")
-            appendLine("include::partial\$$partialBase[tag=references,optional]")
-            appendLine("")
-        }
-    }
-    
-    private fun generateBackendStatusTable(function: FunctionDoc, builder: StringBuilder) {
-        builder.apply {
-            appendLine("=== Backend Support")
-            appendLine("")
-            appendLine("[cols=\"1,1,3\", options=\"header\"]")
-            appendLine("|===")
-            appendLine("| Backend | Status | Notes")
-            
-            function.statusByBackend.forEach { (backend, status) ->
-                val formattedStatus = formatStatus(status)
-                val notes = function.notes
-                    .filter { it.backend.equals(backend, ignoreCase = true) }
-                    .joinToString("; ") { it.message }
-                
-                appendLine("| $backend | $formattedStatus | ${notes.ifEmpty { "-" }}")
+            if (hasPartial) {
+                appendLine("=== References")
+                appendLine("")
+                appendLine("include::partial\$$partialRelative[tag=references,optional]")
+                appendLine("")
             }
-            
-            appendLine("|===")
-            appendLine("")
-        }
-    }
-    
-    private fun formatStatus(status: String): String {
-        return when (status.lowercase()) {
-            "supported" -> "✅ Supported"
-            "partial" -> "⚠️ Partial"
-            "not_supported" -> "❌ Not Supported"
-            "planned" -> "📋 Planned"
-            else -> status
         }
     }
     
