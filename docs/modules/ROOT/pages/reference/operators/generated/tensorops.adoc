@@ -1031,11 +1031,17 @@ fun scaledDotProductAttention(query:Tensor, key:Tensor, value:Tensor, mask:Tenso
 === Parameters
 
 * `query: Tensor`
+  [batch, nHeads, seqLen, headDim]
 * `key: Tensor`
+  [batch, nKVHeads, kvLen, headDim]
 * `value: Tensor`
+  [batch, nKVHeads, kvLen, headDim]
 * `mask: Tensor`
+  optional additive mask [batch, 1, seqLen, kvLen] (e.g. causal)
 * `scale: Float`
+  scaling factor, defaults to 1/sqrt(headDim)
 * `causal: Boolean`
+  if true, apply causal masking (ignore [mask] parameter)
 
 === Return Type
 
