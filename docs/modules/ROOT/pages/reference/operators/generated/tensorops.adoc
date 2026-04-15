@@ -196,7 +196,9 @@ fun matmul(a:Tensor, b:Tensor): Tensor
 === Parameters
 
 * `a: Tensor`
+  left operand, shape `[…, m, k]`. The last dimension `k` must match the second-to-last dimension of [b].
 * `b: Tensor`
+  right operand, shape `[…, k, n]`. Leading dimensions are broadcast against [a] using the usual broadcasting rules.
 
 === Return Type
 
