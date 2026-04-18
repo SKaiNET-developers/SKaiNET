@@ -190,17 +190,18 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
                 "Missing shape parameter for reshape node ${node.id}"
             )
         }
-        
+
+        val inputType = resolveOperandType(operands[0], node, context)
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($outputType) -> $outputType"
+        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $outputType"
         context.emitOperation(operation)
-        
+
         return ConversionResult.Success(
             outputValueName = resultValue,
             emittedOperations = listOf(operation)
         )
     }
-    
+
     /**
      * Convert flatten operation using stablehlo.reshape.
      * Flattens dimensions from startDim to endDim into a single dimension.
@@ -226,9 +227,10 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         val endDim = node.operation.parameters["endDim"] as? Int ?: -1
         
         context.emitComment("Flatten from dim $startDim to $endDim")
-        
+
+        val inputType = resolveOperandType(operands[0], node, context)
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($outputType) -> $outputType"
+        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $outputType"
         context.emitOperation(operation)
         
         return ConversionResult.Success(
@@ -265,9 +267,10 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         } else {
             context.emitComment("Squeeze all singleton dimensions")
         }
-        
+
+        val inputType = resolveOperandType(operands[0], node, context)
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($outputType) -> $outputType"
+        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $outputType"
         context.emitOperation(operation)
         
         return ConversionResult.Success(
@@ -304,16 +307,45 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             )
         
         context.emitComment("Unsqueeze at dimension $dim")
-        
-        // For unsqueeze, we can use either reshape or broadcast_in_dim
-        // Using reshape is simpler for this implementation
+
+        // For unsqueeze, we can use either reshape or broadcast_in_dim.
+        // Using reshape is simpler for this implementation.
+        val inputType = resolveOperandType(operands[0], node, context)
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($outputType) -> $outputType"
+        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $outputType"
         context.emitOperation(operation)
-        
+
         return ConversionResult.Success(
             outputValueName = resultValue,
             emittedOperations = listOf(operation)
         )
+    }
+
+    /**
+     * Look up the MLIR type of an SSA operand.
+     *
+     * Preference order:
+     * 1. Declared type recorded in [ConversionContext.getValueType] —
+     *    set either by the function-arg seeder (for `%argN`) or by the
+     *    main converter after a prior op succeeded. This is the
+     *    operand's actual type at the point of consumption.
+     * 2. `node.inputs[0]` — the edge metadata the caller wired.
+     * 3. Dynamic fallback — last resort when neither is available.
+     *
+     * Fixes #518: previous code used `outputType` on both sides of the
+     * reshape cast, which produced `(outputShape) -> outputShape` and
+     * broke `iree-compile` on any reshape/unsqueeze that consumed a
+     * function argument with a different declared shape.
+     */
+    private fun resolveOperandType(
+        operandName: String,
+        node: GraphNode,
+        context: ConversionContext
+    ): String {
+        context.getValueType(operandName)?.let { return it }
+        node.inputs.firstOrNull()?.let { spec ->
+            return context.getTypeMapper().mapTensorType(spec)
+        }
+        return "tensor<?xf32>"
     }
 }

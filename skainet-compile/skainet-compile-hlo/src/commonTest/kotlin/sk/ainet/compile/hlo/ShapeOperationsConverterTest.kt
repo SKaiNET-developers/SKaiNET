@@ -1,8 +1,11 @@
 package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ShapeOperationsConverter
+import sk.ainet.lang.graph.DefaultComputeGraph
+import sk.ainet.lang.graph.GraphEdge
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.ops.InputOperation
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
@@ -145,6 +148,40 @@ class ShapeOperationsConverterTest {
         assertTrue(result.error.contains("requires exactly 1 operand"))
     }
     
+    @Test
+    fun testReshapeOnArgUsesDeclaredArgType() {
+        // Regression for #518: reshape/unsqueeze consuming %arg0 must emit
+        // `: (declaredArgType) -> outputType`, not `(outputType) -> outputType`.
+        // Previous code reused outputType on both sides of the cast, which
+        // produced e.g. `(tensor<1x80x3000xf32>) -> tensor<1x80x3000xf32>`
+        // on an input that %arg0 actually had as `tensor<80x3000xf32>`,
+        // breaking iree-compile with a type mismatch.
+        val graph = DefaultComputeGraph()
+        val input = GraphNode(
+            id = "mel",
+            operation = InputOperation<DType, Any>(),
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("mel", listOf(80, 3000), "FP32"))
+        )
+        val unsqueeze = GraphNode(
+            id = "unsqueeze1",
+            operation = createMockOperation("unsqueeze", mapOf("dim" to 0)),
+            inputs = listOf(TensorSpec("mel", listOf(80, 3000), "FP32")),
+            outputs = listOf(TensorSpec("mel_b", listOf(1, 80, 3000), "FP32"))
+        )
+        graph.addNode(input)
+        graph.addNode(unsqueeze)
+        graph.addEdge(GraphEdge("e1", input, unsqueeze, 0, 0, input.outputs[0]))
+
+        val fullConverter = StableHloConverterFactory.createBasic()
+        val module = fullConverter.convert(graph, "issue_518")
+
+        assertTrue(
+            module.content.contains("(tensor<80x3000xf32>) -> tensor<1x80x3000xf32>"),
+            "reshape must emit declared %arg0 type on source side, got:\n${module.content}"
+        )
+    }
+
     @Test
     fun testUnsupportedOperation() {
         val operation = createMockOperation("unknown_shape_op", emptyMap())

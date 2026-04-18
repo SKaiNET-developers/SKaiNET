@@ -16,20 +16,41 @@ public class ConversionContext(
     private var graph: ComputeGraph? = null
 ) {
     private val valueNames = mutableMapOf<String, String>()
+    private val valueTypes = mutableMapOf<String, String>()
     private val stringBuilder = StringBuilder()
     private var tempCounter = 0
-    
+
     /**
      * Get the SSA value name for a node ID
      */
     public fun getValueName(nodeId: String): String? = valueNames[nodeId]
-    
+
     /**
      * Set the SSA value name for a node ID
      */
     public fun setValueName(nodeId: String, valueName: String) {
         valueNames[nodeId] = valueName
     }
+
+    /**
+     * Record the MLIR tensor type associated with an SSA value name.
+     *
+     * Lets converters look up the *declared* type of an operand — the
+     * type it actually has when the op consumes it — instead of having
+     * to re-derive it from downstream node.inputs metadata, which can
+     * reflect a post-op shape rather than the operand's true shape.
+     * Seeded for `%argN` by StableHloConverter when the function
+     * signature is emitted, then populated for each op's result.
+     */
+    public fun setValueType(valueName: String, mlirType: String) {
+        valueTypes[valueName] = mlirType
+    }
+
+    /**
+     * Get the MLIR tensor type for an SSA value name, or null if the
+     * value was produced by a converter that did not record its type.
+     */
+    public fun getValueType(valueName: String): String? = valueTypes[valueName]
     
     /**
      * Generate the next temporary SSA value name
@@ -118,6 +139,7 @@ public class ConversionContext(
      */
     public fun clear() {
         valueNames.clear()
+        valueTypes.clear()
         stringBuilder.clear()
         tempCounter = 0
     }

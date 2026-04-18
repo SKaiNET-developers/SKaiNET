@@ -131,6 +131,14 @@ public class StableHloConverter(
             val valueName = "%arg$idx"
             context.setValueName(node.id, valueName)
 
+            // Seed the SSA type map with %argN's declared function-signature
+            // type so downstream ops can recover the operand type via
+            // context.getValueType(operands[0]) instead of re-deriving it
+            // (see issue #518).
+            node.outputs.firstOrNull()?.let { spec ->
+                context.setValueType(valueName, typeMapper.mapTensorType(spec))
+            }
+
             // Add comment for clarity
             node.outputs.firstOrNull()?.let { spec ->
                 context.emitComment("input ${node.id}: ${spec.name} : ${typeMapper.mapTensorType(spec)}")
@@ -184,6 +192,14 @@ public class StableHloConverter(
         when (result) {
             is ConversionResult.Success -> {
                 context.setValueName(node.id, result.outputValueName)
+                // Record the result's MLIR type so downstream operands can
+                // look it up (see issue #518). Uses the node's declared
+                // first output spec — converters that produce types
+                // differing from node.outputs[0] can override this by
+                // calling context.setValueType directly.
+                node.outputs.firstOrNull()?.let { spec ->
+                    context.setValueType(result.outputValueName, typeMapper.mapTensorType(spec))
+                }
             }
             is ConversionResult.Failure -> {
                 context.emitComment("Conversion failed for node ${node.id}: ${result.error}")
