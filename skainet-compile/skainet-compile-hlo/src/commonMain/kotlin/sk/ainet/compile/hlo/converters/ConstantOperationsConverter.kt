@@ -1,10 +1,17 @@
 package sk.ainet.compile.hlo.converters
 
+import sk.ainet.compile.hlo.ConstantMaterializationPolicy
 import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
+import sk.ainet.compile.hlo.ExternalParameterRef
 import sk.ainet.compile.hlo.StableHloOperationConverter
+import sk.ainet.compile.hlo.elementCountFromShape
+import sk.ainet.compile.hlo.numberListToLittleEndianBytes
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.tensorEncoding
+import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
  * Converter for constant value operations in StableHLO.
@@ -142,22 +149,28 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 "Missing 'values' or 'data' parameter for tensor constant",
                 "No data specified for tensor constant ${node.id}"
             )
-        
+
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?xf32>"
-        
+
+        // Policy seam (issue #523): if caller has opted into external
+        // materialization, lift this constant into a util.global behind
+        // a util.global.load reference and record an
+        // ExternalParameterRef for the downstream .irpa packager.
+        tryMaterializeExternal(node, outputSpec, outputType, values, context)?.let { return it }
+
         val resultValue = context.nextTempValue()
         val formattedValues = formatTensorValues(values, outputSpec)
         val operation = "$resultValue = stablehlo.constant dense<$formattedValues> : $outputType"
         context.emitOperation(operation)
-        
+
         return ConversionResult.Success(
             outputValueName = resultValue,
             emittedOperations = listOf(operation)
         )
     }
-    
+
     /**
      * Convert a splat constant (single value broadcasted to tensor shape)
      */
@@ -207,15 +220,23 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val isTrainable = node.operation.parameters["trainable"] as? Boolean ?: true
         
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?xf32>"
-        
-        val resultValue = context.nextTempValue()
-        
+
         // Add comment about parameter nature
         val paramType = if (isTrainable) "trainable parameter" else "frozen parameter"
         context.emitComment("${node.operation.name} ${node.id}: $paramType")
-        
+
+        // Policy seam — same shape as convertTensorConstant. Only a
+        // List-valued initial_value can be externalized with bytes
+        // available today; Number (splat) and missing cases fall
+        // through to the inline path intentionally.
+        if (initialValue is List<*>) {
+            tryMaterializeExternal(node, outputSpec, outputType, initialValue, context)?.let { return it }
+        }
+
+        val resultValue = context.nextTempValue()
+
         val operation = when {
             initialValue is Number -> {
                 "$resultValue = stablehlo.constant dense<${formatConstantValue(initialValue)}> : $outputType"
@@ -230,7 +251,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 "$resultValue = stablehlo.constant dense<0.0> : $outputType"
             }
         }
-        
+
         context.emitOperation(operation)
         
         return ConversionResult.Success(
@@ -341,6 +362,102 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         }
     }
     
+    /**
+     * Policy-driven externalization seam (issue #523).
+     *
+     * Returns a [ConversionResult.Success] when the caller's
+     * [ConstantMaterializationPolicy] dictates that this constant
+     * should live in an IREE parameter archive instead of inline in
+     * the emitted MLIR. Returns `null` for the inline path — caller
+     * falls through to its existing `dense<...>` emission.
+     *
+     * When externalized, three things happen:
+     *  1. Bytes are serialized from [values] into a [BufferHandle.Owned].
+     *  2. An [ExternalParameterRef] is recorded on the context so a
+     *     downstream packager can write the `.irpa`.
+     *  3. `util.global private @<key> : <type>` is emitted at module
+     *     scope and `%r = util.global.load @<key> : <type>` is emitted
+     *     in the function body. Both use the tensor's declared name
+     *     (or a synthetic fallback if absent) as the key.
+     *
+     * Falls back to inline (returns `null`) if the dtype is not yet
+     * serializable or the spec lacks a shape — better to emit working
+     * IR than to emit an external reference pointing at no bytes.
+     */
+    private fun tryMaterializeExternal(
+        node: GraphNode,
+        outputSpec: TensorSpec?,
+        outputType: String,
+        values: List<*>,
+        context: ConversionContext
+    ): ConversionResult? {
+        val policy = context.materializationPolicy
+        if (policy is ConstantMaterializationPolicy.InlineAlways) return null
+        if (outputSpec == null) return null
+
+        val encoding = outputSpec.tensorEncoding
+            ?: TensorEncoding.Dense(bytesPerElement = bytesPerElement(outputSpec.dtype))
+        val elementCount = elementCountFromShape(outputSpec.shape)
+        if (elementCount <= 0) return null
+
+        val logicalBytes = encoding.physicalBytes(elementCount.toLong()) ?: return null
+        val scope = when (policy) {
+            is ConstantMaterializationPolicy.InlineAlways -> return null
+            is ConstantMaterializationPolicy.ExternalAlways -> policy.scope
+            is ConstantMaterializationPolicy.SizeThreshold -> {
+                if (logicalBytes < policy.bytes) return null
+                policy.scope
+            }
+        }
+
+        // Serialize now. Fall back to inline on unsupported dtype —
+        // a loud exception here would defeat the "default path is
+        // safe" invariant of the seam.
+        val bytes = try {
+            numberListToLittleEndianBytes(values, outputSpec.dtype, elementCount)
+        } catch (e: IllegalArgumentException) {
+            context.emitComment(
+                "external materialization fell back to inline for ${node.id}: ${e.message}"
+            )
+            return null
+        }
+
+        val key = outputSpec.name.ifEmpty { node.id }
+        context.registerExternalParameter(
+            ExternalParameterRef(
+                scope = scope,
+                key = key,
+                encoding = encoding,
+                source = BufferHandle.Owned(bytes)
+            )
+        )
+        context.emitModuleDeclaration("util.global private @${key} : $outputType")
+
+        val resultValue = context.nextTempValue()
+        val operation = "$resultValue = util.global.load @${key} : $outputType"
+        context.emitOperation(operation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
+    }
+
+    /**
+     * Rough bytes-per-element for the default [TensorEncoding.Dense]
+     * fallback when a spec does not carry an explicit encoding.
+     * Narrowly scoped — intentionally does not handle the packed
+     * quantization encodings, which must be carried on the spec
+     * itself.
+     */
+    private fun bytesPerElement(dtype: String): Int = when (dtype.uppercase()) {
+        "FP32", "F32", "FLOAT32", "I32", "INT32", "UI32", "UINT32" -> 4
+        "FP64", "F64", "FLOAT64", "I64", "INT64", "UI64", "UINT64" -> 8
+        "FP16", "F16", "FLOAT16", "BF16", "BFLOAT16", "I16", "INT16", "UI16", "UINT16" -> 2
+        "I8", "INT8", "UI8", "UINT8", "BOOL", "BOOLEAN" -> 1
+        else -> 4
+    }
+
     /**
      * Format tensor values for MLIR dense constant.
      * MLIR dense<> syntax requires nested brackets matching the tensor rank:
