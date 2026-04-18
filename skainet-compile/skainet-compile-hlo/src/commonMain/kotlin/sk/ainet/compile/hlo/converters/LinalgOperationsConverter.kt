@@ -65,19 +65,23 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
         }
         
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?x?xf32>"
-        
+        val lhsSpec = node.inputs.getOrNull(0)
+        val rhsSpec = node.inputs.getOrNull(1)
+        val lhsType = lhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?xf32>"
+        val rhsType = rhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?xf32>"
+
         val resultValue = context.nextTempValue()
-        
-        // Standard matmul: contract last dimension of left operand with 
-        // second-to-last dimension of right operand
+
+        // Standard matmul: contract last dimension of left operand with
+        // second-to-last dimension of right operand.
         // For 2D: A[M,K] x B[K,N] -> C[M,N]
-        // contracting_dims = [[1], [0]] means:
-        //   - dimension 1 (K) of left operand
-        //   - dimension 0 (K) of right operand
-        val operation = "$resultValue = stablehlo.dot_general ${operands[0]}, ${operands[1]}, contracting_dims = [[1], [0]] : $outputType"
-        
+        // contracting_dims = [1] x [0] means dim 1 of lhs with dim 0 of rhs.
+        val operation = "$resultValue = stablehlo.dot_general ${operands[0]}, ${operands[1]}, contracting_dims = [1] x [0] : ($lhsType, $rhsType) -> $outputType"
+
         context.emitOperation(operation)
         
         return ConversionResult.Success(
@@ -107,29 +111,42 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
         }
         
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?x?x?xf32>"
-        
-        // Determine batch dimensions from the operation parameters or infer from shapes
-        val batchDims = node.operation.parameters["batch_dims"] as? List<*>
-        val batchDimsStr = if (batchDims != null && batchDims.isNotEmpty()) {
-            val dims = batchDims.joinToString(", ")
-            "[[${dims}], [${dims}]]"
+        val lhsSpec = node.inputs.getOrNull(0)
+        val rhsSpec = node.inputs.getOrNull(1)
+        val lhsType = lhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?x?xf32>"
+        val rhsType = rhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?x?xf32>"
+
+        // Infer batching rank: for A[..., M, K] x B[..., K, N], batching dims
+        // are all leading dims except the last two. Falls back to rank 3 if
+        // shape is unknown (matches prior hard-coded behavior).
+        val rank = lhsSpec?.shape?.size ?: rhsSpec?.shape?.size ?: 3
+        val batchCount = (rank - 2).coerceAtLeast(0)
+        val explicitBatch = node.operation.parameters["batch_dims"] as? List<*>
+        val batchDimsList = if (explicitBatch != null && explicitBatch.isNotEmpty()) {
+            explicitBatch.map { it.toString() }
         } else {
-            // Default: assume first dimension is batch
-            "[[0], [0]]"
+            (0 until batchCount).map { it.toString() }
         }
-        
+        val contractingLhs = rank - 1
+        val contractingRhs = (rank - 2).coerceAtLeast(0)
+
         val resultValue = context.nextTempValue()
-        
-        // Batch matmul: preserve batch dimensions and contract matrix dimensions
-        // For 3D: A[B,M,K] x B[B,K,N] -> C[B,M,N]
-        // batch_dims = [[0], [0]] means batch dimension 0 is preserved
-        // contracting_dims = [[2], [1]] means:
-        //   - dimension 2 (K) of left operand
-        //   - dimension 1 (K) of right operand
-        val operation = "$resultValue = stablehlo.dot_general ${operands[0]}, ${operands[1]}, contracting_dims = [[2], [1]], batch_dims = $batchDimsStr : $outputType"
-        
+
+        // Batch matmul: preserve batch dimensions and contract matrix dimensions.
+        // For A[..., M, K] x B[..., K, N]: batching_dims cover leading dims,
+        // contracting_dims = [rank-1] x [rank-2].
+        val batchClause = if (batchDimsList.isNotEmpty()) {
+            val b = batchDimsList.joinToString(", ")
+            "batching_dims = [$b] x [$b], "
+        } else {
+            ""
+        }
+        val operation = "$resultValue = stablehlo.dot_general ${operands[0]}, ${operands[1]}, ${batchClause}contracting_dims = [$contractingLhs] x [$contractingRhs] : ($lhsType, $rhsType) -> $outputType"
+
         context.emitOperation(operation)
         
         return ConversionResult.Success(
@@ -162,27 +179,29 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
         }
         
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?x?xf32>"
-        
+        val inputSpec = node.inputs.firstOrNull()
+        val inputType = inputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?xf32>"
+
         // Get permutation from operation parameters
         val permutation = node.operation.parameters["permutation"] as? List<*>
             ?: node.operation.parameters["perm"] as? List<*>
             ?: node.operation.parameters["axes"] as? List<*>
-        
+
         val permutationStr = if (permutation != null && permutation.isNotEmpty()) {
             // Use provided permutation
             permutation.joinToString(", ")
         } else {
             // Default: reverse all dimensions
             // For 2D: [1, 0], for 3D: [2, 1, 0], etc.
-            val inputSpec = context.getInputNodes(node).firstOrNull()?.outputs?.firstOrNull()
             val rank = inputSpec?.shape?.size ?: 2
             (rank - 1 downTo 0).joinToString(", ")
         }
-        
+
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.transpose ${operands[0]}, dims = [$permutationStr] : $outputType"
+        val operation = "$resultValue = stablehlo.transpose ${operands[0]}, dims = [$permutationStr] : ($inputType) -> $outputType"
         context.emitOperation(operation)
         
         return ConversionResult.Success(

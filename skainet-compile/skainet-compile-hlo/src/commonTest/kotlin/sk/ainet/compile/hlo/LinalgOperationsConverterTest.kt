@@ -47,8 +47,8 @@ class LinalgOperationsConverterTest {
         val module = converter.convert(graph, "test_matmul")
 
         assertTrue(module.content.contains("stablehlo.dot_general"))
-        assertTrue(module.content.contains("contracting_dims = [[1], [0]]"))
-        assertTrue(module.content.contains("tensor<3x5xf32>"))
+        assertTrue(module.content.contains("contracting_dims = [1] x [0]"))
+        assertTrue(module.content.contains("(tensor<3x4xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>"))
         assertEquals("test_matmul", module.functionName)
     }
 
@@ -96,9 +96,9 @@ class LinalgOperationsConverterTest {
         val module = converter.convert(graph, "test_batch_matmul")
 
         assertTrue(module.content.contains("stablehlo.dot_general"))
-        assertTrue(module.content.contains("contracting_dims = [[2], [1]]"))
-        assertTrue(module.content.contains("batch_dims = [[0], [0]]"))
-        assertTrue(module.content.contains("tensor<4x3x5xf32>"))
+        assertTrue(module.content.contains("batching_dims = [0] x [0]"))
+        assertTrue(module.content.contains("contracting_dims = [2] x [1]"))
+        assertTrue(module.content.contains("(tensor<4x3x4xf32>, tensor<4x4x5xf32>) -> tensor<4x3x5xf32>"))
     }
 
     @Test
@@ -109,7 +109,7 @@ class LinalgOperationsConverterTest {
 
         assertTrue(module.content.contains("stablehlo.transpose"))
         assertTrue(module.content.contains("dims = [1, 0]"))
-        assertTrue(module.content.contains("tensor<3x2xf32>"))
+        assertTrue(module.content.contains("(tensor<2x3xf32>) -> tensor<3x2xf32>"))
     }
 
     @Test
@@ -140,7 +140,7 @@ class LinalgOperationsConverterTest {
 
         assertTrue(module.content.contains("stablehlo.transpose"))
         assertTrue(module.content.contains("dims = [0, 2, 1]"))
-        assertTrue(module.content.contains("tensor<2x4x3xf32>"))
+        assertTrue(module.content.contains("(tensor<2x3x4xf32>) -> tensor<2x4x3xf32>"))
     }
 
     @Test
