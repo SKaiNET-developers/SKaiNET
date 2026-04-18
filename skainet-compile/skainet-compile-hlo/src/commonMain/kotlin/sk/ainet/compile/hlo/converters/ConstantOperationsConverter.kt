@@ -348,9 +348,20 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
      *   1D [3]:  dense<[v0, v1, v2]>
      *   2D [2,3]: dense<[[v0,v1,v2],[v3,v4,v5]]>
      *   4D [1,3,1,1]: dense<[[[[v0],[v1],[v2]]]]>
+     *
+     * Splat collapse: when every element is the same value and the input
+     * list fully covers the shape, emit the single-scalar splat form
+     * (`dense<v>` ≡ `dense<[[v, v, ...], ...]>` for any rank). This is the
+     * first-pass lever against the 151 MB MLIR-text blowup described in
+     * #519 — uninitialized VoidTensorOps-backed weights are uniform by
+     * construction and compress from O(N*M) characters down to one.
      */
     private fun formatTensorValues(values: List<*>, outputSpec: TensorSpec?): String {
         val shape = outputSpec?.shape ?: emptyList()
+        val expectedSize = if (shape.isEmpty()) values.size else shape.fold(1) { acc, d -> acc * d }
+        if (values.isNotEmpty() && values.size >= expectedSize && values.toSet().size == 1) {
+            return formatConstantValue(values[0] as Number)
+        }
 
         return when {
             values.isEmpty() -> "0.0"
