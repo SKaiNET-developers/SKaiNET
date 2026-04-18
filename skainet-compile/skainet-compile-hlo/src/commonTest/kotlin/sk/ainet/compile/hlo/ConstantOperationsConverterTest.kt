@@ -59,6 +59,76 @@ class ConstantOperationsConverterTest {
         assertTrue(module.content.contains("dense<2.0>"))
     }
     
+    @Test
+    fun testTensorConstantWithUniformValuesEmitsSplat() {
+        // Regression for #519: a uniform-value list (common for
+        // VoidTensorOps-initialized weights) must collapse to the
+        // dense<v> splat form rather than expanding into an N-element
+        // nested array literal. Without the fix, a 10x10 zero tensor
+        // renders as 100 floats in text; with it, one scalar.
+        val graph = DefaultComputeGraph()
+        val inputOp = InputOperation<DType, Any>()
+        val inputNode = GraphNode(
+            id = "in",
+            operation = inputOp,
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("x", listOf(10, 10), "FP32"))
+        )
+        val zeros = List(100) { 0.0f }
+        val weightOp = createConstantOperation(
+            "tensor_constant",
+            mapOf("values" to zeros)
+        )
+        val weightNode = GraphNode(
+            id = "w",
+            operation = weightOp,
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("w", listOf(10, 10), "FP32"))
+        )
+        graph.addNode(inputNode)
+        graph.addNode(weightNode)
+
+        val fullConverter = StableHloConverterFactory.createExtended()
+        val module = fullConverter.convert(graph, "test_uniform_splat")
+
+        assertTrue(
+            module.content.contains("dense<0.0>"),
+            "uniform-zero tensor must collapse to splat form, got:\n${module.content}"
+        )
+        // No spelled-out array for the uniform constant.
+        assertTrue(
+            !module.content.contains("dense<[[0.0, 0.0"),
+            "uniform splat must not also emit a nested array literal"
+        )
+    }
+
+    @Test
+    fun testTensorConstantWithNonUniformValuesKeepsNestedLiteral() {
+        // Opposite direction: when values differ, we must still spell
+        // them out — splat is only for uniform lists, not a blanket
+        // compression.
+        val graph = DefaultComputeGraph()
+        val weightOp = createConstantOperation(
+            "tensor_constant",
+            mapOf("values" to listOf(1.0f, 2.0f, 3.0f, 4.0f))
+        )
+        val weightNode = GraphNode(
+            id = "w",
+            operation = weightOp,
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("w", listOf(2, 2), "FP32"))
+        )
+        graph.addNode(weightNode)
+
+        val fullConverter = StableHloConverterFactory.createExtended()
+        val module = fullConverter.convert(graph, "test_non_uniform")
+
+        assertTrue(
+            module.content.contains("[[1.0, 2.0], [3.0, 4.0]]"),
+            "non-uniform tensor must keep nested array literal, got:\n${module.content}"
+        )
+    }
+
     // Helper methods to create test graphs
     
     private fun createGraphWithInputAndConstant(): DefaultComputeGraph {
