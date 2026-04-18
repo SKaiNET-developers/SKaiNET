@@ -21,9 +21,16 @@ public object StableHloConverterFactory {
     
     /**
      * Create a converter with basic operations support (add, matmul, relu)
+     *
+     * @param policy Controls inline vs external constant materialization.
+     *     Defaults to [ConstantMaterializationPolicy.InlineAlways] for
+     *     backward compatibility; see issue #523.
      */
     @JvmStatic
-    public fun createBasic(): StableHloConverter {
+    @kotlin.jvm.JvmOverloads
+    public fun createBasic(
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+    ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
         val validator = MlirValidator()
@@ -53,14 +60,19 @@ public object StableHloConverterFactory {
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, validator)
+        return StableHloConverter(registry, typeMapper, validator, policy)
     }
 
     /**
      * Create a converter with extended operations support
+     *
+     * @param policy See [createBasic].
      */
     @JvmStatic
-    public fun createExtended(): StableHloConverter {
+    @kotlin.jvm.JvmOverloads
+    public fun createExtended(
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+    ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
         val validator = MlirValidator()
@@ -93,17 +105,22 @@ public object StableHloConverterFactory {
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, validator)
+        return StableHloConverter(registry, typeMapper, validator, policy)
     }
 
     /**
      * Create a converter without validation (for performance)
+     *
+     * @param policy See [createBasic].
      */
     @JvmStatic
-    public fun createFast(): StableHloConverter {
+    @kotlin.jvm.JvmOverloads
+    public fun createFast(
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+    ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
-        
+
         registry.register(LegacyOperationsConverter())
         registry.register(MathOperationsConverter())
         registry.register(LinalgOperationsConverter())
@@ -113,19 +130,22 @@ public object StableHloConverterFactory {
         registry.register(ReductionOperationsConverter())
         registry.register(ConstantOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, null)
+        return StableHloConverter(registry, typeMapper, null, policy)
     }
-    
+
     /**
      * Create a custom converter with the provided components
+     *
+     * @param policy See [createBasic].
      */
     @JvmStatic
     @kotlin.jvm.JvmOverloads
     public fun createCustom(
         registry: StableHloOperationRegistry,
         typeMapper: TypeMapper = TypeMapper(),
-        validator: MlirValidator? = MlirValidator()
+        validator: MlirValidator? = MlirValidator(),
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
     ): StableHloConverter {
-        return StableHloConverter(registry, typeMapper, validator)
+        return StableHloConverter(registry, typeMapper, validator, policy)
     }
 }

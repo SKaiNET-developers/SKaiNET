@@ -12,17 +12,25 @@ import sk.ainet.lang.tensor.storage.TensorEncoding
  * This class provides a modular architecture for converting computational graphs to StableHLO format,
  * using a registry-based system for operation mapping and a conversion context for state management.
  */
-public class StableHloConverter(
+public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
     private val registry: StableHloOperationRegistry,
     private val typeMapper: TypeMapper,
-    private val validator: MlirValidator? = null
+    private val validator: MlirValidator? = null,
+    /**
+     * Governs how constant tensors are materialized into the emitted
+     * MLIR — inline `dense<...>` (default, historical) or lifted out
+     * behind `util.global.load` references (see issue #523). Handed
+     * through to every [ConversionContext] this converter creates.
+     */
+    private val materializationPolicy: ConstantMaterializationPolicy =
+        ConstantMaterializationPolicy.InlineAlways
 ) {
-    
+
     /**
      * Convert a ComputeGraph to StableHLO MLIR format
      */
     public fun convert(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
-        val context = ConversionContext(typeMapper, graph)
+        val context = ConversionContext(typeMapper, graph, materializationPolicy)
         
         // Pre-conversion validation (allow orphaned nodes for backward compatibility)
         val validationResult = graph.validate()
@@ -55,34 +63,38 @@ public class StableHloConverter(
         // instead of string-matching against scattered comments.
         val tensorEncodings = collectTensorEncodings(topo)
 
-        // Start building MLIR content — promote to `module attributes`
-        // only when we have at least one encoded tensor. Dense graphs
-        // keep the bare `module {` header for byte-for-byte backward
-        // compatibility with existing round-trip tests.
-        if (tensorEncodings.isNotEmpty()) {
+        // Process nodes first, then assemble the final content.
+        // Converters populate two buffers on the context — op emissions
+        // for the function body and any module-scope declarations
+        // (e.g. `util.global` decls under an external-materialization
+        // policy). Deferring assembly lets us inject module-scope
+        // lines between `module {` and `func.func` without string
+        // surgery.
+        initializeInputValues(inputNodes, context)
+        processNodes(topo, context)
+        generateReturnStatement(outputNodes, context)
+
+        val moduleHeader = if (tensorEncodings.isNotEmpty()) {
             val dictEntries = tensorEncodings.entries
                 .sortedBy { it.key }
                 .joinToString(", ") { (name, encoding) -> "$name = \"${encoding.name}\"" }
-            context.emitLine("module attributes {skainet.tensor_encodings = {$dictEntries}} {")
+            "module attributes {skainet.tensor_encodings = {$dictEntries}} {"
         } else {
-            context.emitLine("module {")
+            "module {"
         }
-        context.emitLine("  func.func $functionSignature {")
-        
-        // Initialize input values in context
-        initializeInputValues(inputNodes, context)
-        
-        // Process nodes in topological order
-        processNodes(topo, context)
-        
-        // Generate return statement with output values
-        generateReturnStatement(outputNodes, context)
-        
-        // Close function and module
-        context.emitLine("  }")
-        context.emitLine("}")
-        
-        val content = context.getContent()
+
+        val assembled = StringBuilder()
+        assembled.appendLine(moduleHeader)
+        val moduleDecls = context.getModuleDeclarations()
+        if (moduleDecls.isNotEmpty()) {
+            assembled.append(moduleDecls)
+        }
+        assembled.appendLine("  func.func $functionSignature {")
+        assembled.append(context.getContent())
+        assembled.appendLine("  }")
+        assembled.appendLine("}")
+
+        val content = assembled.toString()
         
         // Optional validation of generated MLIR
         validator?.validate(content)?.let { errors ->
@@ -95,7 +107,8 @@ public class StableHloConverter(
             content = content,
             functionName = functionName,
             inputSpecs = inputNodes.mapNotNull { it.outputs.firstOrNull() },
-            outputSpecs = outputSpecs
+            outputSpecs = outputSpecs,
+            externalParameters = context.getExternalParameters()
         )
     }
     

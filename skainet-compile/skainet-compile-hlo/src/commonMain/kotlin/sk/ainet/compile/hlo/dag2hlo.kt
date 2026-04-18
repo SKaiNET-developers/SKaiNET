@@ -11,7 +11,14 @@ public data class StableHloModule(
     val functionName: String = "main",
     val inputSpecs: List<TensorSpec> = emptyList(),
     val outputSpecs: List<TensorSpec> = emptyList(),
-    val metadata: Map<String, Any> = emptyMap()
+    val metadata: Map<String, Any> = emptyMap(),
+    /**
+     * Constants that were lifted out of [content] as `util.global`
+     * references under [ConstantMaterializationPolicy.ExternalAlways].
+     * A downstream packager writes these into an IREE `.irpa`; see
+     * issue #523. Empty under the default inline policy.
+     */
+    val externalParameters: List<ExternalParameterRef> = emptyList()
 ) {
     /**
      * Validate this module using the provided validator

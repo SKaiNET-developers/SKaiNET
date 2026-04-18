@@ -11,13 +11,25 @@ import sk.ainet.lang.tensor.ops.tensorEncoding
  * This class manages SSA value names, type mapping, and MLIR code generation
  * during the conversion process from ComputeGraph to StableHLO.
  */
-public class ConversionContext(
+public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
     private val typeMapper: TypeMapper,
-    private var graph: ComputeGraph? = null
+    private var graph: ComputeGraph? = null,
+    /**
+     * Governs whether constant tensors are inlined as `dense<...>` or
+     * lifted into `util.global` module declarations. Default
+     * [ConstantMaterializationPolicy.InlineAlways] preserves historical
+     * behavior for every caller that constructs a context without
+     * naming a policy — the external path is strictly opt-in.
+     * See issue #523 for the architecture context.
+     */
+    public val materializationPolicy: ConstantMaterializationPolicy =
+        ConstantMaterializationPolicy.InlineAlways
 ) {
     private val valueNames = mutableMapOf<String, String>()
     private val valueTypes = mutableMapOf<String, String>()
     private val stringBuilder = StringBuilder()
+    private val moduleDeclarationsBuilder = StringBuilder()
+    private val externalParams = mutableListOf<ExternalParameterRef>()
     private var tempCounter = 0
 
     /**
@@ -77,6 +89,39 @@ public class ConversionContext(
     public fun emitComment(comment: String) {
         stringBuilder.appendLine("    // $comment")
     }
+
+    /**
+     * Emit a module-scope declaration (e.g. `util.global private @w : ...`).
+     *
+     * Module-scope lines sit between `module {` and the enclosing
+     * `func.func` in the final MLIR output. [StableHloConverter]
+     * buffers them separately so callers can emit them at any point
+     * during node processing without disturbing the function body.
+     */
+    public fun emitModuleDeclaration(line: String) {
+        moduleDeclarationsBuilder.appendLine("  $line")
+    }
+
+    /**
+     * Return every module-scope declaration emitted so far. Used by
+     * [StableHloConverter] when assembling the final content.
+     */
+    public fun getModuleDeclarations(): String = moduleDeclarationsBuilder.toString()
+
+    /**
+     * Register an externalized constant tensor. The converter records
+     * these alongside MLIR emission so a downstream packager (see PR C
+     * in issue #523) can write them into an IREE `.irpa` archive.
+     */
+    public fun registerExternalParameter(ref: ExternalParameterRef) {
+        externalParams += ref
+    }
+
+    /**
+     * Snapshot of every externalized constant registered during this
+     * conversion. Surfaced on [StableHloModule.externalParameters].
+     */
+    public fun getExternalParameters(): List<ExternalParameterRef> = externalParams.toList()
 
     /**
      * Emit a `tensor_encoding` diagnostic comment when [spec] carries a
@@ -141,6 +186,8 @@ public class ConversionContext(
         valueNames.clear()
         valueTypes.clear()
         stringBuilder.clear()
+        moduleDeclarationsBuilder.clear()
+        externalParams.clear()
         tempCounter = 0
     }
 }
