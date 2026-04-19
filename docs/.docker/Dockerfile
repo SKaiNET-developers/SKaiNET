@@ -7,8 +7,14 @@ LABEL org.opencontainers.image.title="SKaiNET Antora" \
 # Chromium for mermaid-cli (puppeteer)
 RUN apk add --no-cache chromium font-noto
 
+# HOME=/tmp: chromium's crashpad handler writes its database under $HOME and
+# aborts with `chrome_crashpad_handler: --database is required` when the
+# container runs as `--user $(id -u):$(id -g)` and $HOME falls back to `/`
+# (no passwd entry, not writable). Same motivation as runtime.cache_dir in
+# antora-playbook.yml.
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
-    PUPPETEER_SKIP_DOWNLOAD=true
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    HOME=/tmp
 
 # Install Antora + mermaid-cli into /opt/antora (not /antora which gets
 # volume-mounted at run time). asciidoctor-kroki is intentionally NOT
@@ -37,10 +43,14 @@ RUN echo '{ \
 # Antora playbook can reference it without any volume-mount gymnastics.
 COPY local-mermaid-extension.js /opt/antora/local-mermaid-extension.js
 
-# Verify mermaid-cli works end to end at image build time.
+# Verify mermaid-cli works end to end at image build time. The cleanup
+# also removes mode-0700 root-owned dirs (e.g. /tmp/.config/puppeteer,
+# /tmp/.local/share/chromium) that puppeteer/chromium drop into $HOME
+# during this run — leaving them in place would make cosmiconfig EACCES
+# when the container is later launched with a non-root --user.
 RUN echo 'graph TD; A-->B;' > /tmp/test.mmd \
     && npx mmdc -i /tmp/test.mmd -o /tmp/test.svg -p /opt/antora/puppeteer-config.json \
-    && rm /tmp/test.mmd /tmp/test.svg
+    && rm -rf /tmp/test.mmd /tmp/test.svg /tmp/.config /tmp/.local /tmp/.npm /tmp/.cache
 
 ENTRYPOINT ["/opt/antora/node_modules/.bin/antora"]
 CMD ["--stacktrace", "antora-playbook.yml"]
