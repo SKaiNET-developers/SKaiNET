@@ -1,0 +1,69 @@
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidMultiplatformLibrary)
+    alias(libs.plugins.vanniktech.mavenPublish)
+    id("sk.ainet.dokka")
+}
+
+kotlin {
+    targets.configureEach {
+        compilations.configureEach {
+            compileTaskProvider.get().compilerOptions {
+                freeCompilerArgs.add("-Xexpect-actual-classes")
+            }
+        }
+    }
+
+    jvm()
+    android {
+        namespace = "sk.ainet.io.irpa"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_1_8)
+        }
+    }
+
+    iosArm64()
+    iosSimulatorArm64()
+    macosArm64()
+    linuxX64()
+    linuxArm64()
+
+    js {
+        browser()
+    }
+
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+    }
+
+    @OptIn(ExperimentalWasmDsl::class)
+    wasmWasi {
+        nodejs()
+    }
+
+    sourceSets {
+        val commonMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.io.core)
+                implementation(project(":skainet-lang:skainet-lang-core"))
+                implementation(project(":skainet-compile:skainet-compile-hlo"))
+            }
+        }
+        val commonTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
+        }
+        val jvmTest by getting {
+            dependencies {
+                implementation(libs.junit)
+            }
+        }
+    }
+}
