@@ -66,8 +66,17 @@ public class MlirValidator {
                 inFunction = true
             }
 
-            // Check for basic SSA value format
-            if (trimmed.contains(" = ") && !validateSSAValue(trimmed)) {
+            // Check for basic SSA value format. Module-scope global
+            // declarations (`util.global private @name = #flow.parameter.named<...> : ...`)
+            // look syntactically like assignments but bind `@`-prefixed
+            // symbols, not `%`-prefixed SSA values. Treated as a
+            // separate syntactic category — the IREE external-weight
+            // path (issue #523) depends on these lines passing
+            // validation.
+            if (trimmed.contains(" = ") &&
+                !trimmed.startsWith("util.global") &&
+                !validateSSAValue(trimmed)
+            ) {
                 errors.add("Line ${lineNum + 1}: Invalid SSA value format")
             }
             

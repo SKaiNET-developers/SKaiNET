@@ -44,8 +44,14 @@ class ConstantMaterializationPolicyTest {
             ConstantMaterializationPolicy.ExternalAlways()
         ).convert(buildTensorConstantGraph(), "external_policy")
 
+        // The util.global must carry a #flow.parameter.named initializer
+        // so iree-compile binds the declaration to an archive entry at
+        // --iree-opt-import-parameters time (see issue #523).
         assertTrue(
-            module.content.contains("util.global private @weights : tensor<2x2xf32>"),
+            module.content.contains(
+                "util.global private @weights = " +
+                    "#flow.parameter.named<\"model\"::\"weights\"> : tensor<2x2xf32>"
+            ),
             "module decl missing:\n${module.content}"
         )
         assertTrue(
@@ -110,7 +116,10 @@ class ConstantMaterializationPolicyTest {
         )
         // Large is externalized.
         assertTrue(
-            module.content.contains("util.global private @large_w : tensor<4x4xf32>"),
+            module.content.contains(
+                "util.global private @large_w = " +
+                    "#flow.parameter.named<\"model\"::\"large_w\"> : tensor<4x4xf32>"
+            ),
             "large tensor must externalize under SizeThreshold:\n${module.content}"
         )
 

@@ -431,7 +431,18 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 source = BufferHandle.Owned(bytes)
             )
         )
-        context.emitModuleDeclaration("util.global private @${key} : $outputType")
+        // Bind the global to an archive entry via the IREE flow-dialect
+        // parameter attribute. Without this initializer, iree-compile
+        // treats the util.global as uninitialized and does not pull
+        // bytes from the .irpa file at --iree-opt-import-parameters
+        // time. Scope is carried in the MLIR reference (left of `::`)
+        // and resolved at iree-compile / iree-run-module time against
+        // `--parameters=<scope>=<file>.irpa`. The .irpa file itself
+        // stores a flat key table with no scope column.
+        context.emitModuleDeclaration(
+            "util.global private @${key} = " +
+                "#flow.parameter.named<\"${scope}\"::\"${key}\"> : $outputType"
+        )
 
         val resultValue = context.nextTempValue()
         val operation = "$resultValue = util.global.load @${key} : $outputType"
