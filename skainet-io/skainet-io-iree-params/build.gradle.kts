@@ -33,10 +33,10 @@ kotlin {
     linuxX64()
     linuxArm64()
 
-    js {
-        browser()
-    }
-
+    // `js()` is intentionally omitted: this module depends on
+    // :skainet-compile-hlo, which does not publish a JS target. Wasm
+    // targets are still compatible — they use `wasm` rather than `js`
+    // platform attributes. See issue #527.
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
