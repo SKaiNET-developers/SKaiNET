@@ -74,17 +74,19 @@ public open class DefaultExecutionTape(
             val outputDTypes = (trace.attributes["outputDTypes"] as? List<*>)?.map { it?.toString() }
 
             val inputs = List(trace.inputs.size) { i ->
+                val ref = trace.inputs[i]
                 TensorSpec(
-                    name = trace.inputs[i].id,
-                    shape = inputShapes?.getOrNull(i),
-                    dtype = inputDTypes?.getOrNull(i) ?: "unknown",
+                    name = ref.id,
+                    shape = inputShapes?.getOrNull(i) ?: ref.shape.dimensions.toList(),
+                    dtype = inputDTypes?.getOrNull(i) ?: ref.dtype.name,
                 )
             }
             val outputs = List(trace.outputs.size) { i ->
+                val ref = trace.outputs[i]
                 TensorSpec(
-                    name = trace.outputs[i].id,
-                    shape = outputShapes?.getOrNull(i),
-                    dtype = outputDTypes?.getOrNull(i) ?: "unknown",
+                    name = ref.id,
+                    shape = outputShapes?.getOrNull(i) ?: ref.shape.dimensions.toList(),
+                    dtype = outputDTypes?.getOrNull(i) ?: ref.dtype.name,
                 )
             }
 
