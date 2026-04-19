@@ -420,22 +420,54 @@ public class TransposeOperation<T : DType, V>(
 /**
  * Convolutional operations
  */
+public class Conv1dOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("conv1d", "nn", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        require(inputs.size >= 2) { "Conv1d operation requires at least 2 inputs" }
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        if (inputs.size < 2 || inputs.size > 3) {
+            return ValidationResult.Invalid(listOf("Conv1d operation requires 2-3 inputs, got ${inputs.size}"))
+        }
+        return ValidationResult.Valid
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.size >= 2) { "Conv1d operation requires at least 2 inputs" }
+        val outputShape = inputs[0].shape
+        return listOf(
+            TensorSpec(
+                name = "conv1d_output",
+                shape = outputShape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs.any { it.requiresGrad }
+            )
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = Conv1dOperation<T, V>(newParameters)
+}
+
 public class Conv2dOperation<T : DType, V>(
     parameters: Map<String, Any> = emptyMap()
 ) : BaseOperation("conv2d", "nn", parameters) {
-    
+
     override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
         require(inputs.size >= 2) { "Conv2d operation requires at least 2 inputs" }
         throw UnsupportedOperationException("Direct execution not supported in graph mode")
     }
-    
+
     override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
         if (inputs.size < 2 || inputs.size > 3) {
             return ValidationResult.Invalid(listOf("Conv2d operation requires 2-3 inputs, got ${inputs.size}"))
         }
         return ValidationResult.Valid
     }
-    
+
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size >= 2) { "Conv2d operation requires at least 2 inputs" }
         val outputShape = inputs[0].shape
@@ -448,8 +480,40 @@ public class Conv2dOperation<T : DType, V>(
             )
         )
     }
-    
+
     override fun clone(newParameters: Map<String, Any>): Operation = Conv2dOperation<T, V>(newParameters)
+}
+
+public class Conv3dOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("conv3d", "nn", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        require(inputs.size >= 2) { "Conv3d operation requires at least 2 inputs" }
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        if (inputs.size < 2 || inputs.size > 3) {
+            return ValidationResult.Invalid(listOf("Conv3d operation requires 2-3 inputs, got ${inputs.size}"))
+        }
+        return ValidationResult.Valid
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.size >= 2) { "Conv3d operation requires at least 2 inputs" }
+        val outputShape = inputs[0].shape
+        return listOf(
+            TensorSpec(
+                name = "conv3d_output",
+                shape = outputShape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs.any { it.requiresGrad }
+            )
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = Conv3dOperation<T, V>(newParameters)
 }
 
 /**

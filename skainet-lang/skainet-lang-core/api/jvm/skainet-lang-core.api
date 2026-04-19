@@ -3366,7 +3366,27 @@ public abstract class sk/ainet/lang/tensor/ops/BaseOperation : sk/ainet/lang/ten
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/tensor/ops/Conv1dOperation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
 public final class sk/ainet/lang/tensor/ops/Conv2dOperation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public final class sk/ainet/lang/tensor/ops/Conv3dOperation : sk/ainet/lang/tensor/ops/BaseOperation {
 	public fun <init> ()V
 	public fun <init> (Ljava/util/Map;)V
 	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

@@ -118,7 +118,7 @@ public class SimpleExecutionTape : ExecutionTape {
 
 // Stable naming helpers to align with Exporters.kt expectations
 private fun stableInputName(op: Operation, index: Int, total: Int): String = when (op) {
-    is Conv2dOperation<*, *> -> when (index) {
+    is Conv1dOperation<*, *>, is Conv2dOperation<*, *>, is Conv3dOperation<*, *> -> when (index) {
         0 -> "input"
         1 -> "weight"
         2 -> "bias"
@@ -243,7 +243,22 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         padding: Int,
         dilation: Int,
         groups: Int
-    ): Tensor<T, V> = base.conv1d(input, weight, bias, stride, padding, dilation, groups)
+    ): Tensor<T, V> {
+        val out = base.conv1d(input, weight, bias, stride, padding, dilation, groups)
+        val params = mapOf(
+            "stride" to stride,
+            "padding" to padding,
+            "dilation" to dilation,
+            "groups" to groups
+        )
+        @Suppress("UNCHECKED_CAST")
+        record(
+            Conv1dOperation<T, V>(params),
+            listOf(input, weight) + listOfNotNull(bias) as List<Tensor<T, V>>,
+            listOf(out)
+        )
+        return out
+    }
 
     override fun <T : DType, V> conv2d(
         input: Tensor<T, V>,
@@ -278,7 +293,22 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         padding: Triple<Int, Int, Int>,
         dilation: Triple<Int, Int, Int>,
         groups: Int
-    ): Tensor<T, V> = base.conv3d(input, weight, bias, stride, padding, dilation, groups)
+    ): Tensor<T, V> {
+        val out = base.conv3d(input, weight, bias, stride, padding, dilation, groups)
+        val params = mapOf(
+            "stride" to stride,
+            "padding" to padding,
+            "dilation" to dilation,
+            "groups" to groups
+        )
+        @Suppress("UNCHECKED_CAST")
+        record(
+            Conv3dOperation<T, V>(params),
+            listOf(input, weight) + listOfNotNull(bias) as List<Tensor<T, V>>,
+            listOf(out)
+        )
+        return out
+    }
 
     override fun <T : DType, V> maxPool2d(
         input: Tensor<T, V>,
