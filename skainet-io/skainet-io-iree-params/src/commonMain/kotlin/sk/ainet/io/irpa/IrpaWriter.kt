@@ -222,21 +222,26 @@ public class IrpaWriter {
     }
 
     private fun writeBufferHandle(sink: Sink, handle: BufferHandle) {
-        val (data, offset, length) = when (handle) {
-            is BufferHandle.Owned -> Triple(handle.data, handle.offset, handle.sizeInBytes.toInt())
-            is BufferHandle.Borrowed -> Triple(handle.data, handle.offset, handle.sizeInBytes.toInt())
+        when (handle) {
+            is BufferHandle.Owned -> writeByteArray(sink, handle.data, handle.offset, handle.sizeInBytes.toInt())
+            is BufferHandle.Borrowed -> writeByteArray(sink, handle.data, handle.offset, handle.sizeInBytes.toInt())
+            is BufferHandle.FileBacked -> writeFileBackedBytes(sink, handle)
             else -> throw IllegalArgumentException(
                 "IrpaWriter does not yet handle BufferHandle subclass ${handle::class.simpleName}. " +
-                    "Only Owned/Borrowed byte-array handles are wired in PR C; mmap-backed " +
-                    "handles land with PR E (issue #523)."
+                    "Owned / Borrowed / FileBacked are wired. Aliased, DeviceResident, and " +
+                    "other variants are out of scope — resolve them to one of the wired " +
+                    "variants before handing to the writer."
             )
         }
-        // Byte-at-a-time so we do not rely on kotlinx.io's
-        // `Sink.write(ByteArray, Int, Int)` extension resolving on the
-        // raw receiver — extension overload ambiguity bit this on JVM
-        // in an earlier revision. Performance-critical callers should
-        // switch to `write(ByteArray, ...)` once that path is covered
-        // by a dedicated test.
+    }
+
+    private fun writeByteArray(sink: Sink, data: ByteArray, offset: Int, length: Int) {
+        // Byte-at-a-time for the same reason noted below — and because
+        // under the sizes we see in practice for single-op values
+        // (tens to a few thousand bytes) the overhead is lost in the
+        // wider write cost. FileBacked paths use a chunked copy on
+        // their platform-specific side, which is where the byte
+        // volume is meaningful.
         for (i in offset until offset + length) {
             sink.writeByte(data[i])
         }
