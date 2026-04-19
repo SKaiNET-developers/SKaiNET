@@ -438,7 +438,18 @@ public class Conv1dOperation<T : DType, V>(
 
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size >= 2) { "Conv1d operation requires at least 2 inputs" }
-        val outputShape = inputs[0].shape
+        val inShape = inputs[0].shape
+        val wShape = inputs[1].shape
+        val stride = (parameters["stride"] as? Int) ?: 1
+        val padding = (parameters["padding"] as? Int) ?: 0
+        val dilation = (parameters["dilation"] as? Int) ?: 1
+        val outputShape = if (inShape != null && wShape != null && inShape.size == 3 && wShape.size == 3) {
+            ConvShapeUtils.conv1dOutputShape(
+                inShape.toIntArray(), wShape.toIntArray(), stride, padding, dilation
+            ).toList()
+        } else {
+            null
+        }
         return listOf(
             TensorSpec(
                 name = "conv1d_output",
@@ -470,7 +481,18 @@ public class Conv2dOperation<T : DType, V>(
 
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size >= 2) { "Conv2d operation requires at least 2 inputs" }
-        val outputShape = inputs[0].shape
+        val inShape = inputs[0].shape
+        val wShape = inputs[1].shape
+        val stride = pairParam("stride", 1)
+        val padding = pairParam("padding", 0)
+        val dilation = pairParam("dilation", 1)
+        val outputShape = if (inShape != null && wShape != null && inShape.size == 4 && wShape.size == 4) {
+            ConvShapeUtils.conv2dOutputShape(
+                inShape.toIntArray(), wShape.toIntArray(), stride, padding, dilation
+            ).toList()
+        } else {
+            null
+        }
         return listOf(
             TensorSpec(
                 name = "conv2d_output",
@@ -479,6 +501,16 @@ public class Conv2dOperation<T : DType, V>(
                 requiresGrad = inputs.any { it.requiresGrad }
             )
         )
+    }
+
+    private fun pairParam(name: String, default: Int): Pair<Int, Int> {
+        val raw = parameters[name] ?: return default to default
+        @Suppress("UNCHECKED_CAST")
+        return when (raw) {
+            is Pair<*, *> -> raw as Pair<Int, Int>
+            is Int -> raw to raw
+            else -> default to default
+        }
     }
 
     override fun clone(newParameters: Map<String, Any>): Operation = Conv2dOperation<T, V>(newParameters)
@@ -502,7 +534,18 @@ public class Conv3dOperation<T : DType, V>(
 
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size >= 2) { "Conv3d operation requires at least 2 inputs" }
-        val outputShape = inputs[0].shape
+        val inShape = inputs[0].shape
+        val wShape = inputs[1].shape
+        val stride = tripleParam("stride", 1)
+        val padding = tripleParam("padding", 0)
+        val dilation = tripleParam("dilation", 1)
+        val outputShape = if (inShape != null && wShape != null && inShape.size == 5 && wShape.size == 5) {
+            ConvShapeUtils.conv3dOutputShape(
+                inShape.toIntArray(), wShape.toIntArray(), stride, padding, dilation
+            ).toList()
+        } else {
+            null
+        }
         return listOf(
             TensorSpec(
                 name = "conv3d_output",
@@ -511,6 +554,16 @@ public class Conv3dOperation<T : DType, V>(
                 requiresGrad = inputs.any { it.requiresGrad }
             )
         )
+    }
+
+    private fun tripleParam(name: String, default: Int): Triple<Int, Int, Int> {
+        val raw = parameters[name] ?: return Triple(default, default, default)
+        @Suppress("UNCHECKED_CAST")
+        return when (raw) {
+            is Triple<*, *, *> -> raw as Triple<Int, Int, Int>
+            is Int -> Triple(raw, raw, raw)
+            else -> Triple(default, default, default)
+        }
     }
 
     override fun clone(newParameters: Map<String, Any>): Operation = Conv3dOperation<T, V>(newParameters)
