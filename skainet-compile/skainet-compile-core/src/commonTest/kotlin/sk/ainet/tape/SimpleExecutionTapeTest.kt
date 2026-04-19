@@ -10,6 +10,8 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.ops.AddOperation
+import sk.ainet.lang.tensor.ops.Conv1dOperation
+import sk.ainet.lang.tensor.ops.Conv3dOperation
 import sk.ainet.lang.tensor.ops.ReluOperation
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.tensor.ops.VoidTensorOps
@@ -82,5 +84,59 @@ class SimpleExecutionTapeTest {
         assertEquals(1, copy.operations.size)
         assertFalse(copy.isRecording, "Copies keep recording state but not recording by default")
         assertNotNull(copy.operations.first(), "Copy retains recorded op")
+    }
+
+    @Test
+    fun records_conv1d_through_recording_decorator() {
+        val input = VoidOpsTensor<FP32, Float>(
+            dataFactory.zeros(Shape(1, 80, 3000), FP32::class), FP32::class
+        )
+        val weight = VoidOpsTensor<FP32, Float>(
+            dataFactory.zeros(Shape(384, 80, 3), FP32::class), FP32::class
+        )
+        val bias = VoidOpsTensor<FP32, Float>(
+            dataFactory.zeros(Shape(384), FP32::class), FP32::class
+        )
+
+        val tape = Execution.withTape {
+            val ops = Execution.recordingOps(VoidTensorOps())
+            ops.conv1d<FP32, Float>(input, weight, bias, stride = 1, padding = 1, dilation = 1, groups = 1)
+        }
+
+        val recorded = tape.operations.single { it.operation is Conv1dOperation<*, *> }
+        assertEquals(listOf("input", "weight", "bias"), recorded.inputs.map { it.name })
+        assertEquals(listOf(1, 80, 3000), recorded.inputs[0].shape)
+        assertEquals(listOf(384, 80, 3), recorded.inputs[1].shape)
+        assertEquals(listOf(384), recorded.inputs[2].shape)
+        assertEquals(listOf(1, 384, 3000), recorded.outputs.single().shape)
+        assertEquals(1, recorded.operation.parameters["stride"])
+        assertEquals(1, recorded.operation.parameters["padding"])
+    }
+
+    @Test
+    fun records_conv3d_through_recording_decorator() {
+        val input = VoidOpsTensor<FP32, Float>(
+            dataFactory.zeros(Shape(1, 3, 16, 16, 16), FP32::class), FP32::class
+        )
+        val weight = VoidOpsTensor<FP32, Float>(
+            dataFactory.zeros(Shape(8, 3, 3, 3, 3), FP32::class), FP32::class
+        )
+
+        val tape = Execution.withTape {
+            val ops = Execution.recordingOps(VoidTensorOps())
+            ops.conv3d<FP32, Float>(
+                input, weight, bias = null,
+                stride = Triple(1, 1, 1),
+                padding = Triple(0, 0, 0),
+                dilation = Triple(1, 1, 1),
+                groups = 1
+            )
+        }
+
+        val recorded = tape.operations.single { it.operation is Conv3dOperation<*, *> }
+        assertEquals(listOf("input", "weight"), recorded.inputs.map { it.name })
+        assertEquals(listOf(1, 3, 16, 16, 16), recorded.inputs[0].shape)
+        assertEquals(listOf(8, 3, 3, 3, 3), recorded.inputs[1].shape)
+        assertEquals(listOf(1, 8, 14, 14, 14), recorded.outputs.single().shape)
     }
 }
