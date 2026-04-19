@@ -14,6 +14,8 @@ import sk.ainet.lang.tensor.*
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.graph.DefaultExecutionTape
 import sk.ainet.lang.tensor.ops.AddOperation
+import sk.ainet.lang.trace.OpTrace
+import kotlin.test.assertEquals
 
 class DefaultExecutionTapeTest {
 
@@ -146,5 +148,39 @@ class DefaultExecutionTapeTest {
         assertTrue(prunedTape.operations.size == 2)
         assertTrue(prunedTape.operations[0].operation is AddOperation<*, *>)
         assertTrue(prunedTape.operations[1].operation is AddOperation<*, *>)
+    }
+
+    @Test
+    fun recordTrace_without_shape_attributes_falls_back_to_tensor_ref_shape() {
+        val trainCtx = createTrainCtx()
+        val input = trainCtx.fromFloatArray<FP32, Float>(Shape(1, 80, 3000), FP32::class, FloatArray(1 * 80 * 3000))
+        val weight = trainCtx.fromFloatArray<FP32, Float>(Shape(384, 80, 3), FP32::class, FloatArray(384 * 80 * 3))
+        val output = trainCtx.fromFloatArray<FP32, Float>(Shape(1, 384, 3000), FP32::class, FloatArray(1 * 384 * 3000))
+
+        val tape = DefaultExecutionTape(trainCtx.session)
+        tape.startRecording()
+        val inputRef = tape.session.refOf(input)
+        val weightRef = tape.session.refOf(weight)
+        val outputRef = tape.session.refOf(output)
+
+        tape.recordTrace(
+            OpTrace(
+                opType = "conv1d",
+                inputs = listOf(inputRef, weightRef),
+                outputs = listOf(outputRef),
+                attributes = mapOf(
+                    "stride" to 1,
+                    "padding" to 1,
+                    "dilation" to 1,
+                    "groups" to 1
+                )
+            )
+        )
+        tape.stopRecording()
+
+        val recorded = tape.operations.single { it.operation.name == "conv1d" }
+        assertEquals(listOf(1, 384, 3000), recorded.outputs.single().shape)
+        assertEquals(listOf(1, 80, 3000), recorded.inputs[0].shape)
+        assertEquals(listOf(384, 80, 3), recorded.inputs[1].shape)
     }
 }
