@@ -8,7 +8,9 @@ import sk.ainet.compile.hlo.converters.LinalgOperationsConverter
 import sk.ainet.compile.hlo.converters.MathOperationsConverter
 import sk.ainet.compile.hlo.converters.NeuralNetOperationsConverter
 import sk.ainet.compile.hlo.converters.ReductionOperationsConverter
+import sk.ainet.compile.hlo.converters.ScalarOperationsConverter
 import sk.ainet.compile.hlo.converters.ShapeOperationsConverter
+import sk.ainet.compile.hlo.converters.UnaryMathConverter
 import kotlin.jvm.JvmStatic
 
 /**
@@ -52,6 +54,15 @@ public object StableHloConverterFactory {
         
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
+
+        // Register elementwise unary math converter (sqrt, exp, log, abs, …).
+        // Must be present so downstream consumers don't cascade-fail with
+        // "wrong arity" when an upstream op is silently dropped.
+        registry.register(UnaryMathConverter())
+
+        // Register tensor+scalar ops (addScalar / mulScalar / …) emitted by the
+        // KSP-generated tracing wrapper for `tensor op Number` expressions.
+        registry.register(ScalarOperationsConverter())
 
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
@@ -98,6 +109,15 @@ public object StableHloConverterFactory {
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
 
+        // Register elementwise unary math converter (sqrt, exp, log, abs, …).
+        // Must be present so downstream consumers don't cascade-fail with
+        // "wrong arity" when an upstream op is silently dropped.
+        registry.register(UnaryMathConverter())
+
+        // Register tensor+scalar ops (addScalar / mulScalar / …) emitted by the
+        // KSP-generated tracing wrapper for `tensor op Number` expressions.
+        registry.register(ScalarOperationsConverter())
+
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
 
@@ -128,6 +148,8 @@ public object StableHloConverterFactory {
         registry.register(ActivationOperationsConverter())
         registry.register(ShapeOperationsConverter())
         registry.register(ReductionOperationsConverter())
+        registry.register(UnaryMathConverter())
+        registry.register(ScalarOperationsConverter())
         registry.register(ConstantOperationsConverter())
 
         return StableHloConverter(registry, typeMapper, null, policy)

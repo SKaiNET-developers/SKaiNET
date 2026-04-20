@@ -46,8 +46,11 @@ class ReductionOperationsConverterTest {
         assertIs<ConversionResult.Success>(result)
         assertTrue(result.outputValueName.startsWith("%v"))
         assertTrue(result.emittedOperations.isNotEmpty())
-        assertTrue(result.emittedOperations.first().contains("stablehlo.custom_call @reduce_sum"))
-        assertTrue(result.emittedOperations.first().contains("dimensions = [1]"))
+        // Sum emits: init-constant then stablehlo.reduce. No more custom_call @reduce_sum
+        // (iree-compile rejects that non-standard target).
+        assertTrue(result.emittedOperations.any { it.contains("stablehlo.reduce(") && it.contains("stablehlo.add") },
+            "Sum must emit a real stablehlo.reduce with stablehlo.add as the combinator")
+        assertTrue(result.emittedOperations.any { it.contains("dimensions = [1]") })
     }
 
     @Test
@@ -60,10 +63,9 @@ class ReductionOperationsConverterTest {
         val result = converter.convert(node, listOf("%input"), context)
 
         assertIs<ConversionResult.Success>(result)
-        assertTrue(result.emittedOperations.size == 3, "Mean should emit sum, count, and divide operations")
-        assertTrue(result.emittedOperations[0].contains("@reduce_sum"))
-        assertTrue(result.emittedOperations[1].contains("stablehlo.constant"))
-        assertTrue(result.emittedOperations[2].contains("stablehlo.divide"))
+        // Mean = init + reduce + count constant + divide.
+        assertTrue(result.emittedOperations.any { it.contains("stablehlo.reduce(") && it.contains("stablehlo.add") })
+        assertTrue(result.emittedOperations.any { it.contains("stablehlo.divide") })
     }
 
     @Test
@@ -78,8 +80,11 @@ class ReductionOperationsConverterTest {
         assertIs<ConversionResult.Success>(result)
         assertTrue(result.outputValueName.startsWith("%v"))
         assertTrue(result.emittedOperations.isNotEmpty())
-        assertTrue(result.emittedOperations.first().contains("stablehlo.custom_call @reduce_variance"))
-        assertTrue(result.emittedOperations.first().contains("dimensions = [1]"))
+        // Variance is decomposed into E[X^2] - E[X]^2: two reduces + divides + subtract.
+        val reduceLines = result.emittedOperations.count { it.contains("stablehlo.reduce(") }
+        assertTrue(reduceLines >= 2, "Variance decomposition must use at least two stablehlo.reduce ops")
+        assertTrue(result.emittedOperations.any { it.contains("stablehlo.subtract") },
+            "Variance must end in a subtract (E[X^2] - E[X]^2)")
     }
 
     @Test
@@ -92,7 +97,8 @@ class ReductionOperationsConverterTest {
         val result = converter.convert(node, listOf("%input"), context)
 
         assertIs<ConversionResult.Success>(result)
-        assertTrue(result.emittedOperations.first().contains("dimensions = []"))
+        // Full reduction lists every input axis explicitly.
+        assertTrue(result.emittedOperations.any { it.contains("dimensions = [0, 1, 2]") })
     }
 
     @Test

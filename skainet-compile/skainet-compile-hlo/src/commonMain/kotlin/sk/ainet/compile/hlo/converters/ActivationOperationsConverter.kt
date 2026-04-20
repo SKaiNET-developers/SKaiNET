@@ -146,18 +146,26 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         // mapped to its position in the reduced tensor.
         val broadcastDims = (0 until rank).filter { it != axis }.joinToString(", ")
 
+        val maxInit = context.nextTempValue()
         val maxValue = context.nextTempValue()
         val maxBroadcast = context.nextTempValue()
         val shiftedValue = context.nextTempValue()
         val expValue = context.nextTempValue()
+        val sumInit = context.nextTempValue()
         val sumValue = context.nextTempValue()
         val sumBroadcast = context.nextTempValue()
         val resultValue = context.nextTempValue()
 
+        // Identity for stablehlo.maximum on floats: -inf. Spell it via the bit
+        // pattern so MLIR parses it regardless of how the element type prints.
+        val maxIdentity = "0xFF800000"
+
         val operations = listOf(
             // Reduce-max along the softmax axis (for numerical stability).
-            "$maxValue = stablehlo.custom_call @reduce_max(${operands[0]}) " +
-                "{dimensions = [$axis], keepdim = false} : $reducedType",
+            "$maxInit = stablehlo.constant dense<$maxIdentity> : tensor<$elementType>",
+            "$maxValue = stablehlo.reduce(${operands[0]} init: $maxInit) " +
+                "applies stablehlo.maximum across dimensions = [$axis] : " +
+                "($outputType, tensor<$elementType>) -> $reducedType",
 
             // Broadcast reduced max back to the input shape.
             "$maxBroadcast = stablehlo.broadcast_in_dim $maxValue, " +
@@ -170,8 +178,10 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
             "$expValue = stablehlo.exponential $shiftedValue : $outputType",
 
             // Reduce-sum along the softmax axis.
-            "$sumValue = stablehlo.custom_call @reduce_sum($expValue) " +
-                "{dimensions = [$axis], keepdim = false} : $reducedType",
+            "$sumInit = stablehlo.constant dense<0.0> : tensor<$elementType>",
+            "$sumValue = stablehlo.reduce($expValue init: $sumInit) " +
+                "applies stablehlo.add across dimensions = [$axis] : " +
+                "($outputType, tensor<$elementType>) -> $reducedType",
 
             // Broadcast the sum back to the input shape.
             "$sumBroadcast = stablehlo.broadcast_in_dim $sumValue, " +

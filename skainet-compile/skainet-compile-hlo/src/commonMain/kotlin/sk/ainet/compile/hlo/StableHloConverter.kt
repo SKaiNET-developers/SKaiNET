@@ -178,7 +178,14 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
                 processNode(node, context)
             } catch (e: Exception) {
                 context.emitComment("Error processing node ${node.id}: ${e.message}")
-                context.emitComment("Unsupported op ${node.operation.name} (type=${node.operation.type}) for node ${node.id}")
+                // Quote the name so trailing whitespace / casing surprises are visible,
+                // and include the registry's full key set so "no converter found"
+                // failures are self-diagnostic (is the name missing, or mis-matched?).
+                val known = registry.getSupportedOperations().sorted().joinToString(", ")
+                context.emitComment(
+                    "Unsupported op '${node.operation.name}' (type=${node.operation.type}) " +
+                        "for node ${node.id}. Known names: [$known]"
+                )
             }
         }
     }

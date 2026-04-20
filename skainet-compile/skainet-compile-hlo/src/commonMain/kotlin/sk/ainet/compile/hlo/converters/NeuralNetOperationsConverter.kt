@@ -78,6 +78,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val typeMapper = context.getTypeMapper()
         val inputType = node.inputs.getOrNull(0)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?xf32>"
         val weightType = node.inputs.getOrNull(1)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?xf32>"
+        val biasType = node.inputs.getOrNull(2)?.let { typeMapper.mapTensorType(it) }
 
         val convOperation = buildConv1dOperation(
             resultValue = resultValue,
@@ -87,6 +88,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             inputType = inputType,
             weightType = weightType,
             outputType = outputType,
+            biasType = biasType,
             stride = stride,
             padding = padding,
             dilation = dilation,
@@ -130,6 +132,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val typeMapper = context.getTypeMapper()
         val inputType = node.inputs.getOrNull(0)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?x?xf32>"
         val weightType = node.inputs.getOrNull(1)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?x?xf32>"
+        val biasType = node.inputs.getOrNull(2)?.let { typeMapper.mapTensorType(it) }
 
         // Build StableHLO convolution operation
         val convOperation = buildConvolutionOperation(
@@ -140,6 +143,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             inputType = inputType,
             weightType = weightType,
             outputType = outputType,
+            biasType = biasType,
             stride = stride,
             padding = padding,
             dilation = dilation,
@@ -609,6 +613,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         inputType: String,
         weightType: String,
         outputType: String,
+        biasType: String?,
         stride: Int,
         padding: Int,
         dilation: Int,
@@ -629,8 +634,12 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
 
         return if (bias != null) {
             val convResult = "${resultValue}_conv"
+            val biasBcast = "${resultValue}_bias_b"
             val convOp = convCore(convResult)
-            "$convOp\n    $resultValue = stablehlo.add $convResult, $bias : $outputType"
+            // bias is [Cout]; conv output is [N, Cout, L]; broadcast along feature dim (index 1)
+            val bcastOp = "$biasBcast = stablehlo.broadcast_in_dim $bias, dims = [1] : " +
+                    "(${biasType ?: "tensor<?xf32>"}) -> $outputType"
+            "$convOp\n    $bcastOp\n    $resultValue = stablehlo.add $convResult, $biasBcast : $outputType"
         } else {
             convCore(resultValue)
         }
@@ -644,6 +653,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         inputType: String,
         weightType: String,
         outputType: String,
+        biasType: String?,
         stride: Pair<Int, Int>,
         padding: Pair<Int, Int>,
         dilation: Pair<Int, Int>,
@@ -667,13 +677,17 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
 
         return if (bias != null) {
             val convResult = "${resultValue}_conv"
+            val biasBcast = "${resultValue}_bias_b"
             val convOp = convCore(convResult)
-            "$convOp\n    $resultValue = stablehlo.add $convResult, $bias : $outputType"
+            // bias is [Cout]; conv output is [N, Cout, H, W]; broadcast along feature dim (index 1)
+            val bcastOp = "$biasBcast = stablehlo.broadcast_in_dim $bias, dims = [1] : " +
+                    "(${biasType ?: "tensor<?xf32>"}) -> $outputType"
+            "$convOp\n    $bcastOp\n    $resultValue = stablehlo.add $convResult, $biasBcast : $outputType"
         } else {
             convCore(resultValue)
         }
     }
-    
+
     private fun buildMaxPoolOperations(
         resultValue: String,
         input: String,

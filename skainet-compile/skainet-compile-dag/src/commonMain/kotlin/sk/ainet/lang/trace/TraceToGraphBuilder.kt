@@ -350,8 +350,8 @@ public class TraceToGraphBuilder(
         val count = trace.outputs.size
         return List(count) { i ->
             val name = trace.outputs[i].id
-            val shape = shapes?.getOrNull(i)
-            val dtype = dtypes?.getOrNull(i) ?: "unknown"
+            val shape = shapes?.getOrNull(i) ?: trace.outputs[i].shape.dimensions.toList()
+            val dtype = dtypes?.getOrNull(i) ?: trace.outputs[i].dtype::class.simpleName ?: "unknown"
             TensorSpec(name = name, shape = shape, dtype = dtype)
         }
     }

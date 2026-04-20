@@ -102,16 +102,18 @@ class ActivationOperationsConverterTest {
             "softmax must not emit a fake-sum constant at output shape"
         )
 
-        // The corrected lowering invokes real reductions (via custom_call for
-        // now — matching ReductionOperationsConverter style) plus a broadcast
-        // back to the input shape before the subtract/divide.
+        // Softmax must lower to real stablehlo.reduce ops (not the earlier
+        // stablehlo.custom_call @reduce_max / @reduce_sum, which iree-compile
+        // rejects as a non-standard call target).
         assertTrue(
-            module.content.contains("@reduce_max"),
-            "softmax must lower max(x) to a real reduction"
+            module.content.contains("stablehlo.reduce(") &&
+                module.content.contains("applies stablehlo.maximum"),
+            "softmax must lower max(x) to stablehlo.reduce applying stablehlo.maximum"
         )
         assertTrue(
-            module.content.contains("@reduce_sum"),
-            "softmax must lower sum(exp(...)) to a real reduction"
+            module.content.contains("stablehlo.reduce(") &&
+                module.content.contains("applies stablehlo.add"),
+            "softmax must lower sum(exp(...)) to stablehlo.reduce applying stablehlo.add"
         )
         assertTrue(
             module.content.contains("stablehlo.broadcast_in_dim"),

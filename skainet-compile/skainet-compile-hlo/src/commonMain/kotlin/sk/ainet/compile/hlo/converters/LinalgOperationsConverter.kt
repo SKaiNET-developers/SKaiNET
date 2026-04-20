@@ -30,13 +30,17 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
     )
     
     override fun convert(
-        node: GraphNode, 
-        operands: List<String>, 
+        node: GraphNode,
+        operands: List<String>,
         context: ConversionContext
     ): ConversionResult {
         return when (node.operation.name.lowercase()) {
-            "matmul", "dot", "mm" -> convertMatmul(node, operands, context)
-            "bmm", "batch_matmul" -> convertBatchMatmul(node, operands, context)
+            // All matmul variants share the same lowering: the batched form
+            // degenerates to the compact rank-2 form when rank == 2 (no
+            // batching_dims emitted). Whisper's attention uses rank-4 matmul
+            // where `[1] x [0]` is wrong — contract last/second-to-last.
+            "matmul", "dot", "mm", "bmm", "batch_matmul" ->
+                convertBatchMatmul(node, operands, context)
             "transpose" -> convertTranspose(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
@@ -44,52 +48,8 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
             )
         }
     }
-    
-    /**
-     * Convert standard matrix multiplication to stablehlo.dot_general.
-     * 
-     * For 2D matrices A (M x K) and B (K x N), produces C (M x N) where:
-     * - Contracting dimensions: last dim of A ([1]) with second-to-last dim of B ([0])
-     * - This follows the standard matrix multiplication convention
-     */
-    private fun convertMatmul(
-        node: GraphNode,
-        operands: List<String>,
-        context: ConversionContext
-    ): ConversionResult {
-        if (operands.size != 2) {
-            return ConversionResult.Failure(
-                "Matmul operation requires exactly 2 operands, got ${operands.size}",
-                "Unsupported matmul arity for node ${node.id}"
-            )
-        }
-        
-        val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
-            ?: "tensor<?x?xf32>"
-        val lhsSpec = node.inputs.getOrNull(0)
-        val rhsSpec = node.inputs.getOrNull(1)
-        val lhsType = lhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
-            ?: "tensor<?x?xf32>"
-        val rhsType = rhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
-            ?: "tensor<?x?xf32>"
 
-        val resultValue = context.nextTempValue()
 
-        // Standard matmul: contract last dimension of left operand with
-        // second-to-last dimension of right operand.
-        // For 2D: A[M,K] x B[K,N] -> C[M,N]
-        // contracting_dims = [1] x [0] means dim 1 of lhs with dim 0 of rhs.
-        val operation = "$resultValue = stablehlo.dot_general ${operands[0]}, ${operands[1]}, contracting_dims = [1] x [0] : ($lhsType, $rhsType) -> $outputType"
-
-        context.emitOperation(operation)
-        
-        return ConversionResult.Success(
-            outputValueName = resultValue,
-            emittedOperations = listOf(operation)
-        )
-    }
-    
     /**
      * Convert batch matrix multiplication to stablehlo.dot_general.
      * 
