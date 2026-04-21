@@ -14,7 +14,8 @@ plugins {
 }
 
 allprojects {
-    group = "sk.ainet"
+    group = "sk.ainet.core"
+    version = providers.gradleProperty("VERSION_NAME").getOrElse("unspecified")
 }
 
 // Require JDK 21+ but allow any newer version (produces Java 21 bytecode via --release / jvmTarget)
