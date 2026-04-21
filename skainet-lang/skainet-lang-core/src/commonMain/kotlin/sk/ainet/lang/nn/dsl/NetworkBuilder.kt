@@ -17,6 +17,7 @@ import sk.ainet.lang.nn.normalization.LayerNormalization
 import sk.ainet.lang.nn.topology.MLP
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.ops.ConvShapeUtils
 import sk.ainet.lang.tensor.ops.UpsampleMode
 import sk.ainet.lang.types.DType
 import sk.ainet.context.ExecutionContext
@@ -109,6 +110,22 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
      * @param requiresGrad Whether the input requires gradients (default: false)
      */
     public fun input(inputSize: Int, id: String = "", requiresGrad: Boolean = false)
+
+    /**
+     * Declares a multi-dimensional input shape (per-sample, batch dimension excluded).
+     *
+     * Required when downstream spatial layers (conv, pool, upsample) need to feed
+     * a `flatten()` -> `dense()` chain — without this, the DSL cannot know the
+     * flattened feature count ahead of time.
+     *
+     * Example: `input(intArrayOf(1, 28, 28))` declares one-channel 28x28 images.
+     *
+     * @param inputShape Per-sample shape (e.g. `[channels, height, width]`)
+     * @param id Optional identifier for the layer
+     * @param requiresGrad Whether the input requires gradients (default: false)
+     */
+    public fun input(inputShape: IntArray, id: String = "", requiresGrad: Boolean = false): Unit =
+        input(inputShape.fold(1) { a, b -> a * b }, id, requiresGrad)
 
     /**
      * Creates a flatten layer that reshapes multidimensional tensors into 1D.
@@ -1042,6 +1059,108 @@ public class AvgPool2dImpl<T : DType, V>(
 // AttentionImpl moved to skainet-transformers llm-core TransformerDsl.kt
 
 // Stage implementation
+/**
+ * Computes the flattened-feature dimension for `flatten(startDim, endDim)` given a
+ * known per-sample shape (batch dimension excluded).
+ *
+ * Tensor shape is conceptually `[batch] + currentShape`. `startDim`/`endDim` follow
+ * PyTorch semantics on that full tensor shape and may be negative. Returns `null`
+ * when the span doesn't include any per-sample dimension (e.g. flatten only over
+ * the batch axis), which leaves the dense feature dimension unchanged.
+ */
+/**
+ * Per-sample shape produced by a `MaxPool2d`/`AvgPool2d` given the layer's kernel/stride/padding.
+ * Returns `null` when the input shape is unknown or not rank-3 `(C, H, W)`.
+ */
+internal fun pool2dNextShape(
+    currentShape: IntArray?,
+    kernelSize: Pair<Int, Int>,
+    stride: Pair<Int, Int>,
+    padding: Pair<Int, Int>
+): IntArray? {
+    val shape = currentShape ?: return null
+    if (shape.size != 3) return null
+    val out = ConvShapeUtils.pool2dOutputShape(
+        intArrayOf(1, shape[0], shape[1], shape[2]),
+        kernelSize, stride, padding
+    )
+    return intArrayOf(out[1], out[2], out[3])
+}
+
+/**
+ * Per-sample shape produced by `Upsample2d` given the scale factors.
+ * Returns `null` when the input shape is unknown or not rank-3 `(C, H, W)`.
+ */
+internal fun upsample2dNextShape(currentShape: IntArray?, scale: Pair<Int, Int>): IntArray? {
+    val shape = currentShape ?: return null
+    if (shape.size != 3) return null
+    val out = ConvShapeUtils.upsample2dOutputShape(
+        intArrayOf(1, shape[0], shape[1], shape[2]),
+        scale
+    )
+    return intArrayOf(out[1], out[2], out[3])
+}
+
+/**
+ * Per-sample shape produced by Conv1d given the layer's kernel/stride/padding/dilation.
+ * Returns `null` when the input shape is unknown or not rank-2 `(C_in, L)`.
+ */
+internal fun Conv1dImpl<*, *>.nextShapeFor(currentShape: IntArray?): IntArray? {
+    val shape = currentShape ?: return null
+    if (shape.size != 2) return null
+    val out = ConvShapeUtils.conv1dOutputShape(
+        intArrayOf(1, shape[0], shape[1]),
+        intArrayOf(outChannels, inChannels / groups, kernelSize),
+        stride, padding, dilation
+    )
+    return intArrayOf(out[1], out[2])
+}
+
+/**
+ * Per-sample shape produced by Conv2d given the layer's kernel/stride/padding/dilation.
+ * Returns `null` when the input shape is unknown or not rank-3 `(C_in, H, W)`.
+ */
+internal fun Conv2dImpl<*, *>.nextShapeFor(currentShape: IntArray?): IntArray? {
+    val shape = currentShape ?: return null
+    if (shape.size != 3) return null
+    val out = ConvShapeUtils.conv2dOutputShape(
+        intArrayOf(1, shape[0], shape[1], shape[2]),
+        intArrayOf(outChannels, inChannels / groups, kernelSize.first, kernelSize.second),
+        stride, padding, dilation
+    )
+    return intArrayOf(out[1], out[2], out[3])
+}
+
+/**
+ * Per-sample shape produced by Conv3d given the layer's kernel/stride/padding/dilation.
+ * Returns `null` when the input shape is unknown or not rank-4 `(C_in, D, H, W)`.
+ */
+internal fun Conv3dImpl<*, *>.nextShapeFor(currentShape: IntArray?): IntArray? {
+    val shape = currentShape ?: return null
+    if (shape.size != 4) return null
+    val out = ConvShapeUtils.conv3dOutputShape(
+        intArrayOf(1, shape[0], shape[1], shape[2], shape[3]),
+        intArrayOf(outChannels, inChannels / groups, kernelSize.first, kernelSize.second, kernelSize.third),
+        stride, padding, dilation
+    )
+    return intArrayOf(out[1], out[2], out[3], out[4])
+}
+
+internal fun flattenedDimensionFor(currentShape: IntArray, startDim: Int, endDim: Int): Int? {
+    val tensorRank = currentShape.size + 1
+    val sd = if (startDim < 0) tensorRank + startDim else startDim
+    val ed = if (endDim < 0) tensorRank + endDim else endDim
+    require(sd in 0 until tensorRank && ed in 0 until tensorRank && sd <= ed) {
+        "Invalid flatten range startDim=$startDim, endDim=$endDim for tensor rank $tensorRank"
+    }
+    val perSampleStart = (sd - 1).coerceAtLeast(0)
+    val perSampleEndInclusive = ed - 1
+    if (perSampleEndInclusive < 0 || perSampleStart > perSampleEndInclusive) return null
+    var product = 1
+    for (i in perSampleStart..perSampleEndInclusive) product *= currentShape[i]
+    return product
+}
+
 public class StageImpl<T : DType, V>(
     override val executionContext: ExecutionContext,
     private val id: String,
@@ -1050,11 +1169,21 @@ public class StageImpl<T : DType, V>(
     public val modules: MutableList<Module<T, V>> = mutableListOf<Module<T, V>>()
     public var lastDimension: Int = 0
     public var inputDimension: Int = 0
+    /** Per-sample shape (batch excluded) tracked through spatial layers; `null` if unknown. */
+    public var currentShape: IntArray? = null
 
     public fun create(): Module<T, V> = MLP(*modules.toTypedArray(), name = id)
 
     override fun input(inputSize: Int, id: String, requiresGrad: Boolean) {
         lastDimension = inputSize
+        currentShape = intArrayOf(inputSize)
+        modules.add(Input(name = getDefaultName(id, "Input", modules.size), requiresGrad = requiresGrad))
+    }
+
+    override fun input(inputShape: IntArray, id: String, requiresGrad: Boolean) {
+        require(inputShape.isNotEmpty()) { "input(inputShape) requires at least one dimension" }
+        currentShape = inputShape.copyOf()
+        lastDimension = inputShape.fold(1) { a, b -> a * b }
         modules.add(Input(name = getDefaultName(id, "Input", modules.size), requiresGrad = requiresGrad))
     }
 
@@ -1065,22 +1194,20 @@ public class StageImpl<T : DType, V>(
         )
         impl.content()
         modules += impl.create()
-        // For flatten, we need to calculate the flattened size
-        // This is a simple approach - assume we're flattening from start_dim=1 (keeping batch dimension)
-        // The lastDimension should be set based on actual tensor dimensions, but for now
-        // we'll use a placeholder approach that works with typical CNN architectures
-        // TODO: Implement proper shape inference based on actual input dimensions
-        if (lastDimension == 0) {
-            // Fallback for the MNIST CNN test case with input (1,1,28,28)
-            // After conv1(16ch) + pool -> conv2(32ch) + pool, we get (1,32,7,7)
-            // Flattening from dim 1 gives size 32*7*7 = 1568
-            lastDimension = 1568  // TODO: calculate from tracked shapes
+        val shape = currentShape
+        val inferred = if (shape != null) flattenedDimensionFor(shape, impl.startDim, impl.endDim) else null
+        if (inferred != null) {
+            lastDimension = inferred
+            currentShape = intArrayOf(inferred)
         }
+        // If we couldn't infer (no input shape declared), leave lastDimension untouched.
+        // A subsequent dense() will surface the missing dimension as a clear error.
     }
 
     override fun dense(outputDimension: Int, id: String, content: DENSE<T, V>.() -> Unit) {
         val inputDimension = lastDimension
         lastDimension = outputDimension
+        currentShape = intArrayOf(outputDimension)
         val impl = DenseImpl<T, V>(
             executionContext,
             inputDimension = inputDimension,
@@ -1105,6 +1232,7 @@ public class StageImpl<T : DType, V>(
         impl.content()
         // Update lastDimension based on the units set in the content block
         lastDimension = impl.outputDimension
+        currentShape = intArrayOf(impl.outputDimension)
         // dense layer consists of linear module and activation function module (2 modules)
         modules += impl.create()
     }
@@ -1116,16 +1244,20 @@ public class StageImpl<T : DType, V>(
     override fun sequential(content: NeuralNetworkDsl<T, V>.() -> Unit) {
         val sequentialImpl = NeuralNetworkDslImpl<T, V>(executionContext, kClass)
         sequentialImpl.lastDimension = lastDimension
+        sequentialImpl.currentShape = currentShape?.copyOf()
         sequentialImpl.content()
         lastDimension = sequentialImpl.lastDimension
+        currentShape = sequentialImpl.currentShape?.copyOf()
         modules += sequentialImpl.create()
     }
 
     override fun stage(id: String, content: NeuralNetworkDsl<T, V>.() -> Unit) {
         val stageImpl = StageImpl<T, V>(executionContext, id, kClass)
         stageImpl.lastDimension = lastDimension
+        stageImpl.currentShape = currentShape?.copyOf()
         stageImpl.content()
         lastDimension = stageImpl.lastDimension
+        currentShape = stageImpl.currentShape?.copyOf()
         modules += stageImpl.create()
     }
 
@@ -1220,7 +1352,7 @@ public class StageImpl<T : DType, V>(
         // Create Conv2dImpl with default inChannels=1, can be modified via DSL
         val conv2dImpl = Conv2dImpl<T, V>(
             executionContext,
-            initialInChannels = 1, // Default value, can be overridden in content block
+            initialInChannels = currentShape?.takeIf { it.size == 3 }?.get(0) ?: 1,
             initialOutChannels = outChannels,
             initialKernelSize = kernelSize,
             initialStride = stride,
@@ -1237,6 +1369,7 @@ public class StageImpl<T : DType, V>(
 
         // Create and add the Conv2d module
         modules.add(conv2dImpl.create())
+        currentShape = conv2dImpl.nextShapeFor(currentShape)
     }
 
     override fun conv2d(
@@ -1245,7 +1378,7 @@ public class StageImpl<T : DType, V>(
     ) {
         val conv2dImpl = Conv2dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1,
+            initialInChannels = currentShape?.takeIf { it.size == 3 }?.get(0) ?: 1,
             initialOutChannels = 1,
             initialKernelSize = 1 to 1,
             initialStride = 1 to 1,
@@ -1258,6 +1391,7 @@ public class StageImpl<T : DType, V>(
         )
         conv2dImpl.content()
         modules.add(conv2dImpl.create())
+        currentShape = conv2dImpl.nextShapeFor(currentShape)
     }
 
 
@@ -1273,6 +1407,7 @@ public class StageImpl<T : DType, V>(
             padding = padding,
             name = getDefaultName(id, "MaxPool2d", modules.size)
         )
+        currentShape = pool2dNextShape(currentShape, kernelSize, stride, padding)
     }
 
     override fun maxPool2d(
@@ -1288,6 +1423,7 @@ public class StageImpl<T : DType, V>(
         )
         impl.content()
         modules += impl.create()
+        currentShape = pool2dNextShape(currentShape, impl.kernelSize, impl.stride, impl.padding)
     }
 
     override fun upsample2d(
@@ -1302,6 +1438,7 @@ public class StageImpl<T : DType, V>(
             alignCorners = alignCorners,
             name = getDefaultName(id, "Upsample2d", modules.size)
         )
+        currentShape = upsample2dNextShape(currentShape, scale)
     }
 
     override fun upsample2d(id: String, content: UPSAMPLE2D<T, V>.() -> Unit) {
@@ -1314,6 +1451,7 @@ public class StageImpl<T : DType, V>(
         )
         impl.content()
         modules += impl.create()
+        currentShape = upsample2dNextShape(currentShape, impl.scale)
     }
 
     override fun conv1d(
@@ -1329,7 +1467,7 @@ public class StageImpl<T : DType, V>(
     ) {
         val conv1dImpl = Conv1dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1,
+            initialInChannels = currentShape?.takeIf { it.size == 2 }?.get(0) ?: 1,
             initialOutChannels = outChannels,
             initialKernelSize = kernelSize,
             initialStride = stride,
@@ -1342,6 +1480,7 @@ public class StageImpl<T : DType, V>(
         )
         conv1dImpl.content()
         modules.add(conv1dImpl.create())
+        currentShape = conv1dImpl.nextShapeFor(currentShape)
     }
 
     override fun conv3d(
@@ -1357,7 +1496,7 @@ public class StageImpl<T : DType, V>(
     ) {
         val conv3dImpl = Conv3dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1,
+            initialInChannels = currentShape?.takeIf { it.size == 4 }?.get(0) ?: 1,
             initialOutChannels = outChannels,
             initialKernelSize = kernelSize,
             initialStride = stride,
@@ -1370,6 +1509,7 @@ public class StageImpl<T : DType, V>(
         )
         conv3dImpl.content()
         modules.add(conv3dImpl.create())
+        currentShape = conv3dImpl.nextShapeFor(currentShape)
     }
 
     override fun avgPool2d(
@@ -1386,6 +1526,7 @@ public class StageImpl<T : DType, V>(
             countIncludePad = countIncludePad,
             name = getDefaultName(id, "AvgPool2d", modules.size)
         )
+        currentShape = pool2dNextShape(currentShape, kernelSize, stride, padding)
     }
 
     override fun softmax(dim: Int, id: String) {
@@ -1403,11 +1544,21 @@ public class NeuralNetworkDslImpl<T : DType, V>(
 
     public val modules: MutableList<Module<T, V>> = mutableListOf<Module<T, V>>()
     public var lastDimension: Int = 0
+    /** Per-sample shape (batch excluded) tracked through spatial layers; `null` if unknown. */
+    public var currentShape: IntArray? = null
 
     public fun create(): Module<T, V> = NetworkBuilder<T, V>().add(*modules.toTypedArray()).build()
 
     override fun input(inputSize: Int, id: String, requiresGrad: Boolean) {
         lastDimension = inputSize
+        currentShape = intArrayOf(inputSize)
+        modules.add(Input(name = getDefaultName(id, "Input", modules.size), requiresGrad = requiresGrad))
+    }
+
+    override fun input(inputShape: IntArray, id: String, requiresGrad: Boolean) {
+        require(inputShape.isNotEmpty()) { "input(inputShape) requires at least one dimension" }
+        currentShape = inputShape.copyOf()
+        lastDimension = inputShape.fold(1) { a, b -> a * b }
         modules.add(Input(name = getDefaultName(id, "Input", modules.size), requiresGrad = requiresGrad))
     }
 
@@ -1419,22 +1570,20 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         impl.content()
         modules += impl.create()
-        // For flatten, we need to calculate the flattened size
-        // This is a simple approach - assume we're flattening from start_dim=1 (keeping batch dimension)
-        // The lastDimension should be set based on actual tensor dimensions, but for now
-        // we'll use a placeholder approach that works with typical CNN architectures
-        // TODO: Implement proper shape inference based on actual input dimensions
-        if (lastDimension == 0) {
-            // Fallback for the MNIST CNN test case with input (1,1,28,28)
-            // After conv1(16ch) + pool -> conv2(32ch) + pool, we get (1,32,7,7)
-            // Flattening from dim 1 gives size 32*7*7 = 1568
-            lastDimension = 1568  // TODO: calculate from tracked shapes
+        val shape = currentShape
+        val inferred = if (shape != null) flattenedDimensionFor(shape, impl.startDim, impl.endDim) else null
+        if (inferred != null) {
+            lastDimension = inferred
+            currentShape = intArrayOf(inferred)
         }
+        // If we couldn't infer (no input shape declared), leave lastDimension untouched.
+        // A subsequent dense() will surface the missing dimension as a clear error.
     }
 
     override fun dense(outputDimension: Int, id: String, content: DENSE<T, V>.() -> Unit) {
         val inputDimension = lastDimension
         lastDimension = outputDimension
+        currentShape = intArrayOf(outputDimension)
         val impl = DenseImpl<T, V>(
             executionContext = executionContext,
             inputDimension = inputDimension,
@@ -1459,6 +1608,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         impl.content()
         // Update lastDimension based on the units set in the content block
         lastDimension = impl.outputDimension
+        currentShape = intArrayOf(impl.outputDimension)
         // dense layer consists of linear module and activation function module (2 modules)
         modules += impl.create()
     }
@@ -1470,16 +1620,20 @@ public class NeuralNetworkDslImpl<T : DType, V>(
     override fun sequential(content: NeuralNetworkDsl<T, V>.() -> Unit) {
         val sequentialImpl = NeuralNetworkDslImpl<T, V>(executionContext, kClass)
         sequentialImpl.lastDimension = lastDimension
+        sequentialImpl.currentShape = currentShape?.copyOf()
         sequentialImpl.content()
         lastDimension = sequentialImpl.lastDimension
+        currentShape = sequentialImpl.currentShape?.copyOf()
         modules += sequentialImpl.create()
     }
 
     override fun stage(id: String, content: NeuralNetworkDsl<T, V>.() -> Unit) {
         val stageImpl = StageImpl<T, V>(executionContext, id, kClass)
         stageImpl.lastDimension = lastDimension
+        stageImpl.currentShape = currentShape?.copyOf()
         stageImpl.content()
         lastDimension = stageImpl.lastDimension
+        currentShape = stageImpl.currentShape?.copyOf()
         modules += stageImpl.create()
     }
 
@@ -1574,7 +1728,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         // Create Conv2dImpl with default inChannels=1, can be modified via DSL
         val conv2dImpl = Conv2dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1, // Default value, can be overridden in content block
+            initialInChannels = currentShape?.takeIf { it.size == 3 }?.get(0) ?: 1,
             initialOutChannels = outChannels,
             initialKernelSize = kernelSize,
             initialStride = stride,
@@ -1591,6 +1745,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
 
         // Create and add the Conv2d module
         modules.add(conv2dImpl.create())
+        currentShape = conv2dImpl.nextShapeFor(currentShape)
     }
 
     override fun conv2d(
@@ -1599,7 +1754,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
     ) {
         val conv2dImpl = Conv2dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1,
+            initialInChannels = currentShape?.takeIf { it.size == 3 }?.get(0) ?: 1,
             initialOutChannels = 1,
             initialKernelSize = 1 to 1,
             initialStride = 1 to 1,
@@ -1612,6 +1767,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         conv2dImpl.content()
         modules.add(conv2dImpl.create())
+        currentShape = conv2dImpl.nextShapeFor(currentShape)
     }
 
     override fun maxPool2d(
@@ -1626,6 +1782,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
             padding = padding,
             name = getDefaultName(id, "MaxPool2d", modules.size)
         )
+        currentShape = pool2dNextShape(currentShape, kernelSize, stride, padding)
     }
 
     override fun maxPool2d(
@@ -1641,6 +1798,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         impl.content()
         modules.add(impl.create())
+        currentShape = pool2dNextShape(currentShape, impl.kernelSize, impl.stride, impl.padding)
     }
 
     override fun upsample2d(
@@ -1655,6 +1813,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
             alignCorners = alignCorners,
             name = getDefaultName(id, "Upsample2d", modules.size)
         )
+        currentShape = upsample2dNextShape(currentShape, scale)
     }
 
     override fun upsample2d(
@@ -1670,6 +1829,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         impl.content()
         modules.add(impl.create())
+        currentShape = upsample2dNextShape(currentShape, impl.scale)
     }
 
     override fun conv1d(
@@ -1685,7 +1845,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
     ) {
         val conv1dImpl = Conv1dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1,
+            initialInChannels = currentShape?.takeIf { it.size == 2 }?.get(0) ?: 1,
             initialOutChannels = outChannels,
             initialKernelSize = kernelSize,
             initialStride = stride,
@@ -1698,6 +1858,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         conv1dImpl.content()
         modules.add(conv1dImpl.create())
+        currentShape = conv1dImpl.nextShapeFor(currentShape)
     }
 
     override fun conv3d(
@@ -1713,7 +1874,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
     ) {
         val conv3dImpl = Conv3dImpl<T, V>(
             executionContext = executionContext,
-            initialInChannels = 1,
+            initialInChannels = currentShape?.takeIf { it.size == 4 }?.get(0) ?: 1,
             initialOutChannels = outChannels,
             initialKernelSize = kernelSize,
             initialStride = stride,
@@ -1726,6 +1887,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         )
         conv3dImpl.content()
         modules.add(conv3dImpl.create())
+        currentShape = conv3dImpl.nextShapeFor(currentShape)
     }
 
     override fun avgPool2d(
@@ -1742,6 +1904,7 @@ public class NeuralNetworkDslImpl<T : DType, V>(
             countIncludePad = countIncludePad,
             name = getDefaultName(id, "AvgPool2d", modules.size)
         )
+        currentShape = pool2dNextShape(currentShape, kernelSize, stride, padding)
     }
 
     override fun softmax(dim: Int, id: String) {

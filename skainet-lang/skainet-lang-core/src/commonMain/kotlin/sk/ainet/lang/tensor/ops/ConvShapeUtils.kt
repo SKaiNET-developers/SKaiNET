@@ -95,4 +95,45 @@ public object ConvShapeUtils {
         val outW = (inW + 2 * padding.third - dilation.third * (kW - 1) - 1) / stride.third + 1
         return intArrayOf(batch, outChannels, outD, outH, outW)
     }
+
+    /**
+     * 2D pool (max/avg) output shape: input `(batch, channels, height, width)`,
+     * result `(batch, channels, out_h, out_w)`. Channels are preserved.
+     */
+    public fun pool2dOutputShape(
+        inputShape: IntArray,
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>
+    ): IntArray {
+        require(inputShape.size == 4) {
+            "Pool2d input must be rank 4 (batch, channels, height, width), got rank ${inputShape.size}"
+        }
+        val batch = inputShape[0]
+        val channels = inputShape[1]
+        val inH = inputShape[2]
+        val inW = inputShape[3]
+        val outH = (inH + 2 * padding.first - kernelSize.first) / stride.first + 1
+        val outW = (inW + 2 * padding.second - kernelSize.second) / stride.second + 1
+        return intArrayOf(batch, channels, outH, outW)
+    }
+
+    /**
+     * 2D upsample output shape: input `(batch, channels, height, width)`,
+     * result `(batch, channels, height * scale_h, width * scale_w)`.
+     */
+    public fun upsample2dOutputShape(
+        inputShape: IntArray,
+        scale: Pair<Int, Int>
+    ): IntArray {
+        require(inputShape.size == 4) {
+            "Upsample2d input must be rank 4 (batch, channels, height, width), got rank ${inputShape.size}"
+        }
+        return intArrayOf(
+            inputShape[0],
+            inputShape[1],
+            inputShape[2] * scale.first,
+            inputShape[3] * scale.second
+        )
+    }
 }

@@ -54,6 +54,11 @@ public class MnistCnn : Model<FP32, Float, Tensor<FP32, Float>, Tensor<FP32, Flo
     private fun buildModel(executionContext: ExecutionContext): Module<FP32, Float> = definition {
         network(executionContext) {
             sequential<FP32, Float> {
+                // Per-sample input shape (channels, height, width). Required for the
+                // DSL to track shapes through conv/pool stages and infer the flatten
+                // size before the dense layers.
+                input(intArrayOf(1, 28, 28))
+
                 // Stage: "conv1"
                 stage("conv1") {
                     conv2d(outChannels = 16, kernelSize = 5 to 5, stride = 1 to 1, padding = 2 to 2)
