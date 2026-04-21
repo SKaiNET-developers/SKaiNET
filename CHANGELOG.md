@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-04-21
+
+### Fixed
+
+- **Broken POM for `skainet-backend-cpu`**: The 0.19.0 POM for `sk.ainet.core:skainet-backend-cpu-*` declared a runtime dependency on `sk.ainet:skainet-backend-api-jvm:unspecified` — wrong group coordinate and no valid version, because `skainet-backend-api` was not configured to publish and the root `allprojects { group = "sk.ainet" }` disagreed with the `GROUP=sk.ainet.core` used by vanniktech's maven publish plugin. Consumers pulling 0.19.0 hit unresolved-dependency errors. Fixed by:
+  - Applying `vanniktech.mavenPublish` and setting `POM_ARTIFACT_ID=skainet-backend-api` on `skainet-backend-api` so it is actually published alongside the BOM entry that already referenced it.
+  - Aligning `allprojects { group = "sk.ainet.core" }` with the `GROUP` property and pinning `version` from `VERSION_NAME` so `project(...)` coordinates in generated POMs are consistent.
+- **CI guard**: New `verify-published-poms` job publishes to the local Maven repository and fails the build if any generated `.pom` contains `<version>unspecified</version>` or references a project-local group outside `sk.ainet.core`, preventing a regression of this class of coordinate bug.
+
 ## [0.19.0] - 2026-04-20
 
 ### Added
