@@ -2,17 +2,85 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-04-20
+
 ### Added
-- **Qwen / GPT-2 Byte-Level BPE Tokenizer**: `QwenByteLevelBpeTokenizer` implements the full GPT-2-style pipeline — byte-to-unicode mapping, GPT-2 pretokenization regex, merge-rank BPE, and atomic special-token splitting. Builds from either GGUF metadata (`fromGgufFields`) or a HuggingFace `tokenizer.json` (`fromTokenizerJson`). Verified against Qwen2.5-0.5B reference token IDs from HuggingFace `transformers`.
-- **LLaMA / SentencePiece Tokenizer**: `SentencePieceTokenizer` implements the llama.cpp SPM pipeline — whitespace escape (`▁`), code-point symbol split, **score-priority** BPE (the SPM rule, opposite of the merge-rank rule used for GPT-2 BPE), and `<0xNN>` byte fallback for unknown characters. Builds from GGUF (`tokenizer.ggml.model == "llama"`) and HuggingFace `tokenizer.json` (`model.type == "Unigram"`). Verified against TinyLlama-1.1B reference token IDs from HuggingFace `transformers`.
-- **`TokenizerFactory` with Per-Architecture Dispatch**: Tokenizer selection is now **per-architecture, not per file format**. `TokenizerFactory.fromGguf(fields)` and `.fromTokenizerJson(json)` inspect `tokenizer.ggml.model` / `model.type` and dispatch to the right implementation — Qwen/GPT-2 → byte-level BPE, LLaMA/Gemma/TinyLlama → SentencePiece — regardless of whether weights come from GGUF or SafeTensors.
+
+#### Tokenizers
+- **Qwen / GPT-2 Byte-Level BPE Tokenizer**: `QwenByteLevelBpeTokenizer` implements the full GPT-2-style pipeline — byte-to-unicode mapping, GPT-2 pretokenization regex, merge-rank BPE, and atomic special-token splitting. Builds from either GGUF metadata (`fromGgufFields`) or a HuggingFace `tokenizer.json` (`fromTokenizerJson`). Verified against Qwen2.5-0.5B reference token IDs from HuggingFace `transformers`. (#463)
+- **LLaMA / SentencePiece Tokenizer**: `SentencePieceTokenizer` implements the llama.cpp SPM pipeline — whitespace escape (`▁`), code-point symbol split, **score-priority** BPE (the SPM rule, opposite of the merge-rank rule used for GPT-2 BPE), and `<0xNN>` byte fallback for unknown characters. Builds from GGUF (`tokenizer.ggml.model == "llama"`) and HuggingFace `tokenizer.json` (`model.type == "Unigram"`). Verified against TinyLlama-1.1B reference token IDs from HuggingFace `transformers`. (#464)
+- **`TokenizerFactory` with Per-Architecture Dispatch**: Tokenizer selection is now **per-architecture, not per file format**. `TokenizerFactory.fromGguf(fields)` and `.fromTokenizerJson(json)` inspect `tokenizer.ggml.model` / `model.type` and dispatch to the right implementation — Qwen/GPT-2 → byte-level BPE, LLaMA/Gemma/TinyLlama → SentencePiece — regardless of whether weights come from GGUF or SafeTensors. (#463)
 - **`Tokenizer` Interface**: Common surface implemented by `TekkenTokenizer`, `QwenByteLevelBpeTokenizer`, and `SentencePieceTokenizer` (`encode`, `decode`, `vocabSize`, `bosTokenId`, `eosTokenId`).
 - **GGUF Tokenizer Metadata**: `GgufModelMetadata` now exposes `tokenizerModel`, `tokenizerTokens`, `tokenizerMerges`, `tokenizerTokenTypes`, `bosTokenId`, and `eosTokenId` so callers can build a tokenizer without re-parsing the raw field map.
+
+#### StableHLO → IREE compilation
+- **Whisper Encoder E2E**: Whisper encoder now compiles end-to-end via SKaiNET → StableHLO → IREE.
+- **Real StableHLO Lowerings**: `softmax`, `layerNorm`, and `rmsnorm` now lower to real StableHLO ops (reductions, `broadcast_in_dim`, standard ops) instead of `custom_call` stubs. (#467, #479, #480)
+- **New Op Converters**: `gather` / `embedding`, and `concat` / `slice` / `cast` StableHLO converters. (#483, #489)
+- **Activation Alias**: `silu` / `SiLU` registered as an alias for `swish` in `ActivationOperationsConverter`. (#484)
+- **`ConstantMaterializationPolicy`**: Seam for externalizing large weight tensors out of the StableHLO module (enables `.irpa` externalization). (#524)
+- **Splat Constant Folding**: Uniform-value tensor constants collapsed to `dense<v>` splat instead of fully materialized arrays. (#522)
+- **SSA Value Type Tracking**: Tracks SSA value types so `reshape` emits the operand's declared type, producing valid MLIR. (#521)
+- **Tensor Encoding in Output**: `tensor_encoding` comments in StableHLO output and a top-level `skainet.tensor_encodings` module attribute. (#473, #477)
+
+#### IREE `.irpa` weight files
+- **`skainet-io-iree-params` Module**: New module with `IrpaWriter` for writing IREE Parameter Archive (`.irpa`) files. Accepts `FileBacked` handles via mmap on JVM / Android for zero-copy weight export. (#523, #525, #528, #529)
+
+#### Backend API
+- **`skainet-backend-api` Module**: New module cleanly separating backend contracts; CPU backend now depends on it. (#468)
+- **`TensorEncoding` Metadata**: Accessor for `TensorSpec.metadata` and propagation through `TraceToGraphBuilder.finalize`, keeping quantization encoding visible end-to-end. (#469)
+
+#### Java API (0.19.0 surface polish)
+- Annotated `StableHloConverterFactory` and `TokenizerFactory` for idiomatic Java call sites. (#400)
+- Renamed `TensorSpecEncoding.kt` class for Java callers. (#400)
+- Added `skainet-backend-api` to the BOM. (#400)
+- New `ReleaseApiJavaTest` covering the 0.19.0 Java surface. (#400)
+
+#### Docs (Antora migration)
+- **Antora + Diátaxis**: Migrated docs to Antora with Divio / Diátaxis layout (tutorials, how-tos, reference, explanation). (#494)
+- **`skainet-docs-ui` v1.1.1**: Adopted the new theme with Diátaxis card-grid landing page. (#501)
+- **Operator Coverage Matrix**: Emit cross-backend Operator Coverage Matrix generated from `TensorOps` surface scan. (#494, #511)
+- **Ops Docs**: KDoc `@param` extraction, real version stamps, LaTeX rendering, fixed partials, and dropped void backend. (#511, #513)
+- **Dokka API Bundle**: Wired into the Antora site build. (#494)
+- **Local Mermaid**: Drop kroki, render Mermaid locally via `mmdc`. (#496)
+
+#### Platform targets
+- **`androidNativeArm32`**: Added across core modules. (#503)
 
 ### Fixed
 - **Byte-Level BPE Broken for Qwen/GPT-2 Models**: Previously there was no GPT-2-style byte-level BPE tokenizer in the repo, and `GgufModelMetadata` ignored `tokenizer.ggml.merges` entirely — so any Qwen / GPT-2 / Mistral-Nemo model encoded text into garbage tokens (byte-level chars instead of merged vocab IDs), blocking chat mode and tool calling. The new `QwenByteLevelBpeTokenizer` + `TokenizerFactory` dispatch fix the issue for both GGUF and SafeTensors sources. (#463)
 - **No SentencePiece Path for LLaMA-Family GGUF Models**: `TokenizerFactory` previously threw `UnsupportedTokenizerException` for `tokenizer.ggml.model == "llama"`, leaving LLaMA / TinyLlama / Gemma / Mistral-v0.1 GGUFs untokenizable. The new `SentencePieceTokenizer` closes that gap. (#464)
 - **GGUF UInt Fields Silently Dropped**: GGUF UINT32 fields (e.g. `tokenizer.ggml.bos_token_id`) arrive from `StreamingGGUFReader` as `kotlin.UInt`, which is a value class — *not* a subclass of `kotlin.Number` — so a plain `as? Number` cast was returning null. The new `toIntFlexible` helper handles every signed and unsigned numeric type GGUF can produce, restoring the BOS/EOS/UNK ids on the tokenizer builders.
+- **Graph Conv Output Shape Inference**: `conv1d` / `conv2d` / `conv3d` operations in graph inference previously produced placeholder output shapes, breaking downstream shape-dependent passes. Graph ops now compute real output shapes. (#536, #537)
+- **Conv1d/Conv3d Not Recorded**: `conv1d` and `conv3d` were not routed through the recording decorator, so they disappeared from traced computation graphs. (#532, #533)
+- **Static Conv1d HLO Shape Crash**: Conv1d StableHLO lowering crashed when trace attributes were missing; now falls back to `TensorRef` shape / dtype. (#530, #531)
+- **Flatten Hardcoded to MNIST Shape**: `NetworkBuilder.flatten()` returned a hardcoded `lastDimension = 1568` (the MNIST CNN value); any other architecture — e.g. a 64-channel CNN over 32×32 inputs — crashed with `ArrayIndexOutOfBoundsException` in the following `dense()` layer. The DSL now tracks per-sample shape through a new `input(IntArray)` overload, `conv1d` / `conv2d` / `conv3d`, `maxPool2d`, `avgPool2d`, and `upsample2d`, reusing the `ConvShapeUtils` arithmetic introduced in #537; `flatten()` reads the tracked shape and honors `startDim` / `endDim`, and `Conv*` layers can auto-infer `inChannels` from the declared input. (#535, #538)
+- **StableHLO `transpose` / `dot_general` MLIR Emission**: Fixed malformed MLIR produced by `stablehlo.transpose` and `stablehlo.dot_general` that blocked IREE compilation. (#520)
+- **WasmJS / JS / Native Compile**: Replaced JVM-only `putIfAbsent` with a common-stdlib idiom. (#485)
+- **Antora Container**: `HOME=/tmp` so Chromium crashpad can launch during Mermaid rendering in CI. (#534)
+- **`bundleDokkaIntoSite` CI Permission Failure**: Fixed docs pipeline permission error. (#496)
+- **Pandoc Artifacts in Docs**: Stripped pandoc anchors and demoted heading levels in migrated pages. (#496)
+
+### Changed
+- **`compile-hlo` Dependencies**: Dropped vestigial `skainet-backend-cpu` dependency from `compile-hlo` jvmMain. (#472)
+- **Moved-LLM Docs**: Replaced relocated LLM pages with redirect stubs pointing at the standalone repo. (#499)
+- **Maven Group / Version Refs**: Bumped stale version references and fixed Maven group coordinates. (#499)
+
+### Removed
+- Stale `TURBOQUANT_ISSUES.md` tracker at the repo root. (#490)
+
+### Dependencies
+- agp: 9.1.0 → 9.1.1.
+- com.networknt:json-schema-validator: 3.0.1 → 3.0.2.
+- org.jetbrains.kotlinx:kotlinx-serialization-json: bumped to 1.11.0.
+- actions/checkout: 4 → 6.
+- actions/upload-pages-artifact: 3 → 5.
+- actions/cache: 4 → 5.
+- actions/setup-java: 4 → 5.
+- actions/deploy-pages: 4 → 5.
+- actions/github-script: 8 → 9.
+- docker/build-push-action: 5 → 7.
+- docker/setup-buildx-action: 3 → 4.
 
 ## [0.18.0] - 2026-04-08
 

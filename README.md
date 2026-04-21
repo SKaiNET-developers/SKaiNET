@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.18.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.18.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.19.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.19.0")
 }
 ```
 
@@ -149,14 +149,14 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.18.0
+## What's New in 0.19.0
 
-- **TurboQuant KV-Cache Compression** — Runtime KV-cache compression for LLM inference: ~8x memory reduction with 4-bit, works with any model (LLaMA, Mistral, Gemma, Qwen). One-line integration via `KvCacheStore.turboQuant("balanced", ...)`.
-- **Memory Architecture Hardening** — First-class storage/placement abstractions (`TensorStorage`, `TensorEncoding`, `BufferHandle`, `Placement`), zero-copy ownership semantics, quantization-preserving loaders.
-- **KV-Cache Subsystem** — Dedicated `KvCacheStore` with append-by-token writes, layer/head addressing, asymmetric K/V encoding policies, and `CompressedKvAttention` SDPA bridge.
-- **Mistral Tokenizer** — Tekken (tiktoken-based BPE) tokenizer support for Mistral models.
-- **Large Tensor Fix** — Fixed Int overflow in GGUF and SafeTensors loaders for tensors > 2 GB (Gemma 4 E4B support).
-- **CPU SIMD Kernels** — Java Vector API acceleration for TurboQuant encode/decode/rotation operations.
+- **Qwen / GPT-2 Byte-Level BPE Tokenizer** — Full GPT-2-style pipeline (byte-to-unicode, pretokenization regex, merge-rank BPE, atomic special-token splitting). Builds from GGUF metadata or HuggingFace `tokenizer.json`; verified against Qwen2.5-0.5B reference token IDs.
+- **LLaMA / SentencePiece Tokenizer** — llama.cpp SPM pipeline with whitespace escape, **score-priority** BPE (SPM rule, opposite of GPT-2 merge-rank), and `<0xNN>` byte fallback. Builds from GGUF (`tokenizer.ggml.model == "llama"`) and HuggingFace Unigram `tokenizer.json`.
+- **`TokenizerFactory` Per-Architecture Dispatch** — Tokenizer selection is now per-architecture, not per file format. Qwen/GPT-2 → byte-level BPE, LLaMA/Gemma/TinyLlama → SentencePiece, regardless of whether weights come from GGUF or SafeTensors.
+- **Byte-Level BPE Fix for Qwen/GPT-2** — Previously these models encoded text into garbage tokens because `GgufModelMetadata` ignored `tokenizer.ggml.merges` entirely, blocking chat mode and tool calling. (#463)
+- **LLaMA GGUF Tokenization Fix** — `TokenizerFactory` previously threw `UnsupportedTokenizerException` for LLaMA-family GGUFs; the new SentencePiece path closes that gap. (#464)
+- **GGUF UInt Field Fix** — UINT32 fields (e.g. `tokenizer.ggml.bos_token_id`) are Kotlin `UInt` value classes, not subclasses of `Number`, and were silently dropped by `as? Number` casts. Fixed via a `toIntFlexible` helper that handles every signed and unsigned numeric type GGUF can produce.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
@@ -165,7 +165,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 ## Roadmap
 
 - **Q1 2026**: Comprehensive documentation ✅
-- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0)
+- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0); Qwen/LLaMA tokenizers ✅ (shipped in 0.19.0)
 - **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
 - **Q4 2026**: Federated learning support for multi-device training
 
