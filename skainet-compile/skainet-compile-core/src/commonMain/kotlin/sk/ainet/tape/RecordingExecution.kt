@@ -433,7 +433,20 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> = base.indexSelect(input, indices, dim)
     override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> = base.exp(tensor)
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> = base.expm1(tensor)
-    override fun <T : DType, V> scaledDotProductAttention(query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>, mask: Tensor<T, V>?, scale: Float, causal: Boolean): Tensor<T, V> = base.scaledDotProductAttention(query, key, value, mask, scale, causal)
+    override fun <T : DType, V> scaledDotProductAttention(
+        query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>,
+        mask: Tensor<T, V>?, scale: Float, causal: Boolean
+    ): Tensor<T, V> {
+        val out = base.scaledDotProductAttention(query, key, value, mask, scale, causal)
+        val params = mutableMapOf<String, Any>(
+            "scale" to scale,
+            "causal" to causal
+        )
+        @Suppress("UNCHECKED_CAST")
+        val inputs = listOfNotNull(query, key, value, mask) as List<Tensor<T, V>>
+        record(ScaledDotProductAttentionOperation(params), inputs, listOf(out))
+        return out
+    }
 }
 
 private class ConcatRecordingOperation(

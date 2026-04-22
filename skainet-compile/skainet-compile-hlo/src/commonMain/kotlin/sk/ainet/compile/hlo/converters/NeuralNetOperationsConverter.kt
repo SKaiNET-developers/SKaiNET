@@ -28,7 +28,9 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         // Normalization operations
         "batchNorm", "batchNormalization", "BatchNormalization",
         "layerNorm", "layerNormalization", "LayerNormalization",
-        "rmsNorm", "rms_norm", "RMSNorm", "RmsNorm"
+        "rmsNorm", "rms_norm", "RMSNorm", "RmsNorm",
+        // Attention
+        "scaledDotProductAttention"
     )
 
     override fun convert(
@@ -44,6 +46,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             "batchnorm", "batchnormalization" -> convertBatchNorm(node, operands, context)
             "layernorm", "layernormalization" -> convertLayerNorm(node, operands, context)
             "rmsnorm", "rms_norm" -> convertRmsNorm(node, operands, context)
+            "scaleddotproductattention" -> convertSdpa(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by NeuralNetOperationsConverter"
@@ -770,5 +773,149 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
                     "epsilon = $epsilon, feature_index = $featureIndex : $outputType"
         }
     }
-    
+
+    /**
+     * Convert scaledDotProductAttention to StableHLO.
+     * Decomposes into: Q @ K.T (batched) → scale → optional mask → softmax → @ V (batched)
+     *
+     * Input shapes: Q[B,H,S,D], K[B,H,T,D], V[B,H,T,D], optional mask[B,H,S,T] or broadcastable
+     * Output: [B,H,S,D]
+     */
+    private fun convertSdpa(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size < 3) {
+            return ConversionResult.Failure("SDPA requires at least 3 operands (Q, K, V), got ${operands.size}")
+        }
+
+        val query = operands[0]    // [B, H, S, D]
+        val key = operands[1]      // [B, H, T, D]
+        val value = operands[2]    // [B, H, T, D]
+        val mask = if (operands.size >= 4) operands[3] else null
+
+        val querySpec = node.inputs.getOrNull(0)
+        val keySpec = node.inputs.getOrNull(1)
+        val valueSpec = node.inputs.getOrNull(2)
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+
+        // Infer shapes for intermediate types
+        val qShape = querySpec?.shape ?: return ConversionResult.Failure("Unknown Q shape")
+        val kShape = keySpec?.shape ?: return ConversionResult.Failure("Unknown K shape")
+        val vShape = valueSpec?.shape ?: return ConversionResult.Failure("Unknown V shape")
+
+        val rank = qShape.size
+        if (rank != 4) {
+            return ConversionResult.Failure("SDPA expects 4D tensors [B,H,S,D], got rank $rank")
+        }
+
+        val batch = qShape[0]
+        val heads = qShape[1]
+        val seqQ = qShape[2]
+        val headDim = qShape[3]
+        val seqK = kShape[2]
+
+        val queryType = context.getValueType(query) ?: "tensor<${qShape.joinToString("x")}xf32>"
+        val keyType = context.getValueType(key) ?: "tensor<${kShape.joinToString("x")}xf32>"
+        val valueType = context.getValueType(value) ?: "tensor<${vShape.joinToString("x")}xf32>"
+
+        // scores = Q @ K.T: [B,H,S,D] @ [B,H,T,D] → [B,H,S,T]
+        // dot_general with batching_dims=[0,1], contracting_dims=[3]x[3]
+        val scoresType = "tensor<${batch}x${heads}x${seqQ}x${seqK}xf32>"
+        val scoresVal = context.nextTempValue()
+        context.emitOperation(
+            "$scoresVal = stablehlo.dot_general $query, $key, " +
+            "batching_dims = [0, 1] x [0, 1], contracting_dims = [3] x [3] " +
+            ": ($queryType, $keyType) -> $scoresType"
+        )
+        context.setValueType(scoresVal, scoresType)
+
+        // Scale
+        val scale = node.operation.parameters["scale"] as? Float
+            ?: (1.0f / kotlin.math.sqrt(headDim.toFloat()))
+        val scaledVal = context.nextTempValue()
+        val scaleConst = context.nextTempValue()
+        context.emitOperation("$scaleConst = stablehlo.constant dense<$scale> : tensor<f32>")
+        context.emitOperation(
+            "$scaledVal = stablehlo.broadcast_in_dim $scaleConst, dims = [] " +
+            ": (tensor<f32>) -> $scoresType"
+        )
+        val scaledScores = context.nextTempValue()
+        context.emitOperation(
+            "$scaledScores = stablehlo.multiply $scoresVal, $scaledVal : $scoresType"
+        )
+        context.setValueType(scaledScores, scoresType)
+
+        // Optional mask
+        var presoft = scaledScores
+        if (mask != null) {
+            val maskedVal = context.nextTempValue()
+            val maskType = context.getValueType(mask) ?: scoresType
+            context.emitOperation(
+                "$maskedVal = stablehlo.add $presoft, $mask : $scoresType"
+            )
+            context.setValueType(maskedVal, scoresType)
+            presoft = maskedVal
+        }
+
+        // Softmax over last dim (seqK)
+        // Decompose: exp(x - max(x)) / sum(exp(x - max(x)))
+        val maxVal = context.nextTempValue()
+        val maxInitVal = context.nextTempValue()
+        context.emitOperation("$maxInitVal = stablehlo.constant dense<0xFF800000> : tensor<f32>") // -inf
+        context.emitOperation(
+            "$maxVal = stablehlo.reduce($presoft init: $maxInitVal) applies stablehlo.maximum " +
+            "across dimensions = [${rank - 1}] : ($scoresType, tensor<f32>) -> " +
+            "tensor<${batch}x${heads}x${seqQ}xf32>"
+        )
+
+        val maxBcast = context.nextTempValue()
+        val reducedType = "tensor<${batch}x${heads}x${seqQ}xf32>"
+        context.emitOperation(
+            "$maxBcast = stablehlo.broadcast_in_dim $maxVal, dims = [0, 1, 2] " +
+            ": ($reducedType) -> $scoresType"
+        )
+
+        val shifted = context.nextTempValue()
+        context.emitOperation("$shifted = stablehlo.subtract $presoft, $maxBcast : $scoresType")
+
+        val expVal = context.nextTempValue()
+        context.emitOperation("$expVal = stablehlo.exponential $shifted : $scoresType")
+
+        val sumInit = context.nextTempValue()
+        context.emitOperation("$sumInit = stablehlo.constant dense<0.0> : tensor<f32>")
+        val sumVal = context.nextTempValue()
+        context.emitOperation(
+            "$sumVal = stablehlo.reduce($expVal init: $sumInit) applies stablehlo.add " +
+            "across dimensions = [${rank - 1}] : ($scoresType, tensor<f32>) -> $reducedType"
+        )
+
+        val sumBcast = context.nextTempValue()
+        context.emitOperation(
+            "$sumBcast = stablehlo.broadcast_in_dim $sumVal, dims = [0, 1, 2] " +
+            ": ($reducedType) -> $scoresType"
+        )
+
+        val weightsVal = context.nextTempValue()
+        context.emitOperation("$weightsVal = stablehlo.divide $expVal, $sumBcast : $scoresType")
+        context.setValueType(weightsVal, scoresType)
+
+        // output = weights @ V: [B,H,S,T] @ [B,H,T,D] → [B,H,S,D]
+        val resultValue = context.nextTempValue()
+        context.emitOperation(
+            "$resultValue = stablehlo.dot_general $weightsVal, $value, " +
+            "batching_dims = [0, 1] x [0, 1], contracting_dims = [3] x [2] " +
+            ": ($scoresType, $valueType) -> $outputType"
+        )
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = emptyList()
+        )
+    }
+
 }
