@@ -2369,6 +2369,22 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(query.rank == 4) { "SDPA: expected rank-4 query, got rank ${query.rank}" }
         require(key.rank == 4) { "SDPA: expected rank-4 key, got rank ${key.rank}" }
         require(value.rank == 4) { "SDPA: expected rank-4 value, got rank ${value.rank}" }
+        require(query.shape[0] == key.shape[0] && query.shape[0] == value.shape[0]) {
+            "SDPA: batch mismatch — Q=${query.shape[0]} K=${key.shape[0]} V=${value.shape[0]}"
+        }
+        require(query.shape[1] == key.shape[1] && query.shape[1] == value.shape[1]) {
+            "SDPA: head count mismatch — Q=${query.shape[1]} K=${key.shape[1]} V=${value.shape[1]}. " +
+                "For grouped-query attention, K/V must be tiled to Q's head count upstream."
+        }
+        require(query.shape[3] == key.shape[3]) {
+            "SDPA: Q head_dim (${query.shape[3]}) does not match K head_dim (${key.shape[3]})"
+        }
+        require(query.shape[3] == value.shape[3]) {
+            "SDPA: Q head_dim (${query.shape[3]}) does not match V head_dim (${value.shape[3]})"
+        }
+        require(key.shape[2] == value.shape[2]) {
+            "SDPA: K seqKV (${key.shape[2]}) does not match V seqKV (${value.shape[2]})"
+        }
 
         val batch = query.shape[0]
         val heads = query.shape[1]
