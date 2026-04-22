@@ -24,8 +24,6 @@ dependencies {
 }
 ```
 
-> **Java / Maven users** — see [Java Getting Started](docs/java-getting-started.md) for BOM setup and JVM flags.
-
 ### Hello Neural Net
 
 ```kotlin
@@ -86,13 +84,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
 | LLM inference (Llama, Gemma) | [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) |
-| Java 21+ integration | [docs/java-getting-started.md](docs/java-getting-started.md) |
-| Data loading and transforms | [docs/io-readers-guide.md](docs/io-readers-guide.md) |
-| Graph DSL (ResNet, YOLO) | [docs/graph-dsl.md](docs/graph-dsl.md) |
-| Edge AI / Arduino export | [docs/arduino-c-codegen.md](docs/arduino-c-codegen.md) |
-| MLIR / StableHLO compiler | [docs/hlo-getting-started.md](docs/hlo-getting-started.md) |
-| Architecture overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ---
 
@@ -132,20 +123,17 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 - `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition
 - Maven BOM (`sk.ainet:skainet-bom`) for one-line version management
-- Docs: [Getting Started](docs/java-getting-started.md) | [Model Training](docs/java-model-training.md)
 
 ### Edge AI: Arduino / C99 Export
 
 - Export trained models to standalone, optimized C99 with static memory allocation
 - Ready-to-use Arduino library output
-- See [arduino-c-codegen.md](docs/arduino-c-codegen.md)
 
 ### Compiler: MLIR / StableHLO
 
 - Lower Kotlin DSL to MLIR StableHLO dialect
 - Optimization passes: constant folding, operation fusion, dead code elimination
 - Valid IREE-compilable output with streaming API and public `HloGenerator`
-- See [hlo-getting-started.md](docs/hlo-getting-started.md)
 
 ---
 
