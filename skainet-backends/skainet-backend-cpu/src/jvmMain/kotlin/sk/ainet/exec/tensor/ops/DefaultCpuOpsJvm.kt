@@ -14,6 +14,7 @@ import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
+import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
@@ -76,6 +77,20 @@ internal class DefaultCpuOpsJvm(
             if (data is Q8MemorySegmentMarker) {
                 val td = data as Q8MemorySegmentTensorData
                 val transposed = Q8MemorySegmentTensorData(Shape(cols, rows), td.segment, td.segmentByteOffset)
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
+            }
+            // Lazy transpose for Q4_K packed data: swap shape, keep the packed byte
+            // array untouched. `JvmQuantizedVectorKernels.matmulQ4_KVec` derives its
+            // byte offsets from (inputDim, outputDim) via `(blockIdx * outputDim + o)`
+            // and the packed layout is input-block-major (all output rows for a given
+            // input block packed contiguously), so the same bytes produce the right
+            // values under the swapped shape. This is the DSL-path counterpart of the
+            // Q4/Q8 MemSeg lazy transpose: Q4_K weights can flow through
+            // `ops.matmul(x, ops.transpose(W))` without a dequant round-trip.
+            if (data is Q4_KTensorData) {
+                val packedData = data.packedData
+                val transposed = Q4_KBlockTensorData(Shape(cols, rows), packedData)
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
