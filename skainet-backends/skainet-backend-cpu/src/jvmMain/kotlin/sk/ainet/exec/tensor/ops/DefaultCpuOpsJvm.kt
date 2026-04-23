@@ -16,6 +16,8 @@ import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
+import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q6_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -91,6 +93,18 @@ internal class DefaultCpuOpsJvm(
             if (data is Q4_KTensorData) {
                 val packedData = data.packedData
                 val transposed = Q4_KBlockTensorData(Shape(cols, rows), packedData)
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
+            }
+            // Q6_K packed bytes mirror the Q4_K lazy-transpose pattern: the
+            // `matmulQ6_KVec` kernel reads the packed bytes in
+            // input-block-major order, so the shape swap is purely a metadata
+            // change. Unlocks running Gemma 4 E2B Q4_K_M (which uses Q6_K for
+            // FFN + embedding + lm_head) without the 12 GB FP32 dequant
+            // bloat the converter used to produce.
+            if (data is Q6_KTensorData) {
+                val packedData = data.packedData
+                val transposed = Q6_KBlockTensorData(Shape(cols, rows), packedData)
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
@@ -396,6 +410,24 @@ internal class DefaultCpuOpsJvm(
                     val batchInput = if (batchSize == 1) inputBuffer
                     else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
                     JvmQuantizedVectorKernels.matmulQ4_KVec(
+                        batchInput,
+                        bData.packedData,
+                        inputDim,
+                        outputDim,
+                        outBuffer,
+                        batch * outputDim,
+                    )
+                }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            is Q6_KTensorData -> {
+                val outBuffer = FloatArray(batchSize * outputDim)
+                for (batch in 0 until batchSize) {
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                    JvmQuantizedVectorKernels.matmulQ6_KVec(
                         batchInput,
                         bData.packedData,
                         inputDim,

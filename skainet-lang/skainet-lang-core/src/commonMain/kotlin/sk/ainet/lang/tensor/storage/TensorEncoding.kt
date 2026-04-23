@@ -40,6 +40,18 @@ public sealed interface TensorEncoding {
         }
     }
 
+    /** GGML Q6_K block quantization: 256 elements per 210-byte block. */
+    public data object Q6_K : TensorEncoding {
+        public const val BLOCK_SIZE: Int = 256
+        public const val BYTES_PER_BLOCK: Int = 210
+
+        override val name: String get() = "Q6_K"
+        override fun physicalBytes(elementCount: Long): Long {
+            val blocks = (elementCount + BLOCK_SIZE - 1) / BLOCK_SIZE
+            return blocks * BYTES_PER_BLOCK
+        }
+    }
+
     /** GGML Q8_0 block quantization: 32 elements per 34-byte block. */
     public data object Q8_0 : TensorEncoding {
         public const val BLOCK_SIZE: Int = 32

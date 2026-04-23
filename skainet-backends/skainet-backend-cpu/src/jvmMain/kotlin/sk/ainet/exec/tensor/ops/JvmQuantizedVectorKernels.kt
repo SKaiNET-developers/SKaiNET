@@ -253,6 +253,138 @@ internal object JvmQuantizedVectorKernels {
     }
 
     /**
+     * Vectorized Q6_K matrix-vector multiplication.
+     *
+     * Block format (210 bytes per 256-element block):
+     *   - bytes [  0..127]: ql — low 4 bits of each 6-bit code (half-interleaved packing)
+     *   - bytes [128..191]: qh — high 2 bits of each 6-bit code (half-interleaved packing)
+     *   - bytes [192..207]: scales — one signed int8 per 16-element sub-block
+     *   - bytes [208..209]: f16 d — block scale
+     *
+     * Packed-weights layout is input-block-major: the block for output row
+     * `o` and input-block index `bI` starts at byte offset
+     * `(bI * outputDim + o) * 210`. Callers (GemmaMemSegConverter for the
+     * Q6_K relayout; the numeric-parity tests) must honour this.
+     *
+     * Implementation strategy: dequant each 256-element block into a scratch
+     * FloatArray and do a SIMD dot-product with the matching slice of
+     * `input`. Same block size as Q4_K, different packing; the reference for
+     * the per-element dequant math is
+     * [DequantOps.dequantQ6KFromBytes] in skainet-io-gguf.
+     *
+     * @param input FP32 activation vector [inputDim]
+     * @param packedWeights Q6_K packed bytes, laid out `(blockIdx * outputDim + o) * 210`
+     * @param inputDim input dimension (must be a multiple of 256)
+     * @param outputDim output dimension
+     * @param output destination array
+     * @param outputOffset starting offset in [output]
+     */
+    fun matmulQ6_KVec(
+        input: FloatArray,
+        packedWeights: ByteArray,
+        inputDim: Int,
+        outputDim: Int,
+        output: FloatArray,
+        outputOffset: Int = 0
+    ) {
+        val blockSize = 256
+        val bytesPerBlock = 210
+        val blocksPerInputDim = (inputDim + blockSize - 1) / blockSize
+        // Reusable scratch — avoids per-block allocation across the
+        // outputDim * blocksPerInputDim hot loop.
+        val scratch = FloatArray(blockSize)
+        val floatStep = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(blockSize)
+
+        for (o in 0 until outputDim) {
+            var acc = 0f
+            for (blockIdx in 0 until blocksPerInputDim) {
+                val weightBlockOffset = (blockIdx * outputDim + o) * bytesPerBlock
+                dequantQ6_KBlock(packedWeights, weightBlockOffset, scratch, 0)
+
+                val inputStart = blockIdx * blockSize
+                if (inputStart >= inputDim) continue
+
+                val elemsInBlock = minOf(blockSize, inputDim - inputStart)
+
+                if (elemsInBlock >= floatStep) {
+                    val bound = if (elemsInBlock == blockSize) loopBound
+                                else floatSpecies.loopBound(elemsInBlock)
+                    var idx = 0
+                    while (idx < bound) {
+                        val inputVec = FloatVector.fromArray(floatSpecies, input, inputStart + idx)
+                        val codeVec = FloatVector.fromArray(floatSpecies, scratch, idx)
+                        acc += inputVec.mul(codeVec).reduceLanes(VectorOperators.ADD)
+                        idx += floatStep
+                    }
+                    while (idx < elemsInBlock) {
+                        acc += input[inputStart + idx] * scratch[idx]
+                        idx++
+                    }
+                } else {
+                    for (idx in 0 until elemsInBlock) {
+                        acc += input[inputStart + idx] * scratch[idx]
+                    }
+                }
+            }
+            output[outputOffset + o] = acc
+        }
+    }
+
+    /**
+     * Dequantize one 256-element Q6_K block into [scratch] starting at
+     * [scratchOffset]. Mirrors
+     * `DequantOps.dequantQ6KFromBytes` line-for-line — see that method for
+     * the authoritative spec. Scalar implementation; the hot loop is the
+     * SIMD dot-product that follows, so per-block dequant cost is
+     * amortized by the outputDim-wide loop.
+     */
+    private fun dequantQ6_KBlock(
+        packedWeights: ByteArray,
+        blockByteOffset: Int,
+        scratch: FloatArray,
+        scratchOffset: Int
+    ) {
+        val qlBase0 = blockByteOffset
+        val qhBase0 = blockByteOffset + 128
+        val scBase0 = blockByteOffset + 192
+        val dOffset = blockByteOffset + 208
+
+        val dBits = (packedWeights[dOffset + 1].toInt() and 0xFF shl 8) or
+            (packedWeights[dOffset].toInt() and 0xFF)
+        val d = halfToFloat(dBits)
+
+        for (half in 0..1) {
+            val qlBase = qlBase0 + half * 64
+            val qhBase = qhBase0 + half * 32
+            val scBase = scBase0 + half * 8
+            val outBase = scratchOffset + half * 128
+            for (l in 0 until 32) {
+                val isIdx = l / 16
+
+                val ql0 = packedWeights[qlBase + l].toInt() and 0xFF
+                val ql32 = packedWeights[qlBase + l + 32].toInt() and 0xFF
+                val qhL = packedWeights[qhBase + l].toInt() and 0xFF
+
+                val q1 = ((ql0 and 0x0F) or ((qhL and 0x03) shl 4)) - 32
+                val q2 = ((ql32 and 0x0F) or (((qhL ushr 2) and 0x03) shl 4)) - 32
+                val q3 = ((ql0 ushr 4) or (((qhL ushr 4) and 0x03) shl 4)) - 32
+                val q4 = ((ql32 ushr 4) or (((qhL ushr 6) and 0x03) shl 4)) - 32
+
+                val sc1 = packedWeights[scBase + isIdx + 0].toInt()  // signed
+                val sc2 = packedWeights[scBase + isIdx + 2].toInt()
+                val sc3 = packedWeights[scBase + isIdx + 4].toInt()
+                val sc4 = packedWeights[scBase + isIdx + 6].toInt()
+
+                scratch[outBase + l +  0] = d * sc1 * q1
+                scratch[outBase + l + 32] = d * sc2 * q2
+                scratch[outBase + l + 64] = d * sc3 * q3
+                scratch[outBase + l + 96] = d * sc4 * q4
+            }
+        }
+    }
+
+    /**
      * Convert f16 bits to float32.
      */
     private fun halfToFloat(hbits: Int): Float {
