@@ -902,3 +902,36 @@ public class UnsqueezeOperation<T : DType, V>(
     
     override fun clone(newParameters: Map<String, Any>): Operation = UnsqueezeOperation<T, V>(newParameters)
 }
+
+/**
+ * Scaled dot-product attention operation for tape recording.
+ * Output shape = query shape: [batch, nHeads, seqLen, headDim]
+ */
+public class ScaledDotProductAttentionOperation(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("scaledDotProductAttention", "nn", parameters) {
+
+    override fun <T : sk.ainet.lang.types.DType, V> execute(
+        inputs: List<sk.ainet.lang.tensor.Tensor<T, V>>
+    ): List<sk.ainet.lang.tensor.Tensor<T, V>> = emptyList()
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        return if (inputs.size >= 3) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("SDPA requires at least 3 inputs"))
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.size >= 3) { "SDPA requires at least 3 inputs (query, key, value)" }
+        return listOf(
+            TensorSpec(
+                name = "sdpa_output",
+                shape = inputs[0].shape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs.any { it.requiresGrad }
+            )
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation =
+        ScaledDotProductAttentionOperation(newParameters)
+}
