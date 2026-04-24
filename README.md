@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.19.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.19.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.20.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.20.0")
 }
 ```
 
@@ -137,14 +137,13 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.19.0
+## What's New in 0.20.0
 
-- **Qwen / GPT-2 Byte-Level BPE Tokenizer** — Full GPT-2-style pipeline (byte-to-unicode, pretokenization regex, merge-rank BPE, atomic special-token splitting). Builds from GGUF metadata or HuggingFace `tokenizer.json`; verified against Qwen2.5-0.5B reference token IDs.
-- **LLaMA / SentencePiece Tokenizer** — llama.cpp SPM pipeline with whitespace escape, **score-priority** BPE (SPM rule, opposite of GPT-2 merge-rank), and `<0xNN>` byte fallback. Builds from GGUF (`tokenizer.ggml.model == "llama"`) and HuggingFace Unigram `tokenizer.json`.
-- **`TokenizerFactory` Per-Architecture Dispatch** — Tokenizer selection is now per-architecture, not per file format. Qwen/GPT-2 → byte-level BPE, LLaMA/Gemma/TinyLlama → SentencePiece, regardless of whether weights come from GGUF or SafeTensors.
-- **Byte-Level BPE Fix for Qwen/GPT-2** — Previously these models encoded text into garbage tokens because `GgufModelMetadata` ignored `tokenizer.ggml.merges` entirely, blocking chat mode and tool calling. (#463)
-- **LLaMA GGUF Tokenization Fix** — `TokenizerFactory` previously threw `UnsupportedTokenizerException` for LLaMA-family GGUFs; the new SentencePiece path closes that gap. (#464)
-- **GGUF UInt Field Fix** — UINT32 fields (e.g. `tokenizer.ggml.bos_token_id`) are Kotlin `UInt` value classes, not subclasses of `Number`, and were silently dropped by `as? Number` casts. Fixed via a `toIntFlexible` helper that handles every signed and unsigned numeric type GGUF can produce.
+- **Q6_K Native Matmul** — New `Q6_KTensorData` stores 210-byte ggml blocks verbatim and a Vector-API SIMD kernel (`matmulQ6_KVec`) dispatches from `DefaultCpuOpsJvm.chooseQuantizedMatmul`. Together with the existing Q4_K infra, this unblocks running Gemma 4 E2B Q4_K_M (and any mostly-Q4_K + Q6_K checkpoint) through the DSL path without a ~12 GB FP32 dequant blow-up at load.
+- **Q4_K / Q6_K Lazy Shape-Swap Transpose** — `ops.transpose` on `Q4_KTensorData` / `Q6_KTensorData` now returns a new tensor wrapping the *same* packed byte array with swapped shape, matching the existing Q4/Q8 MemorySegment path. `linearProject(x, W)` can run `matmul(x, transpose(W))` on Q4_K/Q6_K weights without round-tripping through FP32 (Δ logits = 4.29e-6 vs FP32 baseline on Gemma).
+- **SDPA → StableHLO / IREE** — `scaledDotProductAttention` is now recorded by `RecordingExecution` and lowered to StableHLO as `dot_general(Q, K.T)` → scale → optional mask → softmax → `dot_general(weights, V)`, so attention blocks compile end-to-end through the SKaiNET → StableHLO → IREE path. (#543)
+- **SDPA Q/K/V Shape Validation** — Mismatched `head_dim` between Q/K or Q/V (seen in real Gemma 4 E2B with mixed-head-dim layers sharing a KV cache) used to surface as an `ArrayIndexOutOfBoundsException` deep in the dot-product loop; `scaledDotProductAttention` now fails fast with `require()` messages naming the offending dimensions.
+- **Toolchain bumps** — Kotlin 2.3.21, AGP 9.2.0, Ktor client 3.4.3.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
@@ -153,7 +152,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 ## Roadmap
 
 - **Q1 2026**: Comprehensive documentation ✅
-- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0); Qwen/LLaMA tokenizers ✅ (shipped in 0.19.0)
+- **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0); Qwen/LLaMA tokenizers ✅ (shipped in 0.20.0)
 - **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
 - **Q4 2026**: Federated learning support for multi-device training
 

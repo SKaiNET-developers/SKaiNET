@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-04-24
+
+### Added
+
+#### Quantized matmul (Q4_K / Q6_K on CPU)
+- **Q6_K Native Matmul**: New `Q6_KTensorData` / `Q6_KBlockTensorData` in `skainet-lang-core` stores 210-byte ggml Q6_K blocks verbatim (128 `ql` + 64 `qh` + 16 scales + 2 f16 `d`), row-major by default, with a `dequantizeBlock` path matching the `DequantOps` reference line-for-line. `DefaultCpuOpsJvm.chooseQuantizedMatmul` dispatches to a new `JvmQuantizedVectorKernels.matmulQ6_KVec` SIMD kernel (Kotlin Vector API, same `floatSpecies` as the Q4_K / Q8_0 kernels) using a dequant-one-block-to-scratch-then-SIMD-dot pattern. New `TensorEncoding.Q6_K` variant. Unblocks running Gemma 4 E2B Q4_K_M (and any mostly-Q4_K + Q6_K checkpoint) through the DSL path without a ~12 GB FP32 dequant blow-up at load.
+- **Q4_K Lazy Shape-Swap Transpose**: `DefaultCpuOpsJvm.transpose(Q4_KTensorData)` now returns a new `Q4_KBlockTensorData` wrapping the *same* packed byte array with swapped shape — mirroring the existing Q4/Q8 MemorySegment lazy-transpose path. `matmulQ4_KVec`'s input-block-major layout produces correct values under the swapped shape without any physical data reordering, so `linearProject(x, W)` can run `matmul(x, transpose(Q4_K_W))` without round-tripping through FP32. Validated at the DSL level by `GemmaDslQ4KTest` in the transformers repo (Δ logits = 4.29e-6 vs the FP32 baseline).
+- **Q6_K Lazy Transpose**: Same shape-swap specialization extended to `Q6_KTensorData`, enabling the same DSL path for Q6_K weights.
+- **Lazy-Transpose Invariant Tests**: New `QuantizedMemSegMatmulTest` cases pin the two load-bearing properties of the Q4_K and Q6_K transpose specializations — (1) shape is swapped; (2) `packedData` is the SAME byte-array reference, not a copy — so the path cannot silently regress to the generic element-wise transpose (which would `ClassCastException` on packed nibbles).
+
+#### StableHLO → IREE compilation
+- **SDPA Recording + StableHLO Emission**: `scaledDotProductAttention` is now recorded by `RecordingExecution` (was silently delegating without recording, like `conv1d` before #532) and lowered to StableHLO by `NeuralNetOperationsConverter`. The decomposition is `dot_general(Q, K.T)` (batching dims `[0,1]`, contracting dims `[3]×[3]`) → scale → optional mask → softmax (max-subtract-exp-sum-div) → `dot_general(weights, V)` (contracting dims `[3]×[2]`). New `ScaledDotProductAttentionOperation` in `TensorOperations` with output-shape inference (output shape = query shape). New `SdpaHloExportTest` verifies tape → graph → MLIR with `dot_general`; `TapeAttentionPermuteBugTest` pins a regression around raw array permute producing zero constants. `ShapeOperationsConverter.concatenate` input-type annotation fix. (#543)
+
+### Fixed
+- **SDPA Q/K/V Shape Validation**: `scaledDotProductAttention` previously required only rank-4 inputs, so a mismatch in `head_dim` (e.g. Q=512 vs K=256, as seen in real Gemma 4 E2B where mixed-head-dim layers share a KV cache) surfaced as an `ArrayIndexOutOfBoundsException` buried 2000+ lines deep in the dot-product loop. Added `require()` preconditions on matching batch, head count, Q/K head_dim, Q/V head_dim, and K/V `seqKV`, each with a message naming the offending dimensions. New `SDPAShapeValidationTest` (5 cases, `commonTest`) pins the contract.
+
+### Dependencies
+- Kotlin: 2.3.20 → 2.3.21 (including JVM toolchain and `plugin.serialization`).
+- Android Gradle Plugin: 9.1.1 → 9.2.0.
+- `io.ktor:ktor-client-core`: 3.4.2 → 3.4.3.
+
 ## [0.19.1] - 2026-04-21
 
 ### Fixed
