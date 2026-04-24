@@ -10,6 +10,10 @@ import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
+import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q4_KTensorData
+import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q6_KTensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.TensorData
@@ -123,6 +127,60 @@ class QuantizedMemSegMatmulTest {
         assertTrue(transposed.data is Q8MemorySegmentMarker,
             "Transpose should preserve Q8 MemorySegment data type")
         arena.close()
+    }
+
+    @Test
+    fun `Q4_K lazy transpose swaps shape dimensions and keeps packed bytes`() {
+        // Two Q4_K blocks (256 elements each = 144 bytes each). Content doesn't
+        // matter for the shape/identity invariant — use random bytes.
+        val numBlocks = 2
+        val bytes = ByteArray(numBlocks * Q4_KTensorData.BYTES_PER_BLOCK) { i -> (i and 0x7F).toByte() }
+        val q4k = Q4_KBlockTensorData(
+            Shape(numBlocks, Q4_KTensorData.BLOCK_SIZE),
+            bytes
+        )
+        @Suppress("UNCHECKED_CAST")
+        val tensor: Tensor<FP32, Float> = VoidOpsTensor(q4k as TensorData<FP32, Float>, FP32::class)
+
+        val transposed = ops.transpose(tensor)
+        assertEquals(Shape(Q4_KTensorData.BLOCK_SIZE, numBlocks), transposed.shape)
+        assertTrue(
+            transposed.data is Q4_KTensorData,
+            "transpose must preserve Q4_K packed layout, got ${transposed.data::class.simpleName}"
+        )
+        // Lazy invariant: the packed byte array must be the SAME reference —
+        // no copy, no re-layout. This is what distinguishes the specialized
+        // branch from the fallback per-element transpose (which would crash
+        // on Byte → Float casts, the very regression this test guards).
+        val transposedPacked = (transposed.data as Q4_KTensorData).packedData
+        assertTrue(
+            transposedPacked === bytes,
+            "Q4_K lazy transpose must keep the same packedData reference (zero-copy)"
+        )
+    }
+
+    @Test
+    fun `Q6_K lazy transpose swaps shape dimensions and keeps packed bytes`() {
+        val numBlocks = 2
+        val bytes = ByteArray(numBlocks * Q6_KTensorData.BYTES_PER_BLOCK) { i -> (i and 0x7F).toByte() }
+        val q6k = Q6_KBlockTensorData(
+            Shape(numBlocks, Q6_KTensorData.BLOCK_SIZE),
+            bytes
+        )
+        @Suppress("UNCHECKED_CAST")
+        val tensor: Tensor<FP32, Float> = VoidOpsTensor(q6k as TensorData<FP32, Float>, FP32::class)
+
+        val transposed = ops.transpose(tensor)
+        assertEquals(Shape(Q6_KTensorData.BLOCK_SIZE, numBlocks), transposed.shape)
+        assertTrue(
+            transposed.data is Q6_KTensorData,
+            "transpose must preserve Q6_K packed layout, got ${transposed.data::class.simpleName}"
+        )
+        val transposedPacked = (transposed.data as Q6_KTensorData).packedData
+        assertTrue(
+            transposedPacked === bytes,
+            "Q6_K lazy transpose must keep the same packedData reference (zero-copy)"
+        )
     }
 
     // ── Q4_0 Matmul Tests ───────────────────────────────────────────────────
