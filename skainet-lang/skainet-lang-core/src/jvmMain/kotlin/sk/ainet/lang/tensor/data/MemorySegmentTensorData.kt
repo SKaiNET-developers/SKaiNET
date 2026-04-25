@@ -171,16 +171,21 @@ public class MemorySegmentTensorData<T : DType> private constructor(
  * A [TensorDataFactory] that produces [MemorySegmentTensorData] tensors,
  * keeping all data off-heap for SIMD-friendly access.
  *
- * The factory manages a shared [Arena] whose lifetime should be tied to
- * the owning execution context.
+ * Per-tensor segments are allocated from `Arena.ofAuto()` so the underlying
+ * direct memory is reclaimed by the GC Cleaner once the wrapping tensor is
+ * unreachable. A long-lived shared arena would have pinned every op-output
+ * tensor allocated by `DefaultCpuOpsBase` for the factory's lifetime — on a
+ * 30-layer Gemma 4 forward pass that piled up tens of GB of direct memory
+ * monotonically and exhausted `-XX:MaxDirectMemorySize` regardless of cap.
+ * Loaders that need explicit lifetime control should allocate their own
+ * `Arena.ofShared()` and use the slice constructor of [MemorySegmentTensorData].
  */
 public class MemorySegmentTensorDataFactory(
-    private val arena: Arena = Arena.ofShared(),
     private val alignment: Long = 64L,
 ) : TensorDataFactory, AutoCloseable {
 
     private fun <T : DType> allocate(shape: Shape): MemorySegmentTensorData<T> =
-        MemorySegmentTensorData(shape, arena, alignment)
+        MemorySegmentTensorData(shape, Arena.ofAuto(), alignment)
 
     // ---- TensorDataFactory ----
 
@@ -416,6 +421,7 @@ public class MemorySegmentTensorDataFactory(
     }
 
     override fun close() {
-        arena.close()
+        // No shared arena to close; per-tensor `Arena.ofAuto()` segments
+        // are reclaimed by the GC Cleaner.
     }
 }
