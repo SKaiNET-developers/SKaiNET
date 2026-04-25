@@ -82,59 +82,45 @@ internal object JvmQuantizedVectorKernels {
         qs: ByteArray,
         qsOffset: Int,
         scale: Float,
-        min: Float
+        min: Float,
+        codeBuf: FloatArray
     ): Float {
-        val subBlockSize = 32
-        var codeSum = 0f
-        var inputSum = 0f
-
-        val floatStep = floatSpecies.length()
-        var idx = 0
-
-        if (floatStep <= subBlockSize) {
-            val loopBound = floatSpecies.loopBound(subBlockSize)
-
-            while (idx < loopBound) {
-                // Load input floats
-                val inputVec = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
-
-                // Accumulate input sum
-                inputSum += inputVec.reduceLanes(VectorOperators.ADD)
-
-                // Unpack 4-bit codes (2 codes per byte) and convert to floats
-                val codeFloats = FloatArray(floatStep)
-                for (i in 0 until floatStep) {
-                    val elemIdx = idx + i
-                    val byteIdx = qsOffset + elemIdx / 2
-                    val codeByte = qs[byteIdx].toInt() and 0xFF
-                    val code = if (elemIdx % 2 == 0) codeByte and 0x0F else codeByte ushr 4
-                    codeFloats[i] = code.toFloat()
-                }
-                val codeVec = FloatVector.fromArray(floatSpecies, codeFloats, 0)
-
-                // Multiply input by codes and accumulate
-                val product = inputVec.mul(codeVec)
-                codeSum += product.reduceLanes(VectorOperators.ADD)
-
-                idx += floatStep
-            }
+        // Unpack 16 packed bytes → 32 float codes (low nibble = even idx, high = odd).
+        // Sequential writes are friendly to the JIT auto-vectorizer; no per-call allocation.
+        for (i in 0 until 16) {
+            val b = qs[qsOffset + i].toInt() and 0xFF
+            codeBuf[2 * i] = (b and 0x0F).toFloat()
+            codeBuf[2 * i + 1] = (b ushr 4).toFloat()
         }
 
-        // Scalar tail
-        while (idx < subBlockSize) {
-            val inputVal = input[inputOffset + idx]
-            inputSum += inputVal
+        // SIMD multiply-accumulate. Reduce once at the end (was per-iter horizontal reduce).
+        val step = floatSpecies.length()
+        var codeAcc = FloatVector.zero(floatSpecies)
+        var inputAcc = FloatVector.zero(floatSpecies)
+        var idx = 0
+        val loopBound = floatSpecies.loopBound(SUB_BLOCK_SIZE)
+        while (idx < loopBound) {
+            val iv = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+            val cv = FloatVector.fromArray(floatSpecies, codeBuf, idx)
+            codeAcc = iv.fma(cv, codeAcc)
+            inputAcc = iv.add(inputAcc)
+            idx += step
+        }
+        var codeSum = codeAcc.reduceLanes(VectorOperators.ADD)
+        var inputSum = inputAcc.reduceLanes(VectorOperators.ADD)
 
-            val byteIdx = qsOffset + idx / 2
-            val codeByte = qs[byteIdx].toInt() and 0xFF
-            val code = if (idx % 2 == 0) codeByte and 0x0F else codeByte ushr 4
-            codeSum += inputVal * code.toFloat()
-
+        // Scalar tail (only fires if floatStep > SUB_BLOCK_SIZE; not on x86 today).
+        while (idx < SUB_BLOCK_SIZE) {
+            val v = input[inputOffset + idx]
+            codeSum += v * codeBuf[idx]
+            inputSum += v
             idx++
         }
 
         return codeSum * scale + inputSum * min
     }
+
+    private const val SUB_BLOCK_SIZE = 32
 
     /**
      * Vectorized Q8_0 matrix-vector multiplication.
@@ -204,51 +190,56 @@ internal object JvmQuantizedVectorKernels {
         val bytesPerBlock = 144  // 2 d + 2 dMin + 12 scales + 128 codes
         val blocksPerInputDim = (inputDim + blockSize - 1) / blockSize
 
-        for (o in 0 until outputDim) {
-            var acc = 0f
+        parallelChunks(outputDim) { startO, endO ->
+            // Each task owns a contiguous output-row range and its own scratch
+            // FloatArray to avoid cross-thread contention.
+            val codeBuf = FloatArray(subBlockSize)
+            for (o in startO until endO) {
+                var acc = 0f
 
-            for (blockIdx in 0 until blocksPerInputDim) {
-                val weightBlockOffset = (blockIdx * outputDim + o) * bytesPerBlock
+                for (blockIdx in 0 until blocksPerInputDim) {
+                    val weightBlockOffset = (blockIdx * outputDim + o) * bytesPerBlock
 
-                // Read f16 d and dMin
-                val dBits = (packedWeights[weightBlockOffset + 1].toInt() and 0xFF shl 8) or
-                    (packedWeights[weightBlockOffset].toInt() and 0xFF)
-                val dMinBits = (packedWeights[weightBlockOffset + 3].toInt() and 0xFF shl 8) or
-                    (packedWeights[weightBlockOffset + 2].toInt() and 0xFF)
-                val d = halfToFloat(dBits)
-                val dMin = halfToFloat(dMinBits)
+                    // Read f16 d and dMin
+                    val dBits = (packedWeights[weightBlockOffset + 1].toInt() and 0xFF shl 8) or
+                        (packedWeights[weightBlockOffset].toInt() and 0xFF)
+                    val dMinBits = (packedWeights[weightBlockOffset + 3].toInt() and 0xFF shl 8) or
+                        (packedWeights[weightBlockOffset + 2].toInt() and 0xFF)
+                    val d = halfToFloat(dBits)
+                    val dMin = halfToFloat(dMinBits)
 
-                // Process each sub-block
-                val scalesOffset = weightBlockOffset + 4
-                val codesOffset = weightBlockOffset + 16
+                    // Process each sub-block
+                    val scalesOffset = weightBlockOffset + 4
+                    val codesOffset = weightBlockOffset + 16
 
-                for (subBlockIdx in 0 until subBlocksPerBlock) {
-                    // Extract 12-bit packed scale/min indices
-                    val bitPos = subBlockIdx * 12
-                    val bytePos = bitPos / 8
-                    val bitShift = bitPos % 8
+                    for (subBlockIdx in 0 until subBlocksPerBlock) {
+                        // Extract 12-bit packed scale/min indices
+                        val bitPos = subBlockIdx * 12
+                        val bytePos = bitPos / 8
+                        val bitShift = bitPos % 8
 
-                    val packed = (packedWeights[scalesOffset + bytePos].toInt() and 0xFF) or
-                        ((packedWeights.getOrElse(scalesOffset + bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-                        ((packedWeights.getOrElse(scalesOffset + bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
+                        val packed = (packedWeights[scalesOffset + bytePos].toInt() and 0xFF) or
+                            ((packedWeights.getOrElse(scalesOffset + bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
+                            ((packedWeights.getOrElse(scalesOffset + bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
 
-                    val scaleIdx = (packed ushr bitShift) and 0x3F
-                    val minIdx = (packed ushr (bitShift + 6)) and 0x3F
+                        val scaleIdx = (packed ushr bitShift) and 0x3F
+                        val minIdx = (packed ushr (bitShift + 6)) and 0x3F
 
-                    val scale = d * (scaleIdx / 63.0f)
-                    val min = dMin * (minIdx / 63.0f)
+                        val scale = d * (scaleIdx / 63.0f)
+                        val min = dMin * (minIdx / 63.0f)
 
-                    // Input and codes offsets for this sub-block
-                    val inputStart = blockIdx * blockSize + subBlockIdx * subBlockSize
-                    val qsStart = codesOffset + subBlockIdx * 16  // 16 bytes = 32 4-bit codes
+                        // Input and codes offsets for this sub-block
+                        val inputStart = blockIdx * blockSize + subBlockIdx * subBlockSize
+                        val qsStart = codesOffset + subBlockIdx * 16  // 16 bytes = 32 4-bit codes
 
-                    if (inputStart < inputDim) {
-                        acc += dotQ4_KSubBlock(input, inputStart, packedWeights, qsStart, scale, min)
+                        if (inputStart < inputDim) {
+                            acc += dotQ4_KSubBlock(input, inputStart, packedWeights, qsStart, scale, min, codeBuf)
+                        }
                     }
                 }
-            }
 
-            output[outputOffset + o] = acc
+                output[outputOffset + o] = acc
+            }
         }
     }
 
@@ -290,44 +281,46 @@ internal object JvmQuantizedVectorKernels {
         val blockSize = 256
         val bytesPerBlock = 210
         val blocksPerInputDim = (inputDim + blockSize - 1) / blockSize
-        // Reusable scratch — avoids per-block allocation across the
-        // outputDim * blocksPerInputDim hot loop.
-        val scratch = FloatArray(blockSize)
         val floatStep = floatSpecies.length()
         val loopBound = floatSpecies.loopBound(blockSize)
 
-        for (o in 0 until outputDim) {
-            var acc = 0f
-            for (blockIdx in 0 until blocksPerInputDim) {
-                val weightBlockOffset = (blockIdx * outputDim + o) * bytesPerBlock
-                dequantQ6_KBlock(packedWeights, weightBlockOffset, scratch, 0)
+        parallelChunks(outputDim) { startO, endO ->
+            // Per-task scratch — must not be shared across worker threads.
+            val scratch = FloatArray(blockSize)
+            for (o in startO until endO) {
+                var accVec = FloatVector.zero(floatSpecies)
+                var accScalar = 0f
+                for (blockIdx in 0 until blocksPerInputDim) {
+                    val weightBlockOffset = (blockIdx * outputDim + o) * bytesPerBlock
+                    dequantQ6_KBlock(packedWeights, weightBlockOffset, scratch, 0)
 
-                val inputStart = blockIdx * blockSize
-                if (inputStart >= inputDim) continue
+                    val inputStart = blockIdx * blockSize
+                    if (inputStart >= inputDim) continue
 
-                val elemsInBlock = minOf(blockSize, inputDim - inputStart)
+                    val elemsInBlock = minOf(blockSize, inputDim - inputStart)
 
-                if (elemsInBlock >= floatStep) {
-                    val bound = if (elemsInBlock == blockSize) loopBound
-                                else floatSpecies.loopBound(elemsInBlock)
-                    var idx = 0
-                    while (idx < bound) {
-                        val inputVec = FloatVector.fromArray(floatSpecies, input, inputStart + idx)
-                        val codeVec = FloatVector.fromArray(floatSpecies, scratch, idx)
-                        acc += inputVec.mul(codeVec).reduceLanes(VectorOperators.ADD)
-                        idx += floatStep
-                    }
-                    while (idx < elemsInBlock) {
-                        acc += input[inputStart + idx] * scratch[idx]
-                        idx++
-                    }
-                } else {
-                    for (idx in 0 until elemsInBlock) {
-                        acc += input[inputStart + idx] * scratch[idx]
+                    if (elemsInBlock >= floatStep) {
+                        val bound = if (elemsInBlock == blockSize) loopBound
+                                    else floatSpecies.loopBound(elemsInBlock)
+                        var idx = 0
+                        while (idx < bound) {
+                            val inputVec = FloatVector.fromArray(floatSpecies, input, inputStart + idx)
+                            val codeVec = FloatVector.fromArray(floatSpecies, scratch, idx)
+                            accVec = inputVec.fma(codeVec, accVec)
+                            idx += floatStep
+                        }
+                        while (idx < elemsInBlock) {
+                            accScalar += input[inputStart + idx] * scratch[idx]
+                            idx++
+                        }
+                    } else {
+                        for (idx in 0 until elemsInBlock) {
+                            accScalar += input[inputStart + idx] * scratch[idx]
+                        }
                     }
                 }
+                output[outputOffset + o] = accVec.reduceLanes(VectorOperators.ADD) + accScalar
             }
-            output[outputOffset + o] = acc
         }
     }
 
@@ -520,6 +513,7 @@ internal object JvmQuantizedVectorKernels {
         val subBlocksPerBlock = 8
         val bytesPerBlock = 144L
         val blocksPerRow = (inputDim + blockSize - 1) / blockSize
+        val codeBuf = FloatArray(subBlockSize)  // reused across all sub-blocks
 
         for (o in 0 until outputDim) {
             var acc = 0f
@@ -559,7 +553,7 @@ internal object JvmQuantizedVectorKernels {
                     val qsStart = codesOff + sb * 16L
 
                     if (inputStart < inputDim) {
-                        acc += dotQ4_KSubBlockMemSeg(input, inputStart, weightSeg, qsStart, scale, min)
+                        acc += dotQ4_KSubBlockMemSeg(input, inputStart, weightSeg, qsStart, scale, min, codeBuf)
                     }
                 }
             }
@@ -578,38 +572,34 @@ internal object JvmQuantizedVectorKernels {
         qsOffset: Long,
         scale: Float,
         min: Float,
+        codeBuf: FloatArray
     ): Float {
-        val subBlockSize = 32
-        var codeSum = 0f
-        var inputSum = 0f
-
-        val floatStep = floatSpecies.length()
-        var idx = 0
-
-        if (floatStep <= subBlockSize) {
-            val loopBound = floatSpecies.loopBound(subBlockSize)
-            while (idx < loopBound) {
-                val inputVec = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
-                inputSum += inputVec.reduceLanes(VectorOperators.ADD)
-
-                val codeFloats = FloatArray(floatStep)
-                for (i in 0 until floatStep) {
-                    val elemIdx = idx + i
-                    val packedByte = weightSeg.get(JAVA_BYTE_LE, qsOffset + (elemIdx / 2).toLong()).toInt() and 0xFF
-                    codeFloats[i] = (if (elemIdx % 2 == 0) packedByte and 0x0F else packedByte ushr 4).toFloat()
-                }
-                val codeVec = FloatVector.fromArray(floatSpecies, codeFloats, 0)
-                codeSum += inputVec.mul(codeVec).reduceLanes(VectorOperators.ADD)
-                idx += floatStep
-            }
+        // Unpack 16 packed bytes from MemorySegment → 32 float codes.
+        for (i in 0 until 16) {
+            val b = weightSeg.get(JAVA_BYTE_LE, qsOffset + i.toLong()).toInt() and 0xFF
+            codeBuf[2 * i] = (b and 0x0F).toFloat()
+            codeBuf[2 * i + 1] = (b ushr 4).toFloat()
         }
 
-        while (idx < subBlockSize) {
-            val inputVal = input[inputOffset + idx]
-            inputSum += inputVal
-            val packedByte = weightSeg.get(JAVA_BYTE_LE, qsOffset + (idx / 2).toLong()).toInt() and 0xFF
-            val code = if (idx % 2 == 0) packedByte and 0x0F else packedByte ushr 4
-            codeSum += inputVal * code.toFloat()
+        val step = floatSpecies.length()
+        var codeAcc = FloatVector.zero(floatSpecies)
+        var inputAcc = FloatVector.zero(floatSpecies)
+        var idx = 0
+        val loopBound = floatSpecies.loopBound(SUB_BLOCK_SIZE)
+        while (idx < loopBound) {
+            val iv = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+            val cv = FloatVector.fromArray(floatSpecies, codeBuf, idx)
+            codeAcc = iv.fma(cv, codeAcc)
+            inputAcc = iv.add(inputAcc)
+            idx += step
+        }
+        var codeSum = codeAcc.reduceLanes(VectorOperators.ADD)
+        var inputSum = inputAcc.reduceLanes(VectorOperators.ADD)
+
+        while (idx < SUB_BLOCK_SIZE) {
+            val v = input[inputOffset + idx]
+            codeSum += v * codeBuf[idx]
+            inputSum += v
             idx++
         }
 

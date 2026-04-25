@@ -118,14 +118,21 @@ internal class DefaultCpuOpsJvm(
                 val arena = Arena.ofAuto()
                 val result = MemorySegmentTensorData<T>(Shape(cols, rows), arena)
                 val src = data as MemorySegmentBackedData
-                val srcOff = src.segmentByteOffset
-                val dstOff = result.segmentByteOffset
+                val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT
+                // Bulk-load source into FloatArray, transpose via tight scalar
+                // loop (JIT auto-vectorizes), bulk-write destination. Replaces
+                // O(rows*cols) per-element VarHandle.get/set which dominated
+                // attention-path transposes.
+                val srcArr = FloatArray(rows * cols)
+                java.lang.foreign.MemorySegment.copy(src.segment, floatLayout, src.segmentByteOffset, srcArr, 0, rows * cols)
+                val dstArr = FloatArray(rows * cols)
                 for (r in 0 until rows) {
+                    val rowBase = r * cols
                     for (c in 0 until cols) {
-                        val v = src.segment.get(java.lang.foreign.ValueLayout.JAVA_FLOAT, srcOff + (r.toLong() * cols + c) * 4)
-                        result.segment.set(java.lang.foreign.ValueLayout.JAVA_FLOAT, dstOff + (c.toLong() * rows + r) * 4, v)
+                        dstArr[c * rows + r] = srcArr[rowBase + c]
                     }
                 }
+                java.lang.foreign.MemorySegment.copy(dstArr, 0, result.segment, floatLayout, result.segmentByteOffset, rows * cols)
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(result as TensorData<T, V>, tensor.dtype, tensor)
             }
