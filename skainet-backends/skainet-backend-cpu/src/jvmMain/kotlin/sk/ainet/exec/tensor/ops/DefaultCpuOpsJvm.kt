@@ -108,9 +108,14 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
-            // MemorySegment FP32 fast path: physical transpose via SIMD
+            // MemorySegment FP32 fast path: physical transpose via SIMD.
+            // Uses Arena.ofAuto() so the result segment is reclaimed by GC
+            // when the wrapping Tensor is no longer reachable. Earlier
+            // ofConfined() builds leaked an arena per call, blowing 32+ GiB
+            // of direct memory in inference loops (every layer × every
+            // forward pass).
             if (data is MemorySegmentBackedData) {
-                val arena = Arena.ofConfined()
+                val arena = Arena.ofAuto()
                 val result = MemorySegmentTensorData<T>(Shape(cols, rows), arena)
                 val src = data as MemorySegmentBackedData
                 val srcOff = src.segmentByteOffset
@@ -750,7 +755,11 @@ internal class DefaultCpuOpsJvm(
         val aMemSeg = a.data as? MemorySegmentBackedData
         val bMemSeg = b.data as? MemorySegmentBackedData
         if (aMemSeg != null && bMemSeg != null) {
-            val arena = Arena.ofConfined()
+            // Same fix as the transpose path above: use Arena.ofAuto so the
+            // matmul output segment is GC-reclaimable. Per-call ofConfined()
+            // leaks ~tens of MB per matmul, which over a 35-layer Gemma 4
+            // forward pass exhausts the JVM direct-memory cap.
+            val arena = Arena.ofAuto()
             val result = MemorySegmentTensorData<T>(Shape(m, n), arena)
             val blockedThresholdMS = 16 * 16
             if (m >= blockedThresholdMS || n >= blockedThresholdMS || k >= blockedThresholdMS) {
