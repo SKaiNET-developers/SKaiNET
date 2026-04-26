@@ -659,30 +659,43 @@ public object DequantOps {
             val qs = bytes.copyOfRange(offset, offset + 128)
             offset += 128
 
+            // Per ggml-quants.c `dequantize_row_q5_K`: the 32-byte qh is indexed
+            // by `l` (0..31, same as qs's per-group byte position), and a single
+            // bit is selected per (outer-iter, low/high nibble). Different
+            // (outer, nibble) pairs use different bits of the SAME qh[l] byte:
+            //   outer 0: low→bit0, hi→bit1
+            //   outer 1: low→bit2, hi→bit3
+            //   outer 2: low→bit4, hi→bit5
+            //   outer 3: low→bit6, hi→bit7
+            // (Earlier this code used `qh[idx/8]` indexed by output position,
+            // which only happened to equal qh[l] for blockCount=1; on real
+            // multi-block tensors like Gemma 4 E2B's per_layer_token_embd
+            // (Q5_K, 1.6 GB) every 5th bit was wrong, corrupting the PLE
+            // residual stream across all 35 layers.)
             var qOffset = 0
             var scaleIdx = 0
             var outIdx = 0
-            repeat(4) {
+            for (outer in 0 until 4) {
                 val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
                 val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
                 val d1 = d * sc1
                 val min1 = dMin * m1
                 val d2 = d * sc2
                 val min2 = dMin * m2
+                val bitLow = 2 * outer
+                val bitHi = 2 * outer + 1
 
                 for (l in 0 until 32) {
-                    val idx = outIdx + l
                     val qLow = qs[qOffset + l].toInt() and 0x0F
-                    val qHigh = ((qh[idx / 8].toInt() and 0xFF) shr (idx % 8)) and 0x01
+                    val qHigh = ((qh[l].toInt() and 0xFF) ushr bitLow) and 0x01
                     val q = qLow or (qHigh shl 4)
-                    out[outOff + idx] = d1 * q - min1
+                    out[outOff + outIdx + l] = d1 * q - min1
                 }
                 for (l in 0 until 32) {
-                    val idx = outIdx + 32 + l
-                    val qLow = ((qs[qOffset + l].toInt() and 0xFF) shr 4)
-                    val qHigh = ((qh[idx / 8].toInt() and 0xFF) shr (idx % 8)) and 0x01
+                    val qLow = (qs[qOffset + l].toInt() and 0xFF) ushr 4
+                    val qHigh = ((qh[l].toInt() and 0xFF) ushr bitHi) and 0x01
                     val q = qLow or (qHigh shl 4)
-                    out[outOff + idx] = d2 * q - min2
+                    out[outOff + outIdx + 32 + l] = d2 * q - min2
                 }
                 qOffset += 32
                 scaleIdx += 2
