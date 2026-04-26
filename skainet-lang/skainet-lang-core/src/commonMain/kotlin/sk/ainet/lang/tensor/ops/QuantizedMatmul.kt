@@ -146,7 +146,7 @@ public object QuantizedMatmul {
 
                     for (subBlockIdx in 0 until subBlocksPerBlock) {
                         val scale = weights.getSubBlockScale(weightBlockOffset, subBlockIdx)
-                        val min = weights.getSubBlockMin(weightBlockOffset, subBlockIdx)
+                        val offset = weights.getSubBlockMin(weightBlockOffset, subBlockIdx)
 
                         val elemStart = blockIdx * blockSize + subBlockIdx * subBlockSize
                         val elemEnd = minOf(elemStart + subBlockSize, inputDim)
@@ -163,7 +163,9 @@ public object QuantizedMatmul {
                             inputSum += inputBuffer[inputOffset + i]
                         }
 
-                        acc += subBlockSum * scale + inputSum * min
+                        // ggml's per-element formula `code * scale - offset` aggregates
+                        // to `subBlockSum * scale - inputSum * offset` over the sub-block.
+                        acc += subBlockSum * scale - inputSum * offset
                     }
                 }
 

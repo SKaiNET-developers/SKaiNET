@@ -63,37 +63,45 @@ internal object JvmQuantizedVectorKernels {
     }
 
     /**
-     * Compute dot product for Q4_K sub-block (32 elements).
+     * Compute the (codeSum, inputSum) pair for one Q4_K sub-block (32
+     * elements) using the *strided* canonical ggml layout: for a 32-byte qs
+     * region shared by two sub-blocks, the lo nibbles of bytes 0..31 form
+     * sub-block A and the hi nibbles of the same bytes form sub-block B.
      *
-     * Q4_K sub-block: 32 4-bit codes with per-sub-block scale and min.
-     * Result = sum(input[i] * code[i]) * scale + sum(input[i]) * min
+     *   codeSum  = sum_i input[i] * code[i]
+     *   inputSum = sum_i input[i]
      *
-     * @param input Input float array
-     * @param inputOffset Starting offset in input array
-     * @param qs Packed 4-bit codes (16 bytes for 32 elements)
-     * @param qsOffset Starting offset in qs array
-     * @param scale Sub-block scale
-     * @param min Sub-block minimum value
-     * @return Weighted dot product result
+     * The caller turns these into a per-sub-block contribution via
+     * `codeSum * scale - inputSum * offset`, where `scale = d * scaleIdx`
+     * and `offset = dMin * minIdx`.
+     *
+     * @param input       activation array
+     * @param inputOffset starting offset in input
+     * @param qs          packed Q4_K codes (32 bytes consumed at qsOffset)
+     * @param qsOffset    starting offset in qs of the 32-byte group
+     * @param hiNibble    true to take `byte >>> 4` (sub-block B), false for `byte & 0x0F` (sub-block A)
+     * @param codeBuf     scratch FloatArray of length >= SUB_BLOCK_SIZE
+     * @param sumsOut     2-element scratch: out[0] = codeSum, out[1] = inputSum
      */
-    fun dotQ4_KSubBlock(
+    fun dotQ4_KHalfNibbleSubBlock(
         input: FloatArray,
         inputOffset: Int,
         qs: ByteArray,
         qsOffset: Int,
-        scale: Float,
-        min: Float,
-        codeBuf: FloatArray
-    ): Float {
-        // Unpack 16 packed bytes → 32 float codes (low nibble = even idx, high = odd).
-        // Sequential writes are friendly to the JIT auto-vectorizer; no per-call allocation.
-        for (i in 0 until 16) {
-            val b = qs[qsOffset + i].toInt() and 0xFF
-            codeBuf[2 * i] = (b and 0x0F).toFloat()
-            codeBuf[2 * i + 1] = (b ushr 4).toFloat()
+        hiNibble: Boolean,
+        codeBuf: FloatArray,
+        sumsOut: FloatArray,
+    ) {
+        if (hiNibble) {
+            for (i in 0 until SUB_BLOCK_SIZE) {
+                codeBuf[i] = ((qs[qsOffset + i].toInt() and 0xFF) ushr 4).toFloat()
+            }
+        } else {
+            for (i in 0 until SUB_BLOCK_SIZE) {
+                codeBuf[i] = (qs[qsOffset + i].toInt() and 0x0F).toFloat()
+            }
         }
 
-        // SIMD multiply-accumulate. Reduce once at the end (was per-iter horizontal reduce).
         val step = floatSpecies.length()
         var codeAcc = FloatVector.zero(floatSpecies)
         var inputAcc = FloatVector.zero(floatSpecies)
@@ -109,7 +117,7 @@ internal object JvmQuantizedVectorKernels {
         var codeSum = codeAcc.reduceLanes(VectorOperators.ADD)
         var inputSum = inputAcc.reduceLanes(VectorOperators.ADD)
 
-        // Scalar tail (only fires if floatStep > SUB_BLOCK_SIZE; not on x86 today).
+        // Scalar tail (only fires if SPECIES_PREFERRED.length() > SUB_BLOCK_SIZE).
         while (idx < SUB_BLOCK_SIZE) {
             val v = input[inputOffset + idx]
             codeSum += v * codeBuf[idx]
@@ -117,7 +125,8 @@ internal object JvmQuantizedVectorKernels {
             idx++
         }
 
-        return codeSum * scale + inputSum * min
+        sumsOut[0] = codeSum
+        sumsOut[1] = inputSum
     }
 
     private const val SUB_BLOCK_SIZE = 32
@@ -186,21 +195,22 @@ internal object JvmQuantizedVectorKernels {
     ) {
         val blockSize = 256
         val subBlockSize = 32
-        val subBlocksPerBlock = 8
         val bytesPerBlock = 144  // 2 d + 2 dMin + 12 scales + 128 codes
         val blocksPerInputDim = (inputDim + blockSize - 1) / blockSize
 
         parallelChunks(outputDim) { startO, endO ->
-            // Each task owns a contiguous output-row range and its own scratch
-            // FloatArray to avoid cross-thread contention.
+            // Each task owns its own scratch arrays to avoid cross-thread contention.
             val codeBuf = FloatArray(subBlockSize)
+            val scaleIdxBuf = IntArray(8)
+            val minIdxBuf = IntArray(8)
+            val sumsBuf = FloatArray(2)
             for (o in startO until endO) {
                 var acc = 0f
 
                 for (blockIdx in 0 until blocksPerInputDim) {
                     val weightBlockOffset = (blockIdx * outputDim + o) * bytesPerBlock
 
-                    // Read f16 d and dMin
+                    // Read f16 d and dMin (super-block scale and min-scale)
                     val dBits = (packedWeights[weightBlockOffset + 1].toInt() and 0xFF shl 8) or
                         (packedWeights[weightBlockOffset].toInt() and 0xFF)
                     val dMinBits = (packedWeights[weightBlockOffset + 3].toInt() and 0xFF shl 8) or
@@ -208,32 +218,53 @@ internal object JvmQuantizedVectorKernels {
                     val d = halfToFloat(dBits)
                     val dMin = halfToFloat(dMinBits)
 
-                    // Process each sub-block
+                    // Decode 8 sub-block (scaleIdx, minIdx) pairs from the 12 scale
+                    // bytes via ggml's `get_scale_min_k4` (sub-blocks 4..7 reuse
+                    // top 2 bits of bytes for sub-blocks 0..3 — *not* a flat
+                    // 12-bits-per-sub-block packing).
                     val scalesOffset = weightBlockOffset + 4
+                    for (sb in 0 until 4) {
+                        scaleIdxBuf[sb] = packedWeights[scalesOffset + sb].toInt() and 0x3F
+                        minIdxBuf[sb] = packedWeights[scalesOffset + sb + 4].toInt() and 0x3F
+                    }
+                    for (sb in 4 until 8) {
+                        val low4S = packedWeights[scalesOffset + sb + 4].toInt() and 0x0F
+                        val high2S = (packedWeights[scalesOffset + sb - 4].toInt() and 0xFF) ushr 6
+                        scaleIdxBuf[sb] = low4S or (high2S shl 4)
+                        val low4M = (packedWeights[scalesOffset + sb + 4].toInt() and 0xFF) ushr 4
+                        val high2M = (packedWeights[scalesOffset + sb].toInt() and 0xFF) ushr 6
+                        minIdxBuf[sb] = low4M or (high2M shl 4)
+                    }
+
+                    // Walk the 4 strided qs groups (32 bytes each). Group `groupJ`
+                    // holds sub-block (2*groupJ) in lo nibbles and sub-block
+                    // (2*groupJ + 1) in hi nibbles of the *same* 32 bytes.
                     val codesOffset = weightBlockOffset + 16
+                    for (groupJ in 0 until 4) {
+                        val qsRegion = codesOffset + groupJ * 32
 
-                    for (subBlockIdx in 0 until subBlocksPerBlock) {
-                        // Extract 12-bit packed scale/min indices
-                        val bitPos = subBlockIdx * 12
-                        val bytePos = bitPos / 8
-                        val bitShift = bitPos % 8
+                        val sbLo = 2 * groupJ
+                        val inputStartLo = blockIdx * blockSize + sbLo * subBlockSize
+                        if (inputStartLo < inputDim) {
+                            dotQ4_KHalfNibbleSubBlock(
+                                input, inputStartLo, packedWeights, qsRegion,
+                                hiNibble = false, codeBuf, sumsBuf
+                            )
+                            val scale = d * scaleIdxBuf[sbLo]
+                            val offset = dMin * minIdxBuf[sbLo]
+                            acc += sumsBuf[0] * scale - sumsBuf[1] * offset
+                        }
 
-                        val packed = (packedWeights[scalesOffset + bytePos].toInt() and 0xFF) or
-                            ((packedWeights.getOrElse(scalesOffset + bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-                            ((packedWeights.getOrElse(scalesOffset + bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
-
-                        val scaleIdx = (packed ushr bitShift) and 0x3F
-                        val minIdx = (packed ushr (bitShift + 6)) and 0x3F
-
-                        val scale = d * (scaleIdx / 63.0f)
-                        val min = dMin * (minIdx / 63.0f)
-
-                        // Input and codes offsets for this sub-block
-                        val inputStart = blockIdx * blockSize + subBlockIdx * subBlockSize
-                        val qsStart = codesOffset + subBlockIdx * 16  // 16 bytes = 32 4-bit codes
-
-                        if (inputStart < inputDim) {
-                            acc += dotQ4_KSubBlock(input, inputStart, packedWeights, qsStart, scale, min, codeBuf)
+                        val sbHi = 2 * groupJ + 1
+                        val inputStartHi = inputStartLo + subBlockSize
+                        if (inputStartHi < inputDim) {
+                            dotQ4_KHalfNibbleSubBlock(
+                                input, inputStartHi, packedWeights, qsRegion,
+                                hiNibble = true, codeBuf, sumsBuf
+                            )
+                            val scale = d * scaleIdxBuf[sbHi]
+                            val offset = dMin * minIdxBuf[sbHi]
+                            acc += sumsBuf[0] * scale - sumsBuf[1] * offset
                         }
                     }
                 }
@@ -496,8 +527,10 @@ internal object JvmQuantizedVectorKernels {
     }
 
     /**
-     * F32 x Q4_K matrix-vector multiply using MemorySegment for packed Q4_K weights.
-     * Same block structure as matmulQ4_KVec but reads from MemorySegment.
+     * F32 x Q4_K matrix-vector multiply using MemorySegment for packed Q4_K
+     * weights. Same canonical ggml layout as `matmulQ4_KVec` (strided codes,
+     * `get_scale_min_k4` scale packing, `code * scale - offset` formula);
+     * just reads bytes through `MemorySegment.get`.
      */
     fun matmulF32Q4_KMemSeg(
         input: FloatArray,
@@ -510,10 +543,12 @@ internal object JvmQuantizedVectorKernels {
     ) {
         val blockSize = 256
         val subBlockSize = 32
-        val subBlocksPerBlock = 8
         val bytesPerBlock = 144L
         val blocksPerRow = (inputDim + blockSize - 1) / blockSize
-        val codeBuf = FloatArray(subBlockSize)  // reused across all sub-blocks
+        val codeBuf = FloatArray(subBlockSize)
+        val scaleIdxBuf = IntArray(8)
+        val minIdxBuf = IntArray(8)
+        val sumsBuf = FloatArray(2)
 
         for (o in 0 until outputDim) {
             var acc = 0f
@@ -533,27 +568,45 @@ internal object JvmQuantizedVectorKernels {
                 val scalesOff = blockOff + 4
                 val codesOff = blockOff + 16
 
-                for (sb in 0 until subBlocksPerBlock) {
-                    val bitPos = sb * 12
-                    val bytePos = bitPos / 8
-                    val bitShift = bitPos % 8
+                // Decode 8 (scaleIdx, minIdx) pairs via ggml's `get_scale_min_k4`.
+                for (sb in 0 until 4) {
+                    scaleIdxBuf[sb] = weightSeg.get(JAVA_BYTE_LE, scalesOff + sb).toInt() and 0x3F
+                    minIdxBuf[sb] = weightSeg.get(JAVA_BYTE_LE, scalesOff + sb + 4).toInt() and 0x3F
+                }
+                for (sb in 4 until 8) {
+                    val low4S = weightSeg.get(JAVA_BYTE_LE, scalesOff + sb + 4).toInt() and 0x0F
+                    val high2S = (weightSeg.get(JAVA_BYTE_LE, scalesOff + sb - 4).toInt() and 0xFF) ushr 6
+                    scaleIdxBuf[sb] = low4S or (high2S shl 4)
+                    val low4M = (weightSeg.get(JAVA_BYTE_LE, scalesOff + sb + 4).toInt() and 0xFF) ushr 4
+                    val high2M = (weightSeg.get(JAVA_BYTE_LE, scalesOff + sb).toInt() and 0xFF) ushr 6
+                    minIdxBuf[sb] = low4M or (high2M shl 4)
+                }
 
-                    val b0 = weightSeg.get(JAVA_BYTE_LE, scalesOff + bytePos).toInt() and 0xFF
-                    val b1 = if (bytePos + 1 < 12) weightSeg.get(JAVA_BYTE_LE, scalesOff + bytePos + 1).toInt() and 0xFF else 0
-                    val b2 = if (bytePos + 2 < 12) weightSeg.get(JAVA_BYTE_LE, scalesOff + bytePos + 2).toInt() and 0xFF else 0
-                    val packed = b0 or (b1 shl 8) or (b2 shl 16)
+                for (groupJ in 0 until 4) {
+                    val qsRegion = codesOff + groupJ * 32L
 
-                    val scaleIdx = (packed ushr bitShift) and 0x3F
-                    val minIdx = (packed ushr (bitShift + 6)) and 0x3F
+                    val sbLo = 2 * groupJ
+                    val inputStartLo = blockIdx * blockSize + sbLo * subBlockSize
+                    if (inputStartLo < inputDim) {
+                        dotQ4_KHalfNibbleSubBlockMemSeg(
+                            input, inputStartLo, weightSeg, qsRegion,
+                            hiNibble = false, codeBuf, sumsBuf
+                        )
+                        val scale = d * scaleIdxBuf[sbLo]
+                        val offset = dMin * minIdxBuf[sbLo]
+                        acc += sumsBuf[0] * scale - sumsBuf[1] * offset
+                    }
 
-                    val scale = d * (scaleIdx / 63.0f)
-                    val min = dMin * (minIdx / 63.0f)
-
-                    val inputStart = blockIdx * blockSize + sb * subBlockSize
-                    val qsStart = codesOff + sb * 16L
-
-                    if (inputStart < inputDim) {
-                        acc += dotQ4_KSubBlockMemSeg(input, inputStart, weightSeg, qsStart, scale, min, codeBuf)
+                    val sbHi = 2 * groupJ + 1
+                    val inputStartHi = inputStartLo + subBlockSize
+                    if (inputStartHi < inputDim) {
+                        dotQ4_KHalfNibbleSubBlockMemSeg(
+                            input, inputStartHi, weightSeg, qsRegion,
+                            hiNibble = true, codeBuf, sumsBuf
+                        )
+                        val scale = d * scaleIdxBuf[sbHi]
+                        val offset = dMin * minIdxBuf[sbHi]
+                        acc += sumsBuf[0] * scale - sumsBuf[1] * offset
                     }
                 }
             }
@@ -563,22 +616,29 @@ internal object JvmQuantizedVectorKernels {
     }
 
     /**
-     * Q4_K sub-block dot product reading codes from MemorySegment.
+     * MemSeg-reading counterpart to `dotQ4_KHalfNibbleSubBlock`. Same
+     * canonical strided-nibble layout; reads the 32-byte qs group through
+     * `MemorySegment.get`.
      */
-    private fun dotQ4_KSubBlockMemSeg(
+    private fun dotQ4_KHalfNibbleSubBlockMemSeg(
         input: FloatArray,
         inputOffset: Int,
         weightSeg: MemorySegment,
         qsOffset: Long,
-        scale: Float,
-        min: Float,
-        codeBuf: FloatArray
-    ): Float {
-        // Unpack 16 packed bytes from MemorySegment → 32 float codes.
-        for (i in 0 until 16) {
-            val b = weightSeg.get(JAVA_BYTE_LE, qsOffset + i.toLong()).toInt() and 0xFF
-            codeBuf[2 * i] = (b and 0x0F).toFloat()
-            codeBuf[2 * i + 1] = (b ushr 4).toFloat()
+        hiNibble: Boolean,
+        codeBuf: FloatArray,
+        sumsOut: FloatArray,
+    ) {
+        if (hiNibble) {
+            for (i in 0 until SUB_BLOCK_SIZE) {
+                val b = weightSeg.get(JAVA_BYTE_LE, qsOffset + i.toLong()).toInt() and 0xFF
+                codeBuf[i] = (b ushr 4).toFloat()
+            }
+        } else {
+            for (i in 0 until SUB_BLOCK_SIZE) {
+                val b = weightSeg.get(JAVA_BYTE_LE, qsOffset + i.toLong()).toInt() and 0xFF
+                codeBuf[i] = (b and 0x0F).toFloat()
+            }
         }
 
         val step = floatSpecies.length()
@@ -603,7 +663,8 @@ internal object JvmQuantizedVectorKernels {
             idx++
         }
 
-        return codeSum * scale + inputSum * min
+        sumsOut[0] = codeSum
+        sumsOut[1] = inputSum
     }
 
     /**
