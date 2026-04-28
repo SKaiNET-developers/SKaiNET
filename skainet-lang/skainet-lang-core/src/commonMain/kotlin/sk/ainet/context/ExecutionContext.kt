@@ -6,6 +6,8 @@ import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.operators.OpsBoundTensor
 import sk.ainet.lang.tensor.ops.TensorOps
+import sk.ainet.lang.tensor.scratch.NoopScratchPool
+import sk.ainet.lang.tensor.scratch.ScratchPool
 import sk.ainet.lang.tensor.storage.MemoryPlanner
 import sk.ainet.lang.tensor.storage.MemoryTracker
 import sk.ainet.lang.types.DType
@@ -22,6 +24,20 @@ public interface ExecutionContext {
     public val inTraining: Boolean get() = phase == Phase.TRAIN
 
     public val tensorDataFactory: TensorDataFactory
+
+    /**
+     * Workspace allocator for short-lived intermediate buffers (attention
+     * scratch, RoPE tables, KV-cache slice copies, padding scratch, etc.).
+     *
+     * Default is [NoopScratchPool] — every acquire allocates a fresh array,
+     * matching pre-pool behavior. Implementations that want pooling override
+     * this property (or wrap an existing context).
+     *
+     * Callers MUST acquire inside an active [ScratchPool.scope] block;
+     * acquires outside a scope succeed but the buffer is not returned to the
+     * pool when dropped.
+     */
+    public val scratch: ScratchPool get() = NoopScratchPool
 
     // Execution observers for tracing/benchmarking
     public val observers: ExecutionObserverRegistry
