@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.20.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.20.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.21.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.21.0")
 }
 ```
 
@@ -137,13 +137,11 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.20.0
+## What's New in 0.21.0
 
-- **Q6_K Native Matmul** — New `Q6_KTensorData` stores 210-byte ggml blocks verbatim and a Vector-API SIMD kernel (`matmulQ6_KVec`) dispatches from `DefaultCpuOpsJvm.chooseQuantizedMatmul`. Together with the existing Q4_K infra, this unblocks running Gemma 4 E2B Q4_K_M (and any mostly-Q4_K + Q6_K checkpoint) through the DSL path without a ~12 GB FP32 dequant blow-up at load.
-- **Q4_K / Q6_K Lazy Shape-Swap Transpose** — `ops.transpose` on `Q4_KTensorData` / `Q6_KTensorData` now returns a new tensor wrapping the *same* packed byte array with swapped shape, matching the existing Q4/Q8 MemorySegment path. `linearProject(x, W)` can run `matmul(x, transpose(W))` on Q4_K/Q6_K weights without round-tripping through FP32 (Δ logits = 4.29e-6 vs FP32 baseline on Gemma).
-- **SDPA → StableHLO / IREE** — `scaledDotProductAttention` is now recorded by `RecordingExecution` and lowered to StableHLO as `dot_general(Q, K.T)` → scale → optional mask → softmax → `dot_general(weights, V)`, so attention blocks compile end-to-end through the SKaiNET → StableHLO → IREE path. (#543)
-- **SDPA Q/K/V Shape Validation** — Mismatched `head_dim` between Q/K or Q/V (seen in real Gemma 4 E2B with mixed-head-dim layers sharing a KV cache) used to surface as an `ArrayIndexOutOfBoundsException` deep in the dot-product loop; `scaledDotProductAttention` now fails fast with `require()` messages naming the offending dimensions.
-- **Toolchain bumps** — Kotlin 2.3.21, AGP 9.2.0, Ktor client 3.4.3.
+- **JVM CPU performance — Vector API SIMD across the board.** Pluggable `KernelProvider` SPI with priority-ordered lookup; FP32 matmul tile-blocked at **8.6×–10.8× over scalar**, Q4_K matmul fully SIMD-fused with inline dequant at **~30–73 GFLOPS** on Apple Silicon. Every quantized format we support (Q4_0, Q4_K, Q4_K MemSeg, Q6_K, Q8_0) is now SIMD'd to some degree.
+- **`ScratchPool` SPI and `TensorOps.permute(axes)`** — runtime workspace allocator for transient tensors and arbitrary-axis permutation.
+- **Native (FFM) kernel provider** captured as PRD in [`NATIVE_FFM_KERNEL_PROVIDER.md`](NATIVE_FFM_KERNEL_PROVIDER.md), deferred.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 

@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-04-28
+
+### Added
+
+#### CPU kernel SPI (M5 — JVM Vector half complete)
+
+This release lands the JVM Vector half of milestone M5 from the JVM inference performance roadmap — a pluggable kernel SPI parallel to `BackendProvider`, plus a Panama Vector provider that matches or beats the prior production path on every shape we measure. The native (FFM) priority-100 provider that closes the milestone metric is captured as a PRD ([NATIVE_FFM_KERNEL_PROVIDER.md](NATIVE_FFM_KERNEL_PROVIDER.md)) and deferred.
+
+- **`KernelProvider` SPI** — `skainet-backend-api` now exposes a `KernelProvider` interface with `name`, `priority`, `isAvailable()`, and per-kernel accessors (`matmulFp32()`, `matmulQ4K()`). `KernelRegistry` does priority-ordered `bestAvailable()` lookup; a JVM-only `KernelServiceLoader.installAll()` auto-discovers providers via `META-INF/services/sk.ainet.backend.api.kernel.KernelProvider`. Manual `register(...)` still works for tests and non-JVM platforms. (PRs #554, #559)
+- **`Fp32MatmulKernel` + `PanamaVectorMatmulKernel`** — JDK Vector API implementation using `FloatVector.SPECIES_PREFERRED` + `fma` + `reduceLanes`, cache-blocked with 8×8×128 tiles. `KernelMatmulBench` measures **8.61× / 8.62× / 10.83×** speedup over scalar at 256/512/1024 (JDK 21.0.10, M-series macOS). Within JMH noise of — and often slightly faster than — the prior `JvmVectorKernels.matmulFloatBlocked` production path, so routing introduced no regression. (PRs #557, #558, #560)
+- **Production matmul routes through `KernelRegistry`** — `DefaultCpuOpsJvm.matmul` now resolves the FP32 kernel via `KernelRegistry.bestAvailable()` instead of calling `JvmVectorKernels.matmulFloat*` directly. Production `MatmulBench` numbers post-routing match pre-routing within JMH noise. (PR #561)
+- **`Q4KMatmulKernel` SPI + SIMD-fused Panama implementation** — Sibling kernel interface in `skainet-backend-api/commonMain`, `KernelProvider.matmulQ4K()` accessor (default-`null` for backwards compat). `PanamaVectorQ4KMatmulKernel` fuses Q4_K dequant inline with the FMA accumulator: a single `ByteVector` load feeds both lo and hi sub-block accumulators per qs slab via AND/LSHR nibble extract → `castShape(B2F)` → FMA, with the lazy-`dmin` correction (`acc += scale·codeSum − offset·inputSum` once per sub-block). `QuantizedMatmulBench` measures 0.07/0.15/0.46 ms at 1024×1024 / 4096×1024 / 4096×4096 (≈30/55/73 GFLOPS — same throughput regime as the FP32 SIMD kernel, meaning fused dequant adds essentially zero cost on top of the FMA). `DefaultCpuOpsJvm.chooseQuantizedMatmul`'s `Q4_KTensorData` branch routes through the SPI with a fall-through to the legacy kernel when no provider resolves. (PR #562)
+- **Q4_K MemSeg SIMD** — Same fused-pipeline algorithm applied inline to `JvmQuantizedVectorKernels.matmulF32Q4_KMemSeg` (the path mmap'd weights take). `ByteVector.fromMemorySegment` instead of `ByteVector.fromArray` — no heap copy. (PR #563)
+- **Q6_K SIMD dequant** — `dequantQ6_KBlock` replaces its scalar 32-iteration loop with a `ByteVector`-based ql + qh extraction pipeline: per `floatStep`-wide chunk of `l`, loads ql + qh slices, assembles `q1..q4 = (ql nibble) | ((qh slice) << 4) − 32` per lane, multiplies by per-sub-block `d·scale`, stores to four 32-element regions of the scratch FloatArray. (PR #564)
+- **Q4_0 partial SIMD** — `dotQ4_0BlockMemSeg` two-stage pattern: scalar byte-pair unpack into a caller-supplied scratch FloatArray (16 byte loads, two nibbles each — half the byte traffic) followed by a `FloatVector` FMA reduction. Closes the last fully-scalar quantized kernel; every quantized format in `JvmQuantizedVectorKernels` (Q4_0, Q4_K, Q4_K MemSeg, Q6_K, Q8_0) is now SIMD'd to some degree. (PR #565)
+
+#### Other
+
+- **`ScratchPool` SPI** — Runtime workspace allocation for transient tensor scratch buffers. Per-runtime size-classed slabs, scoped acquire/release. Closes the framework-side primitive for milestone M1 of the JVM perf roadmap. (PR #550)
+- **`TensorOps.permute(axes)`** — Arbitrary-axis permutation (generalizes the existing `transpose` to N-D). (PR #552)
+
+### Fixed
+
+- **Q4_K / Q5_K canonical ggml layout + FP32 MemSeg arena leak** — `Q4_KTensorData` and Q5_K dequant now apply the canonical ggml layout (super-block scale + per-sub-block scaleIdx/minIdx via `get_scale_min_k4` mixing, strided 4-bit codes layout). `MemorySegmentTensorDataFactory` uses `Arena.ofAuto()` for per-op outputs so the matmul / transpose output segments are GC-reclaimable; the prior `ofConfined()` builds leaked tens of MB per matmul, which over a 35-layer Gemma 4 forward pass exhausted the JVM direct-memory cap. Liveness-based freeing of intermediate tensors in `ComputeGraphExecutor`. (PR #556)
+
 ## [0.20.0] - 2026-04-24
 
 ### Added
