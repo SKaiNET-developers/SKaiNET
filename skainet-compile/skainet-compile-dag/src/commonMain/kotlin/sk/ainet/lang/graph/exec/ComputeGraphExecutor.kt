@@ -36,6 +36,17 @@ public class ComputeGraphExecutor(
     // Consumer map: for each node, which nodes provide its inputs
     private val inputEdgeMap: Map<String, List<InputBinding>> = buildInputMap()
 
+    // Liveness: for each node id, the highest topological index that consumes
+    // its output. After dispatching the node at that index, downstream code
+    // never reads from nodeOutputs[id] again, so it's safe to drop the entry.
+    // This bounds the working-set memory of execute() from O(all intermediates)
+    // to O(max-live intermediates) — critical for transformer forward passes
+    // where each layer's outputs are otherwise held until execute() returns,
+    // pinning ~22 GB of FP32 MemSeg activations on a Gemma 4 E2B prompt pass.
+    // Output nodes and external-input nodes are mapped to topoOrder.size so
+    // they're never freed mid-execute.
+    private val lastUseIndex: Map<String, Int> = computeLastUseIndex()
+
     /**
      * Execute the graph with the given external inputs.
      *
@@ -58,32 +69,47 @@ public class ComputeGraphExecutor(
         }
 
         // Execute in topological order
-        for (node in topoOrder) {
-            if (node.id in nodeOutputs) continue // Already populated (input/parameter node)
-            if (isInputNode(node)) continue       // External input not provided — skip
+        for ((idx, node) in topoOrder.withIndex()) {
+            if (node.id !in nodeOutputs && !isInputNode(node)) {
+                // Gather input tensors from upstream nodes
+                val bindings = inputEdgeMap[node.id] ?: emptyList()
+                val inputTensors = bindings.map { binding ->
+                    val upstreamOutputs = nodeOutputs[binding.sourceNodeId]
+                        ?: error("Node '${node.id}' (${node.operationName}) requires input from '${binding.sourceNodeId}' which has no output yet")
+                    upstreamOutputs.getOrElse(binding.sourceOutputIndex) {
+                        error("Node '${binding.sourceNodeId}' has ${upstreamOutputs.size} outputs but index ${binding.sourceOutputIndex} was requested")
+                    }
+                }
 
-            // Gather input tensors from upstream nodes
-            val bindings = inputEdgeMap[node.id] ?: emptyList()
-            val inputTensors = bindings.map { binding ->
-                val upstreamOutputs = nodeOutputs[binding.sourceNodeId]
-                    ?: error("Node '${node.id}' (${node.operationName}) requires input from '${binding.sourceNodeId}' which has no output yet")
-                upstreamOutputs.getOrElse(binding.sourceOutputIndex) {
-                    error("Node '${binding.sourceNodeId}' has ${upstreamOutputs.size} outputs but index ${binding.sourceOutputIndex} was requested")
+                // Dispatch the operation
+                val results = try {
+                    dispatchOp(node, inputTensors)
+                } catch (e: Exception) {
+                    throw IllegalStateException(
+                        "Error executing node '${node.id}' (${node.operationName}): ${e.message}\n" +
+                            "  Input shapes: ${inputTensors.map { it.shape }}\n" +
+                            "  Params: ${node.operation.parameters.filterKeys { it !in setOf("tensors", "weights", "bias", "initial_value") }}",
+                        e
+                    )
+                }
+                nodeOutputs[node.id] = results
+            }
+
+            // Liveness-based freeing: drop intermediates whose last consumer
+            // we've now passed. Combined with Arena.ofAuto in DefaultCpuOpsJvm,
+            // this lets the GC reclaim per-op output direct memory as soon as
+            // it becomes unreachable, bounding the working set to the
+            // simultaneously-live intermediates rather than every intermediate
+            // in the pass. Skip the input map (external inputs the caller
+            // wants returned) and any node mapped to topoOrder.size (output /
+            // input-op markers, kept alive across the whole execute call).
+            for (binding in (inputEdgeMap[node.id] ?: emptyList())) {
+                val srcId = binding.sourceNodeId
+                val lastUse = lastUseIndex[srcId] ?: continue
+                if (lastUse <= idx && srcId !in inputs) {
+                    nodeOutputs.remove(srcId)
                 }
             }
-
-            // Dispatch the operation
-            val results = try {
-                dispatchOp(node, inputTensors)
-            } catch (e: Exception) {
-                throw IllegalStateException(
-                    "Error executing node '${node.id}' (${node.operationName}): ${e.message}\n" +
-                        "  Input shapes: ${inputTensors.map { it.shape }}\n" +
-                        "  Params: ${node.operation.parameters.filterKeys { it !in setOf("tensors", "weights", "bias", "initial_value") }}",
-                    e
-                )
-            }
-            nodeOutputs[node.id] = results
         }
 
         // Collect output nodes (nodes with no outgoing edges)
@@ -294,6 +320,28 @@ public class ComputeGraphExecutor(
         node.id == key ||
             node.id.contains(key) ||
             node.outputs.any { it.name == key }
+
+    private fun computeLastUseIndex(): Map<String, Int> {
+        val out = mutableMapOf<String, Int>()
+        // Walk topo order; for each node, mark the index as the last-use of
+        // each of its source nodes.
+        for ((idx, node) in topoOrder.withIndex()) {
+            val bindings = inputEdgeMap[node.id] ?: continue
+            for (binding in bindings) {
+                val prev = out[binding.sourceNodeId] ?: -1
+                if (idx > prev) out[binding.sourceNodeId] = idx
+            }
+        }
+        // Output nodes and external-input nodes must outlive the loop.
+        val keepAlive = topoOrder.size
+        for (node in graph.getOutputNodes()) {
+            out[node.id] = keepAlive
+        }
+        for (node in topoOrder) {
+            if (isInputNode(node)) out[node.id] = keepAlive
+        }
+        return out
+    }
 
     private fun buildInputMap(): Map<String, List<InputBinding>> {
         val map = mutableMapOf<String, MutableList<InputBinding>>()

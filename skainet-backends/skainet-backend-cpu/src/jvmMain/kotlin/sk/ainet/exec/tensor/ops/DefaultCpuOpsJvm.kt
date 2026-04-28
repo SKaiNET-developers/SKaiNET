@@ -108,19 +108,31 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
-            // MemorySegment FP32 fast path: physical transpose via SIMD
+            // MemorySegment FP32 fast path: physical transpose via SIMD.
+            // Uses Arena.ofAuto() so the result segment is reclaimed by GC
+            // when the wrapping Tensor is no longer reachable. Earlier
+            // ofConfined() builds leaked an arena per call, blowing 32+ GiB
+            // of direct memory in inference loops (every layer × every
+            // forward pass).
             if (data is MemorySegmentBackedData) {
-                val arena = Arena.ofConfined()
+                val arena = Arena.ofAuto()
                 val result = MemorySegmentTensorData<T>(Shape(cols, rows), arena)
                 val src = data as MemorySegmentBackedData
-                val srcOff = src.segmentByteOffset
-                val dstOff = result.segmentByteOffset
+                val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT
+                // Bulk-load source into FloatArray, transpose via tight scalar
+                // loop (JIT auto-vectorizes), bulk-write destination. Replaces
+                // O(rows*cols) per-element VarHandle.get/set which dominated
+                // attention-path transposes.
+                val srcArr = FloatArray(rows * cols)
+                java.lang.foreign.MemorySegment.copy(src.segment, floatLayout, src.segmentByteOffset, srcArr, 0, rows * cols)
+                val dstArr = FloatArray(rows * cols)
                 for (r in 0 until rows) {
+                    val rowBase = r * cols
                     for (c in 0 until cols) {
-                        val v = src.segment.get(java.lang.foreign.ValueLayout.JAVA_FLOAT, srcOff + (r.toLong() * cols + c) * 4)
-                        result.segment.set(java.lang.foreign.ValueLayout.JAVA_FLOAT, dstOff + (c.toLong() * rows + r) * 4, v)
+                        dstArr[c * rows + r] = srcArr[rowBase + c]
                     }
                 }
+                java.lang.foreign.MemorySegment.copy(dstArr, 0, result.segment, floatLayout, result.segmentByteOffset, rows * cols)
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(result as TensorData<T, V>, tensor.dtype, tensor)
             }
@@ -750,7 +762,11 @@ internal class DefaultCpuOpsJvm(
         val aMemSeg = a.data as? MemorySegmentBackedData
         val bMemSeg = b.data as? MemorySegmentBackedData
         if (aMemSeg != null && bMemSeg != null) {
-            val arena = Arena.ofConfined()
+            // Same fix as the transpose path above: use Arena.ofAuto so the
+            // matmul output segment is GC-reclaimable. Per-call ofConfined()
+            // leaks ~tens of MB per matmul, which over a 35-layer Gemma 4
+            // forward pass exhausts the JVM direct-memory cap.
+            val arena = Arena.ofAuto()
             val result = MemorySegmentTensorData<T>(Shape(m, n), arena)
             val blockedThresholdMS = 16 * 16
             if (m >= blockedThresholdMS || n >= blockedThresholdMS || k >= blockedThresholdMS) {

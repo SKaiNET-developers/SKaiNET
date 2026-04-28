@@ -58,7 +58,11 @@ kotlin {
             implementation(project(":skainet-lang:skainet-lang-models"))
         }
 
-        val jvmMain by getting
+        val jvmMain by getting {
+            dependencies {
+                implementation(libs.kotlinx.coroutines)
+            }
+        }
         val jvmTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)

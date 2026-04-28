@@ -938,26 +938,38 @@ internal object JvmVectorKernels {
         val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER)
         val floatBytes = Float.SIZE_BYTES.toLong()
 
-        // Transpose B into a temporary FloatArray
+        // Bulk-load A and B from MemorySegment into FloatArrays. Per-element
+        // VarHandle.get is O(m*k + n*k) and dominates the matmul wall time
+        // for attention (QK^T, AV) where both operands are MemSeg-backed.
+        // MemorySegment.copy(seg, layout, off, array, ...) issues a single
+        // native memcopy per row.
+        val a = FloatArray(m * k)
+        MemorySegment.copy(aSeg, floatLayout, aByteOffset, a, 0, m * k)
+
+        // Transpose B (row-major n*k → column-major bt[nn * k + kk]) using
+        // bulk row reads + scalar scatter (the scatter is a tight write loop
+        // the JIT auto-vectorizes).
         val bt = FloatArray(n * k)
+        val rowBuf = FloatArray(n)
         for (kk in 0 until k) {
             val srcByteOff = bByteOffset + kk.toLong() * n * floatBytes
+            MemorySegment.copy(bSeg, floatLayout, srcByteOff, rowBuf, 0, n)
             for (nn in 0 until n) {
-                bt[nn * k + kk] = bSeg.get(floatLayout, srcByteOff + nn.toLong() * floatBytes)
+                bt[nn * k + kk] = rowBuf[nn]
             }
         }
 
-        // Zero result
-        rSeg.asSlice(rByteOffset, m.toLong() * n * floatBytes).fill(0)
+        // Local accumulator — one write per (mm, nn) at the end.
+        val r = FloatArray(m * n)
 
         val step = floatSpecies.length()
-        val mBlocks = (m + tileM - 1) / tileM
         val nBlocks = (n + tileN - 1) / tileN
         val kBlocks = (k + tileK - 1) / tileK
 
-        for (bm in 0 until mBlocks) {
-            val mStart = bm * tileM
-            val mEnd = minOf(mStart + tileM, m)
+        // Parallelize over m (independent rows of the result). Each task owns
+        // a contiguous mm range and writes to its own slice of `r`. Tiling on
+        // n and k stays for cache locality.
+        parallelChunks(m) { mStart, mEnd ->
             for (bn in 0 until nBlocks) {
                 val nStart = bn * tileN
                 val nEnd = minOf(nStart + tileN, n)
@@ -968,31 +980,31 @@ internal object JvmVectorKernels {
                     val loopBound = floatSpecies.loopBound(kLen)
 
                     for (mm in mStart until mEnd) {
-                        val aBase = aByteOffset + (mm.toLong() * k + kStart) * floatBytes
+                        val aBase = mm * k + kStart
                         for (nn in nStart until nEnd) {
                             val btBase = nn * k + kStart
                             var idx = 0
                             var accVec = FloatVector.zero(floatSpecies)
                             while (idx < loopBound) {
-                                val va = FloatVector.fromMemorySegment(
-                                    floatSpecies, aSeg, aBase + idx.toLong() * floatBytes, BYTE_ORDER,
-                                )
+                                val va = FloatVector.fromArray(floatSpecies, a, aBase + idx)
                                 val vb = FloatVector.fromArray(floatSpecies, bt, btBase + idx)
                                 accVec = va.fma(vb, accVec)
                                 idx += step
                             }
                             var acc = accVec.reduceLanes(VectorOperators.ADD)
                             while (idx < kLen) {
-                                acc += aSeg.get(floatLayout, aBase + idx.toLong() * floatBytes) * bt[btBase + idx]
+                                acc += a[aBase + idx] * bt[btBase + idx]
                                 idx++
                             }
-                            val rOff = rByteOffset + (mm.toLong() * n + nn) * floatBytes
-                            rSeg.set(floatLayout, rOff, rSeg.get(floatLayout, rOff) + acc)
+                            r[mm * n + nn] += acc
                         }
                     }
                 }
             }
         }
+
+        // Bulk-write the result back to MemSeg in one call.
+        MemorySegment.copy(r, 0, rSeg, floatLayout, rByteOffset, m * n)
     }
 
     /**

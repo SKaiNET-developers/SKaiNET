@@ -6,21 +6,37 @@ import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.DType
 
 /**
- * Tensor data interface for Q4_K quantized format.
+ * Tensor data interface for Q4_K quantized format (canonical ggml layout).
  *
  * Q4_K block format (256 elements per block, 144 bytes per block):
- * - 2 bytes: f16 d (main scale)
- * - 2 bytes: f16 dMin (minimum scale)
- * - 12 bytes: packed scales (8 sub-blocks × 12 bits each = 96 bits = 12 bytes)
- * - 128 bytes: 4-bit quantized codes (256 elements / 2 = 128 bytes)
+ * - 2 bytes: f16 d (super-block scale)
+ * - 2 bytes: f16 dMin (super-block min-scale)
+ * - 12 bytes: packed 6-bit scaleIdx + 6-bit minIdx for each of 8 sub-blocks,
+ *             encoded with ggml's `get_scale_min_k4` bit-mixing layout (see
+ *             ggml-quants.c). Sub-blocks 0..3 take their 6-bit scaleIdx and
+ *             minIdx from `scales[j]` and `scales[j+4]`; sub-blocks 4..7
+ *             reuse the top 2 bits of earlier scale bytes — *not* a flat
+ *             "12 bits per sub-block" packing.
+ * - 128 bytes: 4-bit quantized codes, laid out *strided* in 4 groups of 32
+ *              bytes. In each 32-byte group the lo nibbles decode to the
+ *              first 32 elements of the group's first sub-block, and the hi
+ *              nibbles of the *same* bytes decode to the 32 elements of the
+ *              group's second sub-block. So byte (j*32 + i) carries
+ *              element (2j*32 + i) in its lo nibble and element ((2j+1)*32 + i)
+ *              in its hi nibble.
  *
- * Each sub-block (32 elements):
- * - 6-bit scale index (0..63)
- * - 6-bit min index (0..63)
- * - scale = d * (scaleIdx / 63)
- * - min = dMin * (minIdx / 63)
+ * Each sub-block s (s=0..7):
+ * - 6-bit scaleIdx, 6-bit minIdx (from `get_scale_min_k4`)
+ * - scale  = d    * scaleIdx     (no /63 — ggml's `d1 = d * sc`)
+ * - offset = dMin * minIdx
  *
- * Dequantization: output[i] = code[i] * scale + min
+ * Dequantization: output[i] = code[i] * scale - offset
+ *
+ * (Earlier versions of this file used an interleaved `byte[i]→2i,2i+1`
+ * codes layout, a flat 12-bits-per-sub-block scale packing, a /63
+ * normalisation, and a `+ min` sign — none of which match real GGUF
+ * Q4_K_M files. Fixed against `DequantOps.dequantQ4KFromBytes` and
+ * the proof in `Q4KCanonicalLayoutTest`.)
  */
 public interface Q4_KTensorData : TensorData<DType, Byte> {
     /** Number of Q4_K blocks in the tensor. */
@@ -35,10 +51,17 @@ public interface Q4_KTensorData : TensorData<DType, Byte> {
     /** Get the minimum scale factor (dMin) for a block. */
     public fun getBlockDMin(blockIdx: Int): Float
 
-    /** Get the scale for a specific sub-block within a block. */
+    /**
+     * Get the scale for a specific sub-block within a block:
+     * `scale = d * scaleIdx` (no /63 normalisation — ggml's `d1 = d * sc`).
+     */
     public fun getSubBlockScale(blockIdx: Int, subBlockIdx: Int): Float
 
-    /** Get the minimum value for a specific sub-block within a block. */
+    /**
+     * Get the offset for a specific sub-block within a block:
+     * `offset = dMin * minIdx`. Subtract this from `code * scale` for the
+     * dequantised value.
+     */
     public fun getSubBlockMin(blockIdx: Int, subBlockIdx: Int): Float
 
     /** Get a 4-bit quantized code value (0..255 elements within block). */
@@ -60,16 +83,8 @@ public interface Q4_KTensorData : TensorData<DType, Byte> {
 }
 
 /**
- * Implementation of Q4_KTensorData backed by a packed byte array.
- *
- * Memory layout per block (144 bytes):
- * - bytes [0..1]: f16 d (little-endian)
- * - bytes [2..3]: f16 dMin (little-endian)
- * - bytes [4..15]: packed 12-bit scale/min indices (12 bytes)
- * - bytes [16..143]: 4-bit quantized codes (128 bytes, 2 codes per byte)
- *
- * Scale packing: Each sub-block uses 12 bits (6 for scaleIdx, 6 for minIdx).
- * 8 sub-blocks × 12 bits = 96 bits = 12 bytes.
+ * Implementation of Q4_KTensorData backed by a packed byte array (canonical
+ * ggml layout — see [Q4_KTensorData] kdoc for the full byte map).
  *
  * @param initialShape the logical shape of the tensor (in elements, not blocks)
  * @param packedData the raw packed block data
@@ -93,7 +108,7 @@ public class Q4_KBlockTensorData(
         require(blockIdx in 0 until blockCount) { "Block index $blockIdx out of bounds (0..$blockCount)" }
         for (subBlockIdx in 0 until Q4_KTensorData.SUB_BLOCKS_PER_BLOCK) {
             val scale = getSubBlockScale(blockIdx, subBlockIdx)
-            val min = getSubBlockMin(blockIdx, subBlockIdx)
+            val offset = getSubBlockMin(blockIdx, subBlockIdx)
             val elemsStart = subBlockIdx * Q4_KTensorData.SUB_BLOCK_SIZE
             for (j in 0 until Q4_KTensorData.SUB_BLOCK_SIZE) {
                 val elementIdx = elemsStart + j
@@ -102,7 +117,7 @@ public class Q4_KBlockTensorData(
                 val globalIdx = blockIdx * Q4_KTensorData.BLOCK_SIZE + elementIdx
                 if (globalIdx >= shape.volume) return
                 val code = getCode(blockIdx, elementIdx)
-                output[outIdx] = code * scale + min
+                output[outIdx] = code * scale - offset
             }
         }
     }
@@ -137,9 +152,7 @@ public class Q4_KBlockTensorData(
         require(subBlockIdx in 0 until Q4_KTensorData.SUB_BLOCKS_PER_BLOCK) {
             "Sub-block index $subBlockIdx out of bounds (0..7)"
         }
-        val d = getBlockD(blockIdx)
-        val scaleIdx = getScaleIndex(blockIdx, subBlockIdx)
-        return d * (scaleIdx / 63.0f)
+        return getBlockD(blockIdx) * getScaleIndex(blockIdx, subBlockIdx)
     }
 
     override fun getSubBlockMin(blockIdx: Int, subBlockIdx: Int): Float {
@@ -147,45 +160,56 @@ public class Q4_KBlockTensorData(
         require(subBlockIdx in 0 until Q4_KTensorData.SUB_BLOCKS_PER_BLOCK) {
             "Sub-block index $subBlockIdx out of bounds (0..7)"
         }
-        val dMin = getBlockDMin(blockIdx)
-        val minIdx = getMinIndex(blockIdx, subBlockIdx)
-        return dMin * (minIdx / 63.0f)
+        return getBlockDMin(blockIdx) * getMinIndex(blockIdx, subBlockIdx)
     }
 
+    /**
+     * Port of `get_scale_min_k4` from ggml-quants.c. The 12 scale bytes don't
+     * pack 12 bits sequentially per sub-block — sub-blocks 4..7 reuse the top
+     * 2 bits of bytes for sub-blocks 0..3.
+     */
     private fun getScaleIndex(blockIdx: Int, subBlockIdx: Int): Int {
-        val offset = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 4
-        val bitPos = subBlockIdx * 12
-        val bytePos = bitPos / 8
-        val bitShift = bitPos % 8
-
-        val packed = (data[offset + bytePos].toInt() and 0xFF) or
-            ((data.getOrElse(offset + bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-            ((data.getOrElse(offset + bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
-
-        return (packed ushr bitShift) and 0x3F
+        val base = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 4
+        val j = subBlockIdx
+        return if (j < 4) {
+            data[base + j].toInt() and 0x3F
+        } else {
+            val low4 = data[base + j + 4].toInt() and 0x0F
+            val high2 = (data[base + j - 4].toInt() and 0xFF) ushr 6
+            low4 or (high2 shl 4)
+        }
     }
 
     private fun getMinIndex(blockIdx: Int, subBlockIdx: Int): Int {
-        val offset = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 4
-        val bitPos = subBlockIdx * 12 + 6
-        val bytePos = bitPos / 8
-        val bitShift = bitPos % 8
-
-        val packed = (data[offset + bytePos].toInt() and 0xFF) or
-            ((data.getOrElse(offset + bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-            ((data.getOrElse(offset + bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
-
-        return (packed ushr bitShift) and 0x3F
+        val base = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 4
+        val j = subBlockIdx
+        return if (j < 4) {
+            data[base + j + 4].toInt() and 0x3F
+        } else {
+            val low4 = (data[base + j + 4].toInt() and 0xFF) ushr 4
+            val high2 = (data[base + j].toInt() and 0xFF) ushr 6
+            low4 or (high2 shl 4)
+        }
     }
 
+    /**
+     * Look up the 4-bit code for `elementIdx` (0..255) within block
+     * `blockIdx`, using ggml's strided per-32-byte-group layout: each
+     * 32-byte qs group covers 64 elements, with byte `i` of the group
+     * holding element `groupBase + i` in its lo nibble and element
+     * `groupBase + i + 32` in its hi nibble.
+     */
     override fun getCode(blockIdx: Int, elementIdx: Int): Int {
         require(blockIdx in 0 until blockCount) { "Block index $blockIdx out of bounds" }
         require(elementIdx in 0 until Q4_KTensorData.BLOCK_SIZE) {
             "Element index $elementIdx out of bounds (0..255)"
         }
-        val offset = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 16 + elementIdx / 2
-        val codeByte = data[offset].toInt() and 0xFF
-        return if (elementIdx % 2 == 0) codeByte and 0x0F else codeByte ushr 4
+        val groupIdx = elementIdx / 64           // 0..3 — which 32-byte qs group
+        val withinGroup = elementIdx % 64        // 0..63
+        val byteOffset = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 16 +
+            groupIdx * 32 + (withinGroup % 32)
+        val codeByte = data[byteOffset].toInt() and 0xFF
+        return if (withinGroup < 32) codeByte and 0x0F else codeByte ushr 4
     }
 
     override fun get(vararg indices: Int): Byte {
@@ -199,10 +223,13 @@ public class Q4_KBlockTensorData(
         val flatIndex = calcFlatIndex(indices)
         val blockIdx = flatIndex / Q4_KTensorData.BLOCK_SIZE
         val elementIdx = flatIndex % Q4_KTensorData.BLOCK_SIZE
-        val offset = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 16 + elementIdx / 2
-        val currentByte = data[offset].toInt() and 0xFF
+        val groupIdx = elementIdx / 64
+        val withinGroup = elementIdx % 64
+        val byteOffset = blockIdx * Q4_KTensorData.BYTES_PER_BLOCK + 16 +
+            groupIdx * 32 + (withinGroup % 32)
+        val currentByte = data[byteOffset].toInt() and 0xFF
         val newValue = value.toInt() and 0x0F
-        data[offset] = if (elementIdx % 2 == 0) {
+        data[byteOffset] = if (withinGroup < 32) {
             ((currentByte and 0xF0) or newValue).toByte()
         } else {
             ((currentByte and 0x0F) or (newValue shl 4)).toByte()
@@ -273,8 +300,8 @@ public class Q4_KBlockTensorData(
 }
 
 /**
- * Dequantize Q4_K tensor data to a FloatArray.
- * output[i] = code[i] * scale + min
+ * Dequantize Q4_K tensor data to a FloatArray (canonical ggml formula:
+ * `output[i] = code[i] * scale - offset`).
  */
 public fun Q4_KTensorData.toFloatArray(): FloatArray {
     val result = FloatArray(shape.volume)
@@ -282,13 +309,13 @@ public fun Q4_KTensorData.toFloatArray(): FloatArray {
     for (blockIdx in 0 until blockCount) {
         for (subBlockIdx in 0 until Q4_KTensorData.SUB_BLOCKS_PER_BLOCK) {
             val scale = getSubBlockScale(blockIdx, subBlockIdx)
-            val min = getSubBlockMin(blockIdx, subBlockIdx)
+            val offset = getSubBlockMin(blockIdx, subBlockIdx)
             val elemsStart = subBlockIdx * Q4_KTensorData.SUB_BLOCK_SIZE
             for (j in 0 until Q4_KTensorData.SUB_BLOCK_SIZE) {
                 val elementIdx = elemsStart + j
                 if (outIdx >= shape.volume) break
                 val code = getCode(blockIdx, elementIdx)
-                result[outIdx++] = code * scale + min
+                result[outIdx++] = code * scale - offset
             }
         }
     }

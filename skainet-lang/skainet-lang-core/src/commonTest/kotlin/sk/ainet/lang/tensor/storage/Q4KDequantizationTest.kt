@@ -83,32 +83,49 @@ class Q4KDequantizationTest {
 
     @Test
     fun dequantizeBlock_uniformCodes_producesExpectedOutput() {
-        // d=1.0, dMin=0.0, all scale indices=63, all codes=5
-        // scale = d * (63/63) = 1.0, min = 0.0
-        // output = code * scale + min = 5 * 1.0 + 0.0 = 5.0
+        // With dMin=0 → offset=0 and a uniform code value, the canonical
+        // formula collapses to `output[i] = code * (d * scaleIdx_of_sub_block)`.
+        // The test fixture's scale-byte packing isn't ggml-canonical, so each
+        // sub-block decodes to its own (positive) scaleIdx — what matters here
+        // is that elements within the same sub-block get the same value, and
+        // all values are positive multiples of `code = 5`. The exact-value
+        // verification of canonical layout lives in `Q4KCanonicalLayoutTest`.
         val block = buildQ4KBlock(d = 1.0f, dMin = 0.0f, codeValue = 5)
         val td = Q4_KBlockTensorData.fromRawBytes(Shape(256), block)
 
         val output = FloatArray(256)
         td.dequantizeBlock(0, output)
 
-        for (i in 0 until 256) {
-            assertEquals(5.0f, output[i], "Element $i should be 5.0")
+        for (sb in 0 until 8) {
+            val first = output[sb * 32]
+            assertTrue(first >= 0f, "Sub-block $sb output should be non-negative for code=5, dMin=0")
+            assertTrue(
+                first.toDouble() % 5.0 < 1e-3 || (5.0 - first.toDouble() % 5.0) < 1e-3,
+                "Sub-block $sb output should be a multiple of code=5, was $first",
+            )
+            for (j in 0 until 32) {
+                assertEquals(
+                    first, output[sb * 32 + j], 0.001f,
+                    "All elements in sub-block $sb should match (uniform codes + dMin=0)",
+                )
+            }
         }
     }
 
     @Test
-    fun getCode_lowAndHighNibble_correct() {
+    fun getCode_canonical_strided_layout() {
+        // ggml strided codes: byte at qs offset i in a 32-byte group holds
+        // element i in lo nibble and element i+32 in hi nibble of the same byte.
         val block = ByteArray(144)
-        // Put a known byte at code position: byte at offset 16
-        // Low nibble = 0xA (10), high nibble = 0x5 (5)
-        block[16] = 0x5A.toByte()
+        block[16] = 0x5A.toByte()  // lo=0xA (10), hi=0x5 (5)
 
         val td = Q4_KBlockTensorData.fromRawBytes(Shape(256), block)
         // Element 0 → low nibble of byte 16 → 0xA = 10
         assertEquals(10, td.getCode(0, 0))
-        // Element 1 → high nibble of byte 16 → 0x5 = 5
-        assertEquals(5, td.getCode(0, 1))
+        // Element 32 → high nibble of byte 16 → 0x5 = 5  (NOT element 1)
+        assertEquals(5, td.getCode(0, 32))
+        // Element 1 → low nibble of byte 17 → 0x0
+        assertEquals(0, td.getCode(0, 1))
     }
 
     @Test
