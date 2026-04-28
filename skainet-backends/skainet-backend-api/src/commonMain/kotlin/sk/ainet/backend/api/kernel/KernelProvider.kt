@@ -42,4 +42,14 @@ public interface KernelProvider {
      * provider does not specialize matmul.
      */
     public fun matmulFp32(): Fp32MatmulKernel?
+
+    /**
+     * F32 × Q4_K matmul kernel exposed by this provider, or `null` if
+     * this provider does not specialize Q4_K. Default returns `null`
+     * so providers that pre-date this accessor (e.g. older custom
+     * providers and the scalar reference) keep compiling without
+     * change — callers cascade to a lower-priority provider that does
+     * carry the kernel.
+     */
+    public fun matmulQ4K(): Q4KMatmulKernel? = null
 }
