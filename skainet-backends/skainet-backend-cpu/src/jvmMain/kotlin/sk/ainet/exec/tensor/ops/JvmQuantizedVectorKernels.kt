@@ -545,10 +545,11 @@ internal object JvmQuantizedVectorKernels {
         val subBlockSize = 32
         val bytesPerBlock = 144L
         val blocksPerRow = (inputDim + blockSize - 1) / blockSize
-        val codeBuf = FloatArray(subBlockSize)
         val scaleIdxBuf = IntArray(8)
         val minIdxBuf = IntArray(8)
-        val sumsBuf = FloatArray(2)
+
+        val floatStep = floatSpecies.length()
+        val byteLoadLen = byteSpeciesForFloat.length()
 
         for (o in 0 until outputDim) {
             var acc = 0f
@@ -582,89 +583,74 @@ internal object JvmQuantizedVectorKernels {
                     minIdxBuf[sb] = low4M or (high2M shl 4)
                 }
 
+                // 4 strided qs groups; each carries sbLo (lo nibbles) and sbHi (hi nibbles).
+                // Single ByteVector load per chunk feeds both nibble accumulators —
+                // mirrors the SIMD pipeline in PanamaVectorQ4KMatmulKernel for the
+                // ByteArray-backed path; this kernel reads from MemorySegment via
+                // ByteVector.fromMemorySegment for mmap'd weight buffers.
                 for (groupJ in 0 until 4) {
                     val qsRegion = codesOff + groupJ * 32L
-
                     val sbLo = 2 * groupJ
+                    val sbHi = sbLo + 1
                     val inputStartLo = blockIdx * blockSize + sbLo * subBlockSize
-                    if (inputStartLo < inputDim) {
-                        dotQ4_KHalfNibbleSubBlockMemSeg(
-                            input, inputStartLo, weightSeg, qsRegion,
-                            hiNibble = false, codeBuf, sumsBuf
+                    val inputStartHi = inputStartLo + subBlockSize
+
+                    var codeAccLo = FloatVector.zero(floatSpecies)
+                    var inputAccLo = FloatVector.zero(floatSpecies)
+                    var codeAccHi = FloatVector.zero(floatSpecies)
+                    var inputAccHi = FloatVector.zero(floatSpecies)
+                    var idx = 0
+
+                    while (idx + floatStep <= subBlockSize) {
+                        val byteVec = ByteVector.fromMemorySegment(
+                            byteSpeciesForFloat, weightSeg, qsRegion + idx, ByteOrder.LITTLE_ENDIAN,
                         )
-                        val scale = d * scaleIdxBuf[sbLo]
-                        val offset = dMin * minIdxBuf[sbLo]
-                        acc += sumsBuf[0] * scale - sumsBuf[1] * offset
+                        val loBytes = byteVec.and(0x0F.toByte())
+                        val hiBytes = byteVec.lanewise(VectorOperators.LSHR, 4.toByte())
+                        val codeVecLo = loBytes.castShape(floatSpecies, 0) as FloatVector
+                        val codeVecHi = hiBytes.castShape(floatSpecies, 0) as FloatVector
+                        val inVecLo = FloatVector.fromArray(floatSpecies, input, inputStartLo + idx)
+                        val inVecHi = FloatVector.fromArray(floatSpecies, input, inputStartHi + idx)
+                        codeAccLo = inVecLo.fma(codeVecLo, codeAccLo)
+                        inputAccLo = inVecLo.add(inputAccLo)
+                        codeAccHi = inVecHi.fma(codeVecHi, codeAccHi)
+                        inputAccHi = inVecHi.add(inputAccHi)
+                        idx += floatStep
                     }
 
-                    val sbHi = 2 * groupJ + 1
-                    val inputStartHi = inputStartLo + subBlockSize
+                    var codeSumLo = codeAccLo.reduceLanes(VectorOperators.ADD)
+                    var inputSumLo = inputAccLo.reduceLanes(VectorOperators.ADD)
+                    var codeSumHi = codeAccHi.reduceLanes(VectorOperators.ADD)
+                    var inputSumHi = inputAccHi.reduceLanes(VectorOperators.ADD)
+
+                    while (idx < subBlockSize) {
+                        val b = weightSeg.get(JAVA_BYTE_LE, qsRegion + idx).toInt() and 0xFF
+                        val codeLo = (b and 0x0F).toFloat()
+                        val codeHi = (b ushr 4).toFloat()
+                        val vLo = input[inputStartLo + idx]
+                        val vHi = input[inputStartHi + idx]
+                        codeSumLo += vLo * codeLo
+                        inputSumLo += vLo
+                        codeSumHi += vHi * codeHi
+                        inputSumHi += vHi
+                        idx++
+                    }
+
+                    val scaleLo = d * scaleIdxBuf[sbLo]
+                    val offsetLo = dMin * minIdxBuf[sbLo]
+                    val scaleHi = d * scaleIdxBuf[sbHi]
+                    val offsetHi = dMin * minIdxBuf[sbHi]
+                    if (inputStartLo < inputDim) {
+                        acc += codeSumLo * scaleLo - inputSumLo * offsetLo
+                    }
                     if (inputStartHi < inputDim) {
-                        dotQ4_KHalfNibbleSubBlockMemSeg(
-                            input, inputStartHi, weightSeg, qsRegion,
-                            hiNibble = true, codeBuf, sumsBuf
-                        )
-                        val scale = d * scaleIdxBuf[sbHi]
-                        val offset = dMin * minIdxBuf[sbHi]
-                        acc += sumsBuf[0] * scale - sumsBuf[1] * offset
+                        acc += codeSumHi * scaleHi - inputSumHi * offsetHi
                     }
                 }
             }
 
             output[outputOffset + o] = acc
         }
-    }
-
-    /**
-     * MemSeg-reading counterpart to `dotQ4_KHalfNibbleSubBlock`. Same
-     * canonical strided-nibble layout; reads the 32-byte qs group through
-     * `MemorySegment.get`.
-     */
-    private fun dotQ4_KHalfNibbleSubBlockMemSeg(
-        input: FloatArray,
-        inputOffset: Int,
-        weightSeg: MemorySegment,
-        qsOffset: Long,
-        hiNibble: Boolean,
-        codeBuf: FloatArray,
-        sumsOut: FloatArray,
-    ) {
-        if (hiNibble) {
-            for (i in 0 until SUB_BLOCK_SIZE) {
-                val b = weightSeg.get(JAVA_BYTE_LE, qsOffset + i.toLong()).toInt() and 0xFF
-                codeBuf[i] = (b ushr 4).toFloat()
-            }
-        } else {
-            for (i in 0 until SUB_BLOCK_SIZE) {
-                val b = weightSeg.get(JAVA_BYTE_LE, qsOffset + i.toLong()).toInt() and 0xFF
-                codeBuf[i] = (b and 0x0F).toFloat()
-            }
-        }
-
-        val step = floatSpecies.length()
-        var codeAcc = FloatVector.zero(floatSpecies)
-        var inputAcc = FloatVector.zero(floatSpecies)
-        var idx = 0
-        val loopBound = floatSpecies.loopBound(SUB_BLOCK_SIZE)
-        while (idx < loopBound) {
-            val iv = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
-            val cv = FloatVector.fromArray(floatSpecies, codeBuf, idx)
-            codeAcc = iv.fma(cv, codeAcc)
-            inputAcc = iv.add(inputAcc)
-            idx += step
-        }
-        var codeSum = codeAcc.reduceLanes(VectorOperators.ADD)
-        var inputSum = inputAcc.reduceLanes(VectorOperators.ADD)
-
-        while (idx < SUB_BLOCK_SIZE) {
-            val v = input[inputOffset + idx]
-            codeSum += v * codeBuf[idx]
-            inputSum += v
-            idx++
-        }
-
-        sumsOut[0] = codeSum
-        sumsOut[1] = inputSum
     }
 
     /**
