@@ -485,6 +485,74 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
+    override fun <T : DType, V> permute(tensor: Tensor<T, V>, axes: IntArray): Tensor<T, V> {
+        val rank = tensor.shape.rank
+        require(axes.size == rank) {
+            "permute: axes length ${axes.size} must match tensor rank $rank"
+        }
+        val seen = BooleanArray(rank)
+        for (a in axes) {
+            require(a in 0 until rank) { "permute: axis $a out of range [0, $rank)" }
+            require(!seen[a]) { "permute: axis $a appears more than once in ${axes.toList()}" }
+            seen[a] = true
+        }
+
+        val inDims = tensor.shape.dimensions
+        val outDims = IntArray(rank) { i -> inDims[axes[i]] }
+        val outShape = Shape(outDims)
+
+        // Identity permute — no copy.
+        var isIdentity = true
+        for (i in 0 until rank) if (axes[i] != i) { isIdentity = false; break }
+        if (isIdentity) return tensor
+
+        // Row-major strides for input and output. inStrides[k] is the
+        // distance in the source buffer between consecutive indices on
+        // input axis k.
+        val inStrides = IntArray(rank).also { s ->
+            s[rank - 1] = 1
+            for (i in rank - 2 downTo 0) s[i] = s[i + 1] * inDims[i + 1]
+        }
+        val outStrides = IntArray(rank).also { s ->
+            s[rank - 1] = 1
+            for (i in rank - 2 downTo 0) s[i] = s[i + 1] * outDims[i + 1]
+        }
+
+        // Fast path: source is a contiguous FloatArray. Iterate the output
+        // linearly, decompose each flat index to its multi-index, permute
+        // to source coords, recompose to source flat index, copy.
+        if (tensor.data is FloatArrayTensorData<*>) {
+            val srcBuf = (tensor.data as FloatArrayTensorData<*>).buffer
+            val total = outShape.volume
+            val out = FloatArray(total)
+            val outIdx = IntArray(rank)
+            for (flatOut in 0 until total) {
+                var rem = flatOut
+                for (i in 0 until rank) {
+                    val s = outStrides[i]
+                    outIdx[i] = rem / s
+                    rem -= outIdx[i] * s
+                }
+                var flatIn = 0
+                for (i in 0 until rank) flatIn += outIdx[i] * inStrides[axes[i]]
+                out[flatOut] = srcBuf[flatIn]
+            }
+            @Suppress("UNCHECKED_CAST")
+            val outData = dataFactory.fromFloatArray<T, Float>(outShape, tensor.dtype, out)
+                as sk.ainet.lang.tensor.data.TensorData<T, V>
+            return newTensor(outData, tensor.dtype, tensor)
+        }
+
+        // Generic fallback: defer to dataFactory.init with element access.
+        val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { outIdx ->
+            val inIdx = IntArray(rank)
+            for (i in 0 until rank) inIdx[axes[i]] = outIdx[i]
+            tensor.data.get(*inIdx)
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-conv2d")
     override fun <T : DType, V> conv2d(
         input: Tensor<T, V>,

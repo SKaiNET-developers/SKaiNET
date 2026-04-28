@@ -164,6 +164,7 @@ private class TestTensorOps : TensorOps {
     override fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> = b
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = a
     override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> permute(tensor: Tensor<T, V>, axes: IntArray): Tensor<T, V> = tensor
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float): Tensor<T, V> = tensor
     override fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float): Tensor<T, V> = tensor

@@ -53,6 +53,24 @@ public interface TensorOps {
     @Diff
     public fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V>
 
+    /**
+     * Permute the dimensions of [tensor] according to [axes].
+     *
+     * `axes` is a permutation of `0..tensor.rank-1`; the i-th axis of the
+     * result is the `axes[i]`-th axis of the input. On a rank-3 tensor of
+     * shape `[A, B, C]`, `permute(t, intArrayOf(1, 0, 2))` returns shape
+     * `[B, A, C]`.
+     *
+     * `permute(t, intArrayOf(0, 1, ..., rank-3, rank-1, rank-2))` is
+     * equivalent to [transpose].
+     *
+     * @param tensor input tensor, any rank ≥ 1
+     * @param axes a permutation of `0..tensor.rank-1` (length must equal
+     *   `tensor.rank`, every value in `[0, rank)` exactly once)
+     */
+    @Diff
+    public fun <T : DType, V> permute(tensor: Tensor<T, V>, axes: IntArray): Tensor<T, V>
+
     // Convolutional operations
     @Diff
     public fun <T : DType, V> conv1d(

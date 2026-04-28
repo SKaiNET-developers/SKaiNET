@@ -151,6 +151,13 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> permute(tensor: Tensor<T, V>, axes: IntArray): Tensor<T, V> {
+        validatePermuteAxes(tensor.shape, axes)
+        val resultShape = calculatePermuteShape(tensor.shape, axes)
+        val resultData = dataFactory.zeros<T, V>(resultShape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
     override fun <T : DType, V> conv1d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -598,6 +605,31 @@ public class VoidTensorOps : TensorOps {
      * For 2D tensors: (m, n) -> (n, m)
      * For higher dimensions: swaps the last two dimensions
      */
+    /**
+     * Validate that [axes] is a valid permutation of `0..shape.rank-1`.
+     */
+    internal fun validatePermuteAxes(shape: Shape, axes: IntArray) {
+        require(axes.size == shape.rank) {
+            "permute: axes length ${axes.size} must match tensor rank ${shape.rank}"
+        }
+        val seen = BooleanArray(shape.rank)
+        for (a in axes) {
+            require(a in 0 until shape.rank) {
+                "permute: axis $a out of range [0, ${shape.rank})"
+            }
+            require(!seen[a]) { "permute: axis $a appears more than once in $axes" }
+            seen[a] = true
+        }
+    }
+
+    /**
+     * Result shape after applying [axes] permutation to [shape].
+     */
+    internal fun calculatePermuteShape(shape: Shape, axes: IntArray): Shape {
+        val dims = IntArray(shape.rank) { i -> shape.dimensions[axes[i]] }
+        return Shape(dims)
+    }
+
     private fun calculateTransposeShape(shape: Shape): Shape {
         if (shape.rank < 2) {
             throw IllegalArgumentException("Transpose requires tensors with at least 2 dimensions")
