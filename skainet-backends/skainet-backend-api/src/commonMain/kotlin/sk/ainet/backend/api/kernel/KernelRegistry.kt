@@ -9,12 +9,15 @@ package sk.ainet.backend.api.kernel
  * itself available, then pull the specific kernel they need from the
  * provider's accessors.
  *
- * The registry is plain manual registration today — JVM auto-discovery
- * via `java.util.ServiceLoader` can be layered on in a follow-up PR
- * once a second concrete provider exists (Panama Vector). Callers that
- * want a guaranteed scalar fallback can pin
- * `sk.ainet.exec.kernel.ScalarKernelProvider` directly without going
- * through the registry.
+ * Registration paths:
+ * - **JVM auto-discovery**: `KernelServiceLoader.installAll()` scans
+ *   `META-INF/services/sk.ainet.backend.api.kernel.KernelProvider`
+ *   entries on the classpath and registers everything it finds. This
+ *   is the standard wiring for JVM applications.
+ * - **Manual**: any caller can pin a specific provider with [register]
+ *   — useful for tests or for non-JVM platforms where `ServiceLoader`
+ *   isn't available. Callers that want a guaranteed scalar fallback
+ *   can pin `sk.ainet.exec.kernel.ScalarKernelProvider` directly.
  *
  * Thread safety: [register] is not thread-safe. Call it during
  * single-threaded startup or guard with your own lock.

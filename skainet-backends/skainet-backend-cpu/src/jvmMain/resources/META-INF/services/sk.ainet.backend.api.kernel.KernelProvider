@@ -1,0 +1,2 @@
+sk.ainet.exec.kernel.ScalarKernelProviderFactory
+sk.ainet.exec.kernel.PanamaVectorKernelProviderFactory
