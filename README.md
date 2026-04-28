@@ -141,7 +141,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 - **JVM CPU performance — Vector API SIMD across the board.** Pluggable `KernelProvider` SPI with priority-ordered lookup; FP32 matmul tile-blocked at **8.6×–10.8× over scalar**, Q4_K matmul fully SIMD-fused with inline dequant at **~30–73 GFLOPS** on Apple Silicon. Every quantized format we support (Q4_0, Q4_K, Q4_K MemSeg, Q6_K, Q8_0) is now SIMD'd to some degree.
 - **`ScratchPool` SPI and `TensorOps.permute(axes)`** — runtime workspace allocator for transient tensors and arbitrary-axis permutation.
-- **Native (FFM) kernel provider** captured as PRD in [`NATIVE_FFM_KERNEL_PROVIDER.md`](NATIVE_FFM_KERNEL_PROVIDER.md), deferred.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
