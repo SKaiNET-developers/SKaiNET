@@ -6,7 +6,8 @@ This page explains how to run the JMH benchmarks for the JVM CPU backend and how
 
 * Elementwise: FP32 `add` on 1,000,000 elements
 * Reductions: FP32 `sum` and `mean` on 1,000,000 elements
-* Matmul: FP32 square `matmul` with sizes 256, 512, and 1024
+* Matmul (op-level): FP32 square `matmul` with sizes 256, 512, and 1024 — exercises `ctx.ops.matmul`, i.e. the production routing path
+* Matmul (kernel-level): direct `Fp32MatmulKernel.matmul` invocation, scalar vs Panama Vector, sizes 256/512/1024 — used to validate the M5 milestone target (Panama ≥1.5× scalar) without entanglement from the rest of the op pipeline
 
 Benchmarks are implemented in module:
 
@@ -17,6 +18,7 @@ Source files:
 * `src/jmh/kotlin/sk/ainet/bench/ElementwiseAdd1MBench.kt`
 * `src/jmh/kotlin/sk/ainet/bench/Reductions1MBench.kt`
 * `src/jmh/kotlin/sk/ainet/bench/MatmulBench.kt`
+* `src/jmh/kotlin/sk/ainet/bench/KernelMatmulBench.kt`
 
 ===== Prerequisites
 
@@ -73,6 +75,13 @@ This will build and execute all JMH benchmarks with the default parameters defin
   -Pjmh.include=MatmulBench \
   -Pjmh.param.vectorEnabled=true \
   -Pjmh.param.blasEnabled=true
+....
+
+* Kernel-level scalar vs Panama at all sizes (M5 ≥1.5× target):
+
+....
+./gradlew :skainet-backends:benchmarks:jvm-cpu-jmh:jmh \
+  -Pjmh.include=KernelMatmulBench
 ....
 
 * Matmul at 512 only, comparing BLAS on/off with vector on:
