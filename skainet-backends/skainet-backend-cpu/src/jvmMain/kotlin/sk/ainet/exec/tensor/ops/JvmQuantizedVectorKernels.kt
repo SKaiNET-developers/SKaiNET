@@ -518,15 +518,30 @@ internal object JvmQuantizedVectorKernels {
      * Q4_0 dot-product for a single block of 32 elements stored in a MemorySegment.
      *
      * Q4_0 block layout: 2 bytes f16 scale + 16 bytes packed nibbles (32 values).
-     * Each byte packs two 4-bit codes: lo nibble = first, hi nibble = second.
+     * Each byte packs two 4-bit codes — adjacent elements share a byte:
+     * `code[2k] = byte[k] & 0x0F`, `code[2k+1] = byte[k] >>> 4`. Subtract
+     * 8 for sign correction.
      *
-     * Uses the preferred vector species (AVX-256 gives 8-wide, AVX-512 gives 16-wide).
+     * Two-stage SIMD: a scalar byte-pair unpack writes 32 sign-corrected
+     * floats into [codeBuf] (16 byte loads from the MemorySegment, two
+     * nibbles per load — same memory traffic as the prior fully-scalar
+     * implementation), then a vector FMA loop dot-products [codeBuf]
+     * with the matching input slice. The nibble-pair-per-byte layout
+     * makes a fully-fused `ByteVector` pipeline (a la
+     * [PanamaVectorQ4KMatmulKernel]) awkward without strided gather or
+     * lane-interleave shuffles, so this kernel keeps the scratch +
+     * SIMD-dot shape — same approach Q4_K used before its
+     * fused-pipeline rewrite (PR #562).
+     *
+     * @param codeBuf scratch FloatArray of length >= 32, supplied by
+     *   the caller so allocation amortizes across blocks.
      */
     fun dotQ4_0BlockMemSeg(
         input: FloatArray,
         inputOffset: Int,
         weightSeg: MemorySegment,
         blockByteOffset: Long,
+        codeBuf: FloatArray,
     ): Float {
         val blockSize = 32
         val codesOffset = blockByteOffset + 2
@@ -534,17 +549,51 @@ internal object JvmQuantizedVectorKernels {
         // Read f16 scale
         val scale = halfToFloat(read2BytesLE(weightSeg, blockByteOffset))
 
-        // Q4_0: 16 packed bytes → 32 nibbles. Unpack all 32 codes to a reusable scratch array.
-        // This is still scalar unpacking but avoids per-iteration FloatArray allocation.
-        var sum = 0f
-        for (idx in 0 until blockSize) {
-            val packedByte = weightSeg.get(JAVA_BYTE_LE, codesOffset + (idx / 2).toLong()).toInt() and 0xFF
-            val code = (if (idx % 2 == 0) (packedByte and 0x0F) else (packedByte ushr 4)).toFloat() - 8f
-            sum += input[inputOffset + idx] * code
+        // Unpack 16 packed bytes → 32 sign-corrected nibbles. Two
+        // nibbles per byte load means half the byte traffic of the
+        // straight scalar dot product.
+        for (k in 0 until 16) {
+            val b = weightSeg.get(JAVA_BYTE_LE, codesOffset + k.toLong()).toInt() and 0xFF
+            codeBuf[2 * k] = (b and 0x0F).toFloat() - 8f
+            codeBuf[2 * k + 1] = (b ushr 4).toFloat() - 8f
         }
 
-        return sum * scale
+        // SIMD FMA dot product.
+        val step = floatSpecies.length()
+        var accVec = FloatVector.zero(floatSpecies)
+        var idx = 0
+        val loopBound = floatSpecies.loopBound(blockSize)
+        while (idx < loopBound) {
+            val iv = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+            val cv = FloatVector.fromArray(floatSpecies, codeBuf, idx)
+            accVec = iv.fma(cv, accVec)
+            idx += step
+        }
+        var acc = accVec.reduceLanes(VectorOperators.ADD)
+        // Scalar tail (only fires if floatSpecies.length() doesn't divide 32 — rare).
+        while (idx < blockSize) {
+            acc += input[inputOffset + idx] * codeBuf[idx]
+            idx++
+        }
+
+        return acc * scale
     }
+
+    /**
+     * Backwards-compatible overload that allocates its own scratch
+     * buffer. Existing callers that don't pass one still work; the
+     * matmul-level [matmulF32Q4_0MemSeg] hoists the allocation out of
+     * the per-block loop.
+     */
+    fun dotQ4_0BlockMemSeg(
+        input: FloatArray,
+        inputOffset: Int,
+        weightSeg: MemorySegment,
+        blockByteOffset: Long,
+    ): Float = dotQ4_0BlockMemSeg(
+        input, inputOffset, weightSeg, blockByteOffset,
+        codeBuf = FloatArray(32),
+    )
 
     /**
      * F32 x Q4_0 matrix-vector multiply using MemorySegment for packed Q4 weights.
@@ -569,6 +618,8 @@ internal object JvmQuantizedVectorKernels {
         val blockSize = 32
         val bytesPerBlock = 18L // 2 bytes scale + 16 bytes codes
         val blocksPerRow = (inputDim + blockSize - 1) / blockSize
+        // Scratch hoisted out of the per-block loop — see dotQ4_0BlockMemSeg kdoc.
+        val codeBuf = FloatArray(blockSize)
 
         for (o in 0 until outputDim) {
             var acc = 0f
@@ -576,7 +627,7 @@ internal object JvmQuantizedVectorKernels {
                 val blockOff = weightByteOffset +
                     (o.toLong() * blocksPerRow + blockIdx) * bytesPerBlock
                 val inputStart = blockIdx * blockSize
-                acc += dotQ4_0BlockMemSeg(input, inputStart, weightSeg, blockOff)
+                acc += dotQ4_0BlockMemSeg(input, inputStart, weightSeg, blockOff, codeBuf)
             }
             output[outputOffset + o] = acc
         }
