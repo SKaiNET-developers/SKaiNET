@@ -3,6 +3,10 @@ package sk.ainet.exec.tensor.ops
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorSpecies
 import jdk.incubator.vector.VectorOperators
+import sk.ainet.backend.api.kernel.Fp32MatmulKernel
+import sk.ainet.backend.api.kernel.KernelRegistry
+import sk.ainet.backend.api.kernel.KernelServiceLoader
+import sk.ainet.exec.kernel.ScalarMatmulKernel
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
@@ -31,6 +35,23 @@ internal class DefaultCpuOpsJvm(
 ) : DefaultCpuOpsBase(dataFactory) {
 
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
+
+    /**
+     * FP32 matmul kernel resolved via [KernelRegistry]. First access on a
+     * given instance auto-installs providers via [KernelServiceLoader]
+     * if the registry is empty; subsequent calls reuse the cached
+     * lookup. Apps that prefer to wire their own providers can call
+     * `KernelRegistry.register(...)` before constructing this op set.
+     * Falls back to [ScalarMatmulKernel] only when no provider reports
+     * itself available — in practice, [PanamaVectorKernelProvider]
+     * (priority 50) wins on JDK 21+ with the incubator module loaded.
+     */
+    private val fp32MatmulKernel: Fp32MatmulKernel by lazy {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+        KernelRegistry.bestAvailable()?.matmulFp32() ?: ScalarMatmulKernel
+    }
 
     override fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         vectorFloatBinary(a, b, { x, y -> x.add(y) }) { x, y -> x + y }?.let { return it }
@@ -808,17 +829,16 @@ internal class DefaultCpuOpsJvm(
             }
         }
 
-        // Use blocked matmul for small/medium sizes
-        val blockedThreshold = 16 * 16 // always use blocked above tiny cases
-        if (m >= blockedThreshold || n >= blockedThreshold || k >= blockedThreshold) {
-            JvmVectorKernels.matmulFloatBlocked(m, k, n, aData.buffer, bData.buffer, outBuffer)
-            val outData = DenseFloatArrayTensorData<T>(Shape(m, n), outBuffer)
-            @Suppress("UNCHECKED_CAST")
-            return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
-        }
-
-        // Fallback to simple vectorized inner-product matmul
-        JvmVectorKernels.matmulFloat(m, k, n, aData.buffer, bData.buffer, outBuffer)
+        // Route through the kernel SPI — the registered provider
+        // (Panama on JDK 21+, scalar otherwise) is tile-blocked and
+        // handles small + large inputs in one path, so the previous
+        // simple-vs-blocked fork is no longer needed.
+        fp32MatmulKernel.matmul(
+            aData.buffer, 0, k,
+            bData.buffer, 0, n,
+            outBuffer, 0, n,
+            m, n, k,
+        )
         val outData = DenseFloatArrayTensorData<T>(Shape(m, n), outBuffer)
         @Suppress("UNCHECKED_CAST")
         return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
