@@ -605,6 +605,16 @@ public class DefaultGradientTape(
     override fun transposeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
         listOf(upstream.ops.transpose(upstream))
 
+    override fun permuteBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Gradient of permute(t, axes) is permute(upstream, inverseAxes)
+        // where inverseAxes[axes[i]] = i.
+        val axes = (attributes["axes"] as? IntArray)
+            ?: error("permuteBackward: missing 'axes' attribute")
+        val inverse = IntArray(axes.size)
+        for (i in axes.indices) inverse[axes[i]] = i
+        return listOf(upstream.ops.permute(upstream, inverse))
+    }
+
     override fun reluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
         listOf(reluGrad(upstream, inputs[0], output))
 

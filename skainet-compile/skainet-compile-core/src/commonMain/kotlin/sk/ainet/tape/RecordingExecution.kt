@@ -234,6 +234,13 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         return out
     }
 
+    override fun <T : DType, V> permute(tensor: Tensor<T, V>, axes: IntArray): Tensor<T, V> {
+        // Record as a regular passthrough; permute is shape-only at the
+        // op level. A dedicated PermuteOperation can be introduced later
+        // if the tape consumer needs to distinguish it from raw passthrough.
+        return base.permute(tensor, axes)
+    }
+
     // --- Conv/Pool ---
     override fun <T : DType, V> conv1d(
         input: Tensor<T, V>,
