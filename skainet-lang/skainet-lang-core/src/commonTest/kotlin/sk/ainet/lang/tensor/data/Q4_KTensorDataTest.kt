@@ -54,7 +54,7 @@ class Q4_KTensorDataTest {
     }
 
     @Test
-    fun `Q4_KBlockTensorData can read 4-bit codes (canonical strided layout)`() {
+    fun `Q4_KBlockTensorData can read 4-bit codes - canonical strided layout`() {
         // ggml strided layout: byte at offset (i within a 32-byte qs group)
         // holds element i in lo nibble, element i+32 in hi nibble.
         val codes = ByteArray(128)
@@ -73,7 +73,7 @@ class Q4_KTensorDataTest {
     }
 
     @Test
-    fun `Q4_KBlockTensorData handles all 4-bit values (canonical strided layout)`() {
+    fun `Q4_KBlockTensorData handles all 4-bit values - canonical strided layout`() {
         val codes = ByteArray(128)
         // Each byte's lo and hi nibble = (idx mod 16). With strided decoding,
         // element i (i<32) reads byte i lo, element i+32 reads byte i hi —
@@ -92,7 +92,7 @@ class Q4_KTensorDataTest {
     }
 
     @Test
-    fun `Q4_KBlockTensorData get via indices works (canonical strided layout)`() {
+    fun `Q4_KBlockTensorData get via indices works - canonical strided layout`() {
         val codes = ByteArray(128)
         codes[0] = 0x21  // element 0 (lo nibble) = 1; element 32 (hi nibble) = 2
 
@@ -104,7 +104,7 @@ class Q4_KTensorDataTest {
     }
 
     @Test
-    fun `Q4_KBlockTensorData 2D access works correctly (canonical strided layout)`() {
+    fun `Q4_KBlockTensorData 2D access works correctly - canonical strided layout`() {
         val codes = ByteArray(128)
         for (i in 0 until 128) {
             // strided: byte i in group `i/32` carries element (groupBase + i%32)
@@ -129,7 +129,7 @@ class Q4_KTensorDataTest {
     }
 
     @Test
-    fun `Q4_KBlockTensorData set operation works (canonical strided layout)`() {
+    fun `Q4_KBlockTensorData set operation works - canonical strided layout`() {
         val block = createQ4KBlock(0x3C00, 0x0000)
         val tensor = Q4_KBlockTensorData.fromRawBytes(Shape(256), block)
 
@@ -176,7 +176,7 @@ class Q4_KTensorDataTest {
     }
 
     @Test
-    fun `Q4_KBlockTensorData toFloatArray produces expected values (canonical ggml formula)`() {
+    fun `Q4_KBlockTensorData toFloatArray produces expected values - canonical ggml formula`() {
         // d = 1.0, dMin = 0.0. With ggml's `get_scale_min_k4` decoding of all
         // 0xFF scale bytes:
         //   sub-blocks 0..3: scaleIdx = 0x3F (low 6 of byte j)
