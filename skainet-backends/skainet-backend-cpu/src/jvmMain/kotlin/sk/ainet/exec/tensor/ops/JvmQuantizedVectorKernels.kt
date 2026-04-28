@@ -359,9 +359,18 @@ internal object JvmQuantizedVectorKernels {
      * Dequantize one 256-element Q6_K block into [scratch] starting at
      * [scratchOffset]. Mirrors
      * `DequantOps.dequantQ6KFromBytes` line-for-line — see that method for
-     * the authoritative spec. Scalar implementation; the hot loop is the
-     * SIMD dot-product that follows, so per-block dequant cost is
-     * amortized by the outputDim-wide loop.
+     * the authoritative spec.
+     *
+     * SIMD-fused via `ByteVector`: per `floatStep`-wide chunk of `l`,
+     * loads one slice of `ql[qlBase+l]`, one of `ql[qlBase+l+32]`, and
+     * one of `qh[qhBase+l]`, then assembles q1..q4 = `(qlNibble) |
+     * ((qhSlice) << 4) − 32` per code lane via byte AND/LSHR/OR ops,
+     * widens to FloatVector, multiplies by per-sub-block `d·scale`, and
+     * stores to four 32-element output regions in `scratch`. Replaces
+     * the prior scalar loop's 32 iterations × 4 codes/iteration of
+     * scalar shifts and multiplies with one ByteVector load + 4 FMA
+     * stores per chunk. Scalar tail fires only when `floatStep` doesn't
+     * divide 16 (rare).
      */
     private fun dequantQ6_KBlock(
         packedWeights: ByteArray,
@@ -378,32 +387,79 @@ internal object JvmQuantizedVectorKernels {
             (packedWeights[dOffset].toInt() and 0xFF)
         val d = halfToFloat(dBits)
 
+        val floatStep = floatSpecies.length()
+        val byteLoadLen = byteSpeciesForFloat.length()
+
         for (half in 0..1) {
             val qlBase = qlBase0 + half * 64
             val qhBase = qhBase0 + half * 32
             val scBase = scBase0 + half * 8
             val outBase = scratchOffset + half * 128
-            for (l in 0 until 32) {
-                val isIdx = l / 16
 
-                val ql0 = packedWeights[qlBase + l].toInt() and 0xFF
-                val ql32 = packedWeights[qlBase + l + 32].toInt() and 0xFF
-                val qhL = packedWeights[qhBase + l].toInt() and 0xFF
+            for (isIdx in 0..1) {
+                val sc1 = d * packedWeights[scBase + isIdx + 0].toInt()
+                val sc2 = d * packedWeights[scBase + isIdx + 2].toInt()
+                val sc3 = d * packedWeights[scBase + isIdx + 4].toInt()
+                val sc4 = d * packedWeights[scBase + isIdx + 6].toInt()
+                val sc1Vec = FloatVector.broadcast(floatSpecies, sc1)
+                val sc2Vec = FloatVector.broadcast(floatSpecies, sc2)
+                val sc3Vec = FloatVector.broadcast(floatSpecies, sc3)
+                val sc4Vec = FloatVector.broadcast(floatSpecies, sc4)
+                val negThirtyTwo = FloatVector.broadcast(floatSpecies, -32f)
 
-                val q1 = ((ql0 and 0x0F) or ((qhL and 0x03) shl 4)) - 32
-                val q2 = ((ql32 and 0x0F) or (((qhL ushr 2) and 0x03) shl 4)) - 32
-                val q3 = ((ql0 ushr 4) or (((qhL ushr 4) and 0x03) shl 4)) - 32
-                val q4 = ((ql32 ushr 4) or (((qhL ushr 6) and 0x03) shl 4)) - 32
+                val lStart = isIdx * 16
+                val lEnd = lStart + 16
+                var l = lStart
+                while (l + floatStep <= lEnd &&
+                    qlBase + l + byteLoadLen <= packedWeights.size
+                ) {
+                    val ql0Vec = ByteVector.fromArray(byteSpeciesForFloat, packedWeights, qlBase + l)
+                    val ql32Vec = ByteVector.fromArray(byteSpeciesForFloat, packedWeights, qlBase + l + 32)
+                    val qhVec = ByteVector.fromArray(byteSpeciesForFloat, packedWeights, qhBase + l)
 
-                val sc1 = packedWeights[scBase + isIdx + 0].toInt()  // signed
-                val sc2 = packedWeights[scBase + isIdx + 2].toInt()
-                val sc3 = packedWeights[scBase + isIdx + 4].toInt()
-                val sc4 = packedWeights[scBase + isIdx + 6].toInt()
+                    val ql0Lo = ql0Vec.and(0x0F.toByte())
+                    val ql0Hi = ql0Vec.lanewise(VectorOperators.LSHR, 4.toByte())
+                    val ql32Lo = ql32Vec.and(0x0F.toByte())
+                    val ql32Hi = ql32Vec.lanewise(VectorOperators.LSHR, 4.toByte())
 
-                scratch[outBase + l +  0] = d * sc1 * q1
-                scratch[outBase + l + 32] = d * sc2 * q2
-                scratch[outBase + l + 64] = d * sc3 * q3
-                scratch[outBase + l + 96] = d * sc4 * q4
+                    val qh1 = qhVec.and(0x03.toByte())
+                    val qh2 = qhVec.lanewise(VectorOperators.LSHR, 2.toByte()).and(0x03.toByte())
+                    val qh3 = qhVec.lanewise(VectorOperators.LSHR, 4.toByte()).and(0x03.toByte())
+                    val qh4 = qhVec.lanewise(VectorOperators.LSHR, 6.toByte())
+
+                    val q1Bytes = ql0Lo.or(qh1.lanewise(VectorOperators.LSHL, 4.toByte()))
+                    val q2Bytes = ql32Lo.or(qh2.lanewise(VectorOperators.LSHL, 4.toByte()))
+                    val q3Bytes = ql0Hi.or(qh3.lanewise(VectorOperators.LSHL, 4.toByte()))
+                    val q4Bytes = ql32Hi.or(qh4.lanewise(VectorOperators.LSHL, 4.toByte()))
+
+                    val q1F = (q1Bytes.castShape(floatSpecies, 0) as FloatVector).add(negThirtyTwo)
+                    val q2F = (q2Bytes.castShape(floatSpecies, 0) as FloatVector).add(negThirtyTwo)
+                    val q3F = (q3Bytes.castShape(floatSpecies, 0) as FloatVector).add(negThirtyTwo)
+                    val q4F = (q4Bytes.castShape(floatSpecies, 0) as FloatVector).add(negThirtyTwo)
+
+                    q1F.mul(sc1Vec).intoArray(scratch, outBase + l + 0)
+                    q2F.mul(sc2Vec).intoArray(scratch, outBase + l + 32)
+                    q3F.mul(sc3Vec).intoArray(scratch, outBase + l + 64)
+                    q4F.mul(sc4Vec).intoArray(scratch, outBase + l + 96)
+
+                    l += floatStep
+                }
+
+                // Scalar tail (only fires if floatStep doesn't divide 16).
+                while (l < lEnd) {
+                    val ql0 = packedWeights[qlBase + l].toInt() and 0xFF
+                    val ql32 = packedWeights[qlBase + l + 32].toInt() and 0xFF
+                    val qhL = packedWeights[qhBase + l].toInt() and 0xFF
+                    val q1 = ((ql0 and 0x0F) or ((qhL and 0x03) shl 4)) - 32
+                    val q2 = ((ql32 and 0x0F) or (((qhL ushr 2) and 0x03) shl 4)) - 32
+                    val q3 = ((ql0 ushr 4) or (((qhL ushr 4) and 0x03) shl 4)) - 32
+                    val q4 = ((ql32 ushr 4) or (((qhL ushr 6) and 0x03) shl 4)) - 32
+                    scratch[outBase + l + 0] = sc1 * q1
+                    scratch[outBase + l + 32] = sc2 * q2
+                    scratch[outBase + l + 64] = sc3 * q3
+                    scratch[outBase + l + 96] = sc4 * q4
+                    l++
+                }
             }
         }
     }
