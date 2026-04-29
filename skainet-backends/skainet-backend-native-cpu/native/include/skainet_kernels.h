@@ -11,6 +11,17 @@
 #  define SKAINET_API
 #endif
 
+/* Portable "restrict" qualifier: GNU/Clang accept __restrict__,
+ * MSVC accepts __restrict, and the C99 keyword `restrict` is
+ * unreliable across compiler modes. */
+#if defined(__GNUC__) || defined(__clang__)
+#  define SKAINET_RESTRICT __restrict__
+#elif defined(_MSC_VER)
+#  define SKAINET_RESTRICT __restrict
+#else
+#  define SKAINET_RESTRICT
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

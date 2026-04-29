@@ -24,8 +24,11 @@ if(WIN32)
     set_target_properties(skainet_kernels PROPERTIES PREFIX "")
 endif()
 
-# Hide non-exported symbols on ELF / Mach-O for a smaller surface area
-# and let the compiler auto-vectorize the Q4_K hot loop.
+# Per-compiler tuning. The Q4_K kernel hot loop is straight-line FP
+# arithmetic that auto-vectorizes cleanly under aggressive optimization
+# (AVX2 on x86_64, NEON on ARM64). Visibility is also handled here on
+# ELF / Mach-O; on Windows the SKAINET_API macro adds dllexport so we
+# don't need /VISIBILITY flags.
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(skainet_kernels PRIVATE
         -fvisibility=hidden
@@ -35,4 +38,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         -funroll-loops
     )
     set_target_properties(skainet_kernels PROPERTIES C_VISIBILITY_PRESET hidden)
+elseif(CMAKE_C_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(skainet_kernels PRIVATE
+        /O2
+        /fp:fast
+        /W3
+    )
 endif()
