@@ -26,8 +26,9 @@ import sk.ainet.backend.api.kernel.Q4KMemSegMatmulKernel
  *
  * Staged rollout cursor (see `native-ffm-plan` asciidoc):
  *  - PR 2: real Q4_K matmul wired into the heap SPI.
- *  - PR 3 (this commit): MemSeg-input zero-copy sibling.
- *  - Later: native `matmulFp32`, `matmulQ6K`, `matmulQ8_0`.
+ *  - PR 3: MemSeg-input zero-copy sibling.
+ *  - PR 5 (this commit): native FP32 matmul wired into [matmulFp32].
+ *  - Later: native `matmulQ6K`, `matmulQ8_0` (need new SPI accessors).
  */
 public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
     override val name: String = "native-ffm"
@@ -35,7 +36,8 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun isAvailable(): Boolean = NativeQ4KMatmulKernel.isAvailable()
 
-    override fun matmulFp32(): Fp32MatmulKernel? = null
+    override fun matmulFp32(): Fp32MatmulKernel? =
+        if (NativeFp32MatmulKernel.isAvailable()) NativeFp32MatmulKernel else null
 
     override fun matmulQ4K(): Q4KMatmulKernel? =
         if (NativeQ4KMatmulKernel.isAvailable()) NativeQ4KMatmulKernel else null
