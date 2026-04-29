@@ -4,6 +4,7 @@
 * xref:tutorials/java-getting-started.adoc[Java getting started]
 * xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
 * xref:tutorials/graph-dsl.adoc[Graph DSL]
+* xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
 
 .How-to guides
 * xref:how-to/build.adoc[Build from source]
@@ -28,5 +29,6 @@
 * xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]
 * xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built]
 * xref:explanation/perf/native-ffm-plan.adoc[Plan: native FFM kernel provider]
+* xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compression]
 * xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU backend notes]
 * xref:explanation/issues/native-macos-accelerate-simd.adoc[Native macOS Accelerate SIMD issues]

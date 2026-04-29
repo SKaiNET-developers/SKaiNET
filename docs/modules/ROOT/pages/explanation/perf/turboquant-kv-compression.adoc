@@ -1,0 +1,230 @@
+= TurboQuant: KV-Cache Compression Pipeline
+:description: How SKaiNET's TurboQuant compresses LLM KV caches 4–10× at runtime via random rotation, scalar quantization, optional QJL residual, and bit-packing.
+
+This page is the *why* and *how* behind TurboQuant. For practical
+"add this to my model" instructions, see
+xref:tutorials/turboquant-getting-started.adoc[].
+
+== The problem
+
+Autoregressive LLM decode stores a key/value pair per attention head
+per layer per token. For Llama-2-7B at 4k context:
+
+* 32 layers × 32 heads × 128 head_dim × 4096 tokens × 2 (K + V) ×
+4 B (FP32) ≈ *4 GB* of KV cache.
+* At 32k context (the long-context regime models are starting to
+ship in), that grows to *32 GB*. The cache dominates total memory
+usage by 5–10× over the weights themselves.
+
+Quantizing the *weights* doesn't help here — the cache is created at
+inference time, in FP32. Two paths exist for compressing it:
+
+. *Per-token, per-block scalar quantization* — store K/V at int8 or
+4-bit per element, with a per-block scale. Used by llama.cpp's
+`-q k`, `-q v` flags. Simple, fast, but quantization error
+concentrates on outlier dimensions.
+. *Random rotation followed by scalar quantization* — rotate each
+vector by a fixed pseudo-random orthogonal matrix before
+quantizing, so error spreads evenly across all dimensions instead
+of clustering on outliers. The rotation is invertible, so the
+reverse direction recovers a near-original FP32 vector. *This is
+TurboQuant.*
+
+== The pipeline (encode)
+
+Per K/V vector for one head at one layer:
+
+[source,text]
+----
+   FP32 input vector
+        │
+        ▼
+┌─────────────────────────┐
+│  1. Random rotation     │   spreads quantization error across
+│     (Walsh-Hadamard or  │   all dimensions; cheap O(d log d)
+│      similar O(d log d))│   when d is a power of two
+└────────────┬────────────┘
+             ▼
+┌─────────────────────────┐
+│  2. Scalar quantization │   per-block scale + N-bit codes
+│     to N-bit codes      │   (N ∈ {3, 4, 8})
+└────────────┬────────────┘
+             ▼
+┌─────────────────────────┐
+│  3. (Optional) QJL      │   residual encoded at lower bit-width
+│     residual encode     │   to preserve attention inner-product
+│     for inner-product   │   accuracy at very low N
+│     preservation        │
+└────────────┬────────────┘
+             ▼
+┌─────────────────────────┐
+│  4. Bit-packing         │   pack 3/4/8-bit codes into bytes for
+│     into bytes          │   compact storage
+└────────────┬────────────┘
+             ▼
+   TurboQuantBlock
+   (packedCodes, scales, seed, bits, elementCount, residual?)
+----
+
+The reference implementation lives at
+`skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/turboquant/TurboQuantCodec.kt`.
+
+=== Why each step
+
+==== 1. Random rotation
+
+The mathematical reason TurboQuant beats plain per-block scalar
+quantization. A pseudo-random orthogonal rotation has the property
+that each output dimension is a linear combination of *all* input
+dimensions — so a "bad" outlier value that would dominate the scale
+of a plain block (and force every other element to round to zero)
+gets *spread* across the entire vector after rotation, lifting the
+floor under all elements.
+
+In practice: with plain int4 quantization, attention quality drops
+sharply below 6-bit. With rotation-then-quantize at 4-bit,
+TurboQuant keeps quality close to the 8-bit baseline.
+
+The rotation must be:
+
+* *Orthogonal* — so the inverse exists and is its transpose.
+* *Pseudo-random with a fixed seed* — so encode and decode both
+construct the same matrix without storing it. The seed is part of
+the `TurboQuantBlock` that gets persisted.
+* *Cheap* — `O(d log d)` or `O(d)`. SKaiNET's
+`RandomRotation` uses a Walsh–Hadamard-style construction; see
+the source for the exact recipe.
+
+==== 2. Scalar quantization
+
+Standard per-block min/max → scale → N-bit codes. The block
+boundary is one K or one V vector for one head: typically
+`headDim = 64..128` floats. Per-block scales preserve dynamic range
+without leaking outliers across heads.
+
+==== 3. QJL residual (optional)
+
+For attention specifically, what matters is not absolute K and V
+values but *inner products* between Q and K (attention scores) and
+between attention weights and V. The Johnson–Lindenstrauss family
+of constructions (here: a quantized variant called QJL) preserves
+inner products with high probability under random projection.
+
+When enabled (`config.useQjl = true`), TurboQuant computes the
+*residual* between the rotated input and its quantized
+reconstruction, then encodes that residual in a lower-bit-width
+JL projection. On decode, the residual is added back, recovering
+inner-product accuracy that pure scalar quantization would lose at
+3-bit.
+
+The two variants in `TurboQuantConfig`:
+
+* `polarOnly` — steps 1–2–4 only. Fastest, backend-friendly. Used
+in the `safe-lowbit` and `balanced` presets where quantization
+noise is already low enough.
+* `polarPlusQjl` — steps 1–2–3–4. Slightly slower encode/decode
+but preserves attention accuracy at lower bit-widths. Used in
+`experimental-max` to make 3-bit viable.
+
+==== 4. Bit-packing
+
+3-bit and 4-bit codes don't fit a byte each. Pack 8 codes into 3
+bytes (3-bit) or 2 codes per byte (4-bit) to reach the actual
+compression ratio. The `BitPacker` in
+`skainet-lang-core/.../turboquant/` does this; the on-the-wire
+format is `TurboQuantBlock.packedCodes: ByteArray`.
+
+== The pipeline (decode)
+
+Reverse of encode:
+
+. Bit-unpack codes from `packedCodes`.
+. Apply per-block scale to recover quantized floats.
+. If the block has a `residual`, decode the QJL residual and add
+it back.
+. Apply the *inverse rotation* (the rotation matrix's transpose)
+to recover the original FP32 vector.
+
+For the `balanced` preset (no QJL, 4-bit codes), decode is ~3 SIMD
+ops per element on JVM Vector or Metal — see
+xref:tutorials/turboquant-getting-started.adoc#step-5-monitor-compression-and-quality[Monitor
+compression and quality] for end-to-end timing on your hardware.
+
+== The three presets and their tradeoffs
+
+[cols="1,1,1,1,3",options="header"]
+|===
+| Preset | Key encoding | Value encoding | Compression | Why this combination
+| `safe-lowbit` | Q8_0 (8-bit, no rotation) | TurboQuant 4-bit (polar) | ~4–6× | Keys drive attention scores; 8-bit Q8_0 preserves them with no rotation overhead. Values only need to be average-correct (they get averaged across the softmax-weighted query); 4-bit TurboQuant is plenty.
+| `balanced` | TurboQuant 4-bit (polar) | TurboQuant 4-bit (polar) | ~8× | Symmetric 4-bit. The rotation in TurboQuant lifts 4-bit accuracy to roughly 6-bit-equivalent quality, so keys can drop to 4 bits without the regression you'd see from plain Q4.
+| `experimental-max` | TurboQuant 3-bit (polar+QJL) | TurboQuant 3-bit (polar+QJL) | ~10× | At 3 bits, scalar quantization alone loses too much inner-product accuracy for keys. The QJL residual rescues attention scores; the cost is ~10–15% slower encode/decode.
+|===
+
+The `TurboQuantPresets` object
+(`skainet-lang-core/.../turboquant/TurboQuantPresets.kt`)
+constructs the right `KvCacheConfig + TurboQuantConfig` pair for
+each.
+
+== How TurboQuant relates to weight quantization
+
+TurboQuant compresses *runtime* state (the KV cache, created during
+inference). It is *orthogonal* to the *weight* quantization story
+covered by xref:explanation/perf/quantized-simd-kernels.adoc[]:
+
+[cols="1,1,1",options="header"]
+|===
+| Compression target | Mechanism | Affects
+| Model weights (loaded from disk, frozen) | Q4_K, Q4_K_M, Q6_K, Q8_0 packed-byte formats from GGUF | Disk size, weight-load memory, matmul kernels
+| KV cache (created at inference) | TurboQuant rotation + N-bit + bit-packing | Runtime memory during decode
+|===
+
+Both compose with each other. A typical Gemma-4 deployment uses
+*both* — Q4_K_M weights (loaded once, dequantized via the SIMD
+kernels in PR #562/#563) plus a TurboQuant `balanced` KV cache
+(populated per token, decoded on each attention compute).
+
+== Performance: encode/decode cost
+
+JMH harness: `TurboQuantBenchmarks` in
+`skainet-lang/skainet-lang-core/src/jvmMain/kotlin/sk/ainet/lang/tensor/TurboQuantBenchmarks.kt`.
+Encode is dominated by the random rotation
+(`O(d log d)` work, ~1–5 µs per 128-dim vector on Apple Silicon
+JVM). Decode is similarly fast — ~1–3 µs per vector, since the
+inverse rotation reuses the same construction.
+
+For a Llama-7B-class model storing 32 layers × 32 heads = 1024 K/V
+pairs per new token: encode adds ~1–2 ms per token, decode adds
+~1–2 ms per attention compute. Negligible against the multi-tens-of-ms
+matmul cost per token. Not negligible *if* you only have a tiny
+matmul (which is exactly the regime where you wouldn't need
+TurboQuant in the first place — see "When NOT to use TurboQuant" in
+the tutorial).
+
+== Future: Metal backend (deferred)
+
+The `TURBOQUANT_METAL.md` plan at the repo root captures a
+deferred design for a Metal compute shader implementation of the
+encode / decode pipeline, targeting Apple Silicon unified memory
+(no CPU↔GPU copy for the KV cache). Current state is *plan only* —
+the CPU reference kernels are production, the Metal port is a
+roadmap item. Trigger conditions: production workload that becomes
+KV-cache-bandwidth-limited on M-series hardware AND has the SDPA
+inner loop also running on Metal (otherwise the unified-memory win
+is wasted on CPU↔GPU bridging).
+
+== References in the code
+
+[cols="1,2",options="header"]
+|===
+| File | What it is
+| `TurboQuantCodec.kt` | Top-level `encode(input, config) → TurboQuantBlock` and `decode(block) → FloatArray`.
+| `TurboQuantConfig.kt` (data classes in same package) | Per-call config: `bits`, `seed`, `useQjl`, `residualBits`.
+| `TurboQuantBlock.kt` (data class) | The on-the-wire compressed form — `packedCodes: ByteArray`, `scales: FloatArray`, `seed: Long`, `bits: Int`, `elementCount: Int`, `residual: QjlResidual?`.
+| `TurboQuantPresets.kt` | The three named presets — `safeLowbit()`, `balanced()`, `experimentalMax()`.
+| `TurboQuantUsage.kt` | Compilable usage examples for LLaMA-style models, asymmetric K/V, and a full generation loop.
+| `TurboQuantKvCacheStore.kt` (in `tensor/storage/`) | The `KvCacheStore` implementation that wires TurboQuant into SKaiNET's existing KV cache abstraction.
+| `KvCacheStore.kt` (in `tensor/storage/`) | The `KvCacheStore.turboQuant(...)` factory functions.
+| `RandomRotation.kt`, `ScalarQuantizer.kt`, `BitPacker.kt`, `QjlResidual.kt` | Internal building blocks.
+| `TurboQuantBenchmarks.kt` (jvmMain) | JMH harness for encode/decode timing.
+| `TurboQuantCodecTest.kt`, `TurboQuantKvCacheStoreTest.kt` (commonTest) | Parity vs FP32 baseline; preset-specific MSE bounds.
+|===

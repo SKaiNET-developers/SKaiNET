@@ -1,0 +1,245 @@
+= TurboQuant: Getting Started
+:description: Compress your LLM's KV cache by 4–10× at runtime with TurboQuant, no model retraining required.
+
+This tutorial gets you from zero to a working compressed KV cache in
+about 30 lines of Kotlin. For the *why* and *how* behind the
+compression — random rotation, scalar quantization, optional QJL
+residual, bit-packing — see
+xref:explanation/perf/turboquant-kv-compression.adoc[].
+
+== What you'll build
+
+A token-by-token generation loop where the K/V projections get
+compressed on write and decompressed on read, transparently to the
+attention code:
+
+* *~8× memory reduction* on the KV cache with the `balanced` preset
+* *~10× reduction* with `experimental-max` for very long contexts
+* *Zero model changes* — works on top of LLaMA, Mistral, Gemma, Qwen,
+or any architecture that uses an SDPA-style attention block
+
+== Prerequisites
+
+* SKaiNET 0.18.0 or newer (the TurboQuant module shipped in 0.18,
+hardened across 0.19/0.20/0.21).
+* JDK 21+ if you're on the JVM target. No flags needed for TurboQuant
+itself — it's pure Kotlin commonMain code.
+* A model whose attention layer you can plug a custom KV cache into.
+The reference reusable models in `skainet-lang-models` already
+expose a `cache: KvCacheStore` parameter; if you wrote your own
+attention layer, see "Integrating with your own attention layer"
+below.
+
+== Step 1 — Pick a preset
+
+TurboQuant ships three presets in `TurboQuantPresets`:
+
+[cols="1,1,1,1,3",options="header"]
+|===
+| Preset | Key bits | Value bits | Compression | Use case
+| `safe-lowbit` | 8 (Q8_0) | 4 (TurboQuant) | ~4–6× | Production where key precision matters more than value precision (most quality-sensitive workloads)
+| `balanced` | 4 (TurboQuant) | 4 (TurboQuant) | ~8× | General purpose, long-context inference
+| `experimental-max` | 3 (TurboQuant) | 3 (TurboQuant) | ~10× | Memory-constrained devices, very long contexts (>16k tokens), accept some quality loss
+|===
+
+Empirically: *keys are more sensitive to quantization than values.*
+The `safe-lowbit` preset reflects that — 8-bit Q8_0 keys preserve
+attention scores while 4-bit TurboQuant values give most of the
+memory win.
+
+For a first integration, start with `balanced` and only move to
+`safe-lowbit` if you see attention-quality regressions.
+
+== Step 2 — Create the cache
+
+One line:
+
+[source,kotlin]
+----
+import sk.ainet.lang.tensor.storage.KvCacheStore
+
+val cache = KvCacheStore.turboQuant(
+    preset    = "balanced",      // or "safe-lowbit" / "experimental-max"
+    numLayers = 32,              // model-specific
+    numHeads  = 32,              // numKVHeads if you're using GQA
+    headDim   = 128,
+    maxSeqLen = 4096,
+)
+----
+
+For asymmetric K/V bit-width (e.g. 8-bit keys + 4-bit values on a GQA
+model with 8 KV heads):
+
+[source,kotlin]
+----
+val cache = KvCacheStore.turboQuant(
+    numLayers = 32,
+    numHeads  = 8,        // GQA: numKVHeads, not numHeads
+    headDim   = 128,
+    maxSeqLen = 8192,
+    keyBits   = 8,
+    valueBits = 4,
+)
+----
+
+== Step 3 — Wire it into your attention layer
+
+The bridge class `CompressedKvAttention` keeps your attention code
+unchanged — it stores K/V into the compressed cache on write and
+returns FP32 K/V on read.
+
+[source,kotlin]
+----
+import sk.ainet.lang.tensor.storage.CompressedKvAttention
+
+class MultiHeadAttention(
+    val numHeads: Int,
+    val headDim: Int,
+    cache: KvCacheStore,
+) {
+    private val bridge = CompressedKvAttention(cache)
+
+    fun forward(
+        query: FloatArray,
+        key: FloatArray,
+        value: FloatArray,
+        layer: Int,
+    ): FloatArray {
+        // Compress + store on write — all transparent.
+        bridge.storeKeyValue(layer, key, value)
+
+        // Decompress + return on read — back to FP32 for attention.
+        val cachedKeys   = bridge.loadKeysForAttention(layer)
+        val cachedValues = bridge.loadValuesForAttention(layer)
+
+        // Pass to scaledDotProductAttention exactly as before.
+        return computeAttention(query, cachedKeys, cachedValues)
+    }
+}
+----
+
+== Step 4 — A complete generation loop
+
+Putting it together for a tiny test model:
+
+[source,kotlin]
+----
+import sk.ainet.lang.tensor.storage.CompressedKvAttention
+import sk.ainet.lang.tensor.storage.KvCacheStore
+
+val numLayers = 4
+val numHeads  = 4
+val headDim   = 64
+val maxSeqLen = 128
+
+val cache  = KvCacheStore.turboQuant("balanced", numLayers, numHeads, headDim, maxSeqLen)
+val bridge = CompressedKvAttention(cache)
+
+for (token in 0 until 10) {
+    for (layer in 0 until numLayers) {
+        // In real code, key / value come from your linear projections.
+        val key   = computeKeyProjection(token, layer)
+        val value = computeValueProjection(token, layer)
+
+        bridge.storeKeyValue(layer, key, value)
+
+        val cachedKeys   = bridge.loadKeysForAttention(layer)
+        val cachedValues = bridge.loadValuesForAttention(layer)
+
+        // ... pass to scaledDotProductAttention ...
+    }
+}
+----
+
+The `KvCacheStore.turboQuant(...)` factory is in
+`skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/storage/KvCacheStore.kt`;
+`CompressedKvAttention` is in the same package. `TurboQuantUsage`
+(`.../tensor/ops/turboquant/TurboQuantUsage.kt`) carries
+compilable end-to-end examples for LLaMA, asymmetric K/V, and a
+generation loop you can run in a unit test.
+
+== Step 5 — Monitor compression and quality
+
+Every cache exposes a memory report:
+
+[source,kotlin]
+----
+val report = cache.memoryReport()
+println("Compression ratio:  ${report.compressionRatio}x")
+println("Logical size:       ${report.totalLogicalBytes / 1024 / 1024} MB")
+println("Physical size:      ${report.totalPhysicalBytes / 1024 / 1024} MB")
+println("Utilization:        ${(report.utilizationRatio * 100).toInt()}%")
+----
+
+Typical numbers for the `balanced` preset on a Llama-7B-class
+model with 4096 tokens of context: logical ~1 GB, physical ~128
+MB, utilization >95%, compression ratio ~8×.
+
+For quality: compare logits against an FP32 reference cache on a
+small held-out set. The TurboQuant integration tests
+(`commonTest/.../tensor/ops/turboquant/TurboQuantCodecTest.kt`,
+`storage/TurboQuantKvCacheStoreTest.kt`) have parity bars you can
+reuse — they assert MSE on round-tripped K/V vectors stays within
+preset-specific tolerances.
+
+== Annotation-driven setup (optional)
+
+If you'd rather declare the cache config on your attention class
+than wire it manually:
+
+[source,kotlin]
+----
+import sk.ainet.lang.tensor.storage.KvCache
+import sk.ainet.lang.tensor.storage.KvCacheAnnotationResolver
+
+@KvCache(preset = "balanced")
+class SelfAttention(/* ... */)
+
+// At model init:
+val cache = KvCacheAnnotationResolver.resolve(
+    preset    = "balanced",
+    numLayers = config.numLayers,
+    numHeads  = config.numKVHeads,
+    headDim   = config.headDim,
+    maxSeqLen = config.maxSeqLen,
+)
+----
+
+== Integrating with your own attention layer
+
+If you're not using `skainet-lang-models`, the contract is:
+
+. *On token store* (after computing K/V projections for the new
+token): call `bridge.storeKeyValue(layer, key, value)`.
+. *On attention compute* (before softmax): call
+`bridge.loadKeysForAttention(layer)` and
+`bridge.loadValuesForAttention(layer)` to get FP32 K/V tensors
+covering all stored tokens. Use those exactly as you would have
+used the uncompressed cache.
+. *No changes to softmax, RoPE, masking, or anything else.* The
+compression is purely a storage decision.
+
+== When NOT to use TurboQuant
+
+* *Sequence length under ~512.* The KV cache isn't memory-dominant
+yet; the rotation + quant overhead is wasted.
+* *Training.* TurboQuant is decode-only. Backward pass through
+quantized K/V is out of scope.
+* *Strict bit-exact reproducibility against an FP32 baseline.* Any
+quantization is lossy by definition; you're trading memory for a
+small accuracy delta.
+
+== Where to look next
+
+* xref:explanation/perf/turboquant-kv-compression.adoc[] — the
+technical explanation: rotation, quantization, QJL residual,
+bit-packing, and why each step exists.
+* xref:explanation/perf/quantized-simd-kernels.adoc[] — how
+SKaiNET's CPU backend SIMD-fuses quantized matmul (the *weight*
+quantization story; orthogonal to TurboQuant's *KV-cache*
+quantization but shares the same numeric primitives).
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/turboquant/`
+— source code for the codec, presets, configs.
+* `skainet-lang/skainet-lang-core/src/jvmMain/kotlin/sk/ainet/lang/tensor/TurboQuantBenchmarks.kt`
+— JMH harness for measuring encode / decode throughput on your
+hardware.
