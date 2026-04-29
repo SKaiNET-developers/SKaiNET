@@ -11,6 +11,7 @@ endif()
 
 add_library(skainet_kernels SHARED
     src/skainet_smoke.c
+    src/q4k_matmul.c
 )
 
 target_include_directories(skainet_kernels PUBLIC
@@ -23,8 +24,15 @@ if(WIN32)
     set_target_properties(skainet_kernels PROPERTIES PREFIX "")
 endif()
 
-# Hide non-exported symbols on ELF / Mach-O for a smaller surface area.
+# Hide non-exported symbols on ELF / Mach-O for a smaller surface area
+# and let the compiler auto-vectorize the Q4_K hot loop.
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(skainet_kernels PRIVATE -fvisibility=hidden -Wall -Wextra)
+    target_compile_options(skainet_kernels PRIVATE
+        -fvisibility=hidden
+        -Wall -Wextra
+        -O3
+        -ffast-math
+        -funroll-loops
+    )
     set_target_properties(skainet_kernels PROPERTIES C_VISIBILITY_PRESET hidden)
 endif()
