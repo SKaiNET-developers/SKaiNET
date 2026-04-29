@@ -1,0 +1,244 @@
+= How SIMD Kernels Are Built
+:description: How SKaiNET wires JDK Vector API SIMD kernels behind a pluggable provider SPI for FP32 matmul.
+
+This page explains *how* SKaiNET's CPU backend reaches near-peak SIMD
+throughput on the JVM, not *what* the public ops do. If you just want
+to call `matmul` and have the fastest available kernel run, you don't
+need to read this — `DirectCpuExecutionContext` does the right thing.
+This page is for the engineer who wants to understand or extend the
+kernel layer.
+
+== The kernel SPI in two paragraphs
+
+SKaiNET separates *what to compute* (`TensorOps.matmul`) from *which
+SIMD recipe to compute it with* (`Fp32MatmulKernel.matmul`). The
+separation lives in module `skainet-backend-api`: a tiny common-code
+SPI of three types — `KernelProvider`, `Fp32MatmulKernel`,
+`KernelRegistry` — that any backend can implement without depending on
+the rest of SKaiNET.
+
+A *provider* is a bundle of kernels for one execution recipe (scalar,
+Panama Vector, future native FFM, future GPU). Each provider declares
+a `priority` and an `isAvailable()` check. At runtime,
+`KernelRegistry.bestAvailable()` picks the highest-priority provider
+that reports itself available, and the production op set
+(`DefaultCpuOpsJvm.matmul`) pulls the kernel for the dtype it needs
+(`matmulFp32()` returns `Fp32MatmulKernel?`, with `null` meaning "I
+don't carry that"). Three providers ship with the CPU backend today:
+
+[cols="1,1,1,3",options="header"]
+|===
+| Provider | Priority | When available | Notes
+| `ScalarKernelProvider` | 0 | always | Three-loop reference; the parity baseline.
+| `PanamaVectorKernelProvider` | 50 | JDK 21+ with `--add-modules jdk.incubator.vector` and `skainet.cpu.vector.enabled != false` | Tile-blocked FMA; the production winner on every supported JVM.
+| (future) `NativeKernelProvider` | 100 | JDK 22+ with the native lib loaded | Captured as a plan in xref:explanation/perf/native-ffm-plan.adoc[]; not yet shipped.
+|===
+
+== Why the SPI exists
+
+Three reasons, in order of importance:
+
+. *Kernel-level benchmarking.* `KernelMatmulBench` in
+`:skainet-backends:benchmarks:jvm-cpu-jmh` measures
+`Fp32MatmulKernel.matmul` directly with no `TensorOps` wrapping —
+the timed region is just the SIMD loop. Without an SPI we'd have to
+either expose internals (leak production code) or duplicate the
+algorithm in the bench (drift).
+. *Drop-in replacement of the Vector path with native code* once a
+hand-tuned NEON / AVX2 routine ever ships. The op layer doesn't
+need to know.
+. *Test isolation.* A scalar reference is always `null`-fallback-safe;
+parity tests can pin it explicitly via
+`ScalarKernelProvider.matmulFp32()` without going through the
+registry.
+
+== JDK Vector API patterns used by `PanamaVectorMatmulKernel`
+
+The kernel lives at
+`skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/kernel/PanamaVectorMatmulKernel.kt`
+and computes `C(m, n) = A(m, k) · B(k, n)` for row-major dense
+tensors. Four ideas drive the implementation:
+
+=== 1. `FloatVector.SPECIES_PREFERRED`
+
+`SPECIES_PREFERRED` returns the widest float vector species the host
+CPU can execute natively — 4 lanes on Apple Silicon NEON (128-bit), 8
+lanes on AVX2 (256-bit), 16 lanes on AVX-512 (512-bit). Code that
+loops on `species.length()` therefore unrolls once per platform
+without a recompile.
+
+[source,kotlin]
+----
+private val species: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
+val step = species.length()
+val loopBound = species.loopBound(k)  // largest multiple of `step` ≤ k
+----
+
+`loopBound` is the safe vectorized loop limit; the *tail* (elements
+that don't fit a full vector) is handled scalar after the SIMD loop.
+
+=== 2. Pack `B^T` once per call, stream contiguously
+
+The naive matmul has a strided access pattern over `B`: for each
+output cell `C[i, j]` the inner reduction walks column `j` of `B`,
+which jumps `n` floats per step. That's a cache-line miss per element.
+
+`PanamaVectorMatmulKernel` packs `B` into a transposed buffer `bt` of
+shape `(n, k)` once per matmul:
+
+[source,kotlin]
+----
+val bt = FloatArray(n * k)
+for (kk in 0 until k) {
+    val src = bOffset + kk * bStride
+    for (j in 0 until n) bt[j * k + kk] = b[src + j]
+}
+----
+
+Now `bt[j, *]` is contiguous over `k` and the inner reduction streams
+`a[i, kk] * bt[j, kk]` for both operands sequentially.
+
+=== 3. FMA accumulator + lane-reduce
+
+The inner loop is a vector-width fused multiply-add into a vector
+accumulator, reduced once per output cell:
+
+[source,kotlin]
+----
+var acc = FloatVector.zero(species)
+var idx = 0
+while (idx < bound) {
+    val va = FloatVector.fromArray(species, a, aRowBase + idx)
+    val vb = FloatVector.fromArray(species, bt, btRowBase + idx)
+    acc = va.fma(vb, acc)
+    idx += step
+}
+var sum = acc.reduceLanes(VectorOperators.ADD)
+// scalar tail
+while (idx < kLen) { sum += a[aRowBase + idx] * bt[btRowBase + idx]; idx++ }
+out[outRow + j] = sum
+----
+
+`fma(vb, acc) = this · vb + acc` in a single hardware instruction, ~2
+FLOPs per cycle per lane on hardware that supports FMA (every modern
+x86_64 and ARMv8). `reduceLanes(ADD)` collapses the 4/8/16-lane
+accumulator to one float — typically a tree of pairwise adds inside
+the JIT, no scalar fallback.
+
+=== 4. Cache blocking with 8×8×128 tiles
+
+The ideas above are SIMD over `k` (the contraction axis). The next
+bottleneck is L1 reuse over `m × n`: at large sizes, each row of `bt`
+that we stream through the inner loop falls out of L1 before the next
+output row gets to reuse it.
+
+The fix is *tile blocking* — three nested outer loops over `(m, n,
+k)`-tiles, with the SIMD loop inside the innermost tile:
+
+[source,kotlin]
+----
+private const val TILE_M = 8
+private const val TILE_N = 8
+private const val TILE_K = 128
+
+while (mTile < m) {
+    val mEnd = minOf(mTile + TILE_M, m)
+    while (nTile < n) {
+        val nEnd = minOf(nTile + TILE_N, n)
+        while (kTile < k) {
+            val kEnd = minOf(kTile + TILE_K, k)
+            // SIMD inner loop runs on the (8 × 8 × 128) sub-block.
+            // Output is zeroed once before all tiles run; the K-tile
+            // loop accumulates via `+=` so partial K-tiles add cleanly.
+        }
+    }
+}
+----
+
+8×8×128 floats ≈ 8 KB working set per tile, comfortably inside any
+modern L1. On Apple Silicon NEON this brings the FP32 SIMD kernel from
+~118 ms (untiled, B^T pack only) to ~80 ms at 1024² — ~10× over
+scalar, on par with the prior production blocked path.
+
+== Auto-discovery: ServiceLoader + factory wrappers
+
+The kernel registry doesn't auto-load anything by default — that lets
+tests instantiate it empty and pin specific providers. For real
+applications, `KernelServiceLoader.installAll()` (in module
+`skainet-backend-api`, JVM source set only) does:
+
+[source,kotlin]
+----
+fun installAll(): List<String> {
+    val providers = ServiceLoader.load(KernelProvider::class.java).toList()
+    for (p in providers) KernelRegistry.register(p)
+    return providers.map { it.name }
+}
+----
+
+Because `ServiceLoader` requires a public no-arg constructor and
+Kotlin `object` declarations don't expose one, the CPU backend ships
+*factory wrappers* whose only job is to delegate to the singletons:
+
+[source,kotlin]
+----
+public class ScalarKernelProviderFactory : KernelProvider by ScalarKernelProvider
+public class PanamaVectorKernelProviderFactory : KernelProvider by PanamaVectorKernelProvider
+----
+
+Both classes are listed in
+`skainet-backends/skainet-backend-cpu/src/jvmMain/resources/META-INF/services/sk.ainet.backend.api.kernel.KernelProvider`,
+which is what `ServiceLoader.load` scans.
+
+`DefaultCpuOpsJvm.matmul` triggers `installAll()` lazily on first use
+when the registry is empty, so callers don't need to wire it
+themselves:
+
+[source,kotlin]
+----
+private val fp32MatmulKernel: Fp32MatmulKernel by lazy {
+    if (KernelRegistry.providers().isEmpty()) {
+        KernelServiceLoader.installAll()
+    }
+    KernelRegistry.bestAvailable()?.matmulFp32() ?: ScalarMatmulKernel
+}
+----
+
+== Numbers
+
+`KernelMatmulBench` in `:skainet-backends:benchmarks:jvm-cpu-jmh`,
+JDK 21.0.10 on Apple Silicon, 3 warmup × 5 measurement iterations:
+
+[cols="1,1,1,1",options="header"]
+|===
+| Size | Scalar | Panama (tiled) | Speedup
+| 256² | 9.77 ms | 1.13 ms | *8.61×*
+| 512² | 81.55 ms | 9.47 ms | *8.62×*
+| 1024² | 865.54 ms | 79.88 ms | *10.83×*
+|===
+
+Compared to the prior production path (`JvmVectorKernels.matmulFloatBlocked`,
+which was *not* behind the SPI), the SPI tiled kernel is 8.5%
+faster at 256², 8.8% faster at 512², and within JMH noise at 1024² —
+so wiring `DefaultCpuOpsJvm.matmul` to go through the registry was a
+no-regression change.
+
+== Where to look in the code
+
+[cols="1,2",options="header"]
+|===
+| File | What it does
+| `skainet-backends/skainet-backend-api/.../kernel/KernelProvider.kt` | The SPI interface (per-kernel accessors, `priority`, `isAvailable()`).
+| `skainet-backends/skainet-backend-api/.../kernel/KernelRegistry.kt` | Process-wide registry; `bestAvailable()` lookup.
+| `skainet-backends/skainet-backend-api/src/jvmMain/.../KernelServiceLoader.kt` | JVM-only auto-discovery via `ServiceLoader`.
+| `skainet-backends/skainet-backend-cpu/.../kernel/ScalarMatmulKernel.kt` | Three-loop reference (commonMain, all targets).
+| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../kernel/PanamaVectorMatmulKernel.kt` | The tile-blocked Vector-API implementation.
+| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../tensor/ops/DefaultCpuOpsJvm.kt` | Production routing — `matmul` resolves the SPI kernel lazily.
+| `skainet-backends/benchmarks/jvm-cpu-jmh/src/jmh/kotlin/sk/ainet/bench/KernelMatmulBench.kt` | Direct kernel-level JMH harness used to capture the numbers above.
+|===
+
+For quantized matmul (Q4_K, Q6_K, Q8_0, Q4_0) — same story, different
+inner loop — see xref:explanation/perf/quantized-simd-kernels.adoc[].
+
+For the still-unbuilt native FFM provider, see
+xref:explanation/perf/native-ffm-plan.adoc[].

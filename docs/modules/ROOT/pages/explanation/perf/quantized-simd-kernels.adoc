@@ -1,0 +1,235 @@
+= How Quantized SIMD Kernels Are Built
+:description: ByteVector-based SIMD pipelines for Q4_0, Q4_K, Q6_K, Q8_0 quantized matmul on the JVM.
+
+For the broader kernel SPI story (`KernelProvider`, `KernelRegistry`,
+ServiceLoader auto-discovery), see
+xref:explanation/perf/simd-kernels.adoc[]. This page focuses on the
+inner loops of the *quantized* matmul kernels — Q4_0, Q4_K, Q6_K,
+Q8_0 — which is where most of the wall-clock time of an LLM decode
+goes once the FP32 path is fast.
+
+== The general pipeline
+
+For a single `output[o] = Σ_j input[j] · dequant(weight[o, j])` cell,
+the SIMD recipe is:
+
+. *Load codes.* `W` packed integers from the weight buffer as a
+`ByteVector` — either via `ByteVector.fromArray` (heap `ByteArray`)
+or `ByteVector.fromMemorySegment` (mmap'd weights, FFM).
+. *Unpack.* For 4-bit codes: `byteVec.and(0x0F)` for low nibbles,
+`byteVec.lanewise(LSHR, 4)` for high nibbles. Sign-correct as needed
+(Q4_0 subtracts 8; Q4_K subtracts a per-sub-block min lazily; Q6_K
+combines `ql + qh` then subtracts 32).
+. *Widen + convert.* `castShape(floatSpecies, 0)` lane-widens the
+byte vector to a `FloatVector` in one shape conversion (under the
+hood: byte → int → float, but JIT'd as a single instruction
+sequence on most targets).
+. *Apply scale.* Multiply by the broadcast block scale (and
+sub-scale, for K-quants).
+. *Load input.* `W` floats from the FP32 input via
+`FloatVector.fromArray`.
+. *FMA.* `acc = inputVec.fma(weightFloatVec, acc)`.
+. *Repeat across the block.* Reduce once per output cell at the end
+via `acc.reduceLanes(ADD)`.
+
+The same skeleton drives every quantized kernel; the differences are
+all in steps 1–4 (block layout, sign convention, scale recovery).
+
+== The four format pipelines
+
+=== Q8_0 — 32 elements / 34 bytes
+
+Single FP16 scale + 32 signed `int8` codes. The simplest case: codes
+are already signed bytes, no nibble unpack. Pipeline:
+
+[source,kotlin]
+----
+val byteVec = ByteVector.fromArray(byteSpeciesForFloat, codes, codesOffset + idx)
+val codeVec = byteVec.castShape(floatSpecies, 0) as FloatVector  // sign-extends
+accVec = inputVec.mul(codeVec).add(accVec)
+// final: (accVec.reduceLanes(ADD) + scalarTail) * scale
+----
+
+Q8_0 is the "gold reference" — the cleanest expression of the
+pipeline. Q8_0 MemSeg (`matmulF32Q8_0MemSeg`) is the same loop with
+`ByteVector.fromMemorySegment`.
+
+=== Q4_K — 256 elements / 144 bytes / 8 sub-blocks
+
+The format that matters most for current LLMs (Gemma 4 Q4_K_M, Llama,
+Qwen). Block layout (canonical ggml):
+
+* bytes `[0, 2)`: `d` (super-block scale, FP16 LE)
+* bytes `[2, 4)`: `dMin` (super-block min-scale, FP16 LE)
+* bytes `[4, 16)`: 12 bytes packed `(scaleIdx, minIdx)` for 8
+sub-blocks via ggml's `get_scale_min_k4` mixing
+* bytes `[16, 144)`: 128 bytes of 4-bit codes, *strided* in 4 groups
+of 32 — each byte's lo nibble belongs to one sub-block, hi nibble to
+the next sub-block over the same intra-group index.
+
+Per element: `dequant = code · scale[s] − offset[s]` where `scale[s] =
+d · scaleIdx[s]` and `offset[s] = dMin · minIdx[s]`.
+
+==== The lazy-`dmin` trick
+
+A naive implementation subtracts `offset` from every element. Better:
+linearity lets us track two running sums per sub-block:
+
+[source,text]
+----
+codeSum[s] = Σ_i input[i] · code[i]    (scaled later by scale[s])
+inputSum[s] = Σ_i input[i]              (scaled later by offset[s])
+----
+
+and combine once per sub-block as `acc += scale[s]·codeSum[s] −
+offset[s]·inputSum[s]`. ggml's reference uses the same trick.
+
+==== The fused lo+hi load
+
+Because the canonical layout puts sub-block `2j` lo nibbles and
+sub-block `2j+1` hi nibbles in the *same* 32-byte slab, a single
+`ByteVector` load feeds both sub-block accumulators per chunk:
+
+[source,kotlin]
+----
+val byteVec = ByteVector.fromArray(byteSpeciesForFloat, weight, qsRegion + idx)
+val loBytes = byteVec.and(0x0F.toByte())
+val hiBytes = byteVec.lanewise(VectorOperators.LSHR, 4.toByte())
+val codeVecLo = loBytes.castShape(floatSpecies, 0) as FloatVector
+val codeVecHi = hiBytes.castShape(floatSpecies, 0) as FloatVector
+val inVecLo = FloatVector.fromArray(floatSpecies, input, inputStartLo + idx)
+val inVecHi = FloatVector.fromArray(floatSpecies, input, inputStartHi + idx)
+codeAccLo = inVecLo.fma(codeVecLo, codeAccLo)   // for sub-block 2j
+inputAccLo = inVecLo.add(inputAccLo)            // dmin-correction sum
+codeAccHi = inVecHi.fma(codeVecHi, codeAccHi)   // for sub-block 2j+1
+inputAccHi = inVecHi.add(inputAccHi)
+----
+
+This halves the number of byte loads vs the prior helper that ran
+once per nibble pass. Lives at
+`skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/kernel/PanamaVectorQ4KMatmulKernel.kt`,
+exposed via the `Q4KMatmulKernel` SPI sibling (kernel SPI:
+`KernelProvider.matmulQ4K(): Q4KMatmulKernel?`).
+
+The MemSeg variant (`matmulF32Q4_KMemSeg`) is the same algorithm with
+`ByteVector.fromMemorySegment` — no SPI surface yet, just an inline
+replacement.
+
+==== Numbers
+
+`QuantizedMatmulBench`, JDK 21.0.10, Apple Silicon:
+
+[cols="1,1,1",options="header"]
+|===
+| Shape (inputDim × outputDim) | Time | Throughput
+| 1024 × 1024 | 0.07 ms | ~30 GFLOPS
+| 4096 × 1024 | 0.15 ms | ~55 GFLOPS
+| 4096 × 4096 | 0.46 ms | ~73 GFLOPS
+|===
+
+Same throughput regime as the FP32 SIMD kernel — the fused dequant
+adds essentially zero cost on top of the FMA.
+
+=== Q6_K — 256 elements / 210 bytes / 16 sub-blocks
+
+Block layout:
+
+* bytes `[0, 128)`: `ql` — low 4 bits of each 6-bit code (half-interleaved)
+* bytes `[128, 192)`: `qh` — high 2 bits of each 6-bit code (4 codes per byte)
+* bytes `[192, 208)`: 16 signed `int8` sub-block scales
+* bytes `[208, 210)`: FP16 `d` (super-block scale)
+
+Per element: 6-bit code = `(ql_nibble) | ((qh_2bits) << 4) − 32`,
+dequant = `d · sc[sub_block] · code`.
+
+Q6_K's `qh` is the wrinkle: each `qh` byte carries the high 2 bits of
+*four* codes, packed at bit positions 0–1, 2–3, 4–5, 6–7. The SIMD
+recipe in `dequantQ6_KBlock` (file
+`JvmQuantizedVectorKernels.kt`):
+
+[source,kotlin]
+----
+val ql0Vec = ByteVector.fromArray(byteSpeciesForFloat, weight, qlBase + l)
+val ql32Vec = ByteVector.fromArray(byteSpeciesForFloat, weight, qlBase + l + 32)
+val qhVec = ByteVector.fromArray(byteSpeciesForFloat, weight, qhBase + l)
+
+val q1Bytes = ql0Vec.and(0x0F.toByte())
+    .or(qhVec.and(0x03.toByte()).lanewise(LSHL, 4.toByte()))
+val q2Bytes = ql32Vec.and(0x0F.toByte())
+    .or(qhVec.lanewise(LSHR, 2.toByte()).and(0x03.toByte()).lanewise(LSHL, 4.toByte()))
+val q3Bytes = ql0Vec.lanewise(LSHR, 4.toByte())
+    .or(qhVec.lanewise(LSHR, 4.toByte()).and(0x03.toByte()).lanewise(LSHL, 4.toByte()))
+val q4Bytes = ql32Vec.lanewise(LSHR, 4.toByte())
+    .or(qhVec.lanewise(LSHR, 6.toByte()).lanewise(LSHL, 4.toByte()))
+----
+
+Then each `q*Bytes` is cast to `FloatVector`, biased by −32, scaled
+by `d · sc[sub_block]`, and stored to one of four 32-element regions
+of the per-block scratch. The per-cell SIMD dot product (`FloatVector.fma`)
+already existed; this change only replaced the scalar dequant loop.
+
+=== Q4_0 — 32 elements / 18 bytes
+
+The simplest layout (single FP16 scale + 16 packed nibble bytes), but
+also the *least* SIMD-friendly: adjacent elements share a byte
+(`code[2k]` lo, `code[2k+1]` hi), so getting codes in natural element
+order from a `ByteVector` would need a lane-interleave shuffle or a
+strided gather. NEON has no native gather instruction, so on Apple
+Silicon a gather-based pipeline would fall back to scalar loads.
+
+The shipped Q4_0 implementation uses the *partial-vec* pattern Q4_K
+used before its fully-fused rewrite:
+
+[source,kotlin]
+----
+// Stage 1: scalar byte-pair unpack into a 32-element scratch FloatArray.
+for (k in 0 until 16) {
+    val b = weightSeg.get(JAVA_BYTE_LE, codesOffset + k.toLong()).toInt() and 0xFF
+    codeBuf[2 * k] = (b and 0x0F).toFloat() - 8f
+    codeBuf[2 * k + 1] = (b ushr 4).toFloat() - 8f
+}
+// Stage 2: SIMD FMA dot product.
+var accVec = FloatVector.zero(floatSpecies)
+while (idx < loopBound) {
+    val iv = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+    val cv = FloatVector.fromArray(floatSpecies, codeBuf, idx)
+    accVec = iv.fma(cv, accVec)
+    idx += step
+}
+return (accVec.reduceLanes(ADD) + scalarTail) * scale
+----
+
+If Q4_0 ever becomes a hot path (it's rarely seen in modern weights —
+Q4_K_M / Q4_K_S dominate Gemma 4, Llama, Qwen), the upgrade to a
+fully-fused `ByteVector` pipeline is a reasonable follow-up — same
+shape as the Q4_K rewrite, with the lane-interleave done via
+`VectorShuffle`.
+
+== Per-format coverage matrix
+
+[cols="1,1,1,2",options="header"]
+|===
+| Format | SPI sibling? | MemSeg variant SIMD? | Inner loop strategy
+| Q8_0 | no | yes | Fully fused (`ByteVector.castShape` + scaled FMA)
+| Q4_K | yes (`Q4KMatmulKernel`) | yes (inline, same algorithm) | Fully fused (single byte load → lo+hi nibble accumulators, lazy `dmin`)
+| Q6_K | no | n/a | SIMD dequant into scratch + SIMD dot (two-stage)
+| Q4_0 | no | yes | Scalar unpack into scratch + SIMD dot (two-stage)
+|===
+
+== Where to look in the code
+
+[cols="1,2",options="header"]
+|===
+| File | What it covers
+| `skainet-backends/skainet-backend-api/.../kernel/Q4KMatmulKernel.kt` | The Q4_K kernel SPI (commonMain).
+| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../kernel/PanamaVectorQ4KMatmulKernel.kt` | Fused-pipeline Q4_K implementation.
+| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../tensor/ops/JvmQuantizedVectorKernels.kt` | All the per-format kernels — Q4_K MemSeg, Q6_K dequant, Q4_0, Q8_0 MemSeg variants.
+| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../tensor/ops/DefaultCpuOpsJvm.kt` | `chooseQuantizedMatmul` — production dispatch by tensor data type.
+| `skainet-backends/benchmarks/jvm-cpu-jmh/src/jmh/kotlin/sk/ainet/bench/QuantizedMatmulBench.kt` | JMH harness for Q4_K Panama.
+| `skainet-backends/skainet-backend-cpu/src/jvmTest/.../kernel/PanamaVectorQ4KMatmulKernelTest.kt` | Parity tests vs the reference partial-vec kernel.
+|===
+
+For the kernel SPI itself, see
+xref:explanation/perf/simd-kernels.adoc[]. For the planned native FFM
+provider that would replace the Vector path on supported hosts, see
+xref:explanation/perf/native-ffm-plan.adoc[].
