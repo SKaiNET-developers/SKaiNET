@@ -2,23 +2,34 @@ package sk.ainet.exec.kernel
 
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
+import sk.ainet.backend.api.kernel.MemSegKernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
+import sk.ainet.backend.api.kernel.Q4KMemSegMatmulKernel
 
 /**
- * Native (FFM) [KernelProvider]. Sits at priority `100`, above
- * [PanamaVectorKernelProvider] (`50`) and the scalar reference (`0`).
+ * Native (FFM) [KernelProvider] / [MemSegKernelProvider]. Sits at
+ * priority `100`, above [PanamaVectorKernelProvider] (`50`) and the
+ * scalar reference (`0`).
  *
  * Availability is gated on [NativeQ4KMatmulKernel.isAvailable] — the
- * bundled `libskainet_kernels` shared library has to load AND the
- * `skainet_q4k_matmul` symbol has to resolve via FFM. When either
- * fails (missing arch, sandbox, JDK without FFM, kill-switch),
+ * bundled `libskainet_kernels` shared library has to load AND
+ * `skainet_q4k_matmul` has to resolve via FFM. When either fails
+ * (missing arch, sandbox, JDK without FFM, kill-switch),
  * `KernelRegistry.bestAvailable()` cleanly cascades to
  * [PanamaVectorKernelProvider] at priority 50.
  *
- * PR 2 of the staged rollout: real Q4_K matmul wired into the SPI.
- * `matmulFp32` follows in a later PR alongside a native FP32 kernel.
+ * The MemSeg surface ([matmulQ4KMemSeg]) is the JVM-only zero-copy
+ * path for mmap'd Q4_K weights — sized for inference loops that
+ * project against pre-loaded `MemorySegment`-backed tensors. Heap
+ * callers stick with [matmulQ4K]; both wrap the same C symbol so
+ * outputs are bit-for-bit identical.
+ *
+ * Staged rollout cursor (see `native-ffm-plan` asciidoc):
+ *  - PR 2: real Q4_K matmul wired into the heap SPI.
+ *  - PR 3 (this commit): MemSeg-input zero-copy sibling.
+ *  - Later: native `matmulFp32`, `matmulQ6K`, `matmulQ8_0`.
  */
-public object NativeKernelProvider : KernelProvider {
+public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
     override val name: String = "native-ffm"
     override val priority: Int = 100
 
@@ -28,4 +39,7 @@ public object NativeKernelProvider : KernelProvider {
 
     override fun matmulQ4K(): Q4KMatmulKernel? =
         if (NativeQ4KMatmulKernel.isAvailable()) NativeQ4KMatmulKernel else null
+
+    override fun matmulQ4KMemSeg(): Q4KMemSegMatmulKernel? =
+        if (NativeQ4KMemSegMatmulKernel.isAvailable()) NativeQ4KMemSegMatmulKernel else null
 }
