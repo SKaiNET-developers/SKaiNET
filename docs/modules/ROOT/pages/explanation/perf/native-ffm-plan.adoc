@@ -233,8 +233,8 @@ the same numbers as today.
 
 == Risks & open questions
 
-. *JDK 21 preview FFM vs JDK 22 stable.* FFM left preview in Java
-22. The repo currently builds on JDK 21 with `--enable-preview
+. *JDK 21 preview FFM vs JDK 22 stable.* FFM left preview in Java 22.
+The repo currently builds on JDK 21 with `--enable-preview
 --add-modules jdk.incubator.vector`. Recommendation: stay on 21
 preview; flip to 22 in a separate toolchain-bump PR.
 . *`MethodHandle` invocation overhead.* Even with FFM, each native
