@@ -70,6 +70,52 @@ class Q4KMatmulMicrobenchTest {
     }
 
     @Test
+    fun bench_fp32_native_vs_panama() {
+        if (System.getProperty("skainet.runBench") != "true") {
+            println("Q4KMatmulMicrobenchTest.fp32 skipped — pass -Dskainet.runBench=true to enable.")
+            return
+        }
+        assertTrue(NativeFp32MatmulKernel.isAvailable(), "Native FP32 kernel must be available for the bench")
+
+        val shapes = listOf(
+            Triple(256, 256, 256),
+            Triple(512, 512, 512),
+            Triple(1024, 1024, 1024),
+        )
+
+        println()
+        println("FP32 SGEMM microbench — Native (FFM, scalar C i-p-j outer-product, -O3 -ffast-math)")
+        println("                       vs Panama Vector (tile-blocked, B-pack, parallelChunks)")
+        println("Host: ${System.getProperty("os.name")} ${System.getProperty("os.arch")} | JDK ${System.getProperty("java.version")}")
+        println()
+
+        for ((m, n, k) in shapes) {
+            val rng = Random(m + n + k)
+            val a = FloatArray(m * k) { rng.nextFloat() - 0.5f }
+            val b = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+            val outNative = FloatArray(m * n)
+            val outPanama = FloatArray(m * n)
+
+            println("[m=$m n=$n k=$k]")
+            val nativeNs = benchOne("native", warmup = 5, samples = 9) {
+                NativeFp32MatmulKernel.matmul(a, 0, k, b, 0, n, outNative, 0, n, m, n, k)
+            }
+            val panamaNs = benchOne("panama", warmup = 5, samples = 9) {
+                PanamaVectorMatmulKernel.matmul(a, 0, k, b, 0, n, outPanama, 0, n, m, n, k)
+            }
+            val ratio = panamaNs.toDouble() / nativeNs.toDouble()
+            println(
+                "  ratio: native is %.2fx panama (%.1f%% %s)".format(
+                    ratio,
+                    abs((ratio - 1.0) * 100.0),
+                    if (ratio >= 1.0) "faster" else "slower",
+                ),
+            )
+            println()
+        }
+    }
+
+    @Test
     fun bench_native_vs_panama_at_llm_shapes() {
         if (System.getProperty("skainet.runBench") != "true") {
             println("Q4KMatmulMicrobenchTest skipped — pass -Dskainet.runBench=true to enable.")

@@ -60,6 +60,22 @@ SKAINET_API void skainet_q4k_matmul(
     int32_t output_offset
 );
 
+/*
+ * Row-major FP32 SGEMM:  C(m, n) = A(m, k) * B(k, n).
+ *
+ * Strides are in floats (not bytes). For a contiguous parent matrix
+ * `a_stride == k`, `b_stride == n`, `c_stride == n`. The kernel zeros
+ * the m×n output block before accumulating, so callers always get
+ * `C = A·B` (not `C += A·B`). `k == 0` zeros the block; `m == 0`
+ * or `n == 0` is a no-op.
+ */
+SKAINET_API void skainet_fp32_matmul(
+    const float* a, int32_t a_offset, int32_t a_stride,
+    const float* b, int32_t b_offset, int32_t b_stride,
+    float* c, int32_t c_offset, int32_t c_stride,
+    int32_t m, int32_t n, int32_t k
+);
+
 #ifdef __cplusplus
 }
 #endif

@@ -32,7 +32,7 @@ class NativeFfmPipelineTest {
     }
 
     @Test
-    fun `provider exposes Q4_K kernel when the native lib loads`() {
+    fun `provider exposes Q4_K and FP32 kernels when the native lib loads`() {
         assertEquals("native-ffm", NativeKernelProvider.name)
         assertEquals(100, NativeKernelProvider.priority)
         assertTrue(
@@ -40,8 +40,8 @@ class NativeFfmPipelineTest {
             "Native kernel provider reports unavailable on this host — " +
                 "bundled libskainet_kernels missing or skainet_q4k_matmul unresolved",
         )
-        // FP32 matmul ships in a later PR; Q4_K is wired through PR 2.
-        assertEquals(null, NativeKernelProvider.matmulFp32())
+        // PR 5 wires both Q4_K (PR 2) and FP32 (this PR) through the SPI.
+        assertNotNull(NativeKernelProvider.matmulFp32())
         assertNotNull(NativeKernelProvider.matmulQ4K())
     }
 
