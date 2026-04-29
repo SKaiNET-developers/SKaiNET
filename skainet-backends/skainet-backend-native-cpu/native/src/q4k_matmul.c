@@ -76,13 +76,13 @@ static inline void skainet_q4k_decode_scales(
  * codeSum/inputSum accumulators on AVX2/NEON.
  */
 SKAINET_API void skainet_q4k_matmul(
-    const float* __restrict__ input,
+    const float* SKAINET_RESTRICT input,
     int32_t input_offset,
-    const uint8_t* __restrict__ weight,
+    const uint8_t* SKAINET_RESTRICT weight,
     int32_t weight_byte_offset,
     int32_t input_dim,
     int32_t output_dim,
-    float* __restrict__ output,
+    float* SKAINET_RESTRICT output,
     int32_t output_offset
 ) {
     if (output_dim <= 0 || input_dim <= 0) return;
