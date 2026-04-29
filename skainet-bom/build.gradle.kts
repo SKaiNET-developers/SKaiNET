@@ -18,6 +18,12 @@ dependencies {
         // Backend abstraction + CPU backend
         api(project(":skainet-backends:skainet-backend-api"))
         api(project(":skainet-backends:skainet-backend-cpu"))
+        // Native (FFM) priority-100 kernel provider — bundles a
+        // libskainet_kernels shared library and overrides the
+        // priority-50 Panama kernels for Q4_K and FP32 matmul on
+        // hosts where the native lib resolves. Cascades to Panama
+        // otherwise (missing arch, sandbox, kill-switch).
+        api(project(":skainet-backends:skainet-backend-native-cpu"))
 
         // IO modules
         api(project(":skainet-io:skainet-io-core"))
