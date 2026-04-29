@@ -34,39 +34,38 @@ TurboQuant.*
 
 Per K/V vector for one head at one layer:
 
-[source,text]
+[mermaid]
 ----
-   FP32 input vector
-        │
-        ▼
-┌─────────────────────────┐
-│  1. Random rotation     │   spreads quantization error across
-│     (Walsh-Hadamard or  │   all dimensions; cheap O(d log d)
-│      similar O(d log d))│   when d is a power of two
-└────────────┬────────────┘
-             ▼
-┌─────────────────────────┐
-│  2. Scalar quantization │   per-block scale + N-bit codes
-│     to N-bit codes      │   (N ∈ {3, 4, 8})
-└────────────┬────────────┘
-             ▼
-┌─────────────────────────┐
-│  3. (Optional) QJL      │   residual encoded at lower bit-width
-│     residual encode     │   to preserve attention inner-product
-│     for inner-product   │   accuracy at very low N
-│     preservation        │
-└────────────┬────────────┘
-             ▼
-┌─────────────────────────┐
-│  4. Bit-packing         │   pack 3/4/8-bit codes into bytes for
-│     into bytes          │   compact storage
-└────────────┬────────────┘
-             ▼
-   TurboQuantBlock
-   (packedCodes, scales, seed, bits, elementCount, residual?)
+flowchart TD
+    INPUT["FP32 input vector<br/>(one K or V, one head)"]
+    R["1 Random rotation<br/>orthogonal, seeded<br/>O(d log d)"]
+    Q["2 Scalar quantization<br/>per-block scale + N-bit codes<br/>N ∈ {3, 4, 8}"]
+    QJL{"3 QJL residual?"}
+    QJL_ENC["3a Encode residual<br/>at lower bit-width<br/>preserves inner-product accuracy"]
+    PACK["4 Bit-packing<br/>3/4/8-bit codes → bytes"]
+    OUT["TurboQuantBlock<br/>(packedCodes, scales, seed,<br/>bits, elementCount, residual?)"]
+
+    INPUT --> R
+    R --> Q
+    Q --> QJL
+    QJL -- "polarPlusQjl" --> QJL_ENC
+    QJL -- "polarOnly" --> PACK
+    QJL_ENC --> PACK
+    PACK --> OUT
+
+    classDef io fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;
+    classDef step fill:#fff3e0,stroke:#f57c00;
+    classDef opt fill:#fce4ec,stroke:#c2185b,stroke-dasharray: 4 2;
+    class INPUT,OUT io;
+    class R,Q,PACK step;
+    class QJL,QJL_ENC opt;
 ----
 
-The reference implementation lives at
+Steps 1, 2, and 4 are unconditional. Step 3 (the QJL residual) only
+runs in the `polarPlusQjl` variant and exists to rescue inner-product
+accuracy at very low bit-widths — see
+<<the-three-presets,the three presets>> below. The reference
+implementation lives at
 `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/turboquant/TurboQuantCodec.kt`.
 
 === Why each step
@@ -136,20 +135,42 @@ format is `TurboQuantBlock.packedCodes: ByteArray`.
 
 == The pipeline (decode)
 
-Reverse of encode:
+Reverse of encode — same blocks, opposite direction, with the
+optional QJL branch only firing if the block carried a residual:
 
-. Bit-unpack codes from `packedCodes`.
-. Apply per-block scale to recover quantized floats.
-. If the block has a `residual`, decode the QJL residual and add
-it back.
-. Apply the *inverse rotation* (the rotation matrix's transpose)
-to recover the original FP32 vector.
+[mermaid]
+----
+flowchart TD
+    BLOCK["TurboQuantBlock<br/>(packedCodes, scales, seed,<br/>bits, elementCount, residual?)"]
+    UNPACK["1 Bit-unpack<br/>bytes → 3/4/8-bit codes"]
+    DEQ["2 Scalar dequantize<br/>codes × per-block scale"]
+    QJL{"3 residual present?"}
+    QJL_DEC["3a Decode QJL residual<br/>add back to dequantized vector"]
+    INVR["4 Inverse rotation<br/>(rotation matrix transpose)<br/>O(d log d)"]
+    OUT["FP32 reconstructed vector"]
+
+    BLOCK --> UNPACK
+    UNPACK --> DEQ
+    DEQ --> QJL
+    QJL -- "yes" --> QJL_DEC
+    QJL -- "no" --> INVR
+    QJL_DEC --> INVR
+    INVR --> OUT
+
+    classDef io fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;
+    classDef step fill:#fff3e0,stroke:#f57c00;
+    classDef opt fill:#fce4ec,stroke:#c2185b,stroke-dasharray: 4 2;
+    class BLOCK,OUT io;
+    class UNPACK,DEQ,INVR step;
+    class QJL,QJL_DEC opt;
+----
 
 For the `balanced` preset (no QJL, 4-bit codes), decode is ~3 SIMD
 ops per element on JVM Vector or Metal — see
 xref:tutorials/turboquant-getting-started.adoc#step-5-monitor-compression-and-quality[Monitor
 compression and quality] for end-to-end timing on your hardware.
 
+[#the-three-presets]
 == The three presets and their tradeoffs
 
 [cols="1,1,1,1,3",options="header"]
