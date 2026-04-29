@@ -4,7 +4,6 @@ import sk.ainet.backend.api.kernel.KernelRegistry
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -33,15 +32,17 @@ class NativeFfmPipelineTest {
     }
 
     @Test
-    fun `provider stays unavailable in PR 1 so registry falls through`() {
+    fun `provider exposes Q4_K kernel when the native lib loads`() {
         assertEquals("native-ffm", NativeKernelProvider.name)
         assertEquals(100, NativeKernelProvider.priority)
-        assertFalse(
+        assertTrue(
             NativeKernelProvider.isAvailable(),
-            "PR 1 deliberately keeps isAvailable() = false until a real kernel ships in PR 2",
+            "Native kernel provider reports unavailable on this host — " +
+                "bundled libskainet_kernels missing or skainet_q4k_matmul unresolved",
         )
+        // FP32 matmul ships in a later PR; Q4_K is wired through PR 2.
         assertEquals(null, NativeKernelProvider.matmulFp32())
-        assertEquals(null, NativeKernelProvider.matmulQ4K())
+        assertNotNull(NativeKernelProvider.matmulQ4K())
     }
 
     @Test

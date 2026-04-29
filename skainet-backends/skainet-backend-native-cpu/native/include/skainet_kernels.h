@@ -25,6 +25,30 @@ extern "C" {
  */
 SKAINET_API void skainet_smoke_double(const float* input, float* output, int32_t length);
 
+/*
+ * Q4_K matrix-vector multiply.
+ *
+ *   output[output_offset + o] = sum_j input[input_offset + j] *
+ *                                dequant(weight[block, o, j])
+ *
+ * Block layout: canonical ggml Q4_K, 256 elements per super-block, 144
+ * bytes per block, with packed weights laid out as
+ *   weight + weight_byte_offset + (block_idx * output_dim + o) * 144
+ *
+ * Caller owns input/weight/output memory; the kernel does not retain
+ * pointers past return. input_dim must be a multiple of 256.
+ */
+SKAINET_API void skainet_q4k_matmul(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
 #ifdef __cplusplus
 }
 #endif

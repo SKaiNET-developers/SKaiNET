@@ -15,6 +15,12 @@ kotlin {
         val jvmTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
+                // Parity tests compare NativeQ4KMatmulKernel output
+                // against PanamaVectorQ4KMatmulKernel; the Panama
+                // kernel pulls in parallelChunks which transitively
+                // requires kotlinx-coroutines.
+                implementation(project(":skainet-backends:skainet-backend-cpu"))
+                implementation(libs.kotlinx.coroutines)
             }
         }
     }
@@ -106,10 +112,15 @@ tasks.named("jvmProcessResources") {
     dependsOn(packageNativeKernels)
 }
 
+// Forward `-Dskainet.runBench=true` from Gradle CLI to the forked test
+// JVM so Q4KMatmulMicrobenchTest activates. Skipped silently otherwise.
+val runBenchProperty = providers.systemProperty("skainet.runBench")
+
 tasks.withType<Test>().configureEach {
-    jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED", "--add-modules", "jdk.incubator.vector")
+    runBenchProperty.orNull?.let { systemProperty("skainet.runBench", it) }
 }
 
 tasks.withType<JavaExec>().configureEach {
-    jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED", "--add-modules", "jdk.incubator.vector")
 }

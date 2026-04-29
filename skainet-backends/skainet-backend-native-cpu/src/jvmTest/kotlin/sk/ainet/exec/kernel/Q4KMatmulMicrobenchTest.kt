@@ -1,0 +1,115 @@
+package sk.ainet.exec.kernel
+
+import kotlin.math.abs
+import kotlin.random.Random
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+/**
+ * Wall-clock microbenchmark comparing [NativeQ4KMatmulKernel] against
+ * [PanamaVectorQ4KMatmulKernel] at LLM-typical Q4_K matmul shapes.
+ * Prints elapsed nanoseconds per call after warm-up; not a parity
+ * test (parity is asserted in [NativeQ4KMatmulKernelParityTest]).
+ *
+ * Skipped by default — only runs when `-Dskainet.runBench=true` is
+ * passed to the test JVM. This lets the CI test pass quickly while
+ * still letting maintainers gather perf numbers locally:
+ *
+ *     ./gradlew :skainet-backends:skainet-backend-native-cpu:jvmTest \
+ *         --tests '*Microbench*' -Dskainet.runBench=true --info
+ *
+ * The numbers are JMH-grade only by accident: warm-up iterations,
+ * median across N samples, no allocation in the timed region. Real
+ * JMH integration belongs in `:skainet-backends:benchmarks:jvm-cpu-jmh`
+ * and lands in a follow-up PR.
+ */
+class Q4KMatmulMicrobenchTest {
+
+    private val blockSize = 256
+    private val bytesPerBlock = 144
+
+    private fun randomQ4KBytes(numBlocks: Int, seed: Int): ByteArray {
+        val rng = Random(seed)
+        val bytes = ByteArray(numBlocks * bytesPerBlock)
+        rng.nextBytes(bytes)
+        for (block in 0 until numBlocks) {
+            val base = block * bytesPerBlock
+            bytes[base + 0] = 0x00.toByte()
+            bytes[base + 1] = 0x3C.toByte()
+            bytes[base + 2] = 0x00.toByte()
+            bytes[base + 3] = 0x3C.toByte()
+        }
+        return bytes
+    }
+
+    private fun median(values: LongArray): Long {
+        val sorted = values.sortedArray()
+        return sorted[sorted.size / 2]
+    }
+
+    private fun benchOne(
+        label: String,
+        warmup: Int,
+        samples: Int,
+        run: () -> Unit,
+    ): Long {
+        repeat(warmup) { run() }
+        val timings = LongArray(samples)
+        for (i in 0 until samples) {
+            val t0 = System.nanoTime()
+            run()
+            timings[i] = System.nanoTime() - t0
+        }
+        val med = median(timings)
+        val min = timings.min()
+        println("  $label: median=${med / 1_000} µs min=${min / 1_000} µs (n=$samples)")
+        return med
+    }
+
+    @Test
+    fun bench_native_vs_panama_at_llm_shapes() {
+        if (System.getProperty("skainet.runBench") != "true") {
+            println("Q4KMatmulMicrobenchTest skipped — pass -Dskainet.runBench=true to enable.")
+            return
+        }
+        assertTrue(NativeQ4KMatmulKernel.isAvailable(), "Native kernel must be available for the bench")
+
+        // LLM-typical projection shapes. inputDim must be a multiple of 256.
+        val shapes = listOf(
+            Triple(1024, 1024, 7),
+            Triple(2048, 2048, 11),
+            Triple(4096, 4096, 13),
+        )
+
+        println()
+        println("Q4_K matmul microbench — Native (FFM, scalar C, -O3 -ffast-math) vs Panama Vector")
+        println("Host: ${System.getProperty("os.name")} ${System.getProperty("os.arch")} | JDK ${System.getProperty("java.version")}")
+        println()
+
+        for ((inputDim, outputDim, seed) in shapes) {
+            val numBlocks = (inputDim / blockSize) * outputDim
+            val packed = randomQ4KBytes(numBlocks, seed)
+            val input = FloatArray(inputDim) { Random(seed + it).nextFloat() - 0.5f }
+            val outNative = FloatArray(outputDim)
+            val outPanama = FloatArray(outputDim)
+
+            println("[inputDim=$inputDim, outputDim=$outputDim]")
+            val nativeNs = benchOne("native", warmup = 20, samples = 21) {
+                NativeQ4KMatmulKernel.matmul(input, 0, packed, 0, inputDim, outputDim, outNative, 0)
+            }
+            val panamaNs = benchOne("panama", warmup = 20, samples = 21) {
+                PanamaVectorQ4KMatmulKernel.matmul(input, 0, packed, 0, inputDim, outputDim, outPanama, 0)
+            }
+            val ratio = panamaNs.toDouble() / nativeNs.toDouble()
+            val pct = (ratio - 1.0) * 100.0
+            println(
+                "  ratio: native is %.2fx panama (%.1f%% %s)".format(
+                    ratio,
+                    abs(pct),
+                    if (ratio >= 1.0) "faster" else "slower",
+                ),
+            )
+            println()
+        }
+    }
+}
