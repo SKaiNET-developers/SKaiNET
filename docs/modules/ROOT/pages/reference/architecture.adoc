@@ -1,11 +1,288 @@
 = Architecture
-:description: How SKaiNET's compile and execution layers are organized.
+:description: Arc42-style architecture reference for SKaiNET — solution strategy, building blocks, runtime view, with focus on the kernel SPI and eager-execution pipeline.
 
-SKaiNET uses a hybrid backend strategy that separates development
-iteration from production deployment.
+This page follows arc42's chapter ordering at a coarse grain. Sections
+that are still single-paragraph stubs ask for contributions; sections
+about the kernel SPI and eager execution pipeline are the deepest
+because that's where the 0.21.0 work landed.
+
+== 1. Introduction and goals
+
+SKaiNET is a Kotlin Multiplatform ML framework whose primary target is
+*on-device / edge inference and training* in environments that already
+have JVM tooling: Android, JVM server, and Kotlin/Native iOS and
+linuxX64. The framework separates *model authoring* (a typed Kotlin
+DSL with compile-time tensor shape checks where possible) from
+*execution* (pluggable backends), so the same model can run eagerly
+during development and be lowered to MLIR StableHLO → IREE for
+deployment.
+
+Hard non-goals:
+
+* *Become a full numerics library.* SKaiNET targets the operators
+real models use, not the long tail in PyTorch / NumPy.
+* *Run untrusted user code.* Kernels are trusted code; security is
+about not corrupting memory, not about sandboxing.
 
 image::SKaiNET-compiler.svg[Architecture diagram of the SKaiNET compiler pipeline]
 
-// The original ARCHITECTURE.md at the repo root was a 4-line stub
-// pointing at the compiler diagram. If you are looking for a
-// deeper architecture write-up, contribute it as a PR to this page.
+== 2. Constraints
+
+[cols="1,3",options="header"]
+|===
+| Constraint | Why
+| Kotlin Multiplatform with `commonMain` / per-target source sets | Same DSL must run on JVM, Android, iOS, macOS, linuxX64, JS, Wasm.
+| `--enable-preview --add-modules jdk.incubator.vector` on JVM 21+ | FloatVector / ByteVector are still incubator on JDK 25 (JEP 508).
+| Maven Central publication via `vanniktech.mavenPublish` | All modules signed; coordinates `sk.ainet.core:*`.
+| Antora-based docs site under `docs/modules/ROOT/` | Source-controlled, follows Diátaxis quadrants for user-facing pages.
+| arc42 ordering for *this* page | Architectural reference, not a tutorial.
+|===
+
+== 3. Context (system boundaries)
+
+The framework's outer surface:
+
+* *DSL layer* — Kotlin model DSL (`nn { ... }`, `tensor { ... }`) and
+imperative `TensorOps` / `ExecutionContext` API.
+* *I/O layer* — model loaders for GGUF, SafeTensors, ONNX (read-only)
+in `skainet-io-*` modules.
+* *Compile layer* — `RecordingExecution` records ops to a tape, then
+lowers to StableHLO / IREE bytecode in `skainet-compile-*` modules.
+* *Backend layer* — `BackendProvider` dispatches `TensorOps` calls
+to a concrete implementation (CPU, XNNPACK, future GPU). Inside a
+backend, the *kernel SPI* picks the SIMD recipe for the host
+hardware.
+
+== 4. Solution strategy
+
+SKaiNET runs the *same model graph* through one of two execution
+strategies:
+
+* *Eager execution* — `DirectCpuExecutionContext` calls op
+implementations as the user invokes them. Used during development,
+testing, and on-device inference paths where AOT compilation is
+impractical (debug builds, dynamic graphs). This is the path the
+0.21.0 SIMD work targets.
+* *Recorded execution* — `RecordingExecution` builds an op tape,
+which `HloGenerator` lowers to StableHLO MLIR. IREE compiles the
+MLIR to a portable bytecode for production deployment.
+
+Both strategies share the same `TensorOps` surface, so a model
+written once runs in either mode without changes. Numerical parity
+between modes is part of the test contract.
+
+== 5. Building block view (static structure)
+
+=== 5.1 Module layout
+
+[cols="2,3",options="header"]
+|===
+| Module path | Role
+| `skainet-lang/skainet-lang-core` | DSL types, tensor abstractions, common ops, `TensorOps` / `ExecutionContext` interfaces. KMP, all targets.
+| `skainet-lang/skainet-lang-models` | Reference reusable models (Llama, Gemma, Qwen, Whisper) built on the DSL.
+| `skainet-backends/skainet-backend-api` | Neutral backend SPI — `TensorOps`, `TensorDataFactory`, **kernel SPI** (`KernelProvider`, `Fp32MatmulKernel`, `Q4KMatmulKernel`, `KernelRegistry`).
+| `skainet-backends/skainet-backend-cpu` | CPU implementation. Eager-execution `DefaultCpuOpsBase` (commonMain) + `DefaultCpuOpsJvm` (jvmMain) with SIMD kernels.
+| `skainet-backends/skainet-backend-xnnpack` | Optional XNNPACK CPU backend (FP32 matmul / conv2d / pooling) on linuxX64 / linuxArm64 / Android.
+| `skainet-backends/benchmarks/jvm-cpu-jmh` | JMH harness — `MatmulBench`, `KernelMatmulBench`, `QuantizedMatmulBench`, `ElementwiseAdd1MBench`, `Reductions1MBench`.
+| `skainet-compile/*` | Tape recording, StableHLO emission, IREE export.
+| `skainet-io/*` | Model loaders (GGUF, SafeTensors, ONNX), tokenizers, IRPA writer.
+|===
+
+=== 5.2 Kernel SPI
+
+Introduced in 0.21.0 (PRs #554, #559, #562). The static structure:
+
+[source]
+----
+                 commonMain (skainet-backend-api)
+                 ┌──────────────────────────────────────┐
+                 │  KernelProvider {                    │
+                 │    name: String                      │
+                 │    priority: Int                     │
+                 │    isAvailable(): Boolean            │
+                 │    matmulFp32(): Fp32MatmulKernel?   │
+                 │    matmulQ4K(): Q4KMatmulKernel?     │
+                 │  }                                   │
+                 │                                      │
+                 │  KernelRegistry {                    │
+                 │    register(KernelProvider)          │
+                 │    bestAvailable(): KernelProvider?  │
+                 │    find(name): KernelProvider?       │
+                 │  }                                   │
+                 │                                      │
+                 │  Fp32MatmulKernel.matmul(...)        │
+                 │  Q4KMatmulKernel.matmul(...)         │
+                 └──────────────┬───────────────────────┘
+                                │ implements / extends
+   ┌────────────────────────────┼────────────────────────────────┐
+   │ jvmMain (api)              │ commonMain (cpu)               │
+   │  KernelServiceLoader       │  ScalarMatmulKernel (priority 0) │
+   │  installAll()              │  ScalarKernelProvider          │
+   └────────────────────────────┴────────────────────────────────┘
+                                │
+   ┌────────────────────────────┼────────────────────────────────┐
+   │ jvmMain (cpu)                                               │
+   │  PanamaVectorMatmulKernel (priority 50, FP32)               │
+   │  PanamaVectorQ4KMatmulKernel (priority 50, Q4_K)            │
+   │  PanamaVectorKernelProvider                                 │
+   │  Scalar/PanamaVectorKernelProviderFactory (no-arg wrappers) │
+   │  META-INF/services/...KernelProvider                        │
+   └─────────────────────────────────────────────────────────────┘
+----
+
+Three live providers ship; a fourth (priority 100, native FFM) is
+captured as a plan in xref:explanation/perf/native-ffm-plan.adoc[]
+and not yet built. For *how* the kernels are implemented, see
+xref:explanation/perf/simd-kernels.adoc[] (FP32) and
+xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized).
+
+== 6. Runtime view — eager execution
+
+The eager pipeline for a single op:
+
+[source]
+----
+User code
+   │
+   │  ctx.ops.matmul(a, b)
+   ▼
+DirectCpuExecutionContext
+   │
+   │  delegates to TensorOps implementation
+   ▼
+DefaultCpuOpsJvm.matmul                                (jvmMain)
+   │
+   ├─→ chooseQuantizedMatmul(a, b)?
+   │      │
+   │      │  matches Q4_K / Q6_K / Q8_0 / Q4_0 weights
+   │      ▼
+   │   ┌─ Q4_K branch: q4kMatmulKernel?.matmul(...) via SPI
+   │   │  fallback to JvmQuantizedVectorKernels.matmulQ4_KVec
+   │   ├─ Q6_K branch: JvmQuantizedVectorKernels.matmulQ6_KVec
+   │   ├─ Q8_0 / Q4_0 branches: per-format SIMD inner loops
+   │   └─ MemSeg variants: same kernels, ByteVector.fromMemorySegment
+   │
+   ├─→ chooseMatmul(a, b)?                             (FP32 path)
+   │      │
+   │      │  fp32MatmulKernel.matmul(...)              ← SPI dispatch
+   │      ▼
+   │   PanamaVectorMatmulKernel.matmul(...)
+   │      │  (or ScalarMatmulKernel when Panama unavailable)
+   │      │
+   │      │  tile-blocked FMA inner loop:
+   │      │    for each (m, n, k)-tile:
+   │      │      load FloatVector slices of A and B^T
+   │      │      acc = va.fma(vb, acc)
+   │      │      acc.reduceLanes(ADD) per output cell
+   │      ▼
+   │   FloatArray output                                ← back up the stack
+   │
+   └─→ super.matmul(a, b)                              (DefaultCpuOpsBase fallback)
+----
+
+Two specifics worth calling out:
+
+* *Lazy provider resolution.* `DefaultCpuOpsJvm.fp32MatmulKernel` and
+`q4kMatmulKernel` are `by lazy` properties. First access triggers
+`KernelServiceLoader.installAll()` if the registry is empty, then
+caches the resolved kernel for the lifetime of the op set. Apps
+that pre-register custom providers via
+`KernelRegistry.register(...)` before constructing the op set bypass
+the auto-discovery path.
+* *Fall-through everywhere.* Each routing decision (`chooseQuantizedMatmul`
+→ `chooseMatmul` → `super.matmul`) returns `null` on a miss, never
+throws, so adding a new tensor type or a new SPI accessor is purely
+additive. The MemSeg arena leak fix in PR #556 made every per-op
+output use `Arena.ofAuto()`, so even the fast-path branches don't
+need explicit lifetime management.
+
+For shape inference, broadcasting, and the lazy shape-swap transpose
+specializations on `Q4_KTensorData` / `Q6_KTensorData` / `MemorySegmentBackedData`,
+see the same source file (`DefaultCpuOpsJvm.transpose`).
+
+== 7. Deployment view
+
+* *Maven Central* — every module published as
+`sk.ainet.core:<module>-<target>:<version>`. KMP variants land per
+target (`*-jvm`, `*-android`, `*-iosarm64`, `*-macosarm64`,
+`*-linuxx64`, `*-linuxarm64`, `*-js`, `*-wasm-js`, `*-wasm-wasi`).
+* *Single BOM* — `sk.ainet.core:skainet-bom` provides a
+`platform()` import for downstream Gradle.
+* *Releases* — tags `0.X.Y` on the release branch trigger
+`.github/workflows/publish.yml` → `./gradlew publish` on macOS-latest
+with JDK 25.
+
+== 8. Cross-cutting concepts
+
+* *Numerical parity testing.* Every accelerated kernel has a parity
+test against a scalar reference within a documented tolerance
+(typically `1e-5 * k` or `1e-4` relative). Examples:
+`PanamaVectorMatmulKernelTest`, `PanamaVectorQ4KMatmulKernelTest`,
+`Q6KMatmulTest`. The scalar reference is the contract; SIMD speed
+is a non-functional improvement that must not break the contract.
+* *Lazy resource lifetimes.* `MemorySegmentTensorDataFactory` uses
+`Arena.ofAuto()` for per-op outputs so output segments are
+GC-reclaimable. The earlier `Arena.ofConfined()` builds leaked
+~tens of MB per matmul, blowing 32+ GiB of direct memory in
+inference loops over a 35-layer Gemma 4 forward pass. Fixed in
+PR #556.
+* *Kill switches via system properties.* The Vector API code path
+respects `-Dskainet.cpu.vector.enabled=false` so a deployment can
+opt out of incubator code without a recompile. Same pattern for
+BLAS (`-Dskainet.cpu.blas.enabled=true`).
+
+== 9. Architecture decisions
+
+[cols="1,1,3",options="header"]
+|===
+| Decision | Date | Rationale
+| Kernel SPI parallel to BackendProvider | 2026-04 (PR #554) | Matmul / SDPA are model-agnostic; isolating them lets bench harnesses time the SIMD loop directly and lets a future native provider register without touching the op layer.
+| `KernelProvider.matmulQ4K()` accessor with `default null` | 2026-04 (PR #562) | Backwards compat for existing providers (Scalar) without forcing every implementation to override. Same pattern will be used for Q6KMatmulKernel / Q4KMemSegMatmulKernel sibling SPIs.
+| ServiceLoader auto-discovery deferred until 2 providers exist | 2026-04 (PR #559) | Single-provider auto-discovery would have been ceremony for nothing; once Panama landed alongside Scalar, the trigger condition was met.
+| FFM (not JNI) for any future native code | roadmap M5 | JNI's per-call overhead and global lock are wrong for hot per-token kernels.
+| Antora docs (Diátaxis), not GitHub Wiki | 2025 | Source-controlled, branchable, ranked higher in search than wikis, ships with the repo.
+|===
+
+== 10. Quality requirements
+
+* *Performance.* Panama FP32 matmul ≥1.5× scalar (M5 metric — *met*,
+~10× at 1024² on Apple Silicon NEON). Native Q4_K matmul ≥2.5×
+scalar dequant baseline (M5 metric — *deferred to native FFM PR*).
+* *Numerical equivalence.* Every SIMD kernel matches its scalar
+reference within FP-rounding tolerance (`1e-5 * k` for matmul,
+`1e-4` relative for quantized). Pinned by parity tests.
+* *Multi-target buildability.* `./gradlew allTests` (the release
+gate) must pass on every KMP target — JVM, JS, Wasm, macosArm64,
+iosSimulatorArm64, linuxX64, linuxArm64, Android.
+
+== 11. Risks and technical debt
+
+* *Vector API still incubator on JDK 25.* JEP 508 keeps it that way
+through 2026; we depend on it heavily. If it breaks API in a future
+JDK, every `JvmVectorKernels` / `JvmQuantizedVectorKernels` file
+needs adjustment. Mitigation: thin wrappers, parity tests are a
+canary.
+* *No native FFM provider yet.* The literal M5 milestone metric
+(`≥2.5×` for Q4_K) is met by Panama in absolute terms but not in
+the "native vs JVM" framing the metric originally specified.
+Mitigation: `xref:explanation/perf/native-ffm-plan.adoc[]`
+documents what shipping it would look like.
+* *Two reverted optimizations on develop history.* MemSeg pool
+(commit 8642b322) and intra-op matmul parallelism (commit
+9ed633b6) were both tried and reverted. Re-attempts need a
+different strategy than what was tried; the revert commits
+explain why.
+
+== 12. Glossary (selected)
+
+[cols="1,3",options="header"]
+|===
+| Term | Meaning
+| FFM | Foreign Function & Memory API (JEP 442 et seq.). Java 22 stable, 21 preview. Replaces JNI for native interop.
+| FMA | Fused multiply-add (`a · b + c` in one instruction). Supported by every modern x86_64 (FMA3) and ARMv8 CPU.
+| ggml | The C library underpinning llama.cpp; defines the canonical Q4_K / Q6_K / Q8_0 block layouts SKaiNET uses for GGUF compatibility.
+| Lazy transpose | Specialization in `DefaultCpuOpsJvm.transpose` that swaps a tensor's *shape* without reordering its packed bytes — works because the matmul kernel's byte-offset math is symmetric across the swap.
+| MemSeg | Short for `java.lang.foreign.MemorySegment`. Off-heap memory abstraction used for mmap'd weight buffers.
+| Panama | Codename for the JDK Vector API (`jdk.incubator.vector`) and FFM. Both originate from Project Panama.
+| SPI | Service provider interface — a public interface with multiple registered implementations, looked up at runtime. SKaiNET uses it for backends and now for kernels.
+|===
