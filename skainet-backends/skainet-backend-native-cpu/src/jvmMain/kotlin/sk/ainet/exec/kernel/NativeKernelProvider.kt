@@ -24,10 +24,51 @@ import sk.ainet.backend.api.kernel.Q4KMemSegMatmulKernel
  * callers stick with [matmulQ4K]; both wrap the same C symbol so
  * outputs are bit-for-bit identical.
  *
+ * ## Consuming this module
+ *
+ * The whole `skainet-backend-native-cpu` module is **JVM-only**: it
+ * depends on `java.lang.foreign.*`, which exists on Java SE only —
+ * not on Kotlin/Native, JS, Wasm, or Android Runtime. The module
+ * declares only a `jvm()` Kotlin target; no klib variants are
+ * published.
+ *
+ * KMP consumers MUST add the dependency to `jvmMain` only, never to
+ * `commonMain`:
+ *
+ * ```kotlin
+ * sourceSets {
+ *     val jvmMain by getting {
+ *         dependencies {
+ *             implementation("sk.ainet.core:skainet-backend-native-cpu:<version>")
+ *         }
+ *     }
+ * }
+ * ```
+ *
+ * Putting it in `commonMain.dependencies` causes Gradle to fail
+ * resolution on every non-JVM target with a long string of "Couldn't
+ * resolve dependency 'sk.ainet.core:skainet-backend-native-cpu' in
+ * 'commonMain' for all target platforms" warnings. JVM-only consumers
+ * (plain `kotlin("jvm")` modules) can use the regular `dependencies`
+ * block.
+ *
+ * Auto-discovery: `KernelServiceLoader.installAll()` scans
+ * `META-INF/services/sk.ainet.backend.api.kernel.KernelProvider` on
+ * the classpath and registers everything it finds. With the JAR on
+ * the classpath there is nothing else to wire — no manual
+ * `KernelRegistry.register()` call.
+ *
+ * Shadow-jar consumers: `mergeServiceFiles()` on shadow plugin
+ * 9.4.x has a known bug that silently drops one of the two co-
+ * located service files when both `skainet-backend-cpu` and
+ * `skainet-backend-native-cpu` are on the classpath — see the
+ * `kllama-cli` build script in `SKaiNET-transformers` for a working
+ * `doLast` workaround that rebuilds the union.
+ *
  * Staged rollout cursor (see `native-ffm-plan` asciidoc):
  *  - PR 2: real Q4_K matmul wired into the heap SPI.
  *  - PR 3: MemSeg-input zero-copy sibling.
- *  - PR 5 (this commit): native FP32 matmul wired into [matmulFp32].
+ *  - PR 5: native FP32 matmul wired into [matmulFp32].
  *  - Later: native `matmulQ6K`, `matmulQ8_0` (need new SPI accessors).
  */
 public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
