@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-04-30
+
+### Added
+
+- **`StreamingShardedSafeTensorsReader.loadTensorStorageMapped`** — by-name and by-`ShardedTensorInfo` overloads that mirror the existing single-file `StreamingSafeTensorsReader.loadTensorStorageMapped(tensor, filePath)`. Both return a `TensorStorage` whose `BufferHandle.FileBacked` references the resolved shard file's tensor byte range, enabling zero-copy / memory-mapped reads of tensors that exceed the 2 GB JVM `ByteArray` limit. The new methods delegate internally to the per-shard reader; callers don't need to know which physical shard contains a given tensor. Unblocks downstream consumers (e.g. SKaiNET-transformers' Gemma 4 PLE token-embedding table at ~4.7 GB BF16 on E2B) that previously rolled their own `FileChannel.map`. (PR #582)
+
 ## [0.22.0] - 2026-04-30
 
 ### Added
