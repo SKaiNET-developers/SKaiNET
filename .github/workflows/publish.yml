@@ -1,22 +1,106 @@
 name: release
 
+# Tag-triggered Maven Central release.
+#
+# Two-phase flow so the published JAR for skainet-backend-native-cpu
+# carries every supported native lib (.so / .dylib / .dll) regardless
+# of which OS hosts the publish step:
+#
+#  1. build-native — matrix job: each runner builds its own host's
+#     libskainet_kernels via CMake, uploads the resulting binary as
+#     an artifact named `native-<arch>`. fail-fast stays on so a
+#     missing arch aborts the release rather than shipping a partial
+#     fat JAR.
+#
+#  2. publish — runs on macOS (signing tooling is wired up there),
+#     downloads every native artifact, stages them into the native
+#     module's resources tree (`build/native/resources/native/<arch>/`),
+#     then runs `./gradlew publish`. Gradle's own CMake step rebuilds
+#     for the macOS host into native/macos-arm64/; the pre-staged libs
+#     for the other arches sit in their own subdirs and survive.
+#     resources.srcDir(nativeResourcesRoot) on jvmMain picks them all
+#     up into the published JAR.
+#
+# Linux ARM64 is intentionally absent: Kotlin/Native plugin 2.3.21
+# doesn't support `linux aarch64` as a HOST target ("Unknown host
+# target" — see SKaiNET PR #577). Linux ARM64 consumers fall back
+# cleanly to the Panama priority-50 provider.
+
 on:
   push:
     tags:
       - '**'
 
 jobs:
-  publish:
-    name: Release build and publish
-    runs-on: macOS-latest
+  build-native:
+    name: native ${{ matrix.arch_label }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch_label: linux-x86_64
+            lib_name: libskainet_kernels.so
+          - os: macos-14
+            arch_label: macos-arm64
+            lib_name: libskainet_kernels.dylib
+          - os: windows-latest
+            arch_label: windows-x86_64
+            lib_name: skainet_kernels.dll
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
-      - name: Check out code
+      - name: Checkout
         uses: actions/checkout@v6
+
       - name: Set up JDK 25
         uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: 25
+
+      - name: Verify cmake
+        run: cmake --version
+
+      - name: Build native lib (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            :skainet-backends:skainet-backend-native-cpu:packageNativeKernels
+
+      - name: Build native lib (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          .\gradlew.bat --no-daemon --stacktrace --no-configuration-cache `
+            :skainet-backends:skainet-backend-native-cpu:packageNativeKernels
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.arch_label }}
+          path: skainet-backends/skainet-backend-native-cpu/build/native/resources/native/${{ matrix.arch_label }}/${{ matrix.lib_name }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Release build and publish
+    needs: build-native
+    runs-on: macOS-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 25
+
       - name: Validate signing configuration
         run: |
           if ! grep -Eq '^[[:space:]]*signAllPublications[[:space:]]*=[[:space:]]*true[[:space:]]*$' gradle.properties; then
@@ -25,6 +109,31 @@ jobs:
             grep -n 'signAllPublications' gradle.properties || echo "No signAllPublications property found" >&2
             exit 1
           fi
+
+      - name: Download cross-arch native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-artifacts
+          # All artifacts named `native-*` from the build-native matrix.
+          pattern: native-*
+          merge-multiple: false
+
+      - name: Stage cross-arch native libs into module resources
+        run: |
+          set -euo pipefail
+          DEST="skainet-backends/skainet-backend-native-cpu/build/native/resources/native"
+          for arch in linux-x86_64 macos-arm64 windows-x86_64; do
+            src_dir="native-artifacts/native-${arch}"
+            if [ ! -d "$src_dir" ]; then
+              echo "Missing native artifact for ${arch}" >&2
+              exit 1
+            fi
+            mkdir -p "${DEST}/${arch}"
+            cp -v "${src_dir}"/* "${DEST}/${arch}/"
+          done
+          echo "--- Staged tree ---"
+          find "$DEST" -type f
+
       - name: Publish to MavenCentral
         run: ./gradlew publish --no-configuration-cache --stacktrace
         env:
