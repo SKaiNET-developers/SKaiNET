@@ -40,9 +40,10 @@ jobs:
           - os: ubuntu-latest
             arch_label: linux-x86_64
             lib_name: libskainet_kernels.so
-          - os: ubuntu-24.04-arm
-            arch_label: linux-arm64
-            lib_name: libskainet_kernels.so
+          # ubuntu-24.04-arm runner is removed for now — see #574 follow-up.
+          # Re-add once the runner-side issue is resolved (or replace with
+          # a self-hosted ARM64 runner). Linux ARM64 consumers fall back
+          # to the priority-50 Panama Vector provider until then.
           - os: macos-14
             arch_label: macos-arm64
             lib_name: libskainet_kernels.dylib
