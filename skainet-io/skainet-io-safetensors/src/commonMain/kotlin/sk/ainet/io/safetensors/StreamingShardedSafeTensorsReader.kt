@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import sk.ainet.io.model.LoadingProgress
 import sk.ainet.io.model.LoadingStage
 import sk.ainet.io.model.ProgressReportingLoader
+import sk.ainet.lang.tensor.storage.TensorStorage
 
 /**
  * Streaming reader for sharded/multi-file SafeTensors models.
@@ -94,6 +95,54 @@ public class StreamingShardedSafeTensorsReader private constructor(
         val reader = shardReaders[tensor.shardFilename]
             ?: throw IllegalStateException("Shard not loaded: ${tensor.shardFilename}")
         return reader.loadTensorData(tensor.name)
+    }
+
+    /**
+     * Same shape as [loadTensorData] but returns a file-backed
+     * [TensorStorage] instead of a heap [ByteArray]. Lets callers
+     * memory-map the tensor's byte range straight from the shard file
+     * without going through a 2 GB-capped `ByteArray` round-trip.
+     *
+     * The returned [TensorStorage] holds a
+     * [sk.ainet.lang.tensor.storage.BufferHandle.FileBacked] that
+     * references the shard file by absolute path; callers (or the
+     * runtime that consumes the storage) own the mmap lifecycle.
+     *
+     * Sharded analog of
+     * [StreamingSafeTensorsReader.loadTensorStorageMapped]. The
+     * shard's file path is resolved internally from the index — the
+     * caller doesn't need to know which physical file contains the
+     * tensor.
+     *
+     * @param tensor The tensor info from [tensors].
+     * @return [TensorStorage] descriptor with a file-backed buffer
+     *   handle pointing at the shard file's tensor byte range.
+     * @throws IllegalStateException if the containing shard was not
+     *   loaded, or if the per-shard reader does not surface the
+     *   tensor (consistency check).
+     */
+    public fun loadTensorStorageMapped(tensor: ShardedTensorInfo): TensorStorage {
+        val reader = shardReaders[tensor.shardFilename]
+            ?: throw IllegalStateException("Shard not loaded: ${tensor.shardFilename}")
+        val streamingTensor = reader.tensors.firstOrNull { it.name == tensor.name }
+            ?: throw IllegalStateException(
+                "Tensor '${tensor.name}' not found in shard '${tensor.shardFilename}'",
+            )
+        val path = resolveShardPath(tensor.shardFilename)
+        return reader.loadTensorStorageMapped(streamingTensor, path)
+    }
+
+    /**
+     * Convenience overload for [loadTensorStorageMapped] that looks up
+     * the tensor by name. Mirrors the [loadTensorData] name-based
+     * overload.
+     *
+     * @throws IllegalArgumentException if no tensor matches [name].
+     */
+    public fun loadTensorStorageMapped(name: String): TensorStorage {
+        val tensor = _tensors.firstOrNull { it.name == name }
+            ?: throw IllegalArgumentException("Tensor not found: $name")
+        return loadTensorStorageMapped(tensor)
     }
 
     override fun close() {
