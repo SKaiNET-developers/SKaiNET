@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.22.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.22.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.22.1")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.22.1")
 }
 ```
 
