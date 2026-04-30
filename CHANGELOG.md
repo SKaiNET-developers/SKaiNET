@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-04-30
+
+### Added
+
+#### Native (FFM) CPU kernel provider — M5 milestone closed
+
+This release closes milestone M5 of the JVM inference performance roadmap with a priority-100 native kernel provider that wraps a bundled C shared library via Java's Foreign Function & Memory API. Plugs into the existing `KernelProvider` SPI so `KernelRegistry.bestAvailable()` automatically routes Q4_K and FP32 matmul through native when the lib loads, falling back cleanly to the priority-50 Panama Vector kernels otherwise.
+
+- **`skainet-backend-native-cpu` module** — new JVM-only KMP module wrapping a CMake-built shared library (`libskainet_kernels.{so,dylib,dll}`). Bundled into the JAR resources at `native/<os>-<arch>/`, extracted at runtime to a process-scoped temp dir, loaded via `System.load`, and accessed via `Linker.nativeLinker().downcallHandle(...)`. ServiceLoader auto-registers `NativeKernelProviderFactory` via `META-INF/services/sk.ainet.backend.api.kernel.KernelProvider`. (PR #571)
+- **Native Q4_K matmul** — single-source scalar C kernel (`-O3 -ffast-math -funroll-loops`); the inner 32-iteration loop auto-vectorizes cleanly into `vfmadd231ps` (AVX2) / `fmla` (NEON). Mirrors `PanamaVectorQ4KMatmulKernel` byte-for-byte on the canonical ggml super-block layout (256 elements / 144 bytes, FP16 d/dMin, 12-byte `get_scale_min_k4` packed sub-scales, 128 bytes of strided 4-bit codes, lazy-`dmin` accumulation). Microbench (Linux x86_64, JDK 21.0.10): **5.87× / 4.71× / 4.17× faster than Panama Vector at 1024² / 2048² / 4096² Q4_K matmul shapes** — single-threaded native beating Panama's `parallelChunks` multi-threaded path on every measured shape. Numerical parity vs Panama within `1e-4` relative tolerance. (PR #572)
+- **`Q4KMemSegMatmulKernel` SPI sibling + zero-copy native variant** — JVM-only sibling kernel interface in `skainet-backend-api/jvmMain` taking weights as `MemorySegment` instead of `ByteArray`, plus a JVM-only `MemSegKernelProvider` provider interface that providers can implement alongside `KernelProvider` for the smart-cast lookup pattern at the call site. Reuses the same C symbol as the heap-input kernel — the bytes just don't round-trip through the JVM heap. **+20% wall-clock at 4096²** vs the heap-copy path (9 MB weight transfer eliminated); noise-level at smaller shapes. Bit-identical output to the heap variant. (PR #573)
+- **Cross-arch CI matrix** — new `.github/workflows/native-cpu-multiarch.yml` builds and tests the native module on `ubuntu-latest`, `macos-14` (Apple Silicon), and `windows-latest` for every push/PR that touches the native module. Catches portability regressions (linker, alignment, compiler-specific syntax) at PR time rather than after release. C portability tightened: `SKAINET_RESTRICT` macro maps to `__restrict__` on GCC/Clang and `__restrict` on MSVC; CMake grows an MSVC compile-flag branch (`/O2 /fp:fast /W3`) alongside the existing GCC/Clang one. Linux ARM64 was attempted but Kotlin/Native plugin 2.3.21 doesn't support `linux aarch64` as a HOST target ("Unknown host target") — left out for now. (PRs #574, #577)
+- **Native FP32 SGEMM** — row-major `C(m,n) = A(m,k) * B(k,n)` with stride support, i-p-j outer-product order so the inner `c[j] += a*b[j]` loop streams two contiguous arrays and auto-vectorizes into FMA. Wired into the existing `matmulFp32()` SPI accessor. Microbench at 256³ / 512³ / 1024³: **1.77× / 1.58× / 1.55× faster than `PanamaVectorMatmulKernel`**. The narrower margin vs Q4_K reflects Panama's already-polished FP32 path (tile-blocking + B-pack + `parallelChunks`); native still wins on every measured shape. Numerical parity within `1e-5 * k` relative tolerance. (PR #575)
+- **Multi-arch fat JAR publishing** — `.github/workflows/publish.yml` extended to a two-phase flow: a matrix `build-native` job builds `libskainet_kernels` on each supported host (linux-x86_64, macos-arm64, windows-x86_64), and the `publish` job downloads all three artifacts, stages them into the native module's resources tree, and publishes with every supported arch bundled. Consumers on any of the three arches get a working native path out of the box — no manual side-loading.
+
+#### Module + publishing infrastructure
+
+- **`skainet-backend-native-cpu` registered in BOM** — `skainet-bom` now constrains the new module alongside `skainet-backend-api` and `skainet-backend-cpu`. Consumers depending on the BOM get a constrained version without a separate pin. (PR #576)
+- **Publishing config wired** — `vanniktech.mavenPublish` plugin + per-module `gradle.properties` (POM_ARTIFACT_ID + POM_NAME) on the new module. Composite-build consumers (e.g. SKaiNET-transformers via `includeBuild`) substitute the published coordinates with the local project ref through the same path every other SKaiNET module uses. (PR #576)
+
+### Documentation
+
+- **`NativeKernelProvider` consumption kdoc** — covers two gotchas downstream consumers hit on first wiring: (1) the module is JVM-only (FFM has no Native/JS/Wasm equivalents) so KMP consumers must add the dep to `jvmMain.dependencies`, never `commonMain`; (2) `com.gradleup.shadow:9.4.x` `mergeServiceFiles()` silently drops the `NativeKernelProviderFactory` entry when both `skainet-backend-cpu` and `skainet-backend-native-cpu` are on a shadow JAR's classpath — workaround pointer to the `kllama-cli` `doLast` fix in SKaiNET-transformers PR #88. (PR #579)
+- **`docs/.../perf/native-ffm-plan.adoc`** — design baseline for the native FFM provider (recovered from the 0.21.0-cycle PRD that was dropped from the repo root and rehomed as asciidoc). Documents module layout, FFM binding pattern, staged delivery, success metrics, and risks.
+
+### Limitations
+
+- **Linux ARM64 native lib is not in the published JAR.** Kotlin/Native plugin 2.3.21 doesn't support `linux aarch64` as a HOST target on the runners GitHub provides, so the cross-arch CI matrix excludes it. Linux ARM64 consumers (Raspberry Pi, AWS Graviton) cleanly fall back to the priority-50 Panama Vector provider — no functional regression, just no native speedup. Re-add when either the Kotlin/Native plugin gains the host or a self-hosted ARM64 runner is wired in.
+- **Shadow-jar consumers** using `com.gradleup.shadow:9.4.x` still need a `doLast` workaround to merge the `META-INF/services/sk.ainet.backend.api.kernel.KernelProvider` entries — see SKaiNET-transformers PR #88's `kllama-cli`/`skainet-cli` fix for the canonical implementation. Spring Boot apps consuming via Maven (BOOT-INF/lib/) are unaffected.
+
 ## [0.21.0] - 2026-04-28
 
 ### Added

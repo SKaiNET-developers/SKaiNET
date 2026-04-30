@@ -19,8 +19,8 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.21.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.21.0")
+    implementation("sk.ainet.core:SKaiNET-lang-core:0.22.0")
+    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.22.0")
 }
 ```
 
@@ -137,10 +137,11 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.21.0
+## What's New in 0.22.0
 
-- **JVM CPU performance — Vector API SIMD across the board.** Pluggable `KernelProvider` SPI with priority-ordered lookup; FP32 matmul tile-blocked at **8.6×–10.8× over scalar**, Q4_K matmul fully SIMD-fused with inline dequant at **~30–73 GFLOPS** on Apple Silicon. Every quantized format we support (Q4_0, Q4_K, Q4_K MemSeg, Q6_K, Q8_0) is now SIMD'd to some degree.
-- **`ScratchPool` SPI and `TensorOps.permute(axes)`** — runtime workspace allocator for transient tensors and arbitrary-axis permutation.
+- **Native (FFM) CPU kernel provider — M5 milestone closed.** New `skainet-backend-native-cpu` module bundles a hand-tuned C shared library (`-O3 -ffast-math` auto-vectorized into AVX2 / NEON FMA) reachable via FFM downcalls. **4.17×–5.87× faster than Panama Vector on Q4_K matmul** at LLM-typical 1024²–4096² shapes; **1.55×–1.77× faster on FP32 SGEMM** at 256³–1024³. Auto-registers via ServiceLoader; `KernelRegistry.bestAvailable()` routes through native when the lib loads, falls through cleanly to the priority-50 Panama provider otherwise.
+- **Zero-copy MemSeg path for mmap'd Q4_K weights** — JVM-only `Q4KMemSegMatmulKernel` SPI sibling skips the staged `ByteArray → MemorySegment` copy that costs +20% wall-clock at 4096² shapes.
+- **Cross-arch shipping** — published JAR carries native libs for `linux-x86_64`, `macos-arm64`, and `windows-x86_64`. Linux ARM64 consumers cleanly fall back to Panama (Kotlin/Native host limitation tracked).
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
