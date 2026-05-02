@@ -20,7 +20,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.22.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.23.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -143,15 +143,10 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.22.2
+## What's New in 0.23.0
 
-- **`sk.ainet:skainet-bom` now resolves from Maven Central.** The umbrella BOM was previously published at the wrong coordinates (`sk.ainet.core:skainet-bom`), so consumers following the standard `platform(...)` import pattern — and downstream BOMs like `sk.ainet.transformers:skainet-transformers-bom` that import it transitively — got 404s from Central. Hotfix; no API or behavior changes. (Issue #584)
-
-## What's New in 0.22.0
-
-- **Native (FFM) CPU kernel provider — M5 milestone closed.** New `skainet-backend-native-cpu` module bundles a hand-tuned C shared library (`-O3 -ffast-math` auto-vectorized into AVX2 / NEON FMA) reachable via FFM downcalls. **4.17×–5.87× faster than Panama Vector on Q4_K matmul** at LLM-typical 1024²–4096² shapes; **1.55×–1.77× faster on FP32 SGEMM** at 256³–1024³. Auto-registers via ServiceLoader; `KernelRegistry.bestAvailable()` routes through native when the lib loads, falls through cleanly to the priority-50 Panama provider otherwise.
-- **Zero-copy MemSeg path for mmap'd Q4_K weights** — JVM-only `Q4KMemSegMatmulKernel` SPI sibling skips the staged `ByteArray → MemorySegment` copy that costs +20% wall-clock at 4096² shapes.
-- **Cross-arch shipping** — published JAR carries native libs for `linux-x86_64`, `macos-arm64`, and `windows-x86_64`. Linux ARM64 consumers cleanly fall back to Panama (Kotlin/Native host limitation tracked).
+- **Real-model GGUFs no longer OOM at network construction.** The DSL pre-allocated zero-filled `FloatArray(shape.volume)` for every Linear / Conv weight at module-creation time, even though downstream loaders overwrite those zeros immediately. For an Apertus-8B Q4_K_S GGUF (4.7 GB on disk) that was ~27 GB of FP32 zeros allocated and thrown away — OOMed at 12 GB heap. New `TensorDataFactory.placeholder(...)` API; every eager `zeros(...)` call site in the network builders routes through it. Lazy materialization fires only if a caller actually reads the tensor (which the load path never does). Verified end-to-end against `unsloth/Apertus-8B-Instruct-2509-GGUF`: now loads in 12 GB heap. Same fix benefits Gemma / Llama / Qwen / Voxtral DSL paths transparently. (Issue #587, PR #588)
+- **Kotlin/Native: GGUFs over ~2 GiB now load.** `createRandomAccessSource(filePath)` had no native actual; K/N consumers fell through to the legacy slurp-into-`ByteArray` reader, which capped at `Int.MAX_VALUE` bytes (~2 GiB). Practical impact: macOS / Linux / iOS native couldn't open Q8 models above ~1B parameters or Q4 above ~3B. New POSIX-`pread`-backed `PosixPreadRandomAccessSource` covers `macosArm64`, `linuxX64`, `linuxArm64`, `iosArm64`, `iosSimulatorArm64`. (Issue #589, PR #591)
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
