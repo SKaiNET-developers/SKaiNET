@@ -148,6 +148,12 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 - **Real-model GGUFs no longer OOM at network construction.** The DSL pre-allocated zero-filled `FloatArray(shape.volume)` for every Linear / Conv weight at module-creation time, even though downstream loaders overwrite those zeros immediately. For an Apertus-8B Q4_K_S GGUF (4.7 GB on disk) that was ~27 GB of FP32 zeros allocated and thrown away — OOMed at 12 GB heap. New `TensorDataFactory.placeholder(...)` API; every eager `zeros(...)` call site in the network builders routes through it. Lazy materialization fires only if a caller actually reads the tensor (which the load path never does). Verified end-to-end against `unsloth/Apertus-8B-Instruct-2509-GGUF`: now loads in 12 GB heap. Same fix benefits Gemma / Llama / Qwen / Voxtral DSL paths transparently. (Issue #587, PR #588)
 - **Kotlin/Native: GGUFs over ~2 GiB now load.** `createRandomAccessSource(filePath)` had no native actual; K/N consumers fell through to the legacy slurp-into-`ByteArray` reader, which capped at `Int.MAX_VALUE` bytes (~2 GiB). Practical impact: macOS / Linux / iOS native couldn't open Q8 models above ~1B parameters or Q4 above ~3B. New POSIX-`pread`-backed `PosixPreadRandomAccessSource` covers `macosArm64`, `linuxX64`, `linuxArm64`, `iosArm64`, `iosSimulatorArm64`. (Issue #589, PR #591)
 
+### Recent releases
+
+- **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)
+- **0.22.1** — `StreamingShardedSafeTensorsReader.loadTensorStorageMapped` for zero-copy reads of multi-shard tensors above the 2 GB JVM `ByteArray` limit. (PR #582)
+- **0.22.0** — Native (FFM) CPU kernel provider: **4–6× faster Q4_K matmul, 1.5–1.8× FP32 SGEMM** vs Panama Vector; auto-selected via `KernelRegistry.bestAvailable()`. (PR #571)
+
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ---
