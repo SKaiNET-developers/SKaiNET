@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-05-02
+
+### Added
+
+- **`TensorDataFactory.placeholder(shape, dtype)`** — returns a `TensorData` whose underlying primitive array materializes lazily on first read, instead of allocating a `FloatArray(shape.volume)` eagerly. The default interface implementation falls back to `zeros`, preserving behavior for any custom factory; `DenseTensorDataFactory` overrides with `LazyZeroFloatArrayTensorData` / `LazyZeroIntArrayTensorData`. `ExecutionContext.placeholder(...)` exposes the same path at the `Tensor` level. (PR #588)
+
+### Fixed
+
+- **DSL eagerly allocated zero tensors for every Linear / Conv1d / Conv2d, OOMing real-model loaders** — `NetworkBuilder.kt`'s `createLinear`, `DenseImpl`, `Conv1dImpl`, and `Conv2dImpl` paths called `tensorDataFactory.zeros<T, V>(shape, kClass)` eagerly to satisfy each module's constructor whenever the user had not provided initial weights or bias. Downstream loaders always build the network first and only then substitute weights via `WeightMapper.applyWeights`, so the eager zeros were always immediately discarded — but they determined the JVM's peak heap footprint. For `unsloth/Apertus-8B-Instruct-2509-GGUF` (Q4_K_S, 4.7 GB on disk) that was ~27 GB of FP32 zeros allocated and thrown away. Switched every eager-init call site to the new `placeholder(...)` API; the lazy fires only if a caller actually reads the tensor, which never happens on the substitution path because `parameter.value =` swaps the entire `Tensor`. Verified against the real Apertus-8B Q4_K_S GGUF: `ApertusNetworkLoader.fromGguf().load<FP32, Float>(ctx)` now succeeds in 12 GB heap (previously OOMed at 12 GB), constructs all 35 top-level modules in 13 s. Same fix benefits Gemma / Llama / Qwen / Voxtral DSL paths transparently. (Issue #587, PR #588)
+
 ## [0.22.2] - 2026-05-02
 
 ### Fixed
