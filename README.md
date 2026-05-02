@@ -20,7 +20,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.23.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.23.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -143,6 +143,10 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
+## What's New in 0.23.1
+
+- **`skainet-bom` now constrains every published engine module** — 0.23.0 was missing 9 of 25, including `skainet-compile-opt`, leaving downstreams with version-skewed transitive deps. (Issue #592)
+
 ## What's New in 0.23.0
 
 - **Real-model GGUFs no longer OOM at network construction.** The DSL pre-allocated zero-filled `FloatArray(shape.volume)` for every Linear / Conv weight at module-creation time, even though downstream loaders overwrite those zeros immediately. For an Apertus-8B Q4_K_S GGUF (4.7 GB on disk) that was ~27 GB of FP32 zeros allocated and thrown away — OOMed at 12 GB heap. New `TensorDataFactory.placeholder(...)` API; every eager `zeros(...)` call site in the network builders routes through it. Lazy materialization fires only if a caller actually reads the tensor (which the load path never does). Verified end-to-end against `unsloth/Apertus-8B-Instruct-2509-GGUF`: now loads in 12 GB heap. Same fix benefits Gemma / Llama / Qwen / Voxtral DSL paths transparently. (Issue #587, PR #588)
@@ -150,6 +154,7 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ### Recent releases
 
+- **0.23.0** — Lazy zero-init for DSL parameter placeholders (Apertus-8B Q4_K_S now loads in 12 GB heap); K/N `pread`-backed random-access source so GGUFs over ~2 GiB load on macOS / Linux / iOS native. (PRs #588, #591)
 - **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)
 - **0.22.1** — `StreamingShardedSafeTensorsReader.loadTensorStorageMapped` for zero-copy reads of multi-shard tensors above the 2 GB JVM `ByteArray` limit. (PR #582)
 - **0.22.0** — Native (FFM) CPU kernel provider: **4–6× faster Q4_K matmul, 1.5–1.8× FP32 SGEMM** vs Panama Vector; auto-selected via `KernelRegistry.bestAvailable()`. (PR #571)

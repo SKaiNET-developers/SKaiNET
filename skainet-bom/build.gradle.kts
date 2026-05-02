@@ -26,8 +26,12 @@ javaPlatform {
 
 dependencies {
     constraints {
-        // Core language module
+        // Language modules
         api(project(":skainet-lang:skainet-lang-core"))
+        api(project(":skainet-lang:skainet-lang-dag"))
+        api(project(":skainet-lang:skainet-lang-models"))
+        api(project(":skainet-lang:skainet-lang-ksp-annotations"))
+        api(project(":skainet-lang:skainet-lang-ksp-processor"))
 
         // Backend abstraction + CPU backend
         api(project(":skainet-backends:skainet-backend-api"))
@@ -45,6 +49,7 @@ dependencies {
         api(project(":skainet-io:skainet-io-safetensors"))
         api(project(":skainet-io:skainet-io-onnx"))
         api(project(":skainet-io:skainet-io-image"))
+        api(project(":skainet-io:skainet-io-iree-params"))
 
         // Data modules
         api(project(":skainet-data:skainet-data-api"))
@@ -53,7 +58,11 @@ dependencies {
 
         // Compilation
         api(project(":skainet-compile:skainet-compile-core"))
+        api(project(":skainet-compile:skainet-compile-dag"))
+        api(project(":skainet-compile:skainet-compile-opt"))
+        api(project(":skainet-compile:skainet-compile-json"))
         api(project(":skainet-compile:skainet-compile-hlo"))
+        api(project(":skainet-compile:skainet-compile-c"))
 
         // Pipeline
         api(project(":skainet-pipeline"))

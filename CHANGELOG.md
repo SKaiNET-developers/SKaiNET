@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-05-02
+
+### Fixed
+
+- **`skainet-bom` was missing nine published engine modules from `<dependencyManagement>`** — the umbrella BOM enumerated 16 modules but `sk.ainet.core` ships 25 from this repo. Notably absent: `skainet-compile-opt`, called out in #592, plus `skainet-compile-c`, `skainet-compile-dag`, `skainet-compile-json`, `skainet-io-iree-params`, `skainet-lang-dag`, `skainet-lang-models`, `skainet-lang-ksp-annotations`, and `skainet-lang-ksp-processor`. Effect: when a downstream pulled in the BOM and a transitive consumer requested an old version of any of these (e.g. `skainet-transformers-inference-bert:0.21.1` requesting `skainet-compile-opt:0.21.0`), Gradle resolved the unmanaged module at the older version and left a single-artifact version skew across an otherwise consistent engine. Reproduced against the BOM at 0.23.0; `skainet-compile-opt:0.21.0` stayed at `0.21.0` instead of upgrading to `0.23.0`. The BOM build script now constrains every module published from this repo, audited against `https://repo.maven.apache.org/maven2/sk/ainet/core/` so any module that ships a 0.23.x POM also has a constraint. (Issue #592)
+
 ## [0.23.0] - 2026-05-02
 
 ### Added
