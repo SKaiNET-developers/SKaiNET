@@ -358,6 +358,22 @@ public class DenseTensorDataFactory: TensorDataFactory {
         }
     }
 
+    /**
+     * Returns a [LazyZeroFloatArrayTensorData] / [LazyZeroIntArrayTensorData] for FP32 /
+     * FP16 / Int32. The underlying primitive array materializes only on the first
+     * `get`/`set`/`buffer` access. For Int8 (byte-backed) we currently fall back to
+     * [zeros]; the eager byte allocation is rarely the dominant cost on real models.
+     */
+    override fun <T : DType, V> placeholder(shape: Shape, dtype: KClass<T>): TensorData<T, V> {
+        @Suppress("UNCHECKED_CAST")
+        return when (dtype) {
+            FP32::class -> LazyZeroFloatArrayTensorData<T>(shape) as TensorData<T, V>
+            FP16::class -> LazyZeroFloatArrayTensorData<T>(shape) as TensorData<T, V>
+            Int32::class -> LazyZeroIntArrayTensorData<T>(shape) as TensorData<T, V>
+            else -> zeros(shape, dtype)
+        }
+    }
+
     override fun <T : DType, V> ones(shape: Shape, dtype: KClass<T>): TensorData<T, V> {
         @Suppress("UNCHECKED_CAST")
         return when (dtype) {
