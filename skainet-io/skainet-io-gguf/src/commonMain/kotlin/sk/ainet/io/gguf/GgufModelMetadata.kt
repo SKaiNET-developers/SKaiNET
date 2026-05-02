@@ -165,59 +165,5 @@ public data class GgufModelMetadata(
                 rawFields = fields
             )
         }
-
-        // ========== Helper Extensions ==========
-
-        private fun Map<String, Any?>.getString(vararg keys: String): String? {
-            for (key in keys) {
-                val value = this[key]
-                if (value is String) return value
-            }
-            return null
-        }
-
-        private fun Map<String, Any?>.getInt(vararg keys: String): Int? {
-            for (key in keys) {
-                val value = this[key]
-                when (value) {
-                    is Number -> return value.toInt()
-                    is String -> value.toIntOrNull()?.let { return it }
-                }
-            }
-            return null
-        }
-
-        private fun Map<String, Any?>.getIntList(vararg keys: String): List<Int>? {
-            for (key in keys) {
-                val value = this[key] ?: continue
-                val ints = when (value) {
-                    is List<*> -> value.mapNotNull { (it as? Number)?.toInt() }
-                    is Array<*> -> value.mapNotNull { (it as? Number)?.toInt() }
-                    is IntArray -> value.toList()
-                    is LongArray -> value.map { it.toInt() }
-                    else -> null
-                }
-                if (ints != null && ints.isNotEmpty()) return ints
-            }
-            return null
-        }
-
-        @Suppress("UNCHECKED_CAST")
-        private fun Map<String, Any?>.getStringList(vararg keys: String): List<String>? {
-            for (key in keys) {
-                val value = this[key]
-                when (value) {
-                    is List<*> -> {
-                        val strings = value.filterIsInstance<String>()
-                        if (strings.isNotEmpty()) return strings
-                    }
-                    is Array<*> -> {
-                        val strings = value.filterIsInstance<String>()
-                        if (strings.isNotEmpty()) return strings
-                    }
-                }
-            }
-            return null
-        }
     }
 }
