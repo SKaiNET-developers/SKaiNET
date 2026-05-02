@@ -206,8 +206,11 @@ see the same source file (`DefaultCpuOpsJvm.transpose`).
 `sk.ainet.core:<module>-<target>:<version>`. KMP variants land per
 target (`*-jvm`, `*-android`, `*-iosarm64`, `*-macosarm64`,
 `*-linuxx64`, `*-linuxarm64`, `*-js`, `*-wasm-js`, `*-wasm-wasi`).
-* *Single BOM* — `sk.ainet.core:skainet-bom` provides a
-`platform()` import for downstream Gradle.
+* *Single BOM* — `sk.ainet:skainet-bom` provides a
+`platform()` import for downstream Gradle. Note the group is
+`sk.ainet`, not `sk.ainet.core`, so downstream BOMs (e.g.
+`sk.ainet.transformers:skainet-transformers-bom`) can import it
+under the standard umbrella group.
 * *Releases* — tags `0.X.Y` on the release branch trigger
 `.github/workflows/publish.yml` → `./gradlew publish` on macOS-latest
 with JDK 25.

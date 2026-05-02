@@ -3,8 +3,22 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
+// Override the engine-wide `sk.ainet.core` group: downstream BOM
+// consumers (e.g. sk.ainet.transformers:skainet-transformers-bom)
+// import this with `<groupId>sk.ainet</groupId>`. vanniktech's
+// auto-coordinates feature otherwise picks up GROUP=sk.ainet.core
+// from the root gradle.properties and would publish the BOM at the
+// wrong coordinates.
+mavenPublishing {
+    coordinates(
+        groupId = "sk.ainet",
+        artifactId = "skainet-bom",
+        version = providers.gradleProperty("VERSION_NAME").getOrElse("unspecified"),
+    )
+}
+
 group = "sk.ainet"
-version = rootProject.findProperty("VERSION_NAME") ?: "0.14.0"
+version = providers.gradleProperty("VERSION_NAME").getOrElse("unspecified")
 
 javaPlatform {
     allowDependencies()

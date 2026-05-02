@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-05-02
+
+### Fixed
+
+- **`skainet-bom` published at the wrong Maven coordinates** — the umbrella BOM was being emitted as `sk.ainet.core:skainet-bom` because the engine-wide `GROUP=sk.ainet.core` from the root `gradle.properties` clobbered the per-module `group = "sk.ainet"` override picked up by `vanniktech.maven.publish`. Downstream BOMs (e.g. `sk.ainet.transformers:skainet-transformers-bom`) import this with `<groupId>sk.ainet</groupId>`, so they were unresolvable from a fresh `mavenCentral()`-only project. Fix uses vanniktech's explicit `mavenPublishing { coordinates("sk.ainet", "skainet-bom", VERSION_NAME) }` so the BOM publishes at `sk.ainet:skainet-bom:0.22.2`. `validate-published-poms.sh` extended to assert the BOM landed at the expected path so the regression cannot ship again. (Issue #584)
+
 ## [0.22.1] - 2026-04-30
 
 ### Added

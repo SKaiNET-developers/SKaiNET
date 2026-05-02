@@ -19,10 +19,17 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.22.1")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.22.1")
+    // Recommended: import the umbrella BOM and drop versions on the engine modules.
+    implementation(platform("sk.ainet:skainet-bom:0.22.2"))
+
+    implementation("sk.ainet.core:skainet-lang-core")
+    implementation("sk.ainet.core:skainet-backend-cpu")
 }
 ```
+
+> The BOM was first correctly published to Maven Central in 0.22.2 — earlier versions
+> shipped at the wrong coordinates and could not be imported. Pin versions directly if
+> you need an older release.
 
 ### Hello Neural Net
 
@@ -136,6 +143,10 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 - Valid IREE-compilable output with streaming API and public `HloGenerator`
 
 ---
+
+## What's New in 0.22.2
+
+- **`sk.ainet:skainet-bom` now resolves from Maven Central.** The umbrella BOM was previously published at the wrong coordinates (`sk.ainet.core:skainet-bom`), so consumers following the standard `platform(...)` import pattern — and downstream BOMs like `sk.ainet.transformers:skainet-transformers-bom` that import it transitively — got 404s from Central. Hotfix; no API or behavior changes. (Issue #584)
 
 ## What's New in 0.22.0
 
