@@ -64,6 +64,20 @@ public interface ExecutionContext {
         return fromData(data, dtype)
     }
 
+    /**
+     * Lazy-initialized zero tensor — see [TensorDataFactory.placeholder].
+     * The underlying primitive array allocates on first read; if the parameter
+     * is replaced before any read (the common case for DSL modules whose weights
+     * are loaded from disk), the allocation is skipped entirely.
+     */
+    public fun <T : DType, V> placeholder(
+        shape: Shape,
+        dtype: KClass<T>
+    ): Tensor<T, V> {
+        val data = tensorDataFactory.placeholder<T, V>(shape, dtype)
+        return fromData(data, dtype)
+    }
+
     public fun <T : DType, V> ones(
         shape: Shape,
         dtype: KClass<T>

@@ -11,6 +11,27 @@ import kotlin.reflect.KClass
  */
 public interface TensorDataFactory {
     public fun <T : DType, V> zeros(shape: Shape, dtype: KClass<T>): TensorData<T, V>
+
+    /**
+     * Allocates a zero-filled tensor whose underlying storage materializes lazily
+     * on first read.
+     *
+     * Behavior is identical to [zeros] for any caller that reads the tensor — a
+     * fresh zero buffer is produced on first access and cached for subsequent
+     * reads. The benefit is for callers that **never** read the tensor before
+     * replacing it, which is the common case in DSL-built modules whose
+     * parameters get substituted by a downstream weight loader (e.g.
+     * `WeightMapper.applyWeights` sets `parameter.value = loadedTensor`). For
+     * those callers, the `FloatArray(shape.volume)` allocation never happens.
+     *
+     * The default implementation falls back to [zeros], preserving existing
+     * behavior for any custom factory that does not opt in. Implementations
+     * that have a meaningful lazy form (e.g. [DenseTensorDataFactory]) should
+     * override.
+     */
+    public fun <T : DType, V> placeholder(shape: Shape, dtype: KClass<T>): TensorData<T, V> =
+        zeros(shape, dtype)
+
     public fun <T : DType, V> ones(shape: Shape, dtype: KClass<T>): TensorData<T, V>
     public fun <T : DType, V> full(shape: Shape, dtype: KClass<T>, value: Number): TensorData<T, V>
     public fun <T : DType, V> randn(
