@@ -78,7 +78,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 | Project | Description |
 |---|---|
-| [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) | Llama, Gemma, and BERT inference runtimes |
 | [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) | Pre-built transformer architectures and layers |
 | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) | Sample projects and integration demos |
 
@@ -90,7 +89,7 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 |---|---|
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
-| LLM inference (Llama, Gemma) | [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) |
+| LLM inference (Llama, Gemma, Qwen) | [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) |
 
 ---
 
