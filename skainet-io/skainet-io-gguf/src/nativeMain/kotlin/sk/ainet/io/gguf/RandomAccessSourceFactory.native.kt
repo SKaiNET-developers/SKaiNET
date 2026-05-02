@@ -1,13 +1,14 @@
 package sk.ainet.io.gguf
 
+import sk.ainet.io.PosixPreadRandomAccessSource
 import sk.ainet.io.RandomAccessSource
 
 /**
- * Native implementation of [createRandomAccessSource].
+ * Native implementation of [createRandomAccessSource] using POSIX `pread(2)`.
  *
- * Returns null as native random file access is not yet implemented.
- * Callers should fall back to legacy GGUFReader which loads the full file.
- *
- * Future: Could implement using POSIX pread() for efficient random access.
+ * Returns `null` if the file cannot be opened (missing, permission denied,
+ * etc.), matching the JVM actual's contract so callers can fall back to the
+ * legacy sequential reader.
  */
-public actual fun createRandomAccessSource(filePath: String): RandomAccessSource? = null
+public actual fun createRandomAccessSource(filePath: String): RandomAccessSource? =
+    PosixPreadRandomAccessSource.open(filePath)
