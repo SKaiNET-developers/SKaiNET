@@ -1,6 +1,8 @@
 package sk.ainet.io.tokenizer
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.float
 import kotlinx.serialization.json.int
@@ -319,6 +321,21 @@ public class SentencePieceTokenizer(
          *
          * HF Unigram stores the vocab as a JSON array of `[token, score]`
          * pairs, indexed by id. The unknown token id is at `model.unk_id`.
+         *
+         * `addSpacePrefix` is detected from the `normalizer` block — a
+         * `Prepend` step with `prepend == "▁"` (or a normalizer Sequence
+         * containing one) means the model expects the SP whitespace
+         * dummy prefix. Gemma 4 omits it (HF normalizer is `Replace`-only)
+         * and the model is trained accordingly; without honoring this
+         * flag the encoder produces leading-space tokens (`▁Hi` instead
+         * of `Hi`) that diverge from HuggingFace reference IDs.
+         *
+         * `bosTokenId` / `eosTokenId` are resolved from `added_tokens` by
+         * matching common chat-template names (`<bos>` / `<|begin_of_text|>` /
+         * `<s>` for BOS; `<eos>` / `<|end_of_text|>` / `</s>` for EOS).
+         * HF tokenizer.json files do not carry a dedicated bos/eos field,
+         * so this name-based heuristic mirrors how `transformers` itself
+         * looks them up at load time.
          */
         public fun fromTokenizerJson(root: JsonObject): SentencePieceTokenizer {
             val model = root["model"]?.jsonObject
@@ -336,11 +353,60 @@ public class SentencePieceTokenizer(
             }
 
             val unknownId = model["unk_id"]?.jsonPrimitive?.int
+            val addSpacePrefix = detectAddSpacePrefix(root)
+            val (bosId, eosId) = extractBosEosFromAddedTokens(root)
+
             return SentencePieceTokenizer(
                 tokens = tokens,
                 scores = scores,
                 unknownTokenId = unknownId,
+                bosTokenId = bosId,
+                eosTokenId = eosId,
+                addSpacePrefix = addSpacePrefix,
             )
+        }
+
+        /**
+         * Inspect `tokenizer.json#normalizer` for an SP-style `Prepend`
+         * step with `prepend == "▁"`. Returns true when found, false when
+         * a normalizer block exists but no such step is present, true as
+         * a default when there's no normalizer (matches the SPM library
+         * default of `add_dummy_prefix=true`).
+         */
+        private fun detectAddSpacePrefix(root: JsonObject): Boolean {
+            val normalizer = root["normalizer"] as? JsonObject ?: return true
+            val seq = normalizer["normalizers"]?.jsonArray
+            val candidates = seq ?: listOf(normalizer)
+            for (n in candidates) {
+                val obj = n as? JsonObject ?: continue
+                val type = obj["type"]?.jsonPrimitive?.content ?: continue
+                if (type == "Prepend") {
+                    val prepend = obj["prepend"]?.jsonPrimitive?.content
+                    if (prepend == "▁") return true
+                }
+            }
+            return false
+        }
+
+        /**
+         * Resolve BOS/EOS ids from `added_tokens` by matching standard
+         * chat-template content names. First match wins; returns null
+         * for either when no entry matches.
+         */
+        private fun extractBosEosFromAddedTokens(root: JsonObject): Pair<Int?, Int?> {
+            val added = root["added_tokens"]?.jsonArray ?: return null to null
+            var bosId: Int? = null
+            var eosId: Int? = null
+            for (entry in added) {
+                val obj = entry as? JsonObject ?: continue
+                val content = obj["content"]?.jsonPrimitive?.content ?: continue
+                val id = obj["id"]?.jsonPrimitive?.int ?: continue
+                when (content) {
+                    "<bos>", "<|begin_of_text|>", "<s>" -> if (bosId == null) bosId = id
+                    "<eos>", "<|end_of_text|>", "</s>" -> if (eosId == null) eosId = id
+                }
+            }
+            return bosId to eosId
         }
 
         private const val TOKEN_TYPE_UNKNOWN = 2
