@@ -71,7 +71,6 @@ include("skainet-bom")
 
 // ====== TEST
 include("skainet-test:skainet-test-groundtruth")
-include("skainet-test:skainet-test-java")
 
 // ====== APPS
 include("skainet-apps:skainet-grayscale-cli")

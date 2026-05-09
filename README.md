@@ -5,10 +5,6 @@
 
 <img src="docs/modules/ROOT/images/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-### Vision
-
-SKaiNET aims to democratize "Edge AI / On-device AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
-
 > For architecture details see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
@@ -89,7 +85,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 |---|---|
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
-| LLM inference (Llama, Gemma, Qwen) | [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) |
 
 ---
 
@@ -106,11 +101,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 - **SDPA & Gather**: High-performance Scaled Dot-Product Attention and indexing operations.
 - **TurboQuant**: Runtime KV-cache compression (~8x at 4-bit) for long-context LLM inference. Presets: `safe-lowbit`, `balanced`, `experimental-max`. See `TurboQuantUsage` for integration guide.
 
-### Agentic AI Infrastructure
-
-- **ComputeGraph**: Unified framework for defining agentic workflows and tool-calling loops.
-- Java facade: `JavaAgentLoop` (in `skainet-lang-java`)
-
 ### Neural Network DSL
 
 - **Sequential**: `nn { input(); dense(); relu(); dense() }`
@@ -125,10 +115,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 - Formats: GGUF, ONNX, SafeTensors, JSON, Image (JPEG, PNG)
 - Type-safe transform DSL: resize, crop, normalize, toTensor
 
-### Java 21+ Support
-
-- `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition
-- Maven BOM (`sk.ainet:skainet-bom`) for one-line version management
 
 ### Edge AI: Arduino / C99 Export
 

@@ -35,5 +35,9 @@ gradlePlugin {
             id = "sk.ainet.documentation"
             implementationClass = "DocumentationPlugin"
         }
+        register("SKaiNetBomCoverage") {
+            id = "sk.ainet.transformers.bom-coverage"
+            implementationClass = "sk.ainet.buildlogic.bom.BomCoveragePlugin"
+        }
     }
 }
