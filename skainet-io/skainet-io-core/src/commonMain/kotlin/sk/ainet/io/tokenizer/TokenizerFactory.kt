@@ -1,6 +1,10 @@
 package sk.ainet.io.tokenizer
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.jvm.JvmStatic
@@ -42,7 +46,10 @@ public object TokenizerFactory {
             )
         return when (model) {
             "gpt2", "bpe" -> QwenByteLevelBpeTokenizer.fromGgufFields(fields)
-            "llama", "sentencepiece" -> SentencePieceTokenizer.fromGgufFields(fields)
+            "llama", "sentencepiece" -> wrapSentencePieceWithSpecialsFromGguf(
+                base = SentencePieceTokenizer.fromGgufFields(fields),
+                fields = fields,
+            )
             "bert", "wordpiece" -> throw UnsupportedTokenizerException(
                 "WordPiece/BERT tokenizer not yet implemented"
             )
@@ -56,8 +63,9 @@ public object TokenizerFactory {
      * Build a tokenizer from a HuggingFace `tokenizer.json` string.
      *
      * Dispatches on `model.type`: `"BPE"` + byte-level pretokenizer routes
-     * to [QwenByteLevelBpeTokenizer]; `"Unigram"` (SentencePiece) and
-     * `"WordPiece"` currently throw.
+     * to [QwenByteLevelBpeTokenizer]; `"Unigram"` (SentencePiece) gets
+     * wrapped in [SpecialTokenSplitter] when its `added_tokens` registry
+     * is non-empty; `"WordPiece"` currently throws.
      */
     @JvmStatic
     public fun fromTokenizerJson(json: String): Tokenizer {
@@ -66,7 +74,10 @@ public object TokenizerFactory {
             ?: throw UnsupportedTokenizerException("tokenizer.json has no model.type")
         return when (modelType) {
             "BPE" -> QwenByteLevelBpeTokenizer.fromTokenizerJson(root)
-            "Unigram" -> SentencePieceTokenizer.fromTokenizerJson(root)
+            "Unigram" -> wrapSentencePieceWithSpecialsFromJson(
+                base = SentencePieceTokenizer.fromTokenizerJson(root),
+                root = root,
+            )
             "WordPiece" -> throw UnsupportedTokenizerException(
                 "WordPiece tokenizer.json not yet implemented"
             )
@@ -75,6 +86,63 @@ public object TokenizerFactory {
             )
         }
     }
+
+    /**
+     * Apply the [SpecialTokenSplitter] decorator to a SentencePiece base
+     * if the GGUF metadata carries any CONTROL (3) or USER_DEFINED (4)
+     * token-type entries. Both are atomic chat-template markers that the
+     * model expects to see as single ids — `<bos>` is typically CONTROL,
+     * `<|tool_call>` and similar app-specific markers are USER_DEFINED.
+     * The bare base is returned when no specials are present (vanilla
+     * LLaMA-style models) so consumers see no behavior change.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun wrapSentencePieceWithSpecialsFromGguf(
+        base: SentencePieceTokenizer,
+        fields: Map<String, Any?>,
+    ): Tokenizer {
+        val tokens = (fields["tokenizer.ggml.tokens"] as? List<*>)
+            ?.filterIsInstance<String>().orEmpty()
+        val tokenTypes = (fields["tokenizer.ggml.token_type"] as? List<*>)
+            ?.mapNotNull { (it as? Number)?.toInt() }.orEmpty()
+        if (tokens.isEmpty() || tokenTypes.isEmpty()) return base
+
+        val specials = HashMap<String, Int>()
+        val limit = minOf(tokens.size, tokenTypes.size)
+        for (i in 0 until limit) {
+            val type = tokenTypes[i]
+            if (type == TOKEN_TYPE_CONTROL || type == TOKEN_TYPE_USER_DEFINED) {
+                val tok = tokens[i]
+                if (tok.isNotEmpty()) specials[tok] = i
+            }
+        }
+        return if (specials.isEmpty()) base else SpecialTokenSplitter(base, specials)
+    }
+
+    /**
+     * Apply the [SpecialTokenSplitter] decorator to a SentencePiece base
+     * built from `tokenizer.json` if its `added_tokens` array carries any
+     * `"special": true` (or unset, defaulting to true) entries. Returns
+     * the bare base when the registry is empty.
+     */
+    private fun wrapSentencePieceWithSpecialsFromJson(
+        base: SentencePieceTokenizer,
+        root: JsonObject,
+    ): Tokenizer {
+        val added = root["added_tokens"]?.jsonArray ?: return base
+        val specials = HashMap<String, Int>(added.size)
+        for (entry in added) {
+            val obj = entry as? JsonObject ?: continue
+            val content = obj["content"]?.jsonPrimitive?.content ?: continue
+            val id = obj["id"]?.jsonPrimitive?.int ?: continue
+            val isSpecial = obj["special"]?.jsonPrimitive?.boolean ?: true
+            if (isSpecial) specials[content] = id
+        }
+        return if (specials.isEmpty()) base else SpecialTokenSplitter(base, specials)
+    }
+
+    private const val TOKEN_TYPE_CONTROL = 3
+    private const val TOKEN_TYPE_USER_DEFINED = 4
 
     internal val JSON: Json = Json { ignoreUnknownKeys = true; isLenient = true }
 }
