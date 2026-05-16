@@ -20,6 +20,14 @@
         <Mode>BATCH</Mode>
     </Execute>
     <Execute>
+        <Test>local/skainet-engine-bf16-matmul</Test>
+        <Mode>BATCH</Mode>
+    </Execute>
+    <Execute>
+        <Test>local/skainet-engine-q8-matmul</Test>
+        <Mode>BATCH</Mode>
+    </Execute>
+    <Execute>
         <Test>local/skainet-engine-elementwise-add</Test>
         <Mode>BATCH</Mode>
     </Execute>

@@ -15,10 +15,11 @@ from that repository.
 
 == What the suite measures
 
-The engine suite ships six scenarios, all driven by the same
+The engine suite ships eight scenarios, all driven by the same
 publication harness (`skainet-backends/benchmarks/jvm-cpu-publish`) and
 mirroring the existing JVM CPU JMH benchmarks under
-`skainet-backends/benchmarks/jvm-cpu-jmh/`:
+`skainet-backends/benchmarks/jvm-cpu-jmh/` plus the upstream Bf16 / Q8_0
+microbench tests under `skainet-backends/skainet-backend-native-cpu`:
 
 [cols="1m,3,1,1",options="header"]
 |===
@@ -26,6 +27,8 @@ mirroring the existing JVM CPU JMH benchmarks under
 | engine-fp32-gemm        | `ctx.ops.matmul` end-to-end FP32 square matmul              | GFLOPS        | higher is better
 | engine-q4-gemm          | `PanamaVectorQ4KMatmulKernel` F32 × Q4_K matmul at LLM shapes | GOP/s        | higher is better
 | engine-kernel-matmul    | Direct `Fp32MatmulKernel` (scalar vs panama-vector)         | GFLOPS        | higher is better
+| engine-bf16-matmul      | `Bf16MatmulKernel` F32 × BF16-packed matmul (scalar vs panama-vector) | GFLOPS | higher is better
+| engine-q8-matmul        | `Q8_0MatmulKernel` F32 × Q8_0-packed matvec (scalar vs panama-vector) | GOP/s | higher is better
 | engine-elementwise-add  | `ctx.ops.add` on 1M FP32 elements                           | M elements/s  | higher is better
 | engine-reductions-sum   | `ctx.ops.sum` on 1M FP32 elements                           | M elements/s  | higher is better
 | engine-reductions-mean  | `ctx.ops.mean` on 1M FP32 elements                          | M elements/s  | higher is better

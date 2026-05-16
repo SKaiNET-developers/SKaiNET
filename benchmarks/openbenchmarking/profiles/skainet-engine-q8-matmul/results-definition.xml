@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+    <ResultsParser>
+        <OutputTemplate>engine-q8-matmul_gops: #_RESULT_#</OutputTemplate>
+        <LineHint>engine-q8-matmul_gops:</LineHint>
+    </ResultsParser>
+</PhoronixTestSuite>

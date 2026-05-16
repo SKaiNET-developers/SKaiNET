@@ -50,6 +50,14 @@ scenarios:
     provider: panama
   - id: engine-kernel-matmul
     provider: scalar
+  - id: engine-bf16-matmul
+    provider: panama
+  - id: engine-bf16-matmul
+    provider: scalar
+  - id: engine-q8-matmul
+    provider: panama
+  - id: engine-q8-matmul
+    provider: scalar
   - id: engine-elementwise-add
     provider: panama
   - id: engine-reductions-sum
