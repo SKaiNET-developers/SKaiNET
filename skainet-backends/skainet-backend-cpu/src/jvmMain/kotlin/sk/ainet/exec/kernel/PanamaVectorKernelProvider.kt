@@ -1,5 +1,6 @@
 package sk.ainet.exec.kernel
 
+import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
@@ -40,6 +41,9 @@ public object PanamaVectorKernelProvider : KernelProvider {
 
     override fun matmulQ4K(): Q4KMatmulKernel? =
         if (isAvailable()) PanamaVectorQ4KMatmulKernel else null
+
+    override fun matmulBf16(): Bf16MatmulKernel? =
+        if (isAvailable()) PanamaVectorBf16MatmulKernel else null
 
     private fun isVectorApiClassLoaded(): Boolean = runCatching {
         Class.forName("jdk.incubator.vector.FloatVector")
