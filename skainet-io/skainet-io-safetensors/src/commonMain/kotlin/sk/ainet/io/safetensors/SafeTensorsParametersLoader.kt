@@ -6,6 +6,8 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.model.DataType
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.data.Bf16DenseTensorData
+import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
@@ -23,7 +25,8 @@ import kotlin.reflect.KClass
  * - F32/F64 tensors -> FP32 (F64 downcast with warning)
  * - I32/I64 tensors -> Int32 (I64 downcast with warning)
  * - I8/U8 tensors -> Int8
- * - F16/BF16 tensors -> FP32 (with dequantization)
+ * - F16 tensors -> FP32 (with dequantization)
+ * - BF16 tensors -> FP32 (default) OR native BF16 storage (`bf16Policy = KEEP_NATIVE`)
  *
  * Where possible, decoded arrays are wrapped (borrowed) rather than copied
  * into TensorData, avoiding a second allocation. The raw-byte decode step
@@ -31,10 +34,16 @@ import kotlin.reflect.KClass
  *
  * @param sourceProvider Factory providing RandomAccessSource to the SafeTensors file
  * @param onProgress Optional progress callback (current, total, tensorName)
+ * @param bf16Policy How to handle `BFLOAT16` tensors. Default is
+ *   [Bf16LoadPolicy.DEQUANT_TO_FP32] — backward-compatible with all
+ *   existing consumers. Flip to [Bf16LoadPolicy.KEEP_NATIVE] to keep
+ *   weights in their on-disk BF16 layout and let the matmul dispatch
+ *   route to a vectorised BF16 kernel.
  */
 class SafeTensorsParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
-    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> }
+    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+    private val bf16Policy: Bf16LoadPolicy = Bf16LoadPolicy.DEQUANT_TO_FP32,
 ) : ParametersLoader {
 
     override suspend fun <T : DType, V> load(
@@ -82,10 +91,22 @@ class SafeTensorsParametersLoader(
 
                     DataType.BFLOAT16 -> {
                         require(dtype == FP32::class) {
-                            "SafeTensors BF16 tensor '${tensorInfo.name}' requires FP32 dtype (dequant), got ${dtype.simpleName}"
+                            "SafeTensors BF16 tensor '${tensorInfo.name}' requires FP32 dtype, got ${dtype.simpleName}"
                         }
-                        val floats = dequantBF16(bytes)
-                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        when (bf16Policy) {
+                            Bf16LoadPolicy.DEQUANT_TO_FP32 -> {
+                                val floats = dequantBF16(bytes)
+                                ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                            }
+                            Bf16LoadPolicy.KEEP_NATIVE -> {
+                                // Wrap the on-disk BF16 bytes directly. dtype stays FP32 from
+                                // the consumer's POV (Bf16TensorData : TensorData<DType, Float>
+                                // decodes on read); the storage type is what the matmul
+                                // dispatch will pattern-match on to pick the BF16 SPI kernel.
+                                val bf16Data = Bf16DenseTensorData(shape, bytes)
+                                ctx.fromData(bf16Data as TensorData<T, V>, dtype)
+                            }
+                        }
                     }
 
                     DataType.INT32 -> {
