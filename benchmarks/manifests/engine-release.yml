@@ -35,7 +35,7 @@ modes:
     measured_runs: 1
     seed: 42
   full:
-    warmup_runs: 3
+    warmup_runs: 8
     measured_runs: 5
     seed: 42
 

@@ -32,7 +32,7 @@ public fun main(args: Array<String>) {
 private class RunCmd : Subcommand("run", "Run a single engine benchmark scenario") {
     val scenario by option(ArgType.String, shortName = "s", description = "Scenario id").required()
     val out by option(ArgType.String, shortName = "o", description = "Output JSON file (- for stdout)").required()
-    val warmups by option(ArgType.Int, description = "Warmup runs").default(3)
+    val warmups by option(ArgType.Int, description = "Warmup runs").default(8)
     val measured by option(ArgType.Int, description = "Measured runs").default(5)
     val seed by option(ArgType.String, description = "RNG seed").default("42")
     val smoke by option(ArgType.Boolean, description = "Use smoke parameters (smallest shape, 1+1 runs)").default(false)
