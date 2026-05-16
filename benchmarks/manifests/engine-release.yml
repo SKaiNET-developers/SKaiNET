@@ -1,0 +1,58 @@
+# SKaiNET Compute Engine — release benchmark manifest.
+#
+# Every public benchmark run is parameterized by this file: scenario list,
+# warmup/measured-run counts, JDK requirements, JVM flags, and the schema
+# version the JSON artifacts are validated against. Bumping any value here
+# is a public methodology change — bump the manifest's `manifest_version`
+# and call it out in the release notes.
+
+manifest_version: "1.0.0"
+schema_version: "1.0.0"
+
+# Toolchain pinning. Both jobs (ubuntu-latest smoke + self-hosted full)
+# install the same major JDK; the build itself enforces JDK 21+ via the
+# root subprojects block, but we record the version actually used in the
+# resulting BenchmarkRecord.runtime.* fields.
+toolchain:
+  jdk_major: 21
+  jvm_args:
+    - "--enable-preview"
+    - "--add-modules"
+    - "jdk.incubator.vector"
+
+# CoV gate — runs above this are marked unstable=true in the JSON record
+# and SHOULD NOT be promoted into public leaderboards. Mirrors the PRD
+# success metric of 3% CoV on stable CPU lanes.
+stability:
+  cov_limit_percent: 3.0
+
+# Run shape. Smoke is for CI on ubuntu-latest (≤2 min total); full is for
+# the self-hosted i7-9750H lane and matches the PRD recommendation of
+# 3 warmup + 5 measured runs.
+modes:
+  smoke:
+    warmup_runs: 1
+    measured_runs: 1
+    seed: 42
+  full:
+    warmup_runs: 3
+    measured_runs: 5
+    seed: 42
+
+# Scenario list. Provider names map to KernelProvider.name returned by
+# sk.ainet.backend.api.kernel.KernelRegistry.
+scenarios:
+  - id: engine-fp32-gemm
+    provider: panama
+  - id: engine-q4-gemm
+    provider: panama
+  - id: engine-kernel-matmul
+    provider: panama
+  - id: engine-kernel-matmul
+    provider: scalar
+  - id: engine-elementwise-add
+    provider: panama
+  - id: engine-reductions-sum
+    provider: panama
+  - id: engine-reductions-mean
+    provider: panama

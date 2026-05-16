@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+    <ResultsParser>
+        <OutputTemplate>engine-kernel-matmul_gflops: #_RESULT_#</OutputTemplate>
+        <LineHint>engine-kernel-matmul_gflops:</LineHint>
+    </ResultsParser>
+</PhoronixTestSuite>

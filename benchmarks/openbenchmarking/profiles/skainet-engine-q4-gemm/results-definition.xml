@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+    <ResultsParser>
+        <OutputTemplate>engine-q4-gemm_gops: #_RESULT_#</OutputTemplate>
+        <LineHint>engine-q4-gemm_gops:</LineHint>
+    </ResultsParser>
+</PhoronixTestSuite>

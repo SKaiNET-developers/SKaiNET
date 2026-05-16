@@ -24,6 +24,7 @@
 ** xref:explanation/theory/matmul.adoc[Matrix multiplication]
 * xref:explanation/examples/index.adoc[Worked examples]
 ** xref:explanation/examples/matmul.adoc[Matrix multiplication examples]
+* xref:explanation/perf/benchmarks.adoc[Official engine benchmarks]
 * xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
 * xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]
 * xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built]

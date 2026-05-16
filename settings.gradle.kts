@@ -43,6 +43,7 @@ include("skainet-backends:skainet-backend-native-cpu")
 
 // ====== BENCHMARKS
 include("skainet-backends:benchmarks:jvm-cpu-jmh")
+include("skainet-backends:benchmarks:jvm-cpu-publish")
 
 // ====== DATA
 include("skainet-data:skainet-data-api")

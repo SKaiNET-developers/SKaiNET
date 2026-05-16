@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+    <ResultsParser>
+        <OutputTemplate>engine-reductions-sum_melems_per_sec: #_RESULT_#</OutputTemplate>
+        <LineHint>engine-reductions-sum_melems_per_sec:</LineHint>
+    </ResultsParser>
+</PhoronixTestSuite>
