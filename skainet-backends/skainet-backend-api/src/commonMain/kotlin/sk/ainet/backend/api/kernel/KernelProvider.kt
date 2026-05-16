@@ -60,4 +60,10 @@ public interface KernelProvider {
      * to the next provider when this one returns `null`.
      */
     public fun matmulBf16(): Bf16MatmulKernel? = null
+
+    /**
+     * F32 × Q8_0 matmul kernel exposed by this provider, or `null` if
+     * this provider does not specialize Q8_0. Same fall-through pattern.
+     */
+    public fun matmulQ8_0(): Q8_0MatmulKernel? = null
 }

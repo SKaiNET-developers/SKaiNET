@@ -6,6 +6,7 @@ import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.MemSegKernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4KMemSegMatmulKernel
+import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 
 /**
  * Native (FFM) [KernelProvider] / [MemSegKernelProvider]. Sits at
@@ -89,4 +90,7 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun matmulBf16(): Bf16MatmulKernel? =
         if (NativeBf16MatmulKernel.isAvailable()) NativeBf16MatmulKernel else null
+
+    override fun matmulQ8_0(): Q8_0MatmulKernel? =
+        if (NativeQ8_0MatmulKernel.isAvailable()) NativeQ8_0MatmulKernel else null
 }
