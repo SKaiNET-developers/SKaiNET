@@ -1,0 +1,478 @@
+= Reading the Matmul Benchmark: CPU Performance, in Numbers
+:description: What the engine matmul benchmark numbers actually tell you about CPU compute — peak FLOPS, memory bandwidth, SIMD, and where quantization wins.
+
+Matrix multiplication is essentially the entire compute budget of a
+modern transformer. Token embeddings, attention projections (Q, K,
+V, output), MLP gates, final logits — all matmuls. A 7B-parameter
+Llama-class model spends well over 95% of its decode time inside a
+matmul kernel; layer norms, softmax, and bookkeeping account for the
+rest.
+
+This page is a guided reading of the engine matmul benchmark
+(xref:explanation/perf/benchmarks.adoc[]). The benchmark itself is
+straightforward — call a kernel, time it, divide ops by seconds. The
+*interpretation* is where most engineers slip:
+
+* Why does the same matmul, on the same machine, run at 1 GFLOPS in
+  one kernel and 14 GFLOPS in another?
+* Why does a quantized matmul that dequantizes inline (extra work)
+  beat a dense FP32 matmul?
+* When you stare at a column of GFLOPS numbers, which ones are
+  "good," which are "near peak," and which are leaving compute on
+  the floor?
+
+We will answer those by anchoring everything to a single benchmark
+run on the reference host (Intel i7-9750H, AVX2, no AVX-512, Ubuntu
+24.04, JDK 21, 8 warmups + 5 measured runs):
+
+[cols="1m,1,1,1,2",options="header"]
+|===
+| Scenario | Panama | Scalar | Speedup | Regime
+| engine-kernel-matmul (1024³ FP32) | 14.06 GFLOPS | 1.05 GFLOPS | 13.4× | compute-bound
+| engine-bf16-matmul (1024³)        | 1.19 GFLOPS  | 0.53 GFLOPS | 2.25× | mixed
+| engine-q8-matmul (4096² matvec)   | 3.56 GOP/s   | 1.37 GOP/s  | 2.60× | bandwidth-bound
+| engine-q4-gemm (4096² matvec)     | 12.4 GOP/s   | n/a         | n/a   | bandwidth-bound
+|===
+
+Hold those four rows in your head — every section below points back
+at one of them.
+
+== Glossary
+
+GEMM:: **G**eneral **M**atrix **M**ultiply. The BLAS Level 3
+    operation `C = α · A · B + β · C`, defined by the BLAS spec in
+    the late 1970s. In ML we set `α = 1, β = 0` (overwrite, not
+    accumulate) — that is what "matmul" means in practice. Cost:
+    `2 · m · n · k` floating-point ops for an `(m × k) · (k × n) =
+    (m × n)` multiply. Half of those are multiplies, half are adds.
+
+Panama:: The OpenJDK incubator project that added two JVM APIs:
+    the **Vector API** (`jdk.incubator.vector`) for portable SIMD,
+    and the **Foreign Function and Memory API** (`java.lang.foreign`)
+    for native calls without JNI. "Panama" in this codebase almost
+    always means the Vector API path. The Panama matmul kernel uses
+    `FloatVector.fma()` which compiles to a hardware `VFMADD231PS`
+    (x86) or `FMLA` (NEON) instruction.
+
+SIMD:: **S**ingle **I**nstruction **M**ultiple **D**ata. One CPU
+    instruction operates on a vector register holding 4 / 8 / 16 float
+    lanes at once. AVX2 = 8 FP32 lanes, AVX-512 = 16, NEON = 4.
+
+Kernel:: The innermost compute loop, written once per (precision,
+    instruction set) pair. A kernel does the math; it does not
+    allocate, dispatch, or schedule. The benchmark measures the
+    kernel — nothing else is in the timed region.
+
+Roofline:: A back-of-the-envelope model that says: achievable
+    throughput = `min(peak_compute, arithmetic_intensity × peak_memory_bandwidth)`.
+    Arithmetic intensity is flops per byte loaded. We will use this
+    once at the end to explain why the numbers above are not all the
+    same shape.
+
+== The two layers you actually write
+
+Before getting to the kernels, anchor the two pieces of public API
+the benchmark drives.
+
+=== Data DSL — describing the inputs
+
+[source,kotlin]
+----
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext.create()    // Phase.EVAL by default
+
+val a = tensor<FP32, Float>(ctx, FP32::class) {
+    tensor { shape(1024, 1024) { randn(mean = 0f, std = 0.1f) } }
+}
+val b = tensor<FP32, Float>(ctx, FP32::class) {
+    tensor { shape(1024, 1024) { randn(mean = 0f, std = 0.1f) } }
+}
+----
+
+The DSL parameters carry the contract: `<FP32, Float>` ties the dtype
+tag to the native value type. For loaded model weights (GGUF,
+SafeTensors) the DSL is bypassed — loaders produce the same
+`Tensor<T, V>` directly. The kernel does not care where the bytes
+came from.
+
+=== ExecutionContext — describing the computation
+
+[source,kotlin]
+----
+val c = ctx.ops.matmul(a, b)
+// c.shape == Shape(1024, 1024)
+----
+
+That one line is the entire user-facing surface. The
+`ExecutionContext` owns the dispatch table and the registered set of
+kernel providers. **One context per inference session**; reuse it
+across calls.
+
+The benchmark exercises this surface end-to-end (in
+`engine-fp32-gemm`) as well as the kernel directly with no dispatch
+overhead (in `engine-kernel-matmul`) — the gap between them tells you
+how expensive dispatch is on this code path.
+
+== From `ctx.ops.matmul` to a kernel call
+
+[mermaid]
+....
+flowchart LR
+    User["User code<br/>ctx.ops.matmul(a, b)"] --> Ops["TensorOps<br/>(dtype dispatch)"]
+    Ops --> Registry["KernelRegistry<br/>(provider lookup)"]
+    Registry -- best available --> Kernel["Fp32MatmulKernel<br/>(the inner loop)"]
+    Kernel --> Out["Output tensor c"]
+
+    subgraph Selection["At JVM start: ServiceLoader scan"]
+        P1["ScalarProvider<br/>priority 0, always"]
+        P2["PanamaVectorProvider<br/>priority 50, JDK 21+"]
+        P3["NativeProvider<br/>priority 100, planned"]
+        P1 --> Registry
+        P2 --> Registry
+        P3 --> Registry
+    end
+....
+
+. **Dtype dispatch.** `TensorOps` picks the matching kernel slot —
+  `matmulFp32`, `matmulBf16`, `matmulQ4K`, `matmulQ8_0`.
+. **Provider lookup.** `KernelRegistry.bestAvailable()` returns the
+  highest-priority provider that reports itself available.
+. **Kernel invocation.** Raw arrays, offsets, strides, shape — no
+  allocations, no dispatch inside the timed region.
+
+The benchmark scenarios cover both the dispatched path
+(`engine-fp32-gemm` goes through `ctx.ops.matmul`) and the direct
+kernel path (`engine-kernel-matmul` lets you pick `panama` or
+`scalar` explicitly). See xref:explanation/perf/simd-kernels.adoc[]
+for the full SPI walk-through.
+
+== Three regimes the benchmark probes
+
+The four rows in the headline table represent three distinct
+performance regimes. Each tells you something different about what
+the CPU is spending its time on.
+
+=== Regime 1 — Scalar matmul: latency-bound
+
+`engine-kernel-matmul scalar` measures the textbook three-loop
+kernel. One float multiply + one float add per inner iteration:
+
+[source,kotlin]
+----
+for (i in 0 until m) {
+    for (j in 0 until n) {
+        var acc = 0f
+        for (l in 0 until k) {
+            acc += a[i * k + l] * b[l * n + j]   // 2 flops
+        }
+        out[i * n + j] = acc
+    }
+}
+----
+
+[mermaid]
+....
+flowchart LR
+    subgraph cycle["1 CPU cycle"]
+        a1["a[i,l]"] --> mul["MULSS"]
+        b1["b[l,j]"] --> mul
+        mul --> add["ADDSS<br/>+ acc"]
+        add --> acc["acc"]
+    end
+    acc -. m·n·k iterations .-> out["out[i,j]"]
+....
+
+Measured: **1.05 GFLOPS** on the i7-9750H at 1024 × 1024 × 1024.
+The CPU's theoretical FP32 peak for one core is ~37 GFLOPS (AVX2 + FMA
++ 4.5 GHz turbo). The scalar kernel achieves **~3% of single-core
+peak**.
+
+The kernel isn't doing "extra" work — it does the exact `2 · 10⁹`
+flops the math requires. The waste comes from what the CPU *could*
+have done in those same cycles:
+
+* AVX2 gives it 8 float lanes; the scalar code uses 1.
+* FMA gives it `(multiply + add) per cycle`; the scalar code uses
+  `multiply, then wait for add to retire`.
+* The accumulator dependency means the CPU cannot pipeline across
+  iterations.
+
+That is the "latency-bound" tax: each iteration waits for the
+previous one to finish. This is the regime where you are most
+obviously leaving compute on the floor — and it is the regime an
+*untuned* kernel always lands in.
+
+=== Regime 2 — Panama dense matmul: compute-bound
+
+`engine-kernel-matmul panama` measures the same operation through
+the JDK Vector API. The inner step becomes "process
+`species.length()` lanes per FMA":
+
+[source,kotlin]
+----
+private val species: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
+val step = species.length()                  // 8 on AVX2, 16 on AVX-512, 4 on NEON
+
+for (i in 0 until m) {
+    for (j in 0 until n) {
+        var acc = FloatVector.zero(species)
+        var l = 0
+        while (l < species.loopBound(k)) {
+            val av = FloatVector.fromArray(species, a, i * k + l)
+            val bv = FloatVector.fromArray(species, bPacked, j * k + l)
+            acc = av.fma(bv, acc)            // fused multiply-add ×8 lanes
+            l += step
+        }
+        out[i * n + j] = acc.reduceLanes(VectorOperators.ADD)
+    }
+}
+----
+
+[mermaid]
+....
+flowchart LR
+    subgraph cycle["1 CPU cycle (AVX2 = 8 lanes)"]
+        av["FloatVector a[l..l+8]"] --> fma["VFMADD231PS<br/>(8 lanes, 1 cycle)"]
+        bv["FloatVector b[l..l+8]"] --> fma
+        fma --> acc["FloatVector acc"]
+    end
+    acc -. m·n·(k/8) iterations .-> reduce["reduceLanes(ADD)"]
+    reduce --> out["out[i,j]"]
+....
+
+Measured: **14.06 GFLOPS** — **13.4× the scalar version**. That
+matches the napkin math closely:
+
+* SIMD width: 8 lanes (AVX2) → up to 8× more flops per cycle
+* FMA: multiply + add in one instruction → up to 2× the issue rate
+* Predicted ceiling: ~16×; observed: ~13×
+
+The remaining gap (13× of 16×) is real: B is pre-packed once per
+call (an `O(n·k)` cost that doesn't get amortized as well at moderate
+sizes), the loop has a scalar tail when `k` is not a multiple of 8,
+and `reduceLanes` at the end of each `(i, j)` pair adds a
+cross-lane sum.
+
+This kernel is **compute-bound on a single core**. To push it further
+you would need: AVX-512 (16 lanes — 2× headroom), multi-threading
+(6 cores — 6× headroom), or a hand-tuned native kernel that holds
+register state across multiple `(i, j)` cells. The forthcoming native
+FFM provider (xref:explanation/perf/native-ffm-plan.adoc[]) targets
+those wins.
+
+If you take only one comparison away from this page: **the scalar →
+Panama jump is the biggest single performance win available to a
+pure-JVM compute backend, and it costs ~200 lines of Kotlin.**
+
+=== Regime 3 — Quantized matmul: bandwidth-bound
+
+For LLM-class matmuls the bottleneck stops being multiply-adds and
+becomes how fast the **weight tensor** can be pulled from DRAM into
+L1. A 7B-parameter Llama in FP32 is 28 GiB of weights; even an L3
+cache miss costs ~100 ns. The kernel that ships less weight
+bandwidth wins, even if it has to do extra arithmetic to dequantize.
+
+Quantized formats trade compute for bandwidth:
+
+[cols="1m,1,1,3",options="header"]
+|===
+| Format | Bits / elem | Bytes / block | Pack layout
+| FP32   | 32          | 4 / elem      | dense
+| BF16   | 16          | 2 / elem      | dense, top 16 bits of FP32
+| Q8_0   | ~8.5        | 34 / 32 elems | FP16 scale + 32 signed int8 codes
+| Q4_K   | ~4.5        | 144 / 256 elems | FP16 scale + FP16 min + 8 sub-blocks of 32 × 4-bit codes
+|===
+
+[mermaid]
+....
+flowchart LR
+    subgraph block["Q4_K block — 256 elements / 144 bytes"]
+        scale["d (FP16) 2B"] --> dq
+        dmin["dmin (FP16) 2B"] --> dq
+        codes["8 sub-blocks of 32 × 4-bit codes + sub-scales<br/>140B"] --> dq
+        dq["dequant → 32 FP32 weights"]
+    end
+    input["FP32 input vector"] --> mac["FMA per dequantized weight"]
+    dq --> mac
+    mac --> out["FP32 output element"]
+....
+
+The Panama Q4_K and Q8_0 kernels follow the same SIMD recipe as FP32,
+plus a dequant prelude per block: load packed bytes as a
+`ByteVector`, unpack with shift / bit-and, widen to `FloatVector`,
+multiply by the broadcast block scale, then FMA into the accumulator.
+See xref:explanation/perf/quantized-simd-kernels.adoc[] for the
+inner-loop walk-through.
+
+Measured on the i7-9750H:
+
+* `engine-q4-gemm` (Q4_K matvec at 4096²): **12.4 GOP/s** panama
+* `engine-q8-matmul` (Q8_0 matvec at 4096²): 3.56 GOP/s panama vs
+  1.37 scalar — **2.6× speedup**
+* `engine-bf16-matmul` (1024³): 1.19 vs 0.53 GFLOPS — **2.25× speedup**
+
+The non-obvious result is that `engine-q4-gemm` (12.4 GOP/s) is
+*close to* dense `engine-fp32-gemm` (~12 GFLOPS in good runs) **even
+though it does extra dequant work**. The reason is precisely
+bandwidth: Q4_K weights are ~9× smaller than FP32, so the kernel
+spends less time waiting on memory and more time inside the FMA
+pipeline. The dequant arithmetic happens in registers while the next
+weight block is still in flight from L2.
+
+This is the regime where "more FLOPS" is the wrong success metric.
+The right metric is "useful per-token tokens-per-second," and Q4_K
+wins that metric on bandwidth-bound hosts even though it loses on
+raw flops/sec.
+
+== Where the bytes go — three memory diagrams
+
+The three regimes correspond to three distinct shapes of memory
+traffic.
+
+=== FP32 dense (Panama) — compute-bound
+
+[mermaid]
+....
+flowchart LR
+    DRAM["DRAM<br/>A: 4MB, B: 4MB, C: 4MB"] -- 4 B/elem --> L3
+    L3["L3 (12 MiB)"] -- prefetch --> L2
+    L2["L2 (256 KB)"] --> L1["L1d (32 KB)"]
+    L1 -- FloatVector loads --> Regs["YMM registers"]
+    Regs --> FMA["VFMADD231PS<br/>8 lanes/cycle"]
+    FMA --> Regs
+    Regs -- reduceLanes --> L1
+....
+
+A 1024² FP32 matrix is 4 MiB — fits in L3 but spills L2. With B
+pre-packed and contiguous the prefetcher keeps up; the FMA pipeline
+is the bottleneck. Throughput is set by *cycles*, not by bytes per
+second.
+
+=== Quantized (Panama) — bandwidth-bound
+
+[mermaid]
+....
+flowchart LR
+    DRAM["DRAM<br/>A: 4MB FP32 input<br/>W: 256KB–1MB packed weights"] -- 0.5–2 B/elem --> L3
+    L3 -- weight stream --> L2
+    L2 --> L1
+    L1 -- ByteVector load --> Unpack["unpack + scale"]
+    Unpack --> FMA["FMA"]
+    A1["FP32 input row (in L1)"] --> FMA
+    FMA --> Out["FP32 output"]
+....
+
+The weight tensor shrinks 4–9× vs. FP32. Less memory traffic means
+more time in the FMA pipeline. The dequant prelude costs a few extra
+instructions per iteration, but those instructions overlap with the
+load stalls that used to dominate. Throughput is set by *DRAM
+bandwidth*, not by cycles.
+
+=== Scalar — latency-bound
+
+[mermaid]
+....
+flowchart LR
+    L1["L1d"] -- 1 float --> Reg["XMM scalar"]
+    Reg --> Mul["MULSS"]
+    Mul --> Add["ADDSS"]
+    Add --> Reg
+    Reg -- m·n·k times --> Out["out[i,j]"]
+....
+
+One lane per cycle, no FMA, no overlap. The CPU spends most of its
+cycles waiting for the next dependent `ADDSS` to retire. Throughput
+is set by the *accumulator dependency chain*, not by cycles or bytes.
+
+== The roofline — one diagram that explains all four rows
+
+The roofline model puts everything on one chart:
+
+[mermaid]
+....
+flowchart LR
+    A["scalar FP32<br/>~1 GFLOPS<br/>(latency-bound)"] -- "increase SIMD + FMA" --> B
+    B["Panama FP32<br/>~14 GFLOPS<br/>(compute-bound, 1 core)"] -- "AVX-512 + multi-core + native" --> C
+    C["practical CPU peak<br/>~120 GFLOPS<br/>(6 cores, AVX2)"]
+    D["scalar Q8_0<br/>~1.4 GOP/s<br/>(latency-bound)"] -- "SIMD on dequant + FMA" --> E
+    E["Panama Q8_0<br/>~3.6 GOP/s<br/>(bandwidth + dequant)"]
+    F["Panama Q4_K<br/>~12 GOP/s<br/>(bandwidth-bound, near roofline)"]
+....
+
+Three things to internalize:
+
+. **The scalar→Panama jump (1× → 13×) is the same speedup mechanism
+  for every dtype.** SIMD width and FMA buy you that no matter what
+  bits you're shipping. If a benchmark shows < 5× scalar→Panama, the
+  kernel has a problem — usually loop carried dependencies or
+  un-amortized packing.
+. **Once Panama is in play, the *next* limit depends on the dtype.**
+  FP32 is compute-bound: more cores, AVX-512, or native code help.
+  Q4_K and Q8_0 are bandwidth-bound: faster DRAM helps; more cores
+  helps until you saturate the memory channel.
+. **Quantization is not "free flops." It is bandwidth amplification.**
+  Q4_K kernels do more arithmetic per byte than FP32 kernels, so on
+  a bandwidth-bound machine they look like a compute speedup. On a
+  GPU with HBM3 they look like a compute *slowdown* because the dense
+  pipeline was never bandwidth-bound there in the first place.
+
+== How to read a benchmark number
+
+Looking at any number from the engine matmul benchmark, ask in order:
+
+. **Which regime is this scenario in?** Use the table at the top of
+  this page. Scalar → latency. Dense Panama → compute. Quantized
+  Panama → bandwidth.
+. **What is the local peak for that regime on this host?** Single-core
+  FP32 peak ≈ `clock_GHz × SIMD_lanes × 2 (FMA)`. Memory bandwidth
+  peak ≈ DRAM rating (e.g. ~30 GB/s for DDR4-2667).
+. **What fraction of peak does this kernel hit?** > 50% is excellent
+  for the compute-bound regime; > 80% of memory bandwidth is
+  excellent for the bandwidth-bound regime; *anything* over 10% of
+  peak for the scalar regime means something is broken.
+. **Is the CoV under 3%?** If not, the number is noise.
+  `BenchmarkRunner` flags this automatically as `"unstable": true` in
+  the JSON record. Unstable runs are not publishable.
+
+The benchmark publishes the raw samples, the mean, the stddev, the
+CoV, and a list of available providers — all the inputs you need to
+do that interpretation. See
+xref:explanation/perf/benchmarks.adoc[] for how the JSON record is
+laid out.
+
+== Where the CPU backend helps (and where it doesn't)
+
+The CPU backend earns its keep when:
+
+* You need to run inference where you cannot ship a GPU runtime —
+  Apple Silicon laptops, ARM SBCs, sandboxed JVMs, Android, CI
+  workers. SKaiNET CPU is `--add-modules` and a regular JAR.
+* The model fits in DRAM and the workload is interactive per-token.
+  A 1B–7B model at Q4_K runs comfortably on a modern laptop CPU,
+  with decode latency dominated by memory bandwidth — the regime
+  where the quantized kernels shine.
+* You want deterministic, reproducible numbers across operating
+  systems. No driver versions, no CUDA toolkit. The same JAR runs
+  identically on Linux x86, macOS Arm64, and inside a container.
+
+It is **not** the right answer when:
+
+* You are training, not inferring. Backprop multiplies the FLOP
+  budget by 3–4× and immediately exceeds what a single CPU socket
+  can deliver.
+* The model is large (30B+) and the workload is batched. GPU
+  bandwidth and memory capacity both scale beyond what a desktop CPU
+  reaches.
+* You need sub-millisecond first-token latency at high batch sizes.
+  That is a TensorRT / vLLM / SGLang problem, not a CPU problem.
+
+== Related
+
+* xref:explanation/perf/benchmarks.adoc[Official engine benchmarks] — the methodology, manifest, and CI lanes behind the numbers above.
+* xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built] — the FP32 Panama kernel walk-through and the full kernel-provider SPI rationale.
+* xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built] — inner loops for Q4_0 / Q4_K / Q6_K / Q8_0.
+* xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance] — JVM flags, vector module enablement, JIT considerations.
+* xref:explanation/perf/native-ffm-plan.adoc[Plan: native FFM kernel provider] — the path to the priority-100 native kernels.
