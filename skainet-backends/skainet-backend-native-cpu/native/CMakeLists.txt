@@ -13,6 +13,7 @@ add_library(skainet_kernels SHARED
     src/skainet_smoke.c
     src/q4k_matmul.c
     src/fp32_matmul.c
+    src/bf16_matmul.c
 )
 
 target_include_directories(skainet_kernels PUBLIC

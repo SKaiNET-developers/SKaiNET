@@ -52,4 +52,12 @@ public interface KernelProvider {
      * carry the kernel.
      */
     public fun matmulQ4K(): Q4KMatmulKernel? = null
+
+    /**
+     * F32 × BF16 matmul kernel exposed by this provider, or `null` if
+     * this provider does not specialize BF16. Same fall-through pattern
+     * as [matmulQ4K] — older providers keep compiling; callers cascade
+     * to the next provider when this one returns `null`.
+     */
+    public fun matmulBf16(): Bf16MatmulKernel? = null
 }
