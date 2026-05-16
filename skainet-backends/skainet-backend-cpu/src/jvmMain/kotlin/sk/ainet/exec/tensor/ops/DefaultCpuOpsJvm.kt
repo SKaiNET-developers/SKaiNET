@@ -7,6 +7,7 @@ import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelServiceLoader
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
+import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.exec.kernel.ScalarMatmulKernel
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -69,6 +70,23 @@ internal class DefaultCpuOpsJvm(
         KernelRegistry.providers()
             .firstOrNull { it.isAvailable() && it.matmulQ4K() != null }
             ?.matmulQ4K()
+    }
+
+    /**
+     * Q8_0 kernel resolved via [KernelRegistry], lazily initialized on
+     * first quantized matmul call. Mirrors [q4kMatmulKernel] — auto-
+     * installs ServiceLoader-discovered providers when the registry is
+     * empty, returns `null` if no provider carries a Q8_0 kernel.
+     * Caller falls back to [JvmQuantizedVectorKernels.matmulQ8_0Vec],
+     * preserving the legacy code path when the SPI doesn't resolve.
+     */
+    private val q8_0MatmulKernel: Q8_0MatmulKernel? by lazy {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+        KernelRegistry.providers()
+            .firstOrNull { it.isAvailable() && it.matmulQ8_0() != null }
+            ?.matmulQ8_0()
     }
 
     override fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
@@ -439,17 +457,27 @@ internal class DefaultCpuOpsJvm(
         return when (bData) {
             is Q8_0TensorData -> {
                 val outBuffer = FloatArray(batchSize * outputDim)
+                val spiKernel = q8_0MatmulKernel
                 for (batch in 0 until batchSize) {
                     val batchInput = if (batchSize == 1) inputBuffer
                     else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    JvmQuantizedVectorKernels.matmulQ8_0Vec(
-                        batchInput,
-                        bData.packedData,
-                        inputDim,
-                        outputDim,
-                        outBuffer,
-                        batch * outputDim,
-                    )
+                    if (spiKernel != null) {
+                        spiKernel.matmul(
+                            batchInput, 0,
+                            bData.packedData, 0,
+                            inputDim, outputDim,
+                            outBuffer, batch * outputDim,
+                        )
+                    } else {
+                        JvmQuantizedVectorKernels.matmulQ8_0Vec(
+                            batchInput,
+                            bData.packedData,
+                            inputDim,
+                            outputDim,
+                            outBuffer,
+                            batch * outputDim,
+                        )
+                    }
                 }
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
                 @Suppress("UNCHECKED_CAST")
