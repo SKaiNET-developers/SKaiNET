@@ -1,5 +1,6 @@
 package sk.ainet.exec.kernel
 
+import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.MemSegKernelProvider
@@ -85,4 +86,7 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun matmulQ4KMemSeg(): Q4KMemSegMatmulKernel? =
         if (NativeQ4KMemSegMatmulKernel.isAvailable()) NativeQ4KMemSegMatmulKernel else null
+
+    override fun matmulBf16(): Bf16MatmulKernel? =
+        if (NativeBf16MatmulKernel.isAvailable()) NativeBf16MatmulKernel else null
 }

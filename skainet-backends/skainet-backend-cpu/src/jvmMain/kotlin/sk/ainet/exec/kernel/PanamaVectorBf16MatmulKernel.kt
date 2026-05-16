@@ -33,7 +33,7 @@ import sk.ainet.backend.api.kernel.Bf16MatmulKernel
  * tightened to absolute `1e-2` for the dequant rounding error BF16
  * carries by construction).
  */
-internal object PanamaVectorBf16MatmulKernel : Bf16MatmulKernel {
+public object PanamaVectorBf16MatmulKernel : Bf16MatmulKernel {
 
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 

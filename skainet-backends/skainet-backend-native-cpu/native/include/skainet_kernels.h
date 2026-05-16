@@ -76,6 +76,25 @@ SKAINET_API void skainet_fp32_matmul(
     int32_t m, int32_t n, int32_t k
 );
 
+/*
+ * Row-major FP32 × BF16 matmul: C(m, n) = A(m, k) * B(k, n).
+ *
+ * A and C are FP32; B is packed BF16 little-endian (2 bytes per element).
+ * Strides for A and C are in floats (`a_stride == k` for a contiguous
+ * parent). Strides for B are in *bytes* (`b_byte_stride == n * 2` for a
+ * contiguous parent). The kernel zeros the m×n output block before
+ * accumulating, so callers always get `C = A·B` (not `C += A·B`).
+ * `k == 0` zeros the block; `m == 0` or `n == 0` is a no-op.
+ *
+ * BF16 → FP32 conversion is a bit-shift: `fp32_bits = ((u32) bf16) << 16`.
+ */
+SKAINET_API void skainet_bf16_matmul(
+    const float* a, int32_t a_offset, int32_t a_stride,
+    const uint8_t* b, int32_t b_byte_offset, int32_t b_byte_stride,
+    float* c, int32_t c_offset, int32_t c_stride,
+    int32_t m, int32_t n, int32_t k
+);
+
 #ifdef __cplusplus
 }
 #endif
