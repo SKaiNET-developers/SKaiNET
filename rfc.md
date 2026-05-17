@@ -1,626 +1,228 @@
-# RFC: Hybrid Adaptive DSL with Optional DType Constraints
+# The SKaiNET DType Model
 
-**Status:** Draft
+> **Status**: shipped in [#615](https://github.com/SKaiNET-developers/SKaiNET/issues/615) / [#616](https://github.com/SKaiNET-developers/SKaiNET/pull/616). This document was originally the **RFC** that proposed the hybrid adaptive DSL with optional dtype constraints; now that the design is implemented, the page explains *how the model works* and *what to use when*.
+>
+> For the maintainer-facing reference (every concept mapped to its SKaiNET file path), see [`docs/modules/ROOT/pages/contributing/dtype-model.adoc`](docs/modules/ROOT/pages/contributing/dtype-model.adoc).
 
-Summary
-This RFC proposes a hybrid adaptive DSL for model definition and execution.
+## TL;DR
 
-The DSL remains architecture-first by default: it describes layer topology, tensor roles, and graph structure without requiring a fixed dtype for every tensor. Tensor dtype normally follows the loaded model file.
+SKaiNET is **architecture-first** by default — your DSL describes the model, dtype follows whatever the file actually stored. When some op or backend genuinely *requires* a specific dtype (NPU int8, a fused BF16 attention kernel, …), you attach a small `DTypePolicy` instead of rewriting the model. The loader or the constraint-resolution pass either satisfies the policy or **fails before forward execution** — never silently during it.
 
-At the same time, the DSL may optionally express explicit dtype constraints where execution requires them. These constraints are resolved during load, compile, or lowering, before forward execution begins.
+Four moving parts:
 
-This provides two important properties:
+1. **`DTypePolicy`** — the four-arm sealed type (`Any` / `Require` / `Prefer` / `OneOf`) you attach to loaders, ops, or graph nodes.
+2. **Loaders** — `SafeTensorsParametersLoader.withPolicy(policy)` and `StreamingGgufParametersLoader.withPolicy(policy)` enforce the policy at load time.
+3. **`DTypeConstraintResolutionPass`** — runs inside the graph optimization pipeline before fusion; enforces per-node policies and produces a `ResolvedComputeGraph`.
+4. **`KernelStrictness`** + `KernelProvider.supports(...)` — runtime fail-fast for cases where graph-prep didn't run.
 
-A single DSL definition can load different GGUF quantization variants.
-Strict execution targets, such as NPUs, can require specific runtime dtypes and layouts.
-The key rule is:
+## The four dtype concepts
 
-DType annotations in the DSL describe executable requirements, not assumptions about the source file.
+Every tensor in SKaiNET carries dtype information at four conceptual stages of its life. Each stage is implemented somewhere concrete.
 
-Motivation
-GGUF models frequently use heterogeneous per-tensor quantization. A single file may contain tensors in FP16, FP32, Q8, Q4, Q4_K, or other quantized formats.
-
-A strict DSL that hardcodes dtype into every layer has several drawbacks:
-
-one model architecture may require multiple DSL definitions for different quant variants
-mixed-precision GGUF files become awkward to represent
-loading arbitrary GGUF variants becomes harder
-dtype policy becomes coupled to model architecture
-conversion may be forced even when the current backend could execute the source dtype directly
-An adaptive DSL solves this by allowing tensor dtype to follow the file. However, pure adaptivity is not enough for constrained execution targets.
-
-For example, an NPU may support native int8 execution but not GGUF Q8, Q4_K, or other packed quantized formats. In that case, the DSL or backend configuration must be able to require a specific executable dtype or layout.
-
-This RFC proposes combining both approaches:
-
-adaptive dtype behavior by default
-explicit dtype constraints when needed
-load/compile-time constraint resolution
-backend-specific lowering before execution
-Goals
-Keep the DSL architecture-focused by default.
-Allow one DSL definition to load multiple quantized model variants.
-Support mixed-precision GGUF files.
-Make dtype a first-class tensor property.
-Allow explicit dtype constraints for specific ops, tensors, layers, or backends.
-Resolve hard dtype requirements before forward execution.
-Avoid marker-class-based dtype detection.
-Avoid treating raw packed byte shape as logical tensor shape.
-Separate source file dtype from executable backend dtype.
-Support restricted backends such as NPUs without making the whole DSL strict.
-Produce a dtype-safe prepared DAG before forward execution.
-Support an optional compiled/lowered path for StableHLO, MLIR, or native optimized code.
-Non-Goals
-This RFC does not define a new tensor engine.
-This RFC does not prescribe a specific Kotlin API.
-This RFC does not require all tensors to be converted at load time.
-This RFC does not require the DSL to declare every tensor dtype.
-This RFC does not define exact quantization algorithms.
-This RFC does not define backend-specific packed layouts.
-This RFC does not require GGUF Q8 to be treated as native int8.
-Definitions
-Source dtype
-The dtype stored in the model file.
-
-Examples:
-
-FP16
-FP32
-Q8
-Q4
-Q4_K
-The source dtype describes what was read from disk.
-
-Logical dtype
-The dtype represented by the tensor inside the engine.
-
-This should be explicit tensor metadata, not inferred from wrapper classes or raw storage type.
-
-Required dtype
-The dtype required by an op, layer, backend, or execution policy.
-
-For example, an NPU backend may require int8 tensors for a given matrix multiplication.
-
-Lowered dtype
-The dtype and layout actually passed to the executable kernel.
-
-This may differ from the source dtype if conversion or lowering occurred.
-
-Logical shape
-The shape of the tensor as seen by the graph.
-
-For example, a quantized matrix may logically be:
-
-[out_features, in_features]
-even if it is physically stored as packed bytes.
-
-Physical storage layout
-The internal memory representation of a tensor.
-
-For quantized tensors, this may include:
-
-packed bytes
-block structure
-scales
-zero points
-backend-specific layout metadata
-Physical storage layout is an implementation detail of the tensor representation.
-
-Resolved DAG
-A normalized internal graph produced from the DSL and loaded tensors.
-
-The resolved DAG makes execution metadata explicit on nodes and edges, including:
-
-tensor logical shapes
-resolved dtypes
-layouts
-backend assignments
-conversion nodes
-lowering nodes
-op dependencies
-quantization metadata
-dtype and backend constraints
-The resolved DAG is a compiled intermediate representation, not necessarily the final executable artifact.
-
-Executable plan
-A scheduled and backend-aware representation derived from the resolved DAG.
-
-The executable plan includes selected kernels, memory planning, buffer reuse, constant placement, lowered tensors, and backend-specific execution decisions.
-
-Lowering
-The process of converting high-level graph operations, tensor dtypes, layouts, or storage formats into representations required by a selected backend.
-
-Examples include:
-
-Q4_K weight to native int8 NPU weight
-GGUF packed layout to backend-native layout
-high-level projection op to backend-specific matmul op
-dynamic dtype choice to fixed kernel selection
-resolved DAG to StableHLO, MLIR, or native backend code
-Lowering is part of graph preparation. It may happen during loading if the target backend is already known, or during an explicit compile step if backend selection happens later.
-
-Design Overview
-The DSL defines model architecture and optional dtype constraints.
-
-The model file provides source tensors with source dtypes and logical shapes.
-
-The loader creates engine tensors with explicit dtype metadata.
-
-The compile or lowering phase resolves constraints against backend capabilities.
-
-If a hard constraint can be satisfied, tensors may be converted or lowered. If it cannot be satisfied, loading or compilation fails.
-
-Forward execution only sees resolved tensors.
-
-flowchart TD
-    A[DSL definition] --> B[Model architecture]
-    A --> C[Optional dtype constraints]
-
-    D[Model file / GGUF] --> E[Source tensors with file dtypes]
-
-    B --> F[Graph construction]
-    C --> G[Constraint resolution]
-    E --> G
-
-    G --> H{Constraints satisfied?}
-
-    H -- Yes, as-is --> I[Use source dtype directly]
-    H -- Requires conversion --> J[Lower / convert tensor]
-    H -- Impossible --> K[Fail at load or compile time]
-
-    I --> L[Resolved runtime tensors]
-    J --> L
-
-    L --> M[Kernel dispatch]
-    M --> N[Execution on CPU / SIMD / NPU]
-Default Adaptive Behavior
-If no dtype constraint is declared, the engine should preserve the dtype provided by the model file whenever possible.
-
-For example:
-
-GGUF tensor: Q4_K
-DSL constraint: none
-Backend: CPU
-Result: keep Q4_K and dispatch Q4_K-capable kernel
-This allows one DSL definition to support many model variants.
-
+```mermaid
 flowchart LR
-    A[GGUF Q4/Q8/FP16/FP32 tensor] --> B[Engine tensor with explicit dtype]
-    B --> C[No hard dtype constraint]
-    C --> D[Keep source dtype]
-    D --> E[Dispatch by actual tensor dtype]
-Explicit DType Constraints
-The DSL may optionally declare that a tensor or op requires a specific dtype.
+    File[(Model file<br/>.gguf / .safetensors)]
+    File -->|"GGMLQuantizationType<br/>SafeTensors DataType"| Source["source dtype<br/>(what the file stores)"]
+    Source -->|"loader picks TensorData subtype<br/>per source dtype + policy"| Logical["logical dtype<br/>Tensor.dtype: KClass&lt;T&gt;<br/>(what the engine sees)"]
+    Logical -->|"DSL declares per-op constraint<br/>via dtypePolicy(...)"| Required["required dtype<br/>(what the op/backend needs)"]
+    Required -->|"constraint resolution +<br/>KernelRegistry.bestAvailable"| Lowered["lowered dtype<br/>(what the kernel actually gets)"]
+    Lowered --> Kernel[(SIMD kernel<br/>Panama / scalar / native)]
+```
 
-Such annotations should be interpreted as execution constraints.
+| Stage | Lives in | Notes |
+|---|---|---|
+| source dtype | `GGMLQuantizationType`, SafeTensors `DataType` | what's on disk (`F32`, `BF16`, `Q4_K`, `Q8_0`, …) |
+| logical dtype | `Tensor<T : DType, V>.dtype: KClass<T>` | explicit metadata, never inferred from packed-byte shape |
+| required dtype | `DTypePolicy.Require(dt)` etc. on DSL node `attributes["dtype_policy"]` | optional; absent = adaptive |
+| lowered dtype | whatever `KernelRegistry.bestAvailable()?.matmul*()` returns | post-resolution; matches a registered kernel |
 
-They do not mean the source file must already contain that dtype.
+The whole point of the four-stage split is to keep the loader's job (what does the file say?) separate from the op's job (what dtype do I need?) separate from the runtime's job (what kernel do I actually have?). Each can change independently.
 
-For example:
+## When to use which `DTypePolicy`
 
-Source tensor: Q4_K
-Required dtype: int8
-Backend: NPU
-Resolution: lower Q4_K to backend-native int8, or fail
-This allows restricted targets to express requirements without making the entire DSL strict.
+Use this decision tree:
 
+```mermaid
 flowchart TD
-    A[Tensor loaded from file] --> B{Does DSL/backend require a specific dtype?}
+    Q["I'm declaring a tensor or op —<br/>what DTypePolicy do I attach?"]
+    Q --> Q1{"Does my code work<br/>with any dtype the file<br/>happens to provide?"}
+    Q1 -->|yes — this is the common case| Any["DTypePolicy.Any<br/><br/>(or omit entirely —<br/>Any is the default)"]
+    Q1 -->|no| Q2{"Is there exactly<br/>one acceptable dtype?"}
+    Q2 -->|yes| Q3{"Hard requirement<br/>or soft preference?"}
+    Q3 -->|hard| Require["DTypePolicy.Require(dt)<br/><br/>fail-fast at load/compile<br/>if dtype can't be made available"]
+    Q3 -->|soft| Prefer["DTypePolicy.Prefer(dt)<br/><br/>use dt if cheap,<br/>otherwise warn + fall through"]
+    Q2 -->|"no — small set"| OneOf["DTypePolicy.OneOf(set)<br/><br/>accept any dtype in the set;<br/>convert from outside if possible"]
+```
 
-    B -- No --> C[Keep file dtype]
-    B -- Yes --> D{Does current tensor already satisfy requirement?}
+Concrete examples:
 
-    D -- Yes --> E[Use directly]
-    D -- No --> F{Can it be converted/lowered?}
+| Situation | Policy |
+|---|---|
+| "Load this GGUF however it ships." | `DTypePolicy.Any` — adaptive default; same model definition loads Q4_K, Q8_0, or FP16. |
+| "This SafeTensors file *must* keep BF16 native because my matmul kernel routes on it." | `DTypePolicy.Require(BF16)` |
+| "I'd prefer BF16 to avoid the 2× memory cost, but FP32 is fine if BF16 isn't available." | `DTypePolicy.Prefer(BF16)` |
+| "My attention kernel accepts either FP32 or BF16, nothing else." | `DTypePolicy.OneOf(setOf(FP32, BF16))` |
+| "NPU backend only runs int8; reject anything else at load." | `DTypePolicy.Require(Int8)` (fails fast today — no Int8 cast kernel ships in #615) |
 
-    F -- Yes --> G[Convert during load/compile]
-    F -- No --> H[Raise load/compile error]
+## Loader workflow: file → policy → tensor
 
-    C --> I[Dispatch by resolved dtype]
-    E --> I
-    G --> I
-DType Constraints as Policies
-A dtype annotation should be modeled as a policy rather than a simple claim about storage.
+Both loaders (SafeTensors and GGUF) accept the same `DTypePolicy` shape. They validate it eagerly at construction time, then enforce it per-tensor as they iterate the file.
 
-Useful policy categories include:
+```mermaid
+flowchart TD
+    Start([Open model file]) --> Build["SafeTensorsParametersLoader.withPolicy(policy)<br/>or<br/>StreamingGgufParametersLoader.withPolicy(policy)"]
+    Build --> Validate{Policy<br/>satisfiable<br/>by this loader?}
+    Validate -->|no — e.g. Require(FP16) on GGUF| FailEarly[/IllegalArgumentException<br/>before any tensor is read/]
+    Validate -->|yes| Iter[Iterate tensors]
+    Iter --> Source{Source dtype<br/>vs policy}
+    Source -->|"Any, or match"| Native["Native TensorData subtype<br/>Q4_KBlockTensorData /<br/>Q8_0BlockTensorData /<br/>Bf16DenseTensorData /<br/>FloatArrayTensorData"]
+    Source -->|"Require mismatch +<br/>no cast kernel"| FailLoad[/IllegalArgumentException<br/>fail at load/]
+    Source -->|"Prefer mismatch"| Soft[Warn + dequant to fallback]
+    Native --> Tensor([Tensor with explicit<br/>logical shape + dtype])
+    Soft --> Tensor
+```
 
-Any
-No specific dtype is required.
+Key property: **logical shape is set from the file header, not from the packed-byte length**. A Q4_K tensor's `Q4_KBlockTensorData.shape` is its multi-dimensional logical shape; its `packedData: ByteArray` is the implementation detail. The graph sees the logical shape.
 
-The tensor may keep the source dtype.
+## Graph workflow: DSL → policy → resolved graph → HLO
 
-Require
-A hard requirement.
+Once a tensor is in the engine, the DSL lets you attach per-op or per-node policies. The constraint-resolution pass enforces them at graph-prep time, then the resolved graph flows into the HLO converter (and any future backend).
 
-The executable graph is invalid unless the tensor is available in the required dtype and layout.
+```mermaid
+flowchart TD
+    DSL["dag {<br/>  val mm = op(<br/>    matmul,<br/>    inputs = listOf(x, w),<br/>    dtypePolicy = DTypePolicy.Require(BF16)<br/>  )<br/>}"]
+    DSL -->|"writes attributes['dtype_policy']"| Program[GraphProgram]
+    Program -->|"GraphProgramCompiler<br/>preserves attributes → metadata"| CG[ComputeGraph]
+    CG --> Pipeline[GraphOptimizationPipeline]
+    Pipeline -->|"first pass —<br/>before fusion"| Pass[DTypeConstraintResolutionPass]
+    Pass --> Visit{Node policy<br/>vs input dtype}
+    Visit -->|Any / match| Mark["mark metadata<br/>dtype_resolved = true"]
+    Visit -->|Require mismatch| Throw[/DtypeConstraintViolationException<br/>before forward execution/]
+    Visit -->|Prefer mismatch| Warn["diagnostic in<br/>GraphOptimizationResult"]
+    Mark --> Fusion["fusion passes see<br/>dtype-resolved nodes"]
+    Warn --> Fusion
+    Fusion --> Resolved[ResolvedComputeGraph wrapper]
+    Resolved -->|"validate() check —<br/>requireValid()"| HLO[toStableHlo<br/>byte-identical output<br/>to ComputeGraph overload]
+```
 
-Prefer
-A soft requirement.
+The `dtype_resolved` marker is the proof that the pass ran. The `ResolvedComputeGraph` wrapper's `validate()` checks for it; the `toStableHlo(ResolvedComputeGraph)` overload calls `validate()` by default.
 
-The runtime should use the preferred dtype if available or cheap to produce, but may fall back to another supported dtype.
+## Runtime kernel dispatch + fail-fast
 
-One-of
-A restricted set of acceptable dtypes.
+Inside `ctx.ops.matmul(a, b)`, the runtime walks the registered providers by priority. If nothing matches and strict mode is on, you get a clean error instead of a silent scalar fallback.
 
-The runtime may choose any supported dtype from the allowed set.
-
-Native Int8 vs GGUF Quantized Formats
-Native int8 and GGUF quantized formats must not be treated as equivalent.
-
-A GGUF Q8 tensor may be stored using int8-like values internally, but the tensor contract usually includes quantization metadata, block-level scales, and GGUF-specific layout semantics.
-
-A native int8 tensor for an NPU is an executable representation expected by that backend. It may require different layout, scale handling, alignment, calibration, or memory placement.
-
-Therefore:
-
-GGUF Q8 != native int8
-GGUF Q4_K != native int8
-packed quantized storage != executable integer tensor contract
-The system should represent this distinction explicitly.
-
+```mermaid
 flowchart LR
-    A[GGUF Q8 / Q4_K] --> B[Quantized tensor format]
-    B --> C[Has packing, block metadata, scales]
+    Call["ctx.ops.matmul(a, b)"] --> Ops["DefaultCpuOpsJvm.matmul<br/>(dtype dispatch)"]
+    Ops --> Q[chooseQuantizedMatmul]
+    Q -->|"recognized quantized<br/>data class match"| Hit1[Run quantized SPI kernel]
+    Q -->|no match| F32[chooseMatmul → fp32MatmulKernel]
+    F32 -->|"always non-null<br/>(falls back to scalar)"| Hit2[Run FP32 SPI kernel]
+    F32 -->|"impossible today<br/>(but tracked for future)"| Strict{strict mode?<br/>-Dskainet.strict.kernels=true}
+    Strict -->|on| Bang[/NoSuchKernelException/]
+    Strict -->|off — default| Silent["super.matmul<br/>(silent scalar fallback)"]
+```
 
-    D[Native int8] --> E[Backend execution format]
-    E --> F[Has backend-specific layout and quant contract]
-
-    C -. not equivalent .- F
-Logical Shape vs Physical Storage
-Logical shape must be part of the tensor contract.
-
-Physical storage should not define graph-visible shape.
-
-For example, a packed quantized tensor may occupy a one-dimensional byte segment internally, but the graph should see the tensor as its logical multidimensional shape.
-
+```mermaid
 flowchart TD
-    A[Quantized tensor] --> B[Logical shape]
-    A --> C[Physical storage]
-
-    B --> D[Graph contract]
-    C --> E[Implementation detail]
-
-    D --> F[Shape inference]
-    D --> G[Op validation]
-    E --> H[Kernel-specific decoding]
-The engine should avoid designs where a tensor appears as a 1D byte array at load time and is later patched into a logical 2D shape. The loader should produce properly shaped logical tensors directly.
-
-Load and Compile Pipeline
-The recommended pipeline is:
-
-flowchart TD
-    A[Read model file] --> B[Create tensors with source dtype and logical shape]
-    B --> C[Build graph from DSL]
-    C --> D[Attach optional dtype constraints]
-    D --> E[Check backend capabilities]
-    E --> F{All constraints satisfied?}
-
-    F -- Already satisfied --> G[Use tensors as-is]
-    F -- Convertible --> H[Lower tensors]
-    F -- Not satisfiable --> I[Fail before execution]
-
-    G --> J[Resolved executable graph]
-    H --> J
-    J --> K[Forward execution]
-Constraint resolution should happen before execution. Forward execution should not need to discover that a tensor cannot run on the selected backend.
-
-Backend Behavior
-CPU / SIMD Backend
-A general CPU backend should prefer adaptive execution.
-
-It can keep GGUF source dtypes when suitable kernels exist.
-
-flowchart TD
-    A[CPU / SIMD backend] --> B[Accept multiple dtypes]
-    B --> C[Keep source dtype where possible]
-    C --> D[Dispatch on resolved tensor dtype]
-Restricted NPU Backend
-A restricted backend should declare supported executable dtypes and layouts.
-
-If required tensors are not already in that form, they must be lowered before execution.
-
-flowchart TD
-    A[NPU backend] --> B[Supports limited executable formats]
-    B --> C[Require native dtype/layout]
-    C --> D[Lower tensors before execution]
-    D --> E[Dispatch to NPU kernel]
-Compiled Execution Path
-The adaptive tensor-engine path should remain the default execution model for flexible GGUF loading and heterogeneous quantization.
-
-However, the system may also expose a separate compiled execution path. In this context, the DSL itself is not the final artifact. The DSL is converted into a resolved DAG, and the resolved DAG may then be converted into an executable plan or lowered further into StableHLO, MLIR, or native optimized code.
-
-The recommended model is:
-
-DSL source
-→ resolved DAG
-→ executable plan
-→ optional backend lowering
-flowchart LR
-    A[DSL definition] --> B[Graph builder]
-    B --> C[Resolved DAG]
-    C --> D[Execution planner]
-    D --> E[Executable plan]
-    E --> F[Runtime / backend execution]
-The resolved DAG should contain:
-
-op nodes
-tensor edges
-logical shapes
-source dtypes
-resolved execution dtypes
-layouts
-backend assignments
-quantization metadata
-explicit conversion or lowering nodes
-dtype constraints and validation results
-Example before dtype/backend resolution:
-
-flowchart TD
-    A[input: F16] --> B[rms_norm]
-    B --> C[linear_project]
-    W1[weight: Q4_K] --> C
-    C --> D[activation]
-    D --> E[linear_project]
-    W2[weight: Q8_0] --> E
-    E --> F[output: F16]
-Example after resolution for a backend requiring native int8 weights:
-
-flowchart TD
-    A[input: F16] --> B[rms_norm]
-    B --> C[linear_project]
-
-    W1[weight: Q4_K] --> L1[lower Q4_K to int8]
-    L1 --> C
-
-    C --> D[activation]
-    D --> E[linear_project]
-
-    W2[weight: Q8_0] --> L2[lower Q8_0 to int8]
-    L2 --> E
-
-    E --> F[output: F16]
-The compiled path has a different purpose from the adaptive runtime path.
-
-The adaptive path is optimized for flexibility:
-
-load many GGUF variants with the same DSL
-preserve source dtypes where possible
-dispatch dynamically based on resolved tensor dtype
-support mixed quantization without requiring a separate model definition
-The compiled path is optimized for stable, specialized execution:
-
-freeze dtype and layout decisions before execution
-lower the graph into a resolved DAG
-schedule the DAG into an executable plan
-optionally lower the plan into StableHLO, MLIR, or native optimized code
-allow aggressive fusion, layout planning, memory planning, and static validation
-flowchart TD
-    A[DSL graph] --> B[Constraint resolution]
-    B --> C[Resolved DAG with dtypes and shapes]
-    C --> D[Executable plan]
-    D --> E{Optional external compiler path}
-    E -- No --> F[Tensor-engine execution]
-    E -- Yes --> G[StableHLO / MLIR]
-    G --> H[Backend optimization]
-    H --> I[Native optimized artifact]
-The compiled execution path may produce several levels of artifact:
-
-Resolved DAG: normalized graph with explicit tensor flow and dtype/layout metadata.
-Executable tensor-engine plan: scheduled graph with selected kernels and planned buffers.
-StableHLO / MLIR module: compiler IR for external optimization and backend lowering.
-Native backend artifact: JIT function, shared library, command buffer, serialized runtime module, or backend-specific executable blob.
-This means the system can support two complementary modes:
-
-flowchart LR
-    A[DSL + model file] --> B{Execution mode}
-
-    B -- Adaptive runtime --> C[Tensor engine]
-    C --> D[Dynamic dtype/backend dispatch]
-
-    B -- Compiled path --> E[Resolved DAG]
-    E --> F[Executable plan]
-    F --> G[Optional StableHLO / MLIR / native code]
-The compiled path should be treated as an explicit lowering target, not as the default interpretation of the DSL. This keeps the normal GGUF path flexible while still allowing high-performance deployment when dtype, shape, layout, and backend contracts are stable enough to compile.
-
-Lowering Phase Placement
-Lowering should belong primarily to load/compile-time graph preparation, not ordinary forward execution.
-
-The recommended split is:
-
-Loading:
-  read the file and create logical tensors
-
-Compilation / graph preparation:
-  resolve constraints, insert conversions, select layouts, select kernels
-
-Lowering:
-  convert resolved graph/tensors/ops into the representation required by the selected backend
-
-Execution:
-  run the already-lowered executable plan
-flowchart TD
-    A[Load model file] --> B[Create logical tensors]
-    B --> C[Build DSL DAG]
-    C --> D[Resolve dtype/backend constraints]
-    D --> E[Lower tensors / ops / layouts]
-    E --> F[Create executable plan]
-    F --> G[Forward execution]
-Lowering may happen at load time when the target backend is already known.
-
-load GGUF for NPU
-→ immediately convert required tensors to int8/native layout
-→ store lowered tensors
-This provides early failure and simple execution, but is less flexible if the same loaded model should target multiple backends.
-
-Lowering may also happen during an explicit compile step.
-
-load GGUF once
-→ keep source tensors
-→ compile for CPU or NPU later
-→ lower only for the selected target
-This is more flexible and allows multiple lowered variants to be cached.
-
-Execution-time lowering should be avoided for hard requirements. If it is used, it should be treated as lazy or deferred compilation, not as normal forward execution. It must produce the same result as the explicit compile path and should cache the lowered result for subsequent executions.
-
-DType Safety
-This design provides dtype safety by turning dtype compatibility into a graph preparation invariant.
-
-The prepared DAG or executable plan should contain only tensors, conversions, and ops whose dtype and layout contracts have been resolved and validated against the selected backend.
-
-flowchart LR
-    A[Source tensors] --> B[Build DAG]
-    B --> C[Resolve dtype constraints]
-    C --> D[Insert conversions/lowering]
-    D --> E[Validate backend kernels]
-    E --> F[DType-safe executable plan]
-    F --> G[Forward execution]
-After graph preparation, forward execution should not perform dtype discovery. It should execute a plan that is already known to be valid.
-
-The safety guarantees are:
-
-every tensor has explicit dtype metadata
-every op declares accepted input and output dtype contracts
-every backend declares supported dtype/layout/kernel combinations
-constraint resolution validates the graph before execution
-required conversions are inserted explicitly
-unsupported dtype combinations fail before forward execution
-kernel dispatch uses resolved dtype, not wrapper-class identity
-A valid executable node must satisfy all relevant contracts:
-
-flowchart TD
-    A[Node: linearProject] --> B{Input dtype valid?}
-    A --> C{Weight dtype valid?}
-    A --> D{Output dtype valid?}
-    A --> E{Backend kernel exists?}
-
-    B --> F[Valid executable node]
-    C --> F
-    D --> F
-    E --> F
-DType safety does not automatically imply precision safety.
-
-A conversion such as Q4_K to int8, FP16 to int8, or Q8 to int8 may be valid according to dtype rules while still being lossy. Lossy conversion, calibration, scale handling, and acceptable accuracy loss should be controlled by separate conversion and precision policies.
-
-The complete safety model includes:
-
-dtype safety: can the graph execute with these dtypes?
-layout safety: does the backend understand this memory layout?
-shape safety: do tensor dimensions match op contracts?
-conversion safety: is this conversion allowed, calibrated, cached, and valid?
-precision safety: is the accuracy loss acceptable?
-Error Handling
-Errors should occur as early as possible.
-
-Load/compile-time errors
-These should occur when:
-
-a hard dtype constraint cannot be satisfied
-no conversion path exists
-the selected backend does not support the required dtype
-required layout lowering is unavailable
-logical tensor shape is incompatible with the target kernel
-quantization metadata is insufficient for conversion
-Forward-time errors
-Forward-time errors should be limited to unexpected execution failures.
-
-They should not be used for ordinary dtype compatibility discovery.
-
-Forward execution should only operate on resolved tensors.
-
-Kernel Dispatch
-Kernel dispatch should use explicit tensor metadata.
-
-Dispatch should be based on:
-
-operation kind
-input dtype
-weight dtype
-output dtype
-backend
-layout
-possibly quantization parameters
-Dispatch should not depend on:
-
-marker classes
-wrapper class identity
-raw storage array type
-physical byte-count shape
-flowchart LR
-    A[Resolved tensor metadata] --> B[Kernel key]
-    B --> C[Dispatch table]
-    C --> D[Selected backend kernel]
-Benefits
-This design provides:
-
-one DSL definition for many quantized variants
-clean support for mixed-precision GGUF
-explicit dtype semantics
-early failure for impossible backend constraints
-backend-specific lowering without polluting the architecture DSL
-cleaner shape inference
-no dtype marker-class hacks
-less ambiguity between packed quantized formats and native execution formats
-a natural path for CPU, SIMD, and NPU backends
-Tradeoffs
-More complex constraint resolution
-The loader or compiler must understand dtype policies and backend capabilities.
-
-More explicit dtype model
-The tensor engine must represent dtype and layout as first-class metadata.
-
-Conversion cost
-When strict constraints require conversion, load or compile time may increase.
-
-For example, Q4_K to native int8 may require dequantization and requantization.
-
-Potential precision loss
-Some conversions are lossy.
-
-The system may need policy controls for whether lossy conversion is allowed.
-
-More backend capability metadata
-Backends need to declare which dtypes, layouts, and conversions they support.
-
-Open Questions
-Should dtype constraints live in the DSL, backend profile, or both?
-Should lossy conversion require an explicit opt-in policy?
-Should lowering happen at load time, compile time, or lazily before first execution?
-Should lowered tensors be cached?
-How should per-layer and per-tensor constraints be represented?
-How should backend-specific layouts be named and versioned?
-How should quantization metadata be preserved during lowering?
-Should unsupported soft preferences warn or silently fall back?
-Should graph optimization occur before or after dtype lowering?
-How should mixed backend execution be represented?
-Recommended Direction
-The recommended direction is:
-
-adaptive by default
-explicit dtype constraints when needed
-DSL converted into a resolved DAG for prepared execution
-constraints resolved before execution
-conversion/lowering handled during load or compile preparation
-execution-time lowering only as lazy/deferred compilation
-hard requirements fail early
-kernel dispatch uses real tensor dtype
-logical shape belongs to the tensor contract
-physical storage remains an implementation detail
-compiled path may emit tensor-engine plans, StableHLO, MLIR, or native artifacts
-In short:
-
-The DSL should define architecture first, while allowing explicit dtype requirements only where execution needs them.
-
-This gives the flexibility needed for GGUF and mixed quantization, while still supporting strict execution environments such as NPUs and explicit compiled targets such as StableHLO, MLIR, or native optimized code.
-
-Final Summary
-A strict dtype DSL is clean for fixed execution environments, but too rigid for general GGUF loading.
-
-A fully adaptive DSL fits GGUF better, but needs explicit dtype metadata and a principled way to handle strict backend requirements.
-
-The proposed hybrid model keeps the DSL adaptive by default and adds dtype constraints as execution policies. This allows source tensors to follow the model file unless an op or backend requires otherwise. When constraints exist, the loader or compiler either lowers the tensor into the required dtype/layout or fails before execution.
-
-The compiled execution path should be understood as DSL-to-DAG preparation. The DSL is converted into a resolved DAG with explicit tensor flow, dtype/layout metadata, backend assignments, and conversion/lowering nodes. That DAG may then become an executable tensor-engine plan or be lowered further into StableHLO, MLIR, or native backend artifacts.
-
-This gives the system dtype safety by making dtype compatibility a graph preparation invariant. Forward execution consumes a resolved plan rather than discovering dtype compatibility dynamically.
-
-This avoids confusing source storage with executable representation and provides a cleaner foundation for CPU, SIMD, NPU, and compiled StableHLO/MLIR/native execution targets.
+    subgraph Reg["KernelRegistry (sorted by priority)"]
+        P100["NativeKernelProvider — priority 100<br/>(planned, native FFM)"]
+        P50["PanamaVectorKernelProvider — priority 50<br/>(JDK 21+ Vector API)"]
+        P0["ScalarKernelProvider — priority 0<br/>(always available)"]
+    end
+    Ask["For (matmul, [Float32, Q8_0]):<br/>walk providers, ask<br/>provider.matmulQ8_0() != null"]
+    Ask --> P100
+    P100 -->|"isAvailable() && matmulQ8_0() != null"| Win[picked]
+    P100 -->|null| P50
+    P50 -->|"matmulQ8_0() != null"| Win
+    P50 -->|null| P0
+    P0 -->|"null for Q8_0"| None["no kernel —<br/>fail-fast (strict) or<br/>silent fallback (default)"]
+```
+
+`KernelProvider.supports(opName, dtypeKeys)` is the introspection query the resolution pass uses to decide whether a `Require` constraint can be satisfied via an existing kernel.
+
+## End-to-end: putting it all together
+
+A worked example showing all four layers in one inference session:
+
+```kotlin
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.safetensors.SafeTensorsParametersLoader
+import sk.ainet.lang.dag.dag
+import sk.ainet.lang.dag.op
+import sk.ainet.lang.tensor.ops.MatmulOperation
+import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.types.BF16
+import sk.ainet.lang.types.DTypePolicy
+import sk.ainet.lang.types.FP32
+
+// 1. LOAD with an explicit dtype policy
+val ctx = DirectCpuExecutionContext.create()
+val loader = SafeTensorsParametersLoader.withPolicy(
+    sourceProvider = { RandomAccessSource.open("model.safetensors") },
+    policy = DTypePolicy.Require(BF16),       // keep BF16 native, fail if file lacks it
+)
+loader.load(ctx, BF16::class) { name, tensor ->
+    // tensor.dtype == BF16::class
+    // tensor.data is Bf16DenseTensorData with explicit logical shape
+    registerWeight(name, tensor)
+}
+
+// 2. DECLARE the graph with a per-op policy
+val program = dag {
+    val input = input<FP32>("input", TensorSpec("input", listOf(1, 4096), "FP32"))
+    val weight = parameter<BF16, Float>("attn_proj") { shape(4096, 4096) { ones() } }
+    val projection = op(
+        operation = MatmulOperation<FP32, Float>(),
+        inputs = listOf(input, weight),
+        dtypePolicy = DTypePolicy.Require(BF16),   // attn projection must run BF16
+    )
+    output(projection.first())
+}
+
+// 3. COMPILE — constraint resolution runs before fusion
+val graph = GraphProgramCompiler().compile(program)        // ComputeGraph
+val resolved = GraphOptimizationPipeline.createDefault()
+    .optimize(graph)                                       // includes DTypeConstraintResolutionPass
+    .graph                                                 // throws DtypeConstraintViolationException if mismatch
+
+// 4. EXECUTE — runtime fail-fast as a backstop
+System.setProperty("skainet.strict.kernels", "true")       // optional: surface missing kernels
+val output = ctx.ops.matmul(inputTensor, weightTensor)     // dispatch via KernelRegistry
+```
+
+Each layer enforces the contract for the layer below:
+
+- The loader guarantees every produced tensor has the right *source*-loaded dtype.
+- The resolution pass guarantees every graph node has the right *required* dtype on its inputs (or fails).
+- The runtime dispatch guarantees the right *lowered* kernel runs (or fails if strict mode is on).
+
+## Where the implementation lives
+
+| Piece | Path |
+|---|---|
+| `DTypePolicy` sealed type | `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/types/DTypePolicy.kt` |
+| `SafeTensorsParametersLoader.withPolicy(...)` | `skainet-io/skainet-io-safetensors/src/commonMain/kotlin/sk/ainet/io/safetensors/SafeTensorsParametersLoader.kt` |
+| `StreamingGgufParametersLoader.withPolicy(...)` | `skainet-io/skainet-io-gguf/src/commonMain/kotlin/sk/ainet/io/gguf/StreamingGgufParametersLoader.kt` |
+| `dag { ... dtypePolicy(...) }` DSL extension | `skainet-lang/skainet-lang-dag/src/commonMain/kotlin/sk/ainet/lang/dag/DtypePolicyDsl.kt` |
+| `DTypeConstraintResolutionPass` | `skainet-compile/skainet-compile-opt/src/commonMain/kotlin/sk/ainet/compile/opt/passes/DTypeConstraintResolutionPass.kt` |
+| `ResolvedComputeGraph` | `skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/graph/ResolvedComputeGraph.kt` |
+| `toStableHlo(ResolvedComputeGraph)` overload | `skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/dag2hlo.kt` |
+| `KernelProvider.supports(...)` capability query | `skainet-backends/skainet-backend-api/src/commonMain/kotlin/sk/ainet/backend/api/kernel/KernelProvider.kt` |
+| `KernelStrictness` system-property fail-fast | `skainet-backends/skainet-backend-api/src/jvmMain/kotlin/sk/ainet/backend/api/kernel/KernelStrictness.kt` |
+| Runtime check in `ctx.ops.matmul` | `skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOpsJvm.kt` |
+
+## What's intentionally not here
+
+Three categories of work that the model is *shaped for* but doesn't ship today:
+
+- **Cast kernels** (Q4_K → Int8, FP32 → BF16, …). When a `Require` constraint needs a cast that isn't registered, the resolution pass fails fast — exactly what the RFC prescribed. Concrete casts are bound up with precision / lossy-conversion policy and live in their own track.
+- **Layout-aware capability queries** on `KernelProvider`. The `supports(opName, dtypeKeys)` API is dtype-aware only; future layout-aware variants are a follow-up.
+- **NPU backend and MLIR / native code lowering**. The compiled path terminates at StableHLO today.
+
+## Related
+
+- [`docs/.../contributing/dtype-model.adoc`](docs/modules/ROOT/pages/contributing/dtype-model.adoc) — maintainer-facing reference: every concept's file path, the loader audit tables, the anti-patterns the model prevents.
+- [`docs/.../contributing/benchmarks.adoc`](docs/modules/ROOT/pages/contributing/benchmarks.adoc) — engine benchmark program that exercises the kernel SPI the dispatch chain calls into.
+- [Issue #615](https://github.com/SKaiNET-developers/SKaiNET/issues/615) / [PR #616](https://github.com/SKaiNET-developers/SKaiNET/pull/616) — implementation history.
