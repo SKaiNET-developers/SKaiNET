@@ -101,6 +101,41 @@ class PanamaVectorMatmulKernelTest {
     }
 
     @Test
+    fun mnpack_residual_cascade_7x11x13() {
+        // 7×11 forces the residual cascade through every microkernel arm:
+        // 4×3 covers the aligned block, then 2×2 / 2×1 / 1×2 / 1×1 clean up.
+        val rng = Random(13)
+        val m = 7; val n = 11; val k = 13
+        val a = FloatArray(m * k) { rng.nextFloat() - 0.5f }
+        val b = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        assertParity(m = m, n = n, k = k, a = a, aOffset = 0, aStride = k, b = b, bOffset = 0, bStride = n, outStride = n)
+    }
+
+    @Test
+    fun mnpack_with_long_k_tail_17x19x255() {
+        // k = 255 spans two TILE_K blocks (128 + 127) and has a 7-element
+        // scalar tail (255 % 8 = 7 on AVX2). Mixed-shape (m, n) residuals
+        // hit several microkernels under k-tile composition.
+        val rng = Random(255)
+        val m = 17; val n = 19; val k = 255
+        val a = FloatArray(m * k) { rng.nextFloat() - 0.5f }
+        val b = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        assertParity(m = m, n = n, k = k, a = a, aOffset = 0, aStride = k, b = b, bOffset = 0, bStride = n, outStride = n)
+    }
+
+    @Test
+    fun mnpack_multi_tile_39x31x129() {
+        // 39 × 31 spans several TILE_M / TILE_N blocks (5 × 4 outer tiles)
+        // with non-trivial residuals in both dimensions; k = 129 spans
+        // two TILE_K blocks with a 1-element scalar tail.
+        val rng = Random(39 * 31 + 129)
+        val m = 39; val n = 31; val k = 129
+        val a = FloatArray(m * k) { rng.nextFloat() - 0.5f }
+        val b = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        assertParity(m = m, n = n, k = k, a = a, aOffset = 0, aStride = k, b = b, bOffset = 0, bStride = n, outStride = n)
+    }
+
+    @Test
     fun zero_m_or_n_no_op() {
         val out = FloatArray(5) { 7f }
         PanamaVectorMatmulKernel.matmul(
