@@ -2,6 +2,7 @@ package sk.ainet.io.gguf
 
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DTypePolicy
 import sk.ainet.lang.types.FP16
@@ -34,8 +35,8 @@ class StreamingGgufParametersLoaderPolicyTest {
             StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(BF16))
         }
         val msg = ex.message ?: ""
-        assert(msg.contains("Require(BF16)")) { msg }
-        assert(msg.contains("KEEP_NATIVE")) { msg }
+        assertTrue(msg.contains("Require(BF16)"), msg)
+        assertTrue(msg.contains("KEEP_NATIVE"), msg)
     }
 
     @Test
@@ -43,7 +44,7 @@ class StreamingGgufParametersLoaderPolicyTest {
         val ex = assertFailsWith<IllegalArgumentException> {
             StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(FP16))
         }
-        assert(ex.message?.contains("Require(FP16)") == true) { ex.message ?: "" }
+        assertTrue(ex.message?.contains("Require(FP16)") == true, ex.message ?: "")
     }
 
     @Test
@@ -52,8 +53,8 @@ class StreamingGgufParametersLoaderPolicyTest {
             StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(Int8))
         }
         val msg = ex.message ?: ""
-        assert(msg.contains("Require(Int8)")) { msg }
-        assert(msg.contains("does not cast")) { msg }
+        assertTrue(msg.contains("Require(Int8)"), msg)
+        assertTrue(msg.contains("does not cast"), msg)
     }
 
     @Test
