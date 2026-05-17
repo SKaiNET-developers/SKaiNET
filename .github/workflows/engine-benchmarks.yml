@@ -14,7 +14,18 @@ on:
       - 'scripts/check_engine_json.sh'
       - '.github/workflows/engine-benchmarks.yml'
   push:
-    branches: [main]
+    branches: [main, develop]
+    paths:
+      - 'skainet-backends/benchmarks/jvm-cpu-publish/**'
+      - 'skainet-backends/benchmarks/jvm-cpu-jmh/**'
+      - 'skainet-backends/skainet-backend-api/**'
+      - 'skainet-backends/skainet-backend-cpu/**'
+      - 'benchmarks/**'
+      - 'scripts/run_engine_benchmarks.sh'
+      - 'scripts/run_engine_smoke.sh'
+      - 'scripts/validate_pts_profiles.sh'
+      - 'scripts/check_engine_json.sh'
+      - '.github/workflows/engine-benchmarks.yml'
   workflow_dispatch:
   release:
     types: [published]
