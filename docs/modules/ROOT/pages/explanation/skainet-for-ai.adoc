@@ -40,25 +40,39 @@ val full = ctx.full(Shape(5, 5), FP32::class, 42.0f)
 
 === Expressive Tensor DSL
 
-For more complex initializations, use the `tensor` DSL:
+For more complex initializations, use the `tensor` DSL inside a
+`data { }` block — the idiomatic form. See
+xref:how-to/build-tensors.adoc[How-to: Build Tensors] for the full
+surface (single-tensor return, multi-tensor capture, named
+`createDataMap`):
 
 [source,kotlin]
 ----
-val myTensor = tensor(ctx, FP32::class) {
-    shape(2, 2) { 
-        from(1.0f, 2.0f, 3.0f, 4.0f) 
+import sk.ainet.context.data
+import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Int32
+
+// Single tensor — the typed `data<T, V>(ctx)` overload returns the
+// last expression in the block.
+val myTensor = data<FP32, Float>(ctx) {
+    tensor {
+        shape(2, 2) {
+            from(1.0f, 2.0f, 3.0f, 4.0f)
+        }
     }
 }
 
-val randomTensor = tensor(ctx, FP32::class) {
-    shape(10, 10) { 
-        randn(mean = 0f, std = 1f) 
+// Multiple tensors — capture into outer `lateinit var`s.
+lateinit var randomTensor: Tensor<FP32, Float>
+lateinit var customInit:   Tensor<Int32, Int>
+data(ctx) {
+    randomTensor = tensor<FP32, Float> {
+        shape(10, 10) { randn(mean = 0f, std = 1f) }
     }
-}
-
-val customInit = tensor(ctx, Int32::class) {
-    shape(5, 5) {
-        init { indices -> indices[0] + indices[1] }
+    customInit = tensor<Int32, Int> {
+        shape(5, 5) { init { indices -> indices[0] + indices[1] } }
     }
 }
 ----
@@ -120,7 +134,7 @@ val d = a * 10 // Calls ops.mulScalar(a, 10)
 |===
 |Feature |NumPy |SKaiNET
 |*Primary Type* |`ndarray` |`Tensor++<++T, V++>++`
-|*Creation* |`np.array(++[++1, 2, 3++]++)` |`tensor(ctx, FP32::class) ++{++ shape(3) ++{++ from(1f, 2f, 3f) } }`
+|*Creation* |`np.array(++[++1, 2, 3++]++)` |`data<FP32, Float>(ctx) ++{++ tensor ++{++ shape(3) ++{++ from(1f, 2f, 3f) } } }`
 |*Zeros* |`np.zeros((2, 2))` |`ctx.zeros(Shape(2, 2), FP32::class)`
 |*Slicing* |`a++[++0:5, :++]++` |`a.sliceView ++{++ segment ++{++ range(0, 5) }; segment ++{++ all() } }`
 |*Matmul* |`a @ b` or `np.matmul(a, b)` |`ctx.ops.matmul(a, b)`

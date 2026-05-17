@@ -1,4 +1,12 @@
 = Matrix Multiplication Examples
+:description: Worked matmul examples using the actual SKaiNET DSL — data block construction + ctx.ops.matmul dispatch.
+
+The examples below use the real SKaiNET DSL. For the wider tensor
+construction surface (single vs many tensors, named maps, init
+strategies), see xref:how-to/build-tensors.adoc[How-to: Build
+Tensors]. For how matmul dispatches into the kernel layer (and what
+the benchmarks measure), see
+xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark].
 
 [#basic-usage]
 == Basic Usage
@@ -7,126 +15,180 @@
 
 [source,kotlin]
 ----
-// Create two matrices
-val a = tensor(shape = intArrayOf(3, 2)) {
-    floatArrayOf(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f)
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.data
+import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext.create()
+
+lateinit var a: Tensor<FP32, Float>
+lateinit var b: Tensor<FP32, Float>
+
+data(ctx) {
+    a = tensor<FP32, Float> {
+        shape(3, 2) { from(1f, 2f, 3f, 4f, 5f, 6f) }
+    }
+    b = tensor<FP32, Float> {
+        shape(2, 4) {
+            from(
+                1f, 0f, 1f, 0f,
+                0f, 1f, 0f, 1f,
+            )
+        }
+    }
 }
 
-val b = tensor(shape = intArrayOf(2, 4)) {
-    floatArrayOf(1.0f, 0.0f, 1.0f, 0.0f, 
-                 0.0f, 1.0f, 0.0f, 1.0f)
-}
-
-// Perform matrix multiplication
-val result = a.matmul(b)
-println("Result shape: ${result.shape.contentToString()}") // [3, 4]
+val result = ctx.ops.matmul(a, b)
+println("Result shape: ${'$'}{result.data.shape}")   // Shape(3, 4)
 ----
 
 [#batch-operations]
 == Batch Operations
 
-=== Batch Matrix Multiplication
+Matmul is batched whenever the inputs carry a leading batch
+dimension; there's no separate "batched matmul" entry point —
+`ctx.ops.matmul` broadcasts along the leading dim.
 
 [source,kotlin]
 ----
-// Batch of matrices: [batch_size, m, k] × [batch_size, k, n] → [batch_size, m, n]
-val batchA = tensor(shape = intArrayOf(2, 3, 2)) {
-    floatArrayOf(
-        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,  // First batch
-        2.0f, 1.0f, 4.0f, 3.0f, 6.0f, 5.0f   // Second batch
-    )
+lateinit var batchA: Tensor<FP32, Float>
+lateinit var batchB: Tensor<FP32, Float>
+
+data(ctx) {
+    // [batch=2, m=3, k=2]
+    batchA = tensor<FP32, Float> {
+        shape(2, 3, 2) {
+            from(
+                1f, 2f, 3f, 4f, 5f, 6f,    // first sample
+                2f, 1f, 4f, 3f, 6f, 5f,    // second sample
+            )
+        }
+    }
+    // [batch=2, k=2, n=3]
+    batchB = tensor<FP32, Float> {
+        shape(2, 2, 3) {
+            from(
+                1f, 0f, 1f, 0f, 1f, 0f,
+                0f, 1f, 0f, 1f, 0f, 1f,
+            )
+        }
+    }
 }
 
-val batchB = tensor(shape = intArrayOf(2, 2, 3)) {
-    floatArrayOf(
-        1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,  // First batch  
-        0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f   // Second batch
-    )
-}
-
-val batchResult = batchA.matmul(batchB)
-println("Batch result shape: ${batchResult.shape.contentToString()}") // [2, 3, 3]
+val batchResult = ctx.ops.matmul(batchA, batchB)
+// batchResult.data.shape == Shape(2, 3, 3)
 ----
 
 [#neural-network]
-== Neural Network Applications
+== Linear Layer
 
-=== Linear Layer Implementation
+A linear layer is a single matmul plus an optional bias add.
+Construction uses the same `data { }` pattern; the forward pass
+goes through `ctx.ops`:
 
 [source,kotlin]
 ----
+import kotlin.math.sqrt
+
 class LinearLayer(
-    private val weights: Tensor<Float>,
-    private val bias: Tensor<Float>? = null
+    private val ctx: DirectCpuExecutionContext,
+    private val weights: Tensor<FP32, Float>,
+    private val bias: Tensor<FP32, Float>? = null,
 ) {
-    fun forward(input: Tensor<Float>): Tensor<Float> {
-        // input: [batch_size, in_features]
-        // weights: [in_features, out_features] 
-        // output: [batch_size, out_features]
-        
-        var output = input.matmul(weights)
-        
-        bias?.let { b ->
-            output = output + b  // Broadcasting addition
+    fun forward(input: Tensor<FP32, Float>): Tensor<FP32, Float> {
+        // input:   [batch, in_features]
+        // weights: [in_features, out_features]
+        // output:  [batch, out_features]
+        var output = ctx.ops.matmul(input, weights)
+        if (bias != null) {
+            output = ctx.ops.add(output, bias)        // broadcasting add
         }
-        
         return output
     }
 }
 
-// Usage example
-val inputSize = 784  // MNIST image flattened
+val inputSize = 784
 val hiddenSize = 256
 val batchSize = 32
+val std = sqrt(2.0f / (inputSize + hiddenSize))
 
-val weights = tensor(shape = intArrayOf(inputSize, hiddenSize)) { 
-    // Initialize with Xavier/Glorot initialization
-    randomNormal(0.0f, sqrt(2.0f / (inputSize + hiddenSize)))
+lateinit var weights: Tensor<FP32, Float>
+lateinit var bias: Tensor<FP32, Float>
+lateinit var input: Tensor<FP32, Float>
+
+data(ctx) {
+    weights = tensor<FP32, Float> {
+        shape(inputSize, hiddenSize) { randn(mean = 0f, std = std) }
+    }
+    bias = tensor<FP32, Float> { shape(hiddenSize) { zeros() } }
+    input = tensor<FP32, Float> {
+        shape(batchSize, inputSize) { randn(mean = 0f, std = 1f) }
+    }
 }
-val bias = zeros(shape = intArrayOf(hiddenSize))
 
-val layer = LinearLayer(weights, bias)
-val input = randomNormal(shape = intArrayOf(batchSize, inputSize))
+val layer = LinearLayer(ctx, weights, bias)
 val output = layer.forward(input)
+// output.data.shape == Shape(32, 256)
 ----
 
 [#performance-considerations]
 == Performance Considerations
 
-=== Memory Layout Optimization
+`ctx.ops.matmul` automatically routes to the highest-priority
+registered kernel via `KernelRegistry.bestAvailable()`. On JDK 21+
+with the incubator Vector module loaded, that's the Panama Vector
+kernel — typically ~14–23 GFLOPS on AVX2 for a 1024³ FP32 GEMM
+depending on the workload shape (the mnpack tile-microkernel dispatch
+adds ~1.7× over the naive Panama 1×1 inner loop). The numbers and
+the kernel selection mechanics are detailed in
+xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark]
+and xref:contributing/benchmarks.adoc[the engine benchmark program].
 
-[source,kotlin]
-----
-// Prefer row-major order for better cache locality
-val a = tensor(shape = intArrayOf(1000, 500), layout = TensorLayout.RowMajor)
-val b = tensor(shape = intArrayOf(500, 200), layout = TensorLayout.RowMajor)
-
-// For very large matrices, consider blocking/tiling
-val result = a.matmul(b, blockSize = 64)
-----
+For quantized matmul (Q4_K, Q8_0, BF16-weight), load weights via
+xref:how-to/io-readers.adoc[the GGUF / SafeTensors loaders] — the
+loaders preserve packed-block storage, and the matmul dispatch
+recognises the quantized `TensorData` subtype and routes to the
+matching SPI kernel.
 
 [#common-patterns]
 == Common Patterns
 
 === Matrix-Vector Multiplication
 
-[source,kotlin]
-----
-val matrix = randomNormal(shape = intArrayOf(100, 50))
-val vector = randomNormal(shape = intArrayOf(50, 1))
-
-// Equivalent operations:
-val result1 = matrix.matmul(vector)           // [100, 1]
-val result2 = matrix.dot(vector.squeeze())    // [100] - squeezed result
-----
-
-=== Transpose Patterns
+A 1D vector is rank 1; matmul against a 2D matrix requires the
+vector to be reshaped to rank 2 first (no implicit broadcasting
+between rank-1 and rank-2 in `ctx.ops.matmul`):
 
 [source,kotlin]
 ----
-val a = randomNormal(shape = intArrayOf(3, 4))
-val b = randomNormal(shape = intArrayOf(5, 3))
+lateinit var matrix: Tensor<FP32, Float>
+lateinit var vector: Tensor<FP32, Float>
 
-// Compute b @ a.T without explicit transpose
-val result = b.matmul(a, transposeB = true)  // [5, 4]
+data(ctx) {
+    matrix = tensor<FP32, Float> {
+        shape(100, 50) { randn(mean = 0f, std = 1f) }
+    }
+    // Shape (50, 1) so matmul produces (100, 1).
+    vector = tensor<FP32, Float> {
+        shape(50, 1) { randn(mean = 0f, std = 1f) }
+    }
+}
+
+val result = ctx.ops.matmul(matrix, vector)
+// result.data.shape == Shape(100, 1)
+----
+
+=== Transpose Before Matmul
+
+`ctx.ops.transpose` produces a tensor view that the matmul dispatch
+recognises; for some packed quantized formats the transpose is lazy
+(no data reordering — see `Q4MemorySegmentTensorData` in
+`skainet-backend-cpu` for the marker class).
+
+[source,kotlin]
+----
+val aT = ctx.ops.transpose(a)
+val result = ctx.ops.matmul(b, aT)
 ----

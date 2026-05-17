@@ -6,6 +6,7 @@
 * xref:tutorials/graph-dsl.adoc[Graph DSL]
 
 .How-to guides
+* xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
 * xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
 * xref:how-to/java-model-training.adoc[Train a model from Java]
 * xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino]

@@ -135,5 +135,6 @@ avoid; SKaiNET already prevents all three.
 
 * `rfc.md` (repo root) — the design document this page implements.
 * Issue https://github.com/SKaiNET-developers/SKaiNET/issues/615[#615] — implementation tracker.
+* xref:how-to/build-tensors.adoc[Build tensors with the data DSL] — the user-facing entry points that produce the `Tensor<T, V>` values whose dtype this page describes.
 * xref:contributing/benchmarks.adoc[Engine benchmark program] — runtime numbers that the kernel SPI produces.
 * xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] — how the kernel SPI's dispatch actually shows up in measurements.
