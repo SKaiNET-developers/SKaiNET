@@ -70,13 +70,37 @@ public object PanamaVectorQ8_0MatmulKernel : Q8_0MatmulKernel {
 
                 var blockAccVec = FloatVector.zero(floatSpecies)
                 var k = 0
-                while (k < BLOCK_SIZE) {
-                    val byteVec = ByteVector.fromArray(byteSpeciesForFloat, weight, codesBase + k)
-                    @Suppress("UNCHECKED_CAST")
-                    val codesVec = byteVec.castShape(floatSpecies, 0) as FloatVector
-                    val inputVec = FloatVector.fromArray(floatSpecies, input, inputBase + k)
-                    blockAccVec = inputVec.fma(codesVec, blockAccVec)
-                    k += laneCount
+                if (laneCount == 4) {
+                    // NEON (4-wide float species): each ByteVector load brings
+                    // 8 bytes (SPECIES_64 is the smallest byte species). To
+                    // consume all 8 — and to avoid reading 4 bytes past the
+                    // codes region on the last iteration of a block — convert
+                    // both halves via `castShape(species, part)` per load and
+                    // step k by 8.
+                    while (k < BLOCK_SIZE) {
+                        val byteVec = ByteVector.fromArray(byteSpeciesForFloat, weight, codesBase + k)
+                        @Suppress("UNCHECKED_CAST")
+                        val codesLo = byteVec.castShape(floatSpecies, 0) as FloatVector
+                        @Suppress("UNCHECKED_CAST")
+                        val codesHi = byteVec.castShape(floatSpecies, 1) as FloatVector
+                        val inLo = FloatVector.fromArray(floatSpecies, input, inputBase + k)
+                        val inHi = FloatVector.fromArray(floatSpecies, input, inputBase + k + 4)
+                        blockAccVec = inLo.fma(codesLo, blockAccVec)
+                        blockAccVec = inHi.fma(codesHi, blockAccVec)
+                        k += 8
+                    }
+                } else {
+                    // AVX2 (8-wide): the SPECIES_64 load and the
+                    // floatSpecies cast width match — one FMA per
+                    // iteration, step k by `laneCount`.
+                    while (k < BLOCK_SIZE) {
+                        val byteVec = ByteVector.fromArray(byteSpeciesForFloat, weight, codesBase + k)
+                        @Suppress("UNCHECKED_CAST")
+                        val codesVec = byteVec.castShape(floatSpecies, 0) as FloatVector
+                        val inputVec = FloatVector.fromArray(floatSpecies, input, inputBase + k)
+                        blockAccVec = inputVec.fma(codesVec, blockAccVec)
+                        k += laneCount
+                    }
                 }
                 acc += blockAccVec.reduceLanes(VectorOperators.ADD) * d
             }
