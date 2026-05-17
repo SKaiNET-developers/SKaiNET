@@ -6,8 +6,8 @@
 # Run as the operator (uses sudo). Idempotent — safe to re-run.
 set -euo pipefail
 
-PTS_VERSION="${PTS_VERSION:-10.8.6}"
-DEB_URL="https://phoronix-test-suite.com/releases/repo/pts.debian/files/phoronix-test-suite_${PTS_VERSION}_all.deb"
+PTS_VERSION="${PTS_VERSION:-10.8.4}"
+DEB_URL="https://github.com/phoronix-test-suite/phoronix-test-suite/releases/download/v${PTS_VERSION}/phoronix-test-suite_${PTS_VERSION}_all.deb"
 TMP_DEB="/tmp/phoronix-test-suite_${PTS_VERSION}_all.deb"
 
 if command -v phoronix-test-suite >/dev/null 2>&1; then
