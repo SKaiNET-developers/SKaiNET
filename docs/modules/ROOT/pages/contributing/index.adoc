@@ -1,0 +1,58 @@
+= Contributing to SKaiNET — Audience and Scope
+:description: What lives in the Contributing section, who it's for, and what it deliberately leaves out.
+
+[NOTE]
+====
+**Audience: SKaiNET maintainers and contributors.** These pages document
+how the project is *built*, *measured*, and *released*. If you are
+*consuming* SKaiNET as a library — pulling artifacts from a BOM,
+calling `ctx.ops.matmul`, loading a GGUF model — you do not need to
+read anything in this section. The Tutorials, How-to, Reference, and
+Explanation sections cover everything a library user needs.
+====
+
+== What this section covers
+
+The Contributing section is for the engineer who:
+
+- Builds SKaiNET from source.
+- Runs or extends the official benchmark suite.
+- Maintains the CI workflows (smoke runs on `ubuntu-latest`, full
+  publishable runs on the self-hosted lane).
+- Adds or replaces kernels in the CPU backend (scalar, Panama Vector,
+  the planned native FFM provider).
+- Operates the self-hosted runner that publishes benchmark results.
+
+Concretely:
+
+[cols="2,3",options="header"]
+|===
+| Page | What it answers
+| xref:contributing/build-from-source.adoc[Build from source] | How to clone, build, and run the test suite locally.
+| xref:contributing/benchmarks.adoc[Engine benchmark program] | The Phoronix Test Suite / OpenBenchmarking publication path: methodology, manifest, lanes, CI workflow, replay.
+| xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] | What the published numbers mean — scalar vs. Panama vs. quantized regimes, roofline reasoning, and a checklist for interpreting any new measurement.
+| xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner] | The one-time operator setup that lights up the full-publish CI lane on a Linux x86 box.
+| xref:contributing/native-ffm-plan.adoc[Plan: native FFM kernel provider] | Forward-looking design doc for the priority-100 kernel provider that closes the gap to native BLAS.
+|===
+
+== What this section deliberately does *not* cover
+
+- **How to call SKaiNET from your code.** See the Tutorials and
+  How-to sections (Java getting started, Load models, Train a model
+  from Java).
+- **What an operator does or how the public DSL works.** See
+  xref:reference/operators/generated/index.adoc[Operator reference] and
+  the Explanation pages.
+- **Issue reports, branch policy, or commit conventions.** Those live
+  in repo-root files: `CONTRIBUTING.md`, `GITFLOW.adoc`,
+  `CHANGELOG.md`, `FAQ.md`. The published docs site intentionally
+  does not duplicate them; they belong with the code.
+
+== Conventions used in this section
+
+Every Contributing page opens with an `Audience` admonition so
+readers landing from a search hit immediately know whether the
+content is for them. Commands assume a POSIX shell and the SKaiNET
+repo as the current working directory. Code paths in the running
+text are file-relative from the repo root (for example
+`scripts/run_engine_benchmarks.sh`, not absolute paths).
