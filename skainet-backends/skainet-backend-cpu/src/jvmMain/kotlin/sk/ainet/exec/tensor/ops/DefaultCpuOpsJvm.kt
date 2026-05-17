@@ -7,6 +7,7 @@ import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelServiceLoader
+import sk.ainet.backend.api.kernel.KernelStrictness
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
@@ -137,6 +138,20 @@ internal class DefaultCpuOpsJvm(
         chooseQuantizedMatmul(a, b)?.let { return it }
         // Fallback to standard FP32 matmul
         chooseMatmul(a, b)?.let { return it }
+        // RFC fail-fast point: if `-Dskainet.strict.kernels=true`, surface
+        // the missing kernel here rather than letting `super.matmul` quietly
+        // pick the scalar dequant + FP32 fallback. The strictness check is
+        // a no-op when the property is unset, preserving the existing
+        // adaptive behaviour.
+        KernelStrictness.failIfStrict {
+            val inDt = a.dtype.simpleName ?: a.dtype.toString()
+            val wDt = b.dtype.simpleName ?: b.dtype.toString()
+            val providers = KernelRegistry.providers().joinToString { p ->
+                "${p.name}(priority=${p.priority}, available=${p.isAvailable()})"
+            }.ifEmpty { "<none>" }
+            "matmul ($inDt × $wDt) has no SPI kernel; would silently fall back " +
+                "to super.matmul. Registered providers: $providers"
+        }
         return super.matmul(a, b)
     }
 

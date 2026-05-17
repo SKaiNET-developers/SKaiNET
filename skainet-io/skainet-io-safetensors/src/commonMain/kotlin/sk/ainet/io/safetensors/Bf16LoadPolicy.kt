@@ -1,5 +1,9 @@
 package sk.ainet.io.safetensors
 
+import sk.ainet.lang.types.BF16
+import sk.ainet.lang.types.DTypePolicy
+import sk.ainet.lang.types.FP32
+
 /**
  * Controls how the SafeTensors loader handles `BFLOAT16` (BF16) tensors.
  *
@@ -53,4 +57,23 @@ public enum class Bf16LoadPolicy {
      * transformer case).
      */
     KEEP_NATIVE,
+    ;
+
+    /**
+     * Maps this BF16-specific enum onto the generalised
+     * [DTypePolicy] sealed type. [DEQUANT_TO_FP32] becomes
+     * `Require(FP32)` (the loader must hand consumers an FP32
+     * tensor); [KEEP_NATIVE] becomes `Require(BF16)` (consumers
+     * dispatch on the native BF16 dtype).
+     *
+     * Bridge for the RFC's policy-driven loader work
+     * (`rfc.md`, issue #615): existing call sites keep using this
+     * enum verbatim while new code paths can flow through
+     * [DTypePolicy] uniformly. The two are equivalent for BF16 —
+     * this method is the explicit equivalence proof.
+     */
+    public fun toDTypePolicy(): DTypePolicy = when (this) {
+        DEQUANT_TO_FP32 -> DTypePolicy.Require(FP32)
+        KEEP_NATIVE -> DTypePolicy.Require(BF16)
+    }
 }

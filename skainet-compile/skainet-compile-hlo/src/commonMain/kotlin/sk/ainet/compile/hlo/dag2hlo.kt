@@ -56,6 +56,40 @@ public fun toStableHlo(graph: ComputeGraph, functionName: String = "main"): Stab
 }
 
 /**
+ * Export a [sk.ainet.lang.graph.ResolvedComputeGraph] into a StableHLO
+ * MLIR module — the dtype-resolved entry point that the W7
+ * `DTypeConstraintResolutionPass` produces.
+ *
+ * The contract this overload upholds vs the plain [ComputeGraph]
+ * variant: every edge's dtype has already been resolved to a typed
+ * [sk.ainet.lang.types.DType] (the wrapper's `validate()` would
+ * have caught any unparseable strings), and every node carries the
+ * `dtype_resolved` marker from the pass. Callers that flow through
+ * this overload get a precondition guarantee that the HLO emit
+ * step won't silently misinterpret a stray dtype string.
+ *
+ * Today the converter still consumes the underlying [ComputeGraph] —
+ * the wrapper is the *contract*, not a separate emit path. As
+ * future passes start writing layout / backend metadata into the
+ * resolved graph, the converter can read those typed accessors
+ * directly. This entry point gives them the stable hook to do so.
+ */
+public fun toStableHlo(
+    graph: sk.ainet.lang.graph.ResolvedComputeGraph,
+    functionName: String = "main",
+    validate: Boolean = true,
+): StableHloModule {
+    if (validate) {
+        graph.validate().requireValid()
+    }
+    // Delegate to the underlying ComputeGraph emit path — same HLO output
+    // for graphs that pass validation. Future versions can branch here to
+    // consume `graph.resolvedLayout(edgeId)` / `graph.backendAssignment(nodeId)`
+    // once those passes ship.
+    return toStableHlo(graph.delegate, functionName)
+}
+
+/**
  * Legacy implementation for backward compatibility.
  * 
  * @deprecated Use StableHloConverter directly for better control and extensibility.

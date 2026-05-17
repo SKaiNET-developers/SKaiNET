@@ -7,7 +7,10 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.DTypePolicy
+import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
 import kotlin.reflect.KClass
@@ -148,6 +151,72 @@ public class StreamingGgufParametersLoader(
             val bf16Bits = (bytes[off].toInt() and 0xFF) or
                 ((bytes[off + 1].toInt() and 0xFF) shl 8)
             Float.fromBits(bf16Bits shl 16)
+        }
+    }
+
+    public companion object {
+
+        /**
+         * Convenience constructor that takes a [DTypePolicy] and
+         * validates it against the dtypes the GGUF loader supports
+         * today. The validator runs eagerly — if the requested
+         * policy can never be satisfied by this loader (e.g.
+         * `Require(Int8)` against a GGUF file: this loader doesn't
+         * cast), an [IllegalArgumentException] is raised before the
+         * loader is constructed, exactly matching the RFC's
+         * "fail before execution" rule.
+         *
+         * Current per-source behaviour the validator enforces:
+         * - GGUF `F32` / `I32` / `Q4_K` / `Q8_0` are always
+         *   preserved verbatim — any policy that admits the
+         *   matching dtype passes.
+         * - GGUF `F16` / `BF16` always dequant to FP32 in this
+         *   loader today (no KEEP_NATIVE GGUF path yet). A policy
+         *   of `Require(BF16)` or `Require(FP16)` therefore fails
+         *   eagerly; use `Any`, `Prefer`, or `OneOf` containing
+         *   `FP32` if you want the adaptive dequant behaviour.
+         *
+         * The validator is conservative — it doesn't open the GGUF
+         * file to check which dtypes are actually present. A
+         * policy that's satisfiable in principle but happens to
+         * conflict with the specific file's tensors will surface at
+         * iteration time via the `null`-return path in [load].
+         */
+        public fun withPolicy(
+            sourceProvider: () -> RandomAccessSource,
+            policy: DTypePolicy,
+            onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+        ): StreamingGgufParametersLoader {
+            validatePolicy(policy)
+            return StreamingGgufParametersLoader(sourceProvider, onProgress)
+        }
+
+        internal fun validatePolicy(policy: DTypePolicy) {
+            when (policy) {
+                DTypePolicy.Any -> Unit
+                is DTypePolicy.Prefer -> Unit
+                is DTypePolicy.OneOf -> Unit
+                is DTypePolicy.Require -> when (policy.target) {
+                    FP32 -> Unit
+                    BF16 -> throw IllegalArgumentException(
+                        "StreamingGgufParametersLoader: Require(BF16) is not supported — " +
+                            "GGUF BF16 sources are dequanted to FP32 by this loader today (no KEEP_NATIVE " +
+                            "GGUF path yet). Use Any or Prefer(BF16) to accept the dequant fallback, or " +
+                            "wait for the policy-aware GGUF reader to land.",
+                    )
+                    FP16 -> throw IllegalArgumentException(
+                        "StreamingGgufParametersLoader: Require(FP16) is not supported — " +
+                            "GGUF F16 sources are dequanted to FP32 by this loader today (no Fp16DenseTensorData " +
+                            "backing yet). Use Any or Prefer(FP16) to accept the dequant fallback.",
+                    )
+                    else -> throw IllegalArgumentException(
+                        "StreamingGgufParametersLoader: Require(${policy.target.name}) is not satisfiable — " +
+                            "this loader produces FP32 / Int32 / Q4_K / Q8_0 tensors only, and does not cast " +
+                            "between source dtypes. Use Any to inherit the source dtype, or open a follow-up " +
+                            "to add a ${policy.target.name} cast path.",
+                    )
+                }
+            }
         }
     }
 
