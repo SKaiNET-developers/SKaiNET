@@ -24,7 +24,7 @@ straightforward — call a kernel, time it, divide ops by seconds. The
 *interpretation* is where most engineers slip:
 
 * Why does the same matmul, on the same machine, run at 1 GFLOPS in
-  one kernel and 14 GFLOPS in another?
+  one kernel and 23 GFLOPS in another?
 * Why does a quantized matmul that dequantizes inline (extra work)
   beat a dense FP32 matmul?
 * When you stare at a column of GFLOPS numbers, which ones are
@@ -38,11 +38,16 @@ run on the reference host (Intel i7-9750H, AVX2, no AVX-512, Ubuntu
 [cols="1m,1,1,1,2",options="header"]
 |===
 | Scenario | Panama | Scalar | Speedup | Regime
-| engine-kernel-matmul (1024³ FP32) | 14.06 GFLOPS | 1.05 GFLOPS | 13.4× | compute-bound
-| engine-bf16-matmul (1024³)        | 1.19 GFLOPS  | 0.53 GFLOPS | 2.25× | mixed
-| engine-q8-matmul (4096² matvec)   | 3.56 GOP/s   | 1.37 GOP/s  | 2.60× | bandwidth-bound
-| engine-q4-gemm (4096² matvec)     | 12.4 GOP/s   | n/a         | n/a   | bandwidth-bound
+| engine-kernel-matmul (1024³ FP32) | 23.0 GFLOPS  | 1.13 GFLOPS | 20.4× | compute-bound
+| engine-bf16-matmul (1024³)        | 1.42 GFLOPS  | 0.80 GFLOPS | 1.77× | mixed
+| engine-q8-matmul (4096² matvec)   | 4.42 GOP/s   | 1.81 GOP/s  | 2.44× | bandwidth-bound
+| engine-q4-gemm (4096² matvec)     | 19.3 GOP/s   | n/a         | n/a   | bandwidth-bound
 |===
+
+The Panama FP32 row reflects the tile-microkernel dispatch landed in
+commit `87589af8`. The pre-mnpack baseline was 14.06 GFLOPS (13.4×
+scalar); see <<mnpack-dispatch>> below for what changed and why the
+gain is reproducible.
 
 Hold those four rows in your head — every section below points back
 at one of them.
@@ -253,29 +258,70 @@ flowchart LR
     reduce --> out["out[i,j]"]
 ....
 
-Measured: **14.06 GFLOPS** — **13.4× the scalar version**. That
-matches the napkin math closely:
+Naive SIMD measurement (the snippet above): **14.06 GFLOPS** —
+**13.4× the scalar version**. That matches the napkin math closely:
 
 * SIMD width: 8 lanes (AVX2) → up to 8× more flops per cycle
 * FMA: multiply + add in one instruction → up to 2× the issue rate
 * Predicted ceiling: ~16×; observed: ~13×
 
-The remaining gap (13× of 16×) is real: B is pre-packed once per
-call (an `O(n·k)` cost that doesn't get amortized as well at moderate
-sizes), the loop has a scalar tail when `k` is not a multiple of 8,
-and `reduceLanes` at the end of each `(i, j)` pair adds a
-cross-lane sum.
+The remaining gap (13× of 16×) came from the inner loop processing
+**one `(i, j)` output cell at a time**: every A-row load and B-column
+load fed exactly one accumulator. With 8 lanes of FMA capacity per
+cycle and only one accumulator in flight, the issue queue stalls on
+the dependency chain through `acc`.
 
-This kernel is **compute-bound on a single core**. To push it further
-you would need: AVX-512 (16 lanes — 2× headroom), multi-threading
-(6 cores — 6× headroom), or a hand-tuned native kernel that holds
-register state across multiple `(i, j)` cells. The forthcoming native
-FFM provider (xref:contributing/native-ffm-plan.adoc[]) targets
-those wins.
+[#mnpack-dispatch]
+==== Going further: `mnpack` tile dispatch
 
-If you take only one comparison away from this page: **the scalar →
-Panama jump is the biggest single performance win available to a
-pure-JVM compute backend, and it costs ~200 lines of Kotlin.**
+Closing that gap is what the production `PanamaVectorMatmulKernel`
+does today. Inside the existing `TILE_M × TILE_N` outer block, a
+recursive `mnpack` dispatcher picks the largest `RM × RN`
+microkernel that fits the residual and recurses on the rest:
+
+[cols="1m,1,1,3",options="header"]
+|===
+| Microkernel | Accumulators | Per-step loads | Per-step FMAs
+| gemm4x3     | 12           | 4 A + 3 B       | 12
+| gemm2x2     | 4            | 2 A + 2 B       | 4
+| gemm2x1     | 2            | 2 A + 1 B       | 2
+| gemm1x2     | 2            | 1 A + 2 B       | 2
+| gemm1x1     | 1            | 1 A + 1 B       | 1
+|===
+
+Each microkernel keeps `RM × RN` `FloatVector` accumulators live in
+registers; every A-row load amortizes across `RN` columns and every
+B-column load across `RM` rows. The `4 × 3` microkernel is the
+largest that fits inside AVX2's 16 vector registers (12 accumulators
++ 4 A vectors + 1 B vector at any moment). Smaller microkernels
+clean up residual rows and columns that don't divide evenly into
+the bigger tile shape.
+
+Measured after the change: **23.0 GFLOPS — 20.4× scalar, ~1.65×
+the naive-SIMD result**. Two independent runs reproduce within
+sub-2% CoV. The gain comes from a single mechanism — FMA-pipeline
+fill: 12 FMAs from 7 vector loads instead of 1 FMA from 2 loads, so
+the issue queue can stay saturated instead of waiting on
+accumulator-chain dependencies.
+
+23 GFLOPS on AVX2 single-core is **~62% of the chip's ~37 GFLOPS
+theoretical FP32 peak**, up from 38% before. The pattern is borrowed
+verbatim from tinyBLAS's `mnpack` switch in `sgemm.cpp` (Justine
+Tunney / llamafile); see xref:explanation/perf/simd-kernels.adoc[]
+for how SKaiNET's kernel SPI hosts the microkernels.
+
+This kernel is now **compute-bound on a single core, near the
+single-core ceiling**. The remaining headroom requires architectural
+moves: AVX-512 (16 lanes — 2× headroom; needs a wider microkernel
+set), multi-threading (6 cores — 6× headroom; needs `ith`/`nth`
+SPI), or a hand-tuned native kernel via FFM
+(xref:contributing/native-ffm-plan.adoc[]).
+
+If you take only one comparison away from this page: **the
+scalar → Panama jump (1× → 13×) is the biggest single performance
+win available to a pure-JVM compute backend, and the Panama → tiled
+Panama jump (13× → 20×) is the next biggest. Both cost ~200 lines
+of Kotlin and zero native code.**
 
 === Regime 3 — Quantized matmul: bandwidth-bound
 
@@ -319,18 +365,20 @@ inner-loop walk-through.
 
 Measured on the i7-9750H:
 
-* `engine-q4-gemm` (Q4_K matvec at 4096²): **12.4 GOP/s** panama
-* `engine-q8-matmul` (Q8_0 matvec at 4096²): 3.56 GOP/s panama vs
-  1.37 scalar — **2.6× speedup**
-* `engine-bf16-matmul` (1024³): 1.19 vs 0.53 GFLOPS — **2.25× speedup**
+* `engine-q4-gemm` (Q4_K matvec at 4096²): **~19 GOP/s** panama
+  (CoV often above 3% on this laptop — the Q4_K path is sensitive
+  to thermal throttling at sustained load)
+* `engine-q8-matmul` (Q8_0 matvec at 4096²): 4.42 GOP/s panama vs
+  1.81 scalar — **2.44× speedup**
+* `engine-bf16-matmul` (1024³): 1.42 vs 0.80 GFLOPS — **1.77× speedup**
 
-The non-obvious result is that `engine-q4-gemm` (12.4 GOP/s) is
-*close to* dense `engine-fp32-gemm` (~12 GFLOPS in good runs) **even
-though it does extra dequant work**. The reason is precisely
-bandwidth: Q4_K weights are ~9× smaller than FP32, so the kernel
-spends less time waiting on memory and more time inside the FMA
-pipeline. The dequant arithmetic happens in registers while the next
-weight block is still in flight from L2.
+The non-obvious result is that `engine-q4-gemm` (~19 GOP/s) is
+*close to* dense `engine-fp32-gemm` (~23 GFLOPS after the mnpack
+work) **even though it does extra dequant work**. The reason is
+precisely bandwidth: Q4_K weights are ~9× smaller than FP32, so the
+kernel spends less time waiting on memory and more time inside the
+FMA pipeline. The dequant arithmetic happens in registers while the
+next weight block is still in flight from L2.
 
 This is the regime where "more FLOPS" is the wrong success metric.
 The right metric is "useful per-token tokens-per-second," and Q4_K
@@ -404,23 +452,30 @@ The roofline model puts everything on one chart:
 [mermaid]
 ....
 flowchart LR
-    A["scalar FP32<br/>~1 GFLOPS<br/>(latency-bound)"] -- "increase SIMD + FMA" --> B
-    B["Panama FP32<br/>~14 GFLOPS<br/>(compute-bound, 1 core)"] -- "AVX-512 + multi-core + native" --> C
+    A["scalar FP32<br/>~1 GFLOPS<br/>(latency-bound)"] -- "SIMD + FMA" --> B
+    B["naive Panama FP32<br/>~14 GFLOPS<br/>(1×1 inner loop)"] -- "mnpack tile dispatch" --> B2
+    B2["tiled Panama FP32<br/>~23 GFLOPS<br/>(62% single-core peak)"] -- "AVX-512 + multi-core + native" --> C
     C["practical CPU peak<br/>~120 GFLOPS<br/>(6 cores, AVX2)"]
-    D["scalar Q8_0<br/>~1.4 GOP/s<br/>(latency-bound)"] -- "SIMD on dequant + FMA" --> E
-    E["Panama Q8_0<br/>~3.6 GOP/s<br/>(bandwidth + dequant)"]
-    F["Panama Q4_K<br/>~12 GOP/s<br/>(bandwidth-bound, near roofline)"]
+    D["scalar Q8_0<br/>~1.8 GOP/s<br/>(latency-bound)"] -- "SIMD on dequant + FMA" --> E
+    E["Panama Q8_0<br/>~4.4 GOP/s<br/>(bandwidth + dequant)"]
+    F["Panama Q4_K<br/>~19 GOP/s<br/>(bandwidth-bound)"]
 ....
 
-Three things to internalize:
+Four things to internalize:
 
 . **The scalar→Panama jump (1× → 13×) is the same speedup mechanism
   for every dtype.** SIMD width and FMA buy you that no matter what
   bits you're shipping. If a benchmark shows < 5× scalar→Panama, the
-  kernel has a problem — usually loop carried dependencies or
+  kernel has a problem — usually loop-carried dependencies or
   un-amortized packing.
-. **Once Panama is in play, the *next* limit depends on the dtype.**
-  FP32 is compute-bound: more cores, AVX-512, or native code help.
+. **Once Panama is in play, the next jump (13× → 20×) comes from
+  reusing the SIMD loads across multiple output cells** — the
+  `mnpack` tile dispatch. The mechanism is FMA-pipeline fill, not
+  more bandwidth. A naive 1×1-cell SIMD kernel leaves this win on
+  the table even though every individual cycle looks vectorized.
+. **Once tiled Panama is in play, the *next* limit depends on the
+  dtype.** FP32 is compute-bound at ~62% of single-core peak: more
+  cores, AVX-512, or native code are the remaining levers.
   Q4_K and Q8_0 are bandwidth-bound: faster DRAM helps; more cores
   helps until you saturate the memory channel.
 . **Quantization is not "free flops." It is bandwidth amplification.**
