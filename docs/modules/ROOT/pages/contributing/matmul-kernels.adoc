@@ -1,6 +1,16 @@
 = Reading the Matmul Benchmark: CPU Performance, in Numbers
 :description: What the engine matmul benchmark numbers actually tell you about CPU compute — peak FLOPS, memory bandwidth, SIMD, and where quantization wins.
 
+[NOTE]
+====
+**Audience: SKaiNET maintainers and contributors.** This is the
+companion-reader to xref:contributing/benchmarks.adoc[]; it explains
+*what the published numbers mean*, not how to call SKaiNET from
+application code. If you are using SKaiNET as a library and want to
+understand the CPU backend conceptually, start at
+xref:explanation/perf/jvm-cpu.adoc[].
+====
+
 Matrix multiplication is essentially the entire compute budget of a
 modern transformer. Token embeddings, attention projections (Q, K,
 V, output), MLP gates, final logits — all matmuls. A 7B-parameter
@@ -9,7 +19,7 @@ matmul kernel; layer norms, softmax, and bookkeeping account for the
 rest.
 
 This page is a guided reading of the engine matmul benchmark
-(xref:explanation/perf/benchmarks.adoc[]). The benchmark itself is
+(xref:contributing/benchmarks.adoc[]). The benchmark itself is
 straightforward — call a kernel, time it, divide ops by seconds. The
 *interpretation* is where most engineers slip:
 
@@ -260,7 +270,7 @@ This kernel is **compute-bound on a single core**. To push it further
 you would need: AVX-512 (16 lanes — 2× headroom), multi-threading
 (6 cores — 6× headroom), or a hand-tuned native kernel that holds
 register state across multiple `(i, j)` cells. The forthcoming native
-FFM provider (xref:explanation/perf/native-ffm-plan.adoc[]) targets
+FFM provider (xref:contributing/native-ffm-plan.adoc[]) targets
 those wins.
 
 If you take only one comparison away from this page: **the scalar →
@@ -440,7 +450,7 @@ Looking at any number from the engine matmul benchmark, ask in order:
 The benchmark publishes the raw samples, the mean, the stddev, the
 CoV, and a list of available providers — all the inputs you need to
 do that interpretation. See
-xref:explanation/perf/benchmarks.adoc[] for how the JSON record is
+xref:contributing/benchmarks.adoc[] for how the JSON record is
 laid out.
 
 == Where the CPU backend helps (and where it doesn't)
@@ -471,8 +481,8 @@ It is **not** the right answer when:
 
 == Related
 
-* xref:explanation/perf/benchmarks.adoc[Official engine benchmarks] — the methodology, manifest, and CI lanes behind the numbers above.
+* xref:contributing/benchmarks.adoc[Official engine benchmarks] — the methodology, manifest, and CI lanes behind the numbers above.
 * xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built] — the FP32 Panama kernel walk-through and the full kernel-provider SPI rationale.
 * xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built] — inner loops for Q4_0 / Q4_K / Q6_K / Q8_0.
 * xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance] — JVM flags, vector module enablement, JIT considerations.
-* xref:explanation/perf/native-ffm-plan.adoc[Plan: native FFM kernel provider] — the path to the priority-100 native kernels.
+* xref:contributing/native-ffm-plan.adoc[Plan: native FFM kernel provider] — the path to the priority-100 native kernels.

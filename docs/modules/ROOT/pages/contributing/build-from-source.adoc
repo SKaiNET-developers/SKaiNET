@@ -1,3 +1,13 @@
+= Build from Source
+
+[NOTE]
+====
+**Audience: SKaiNET maintainers and contributors.** This page covers
+building SKaiNET from a clone of the repository. Library users
+consuming published SKaiNET artifacts via the BOM do not need any of
+this; see the Tutorials and How-to sections.
+====
+
 == Build Help
 
 === Dokka API Documentation

@@ -1,6 +1,13 @@
 = Plan: Native (FFM) Kernel Provider
 :description: Where the JVM Vector kernels stop, what a native priority-100 provider would look like, and when to build it.
 
+[NOTE]
+====
+**Audience: SKaiNET contributors.** Design doc for a kernel backend
+that is not yet shipped. Library users do not need to read this; the
+in-process Panama Vector kernels are the production code path today.
+====
+
 This page is a *plan*, not shipped code. The intent is to capture
 enough detail that the design doesn't drift between the time someone
 decides to start the work and the moment a PR is opened. The earlier

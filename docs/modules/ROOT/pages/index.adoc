@@ -18,7 +18,7 @@ section that matches what you're trying to do:
 Learning-oriented walkthroughs. Start here if you are new to
 SKaiNET — set up a project, build your first tensor, run a
 forward pass.
-* xref:how-to/build.adoc[*How-to guides*]
+* xref:contributing/build-from-source.adoc[*How-to guides*]
 +
 Task-oriented recipes. Build from source, load a GGUF model,
 generate C for Arduino, train a small network from Java.

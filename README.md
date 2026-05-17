@@ -92,7 +92,7 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 SKaiNET ships an official Phoronix-Test-Suite-compatible benchmark
 program for the compute engine. See the
-[methodology and replay docs](docs/modules/ROOT/pages/explanation/perf/benchmarks.adoc),
+[methodology and replay docs](docs/modules/ROOT/pages/contributing/benchmarks.adoc),
 the [release manifest](benchmarks/manifests/engine-release.yml), and the
 [CI workflow](.github/workflows/engine-benchmarks.yml). Smoke runs fire
 on every PR via `ubuntu-latest`; full publishable runs fire on a

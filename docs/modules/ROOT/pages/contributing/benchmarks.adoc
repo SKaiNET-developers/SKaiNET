@@ -3,6 +3,15 @@
 :url-pts: https://www.phoronix-test-suite.com/
 :url-obo: https://openbenchmarking.org/
 
+[NOTE]
+====
+**Audience: SKaiNET maintainers.** This page documents the project's
+own benchmark *publication* program — how we produce the numbers that
+appear on OpenBenchmarking. Library users consuming SKaiNET as a
+dependency do not need to read this; their performance story lives
+under xref:explanation/perf/jvm-cpu.adoc[Explanation → Performance].
+====
+
 The SKaiNET *Compute Engine Suite* publishes throughput and latency
 microbenchmarks for the engine's CPU kernel paths under Phoronix Test
 Suite + OpenBenchmarking conventions. The suite is intentionally small
