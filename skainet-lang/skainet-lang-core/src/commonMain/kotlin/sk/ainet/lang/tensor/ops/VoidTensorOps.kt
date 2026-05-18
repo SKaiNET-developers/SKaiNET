@@ -383,6 +383,21 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, a.dtype)
     }
 
+    override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> log10(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
     override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> {
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
         return VoidOpsTensor(resultData, tensor.dtype)

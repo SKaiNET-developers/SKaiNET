@@ -62,6 +62,11 @@ public operator fun <T : DType, V> Number.div(t: Tensor<T, V>): Tensor<T, V> = t
 public fun <T : DType, V> Tensor<T, V>.pow(other: Tensor<T, V>): Tensor<T, V> = ops.pow(this, other)
 public fun <T : DType, V> Tensor<T, V>.pow(n: Number): Tensor<T, V> = ops.powScalar(this, n)
 
+// Logarithms — element-wise. Backward formulas land in Tier C of #617.
+public fun <T : DType, V> Tensor<T, V>.log(): Tensor<T, V> = ops.log(this)
+public fun <T : DType, V> Tensor<T, V>.log2(): Tensor<T, V> = ops.log2(this)
+public fun <T : DType, V> Tensor<T, V>.log10(): Tensor<T, V> = ops.log10(this)
+
 // Additional convenience functions
 public fun <T : DType, V> Tensor<T, V>.reshape(newShape: Shape): Tensor<T, V> = ops.reshape(this, newShape)
 public fun <T : DType, V> Tensor<T, V>.relu(): Tensor<T, V> = ops.relu(this)

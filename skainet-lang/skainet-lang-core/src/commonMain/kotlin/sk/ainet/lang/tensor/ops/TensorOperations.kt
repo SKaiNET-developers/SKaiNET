@@ -982,3 +982,82 @@ public class PowOperation<T : DType, V>(
 
     override fun clone(newParameters: Map<String, Any>): Operation = PowOperation<T, V>(newParameters)
 }
+
+/**
+ * Element-wise natural logarithm: `c[i] = ln(a[i])`. Mirror of
+ * `stablehlo.log`. Backward: `∂log(a)/∂a = grad_out / a` — formula
+ * lands in Tier C of #617.
+ */
+public class LogOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap(),
+) : BaseOperation("log", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult =
+        if (inputs.size == 1) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("Log operation requires exactly 1 input, got ${inputs.size}"))
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(
+        TensorSpec(
+            name = "log_output",
+            shape = inputs[0].shape,
+            dtype = inputs[0].dtype,
+            requiresGrad = inputs[0].requiresGrad,
+        ),
+    )
+
+    override fun clone(newParameters: Map<String, Any>): Operation = LogOperation<T, V>(newParameters)
+}
+
+/** Element-wise base-2 logarithm: `c[i] = log2(a[i])`. */
+public class Log2Operation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap(),
+) : BaseOperation("log2", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult =
+        if (inputs.size == 1) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("Log2 operation requires exactly 1 input, got ${inputs.size}"))
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(
+        TensorSpec(
+            name = "log2_output",
+            shape = inputs[0].shape,
+            dtype = inputs[0].dtype,
+            requiresGrad = inputs[0].requiresGrad,
+        ),
+    )
+
+    override fun clone(newParameters: Map<String, Any>): Operation = Log2Operation<T, V>(newParameters)
+}
+
+/** Element-wise base-10 logarithm: `c[i] = log10(a[i])`. */
+public class Log10Operation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap(),
+) : BaseOperation("log10", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult =
+        if (inputs.size == 1) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("Log10 operation requires exactly 1 input, got ${inputs.size}"))
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(
+        TensorSpec(
+            name = "log10_output",
+            shape = inputs[0].shape,
+            dtype = inputs[0].dtype,
+            requiresGrad = inputs[0].requiresGrad,
+        ),
+    )
+
+    override fun clone(newParameters: Map<String, Any>): Operation = Log10Operation<T, V>(newParameters)
+}

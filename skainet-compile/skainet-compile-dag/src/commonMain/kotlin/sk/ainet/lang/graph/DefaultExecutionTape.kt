@@ -657,6 +657,21 @@ public class DefaultGradientTape(
         return listOf(null)
     }
 
+    override fun logBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward for log(a): da = upstream / a. Formula lands in Tier C.
+        return listOf(null)
+    }
+
+    override fun log2Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward for log2(a): da = upstream / (a * ln(2)). Formula lands in Tier C.
+        return listOf(null)
+    }
+
+    override fun log10Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward for log10(a): da = upstream / (a * ln(10)). Formula lands in Tier C.
+        return listOf(null)
+    }
+
     override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // d(conv2d(x, w, b))/dx, d(conv2d(x, w, b))/dw, d(conv2d(x, w, b))/db
         // This is complex and usually implemented in the backend.
