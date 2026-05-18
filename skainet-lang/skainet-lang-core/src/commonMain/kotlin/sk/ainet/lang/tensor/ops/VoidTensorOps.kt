@@ -372,6 +372,17 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        // Power preserves shape (broadcast assumed compatible).
+        val resultData = dataFactory.zeros<T, V>(a.shape, a.dtype)
+        return VoidOpsTensor(resultData, a.dtype)
+    }
+
+    override fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(a.shape, a.dtype)
+        return VoidOpsTensor(resultData, a.dtype)
+    }
+
     override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> {
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
         return VoidOpsTensor(resultData, tensor.dtype)

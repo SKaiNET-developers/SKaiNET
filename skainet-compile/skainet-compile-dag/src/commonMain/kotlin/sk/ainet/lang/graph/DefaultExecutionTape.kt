@@ -643,6 +643,20 @@ public class DefaultGradientTape(
         return listOf(null, null, null)
     }
 
+    override fun powBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward for pow(a, b): da = b*a^(b-1)*upstream, db = a^b*log(a)*upstream.
+        // Needs `log` op (Tier B of #617) for the db partial.
+        // First-cut Tier A stub: return null for both partials. Real formula lands in Tier C.
+        return listOf(null, null)
+    }
+
+    override fun powScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Backward for powScalar(a, n): da = n*a^(n-1)*upstream.
+        // Self-contained (no log needed) — but defer the formula to Tier C
+        // alongside the rest of the autograd completeness work.
+        return listOf(null)
+    }
+
     override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // d(conv2d(x, w, b))/dx, d(conv2d(x, w, b))/dw, d(conv2d(x, w, b))/db
         // This is complex and usually implemented in the backend.

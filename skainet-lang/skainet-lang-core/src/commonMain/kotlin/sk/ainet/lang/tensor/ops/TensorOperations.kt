@@ -935,3 +935,50 @@ public class ScaledDotProductAttentionOperation(
     override fun clone(newParameters: Map<String, Any>): Operation =
         ScaledDotProductAttentionOperation(newParameters)
 }
+
+/**
+ * Element-wise power: `c[i] = a[i] ^ b[i]` (binary form) or
+ * `c[i] = a[i] ^ n` (scalar form — recorded with the same op class
+ * but a single input and the exponent stashed in
+ * `parameters["scalar_exponent"]` so the backward can recover it).
+ *
+ * The scalar-form distinction matters for autograd: the backward
+ * w.r.t. a scalar exponent is just `n * a^(n-1) * grad_out` and
+ * doesn't need `log`, while the binary form's exponent partial
+ * needs `a^b * log(a) * grad_out`.
+ */
+public class PowOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("pow", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        // Either binary (base + exponent tensor) or unary (base only, scalar exponent in params).
+        return when (inputs.size) {
+            1 -> if (parameters.containsKey("scalar_exponent")) {
+                ValidationResult.Valid
+            } else {
+                ValidationResult.Invalid(listOf("Pow with one input requires parameters['scalar_exponent']"))
+            }
+            2 -> ValidationResult.Valid
+            else -> ValidationResult.Invalid(listOf("Pow operation requires 1 (scalar) or 2 (tensor) inputs, got ${inputs.size}"))
+        }
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.isNotEmpty()) { "Pow operation requires at least 1 input" }
+        return listOf(
+            TensorSpec(
+                name = "pow_output",
+                shape = inputs[0].shape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs.any { it.requiresGrad },
+            ),
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = PowOperation<T, V>(newParameters)
+}

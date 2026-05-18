@@ -184,6 +184,21 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         return out
     }
 
+    // --- Power ops ---
+    override fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.pow(a, b)
+        record(PowOperation<T, V>(), listOf(a, b), listOf(out))
+        return out
+    }
+
+    override fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V> {
+        val out = base.powScalar(a, n)
+        // Single-input + scalar exponent stashed in parameters so the
+        // backward formula can recover it (a-partial is n * a^(n-1)).
+        record(PowOperation<T, V>(parameters = mapOf("scalar_exponent" to n)), listOf(a), listOf(out))
+        return out
+    }
+
     // --- Scalar ops ---
     override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
         val out = base.addScalar(a, b)
