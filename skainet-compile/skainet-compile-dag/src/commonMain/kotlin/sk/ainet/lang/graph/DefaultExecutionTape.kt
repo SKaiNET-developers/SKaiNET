@@ -644,32 +644,63 @@ public class DefaultGradientTape(
     }
 
     override fun powBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Backward for pow(a, b): da = b*a^(b-1)*upstream, db = a^b*log(a)*upstream.
-        // Needs `log` op (Tier B of #617) for the db partial.
-        // First-cut Tier A stub: return null for both partials. Real formula lands in Tier C.
-        return listOf(null, null)
+        // c = a^b
+        //   ∂c/∂a = b * a^(b-1) * upstream
+        //   ∂c/∂b = a^b * log(a) * upstream   (note: log(a) is undefined for a <= 0)
+        val a = inputs[0]
+        val b = inputs[1]
+        val ops = a.ops
+        // ∂c/∂a = b * a^(b-1) * upstream
+        // Compute a^(b-1) via a^b / a = output / a (cheaper, reuses cached output).
+        val aPowBMinus1 = ops.divide(output, a)
+        val dA = ops.multiply(upstream, ops.multiply(b, aPowBMinus1))
+        // ∂c/∂b = output * log(a) * upstream
+        val logA = ops.log(a)
+        val dB = ops.multiply(upstream, ops.multiply(output, logA))
+        return listOf(dA, dB)
     }
 
     override fun powScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Backward for powScalar(a, n): da = n*a^(n-1)*upstream.
-        // Self-contained (no log needed) — but defer the formula to Tier C
-        // alongside the rest of the autograd completeness work.
-        return listOf(null)
+        // c = a^n (n is the scalar exponent — stashed by KSP as "n" String,
+        // by RecordingTensorOpsDecorator as "scalar_exponent" Number).
+        //   ∂c/∂a = n * a^(n-1) * upstream
+        // n isn't differentiable — single-input op, single-output gradient.
+        val a = inputs[0]
+        val nRaw = attributes["n"] ?: attributes["scalar_exponent"]
+            ?: error("powScalarBackward requires attributes['n'] or ['scalar_exponent']; got attrs=$attributes")
+        val n = when (nRaw) {
+            is Number -> nRaw.toFloat()
+            is String -> nRaw.toFloat()
+            else -> error("powScalarBackward: unexpected exponent type ${nRaw::class}")
+        }
+        val ops = a.ops
+        // a^(n-1) — compute directly (cheaper than output / a which has a 0-divide
+        // hazard when a contains zeros and n > 0).
+        val aPowNMinus1 = ops.powScalar(a, n - 1f)
+        val dA = ops.mulScalar(ops.multiply(upstream, aPowNMinus1), n)
+        return listOf(dA)
     }
 
     override fun logBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Backward for log(a): da = upstream / a. Formula lands in Tier C.
-        return listOf(null)
+        // ∂log(a)/∂a = 1/a, so da = upstream / a.
+        val a = inputs[0]
+        return listOf(a.ops.divide(upstream, a))
     }
 
     override fun log2Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Backward for log2(a): da = upstream / (a * ln(2)). Formula lands in Tier C.
-        return listOf(null)
+        // ∂log2(a)/∂a = 1/(a · ln 2), so da = upstream / (a · ln 2).
+        val a = inputs[0]
+        val ops = a.ops
+        val gradAOverA = ops.divide(upstream, a)
+        return listOf(ops.divScalar(gradAOverA, kotlin.math.ln(2.0)))
     }
 
     override fun log10Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Backward for log10(a): da = upstream / (a * ln(10)). Formula lands in Tier C.
-        return listOf(null)
+        // ∂log10(a)/∂a = 1/(a · ln 10).
+        val a = inputs[0]
+        val ops = a.ops
+        val gradAOverA = ops.divide(upstream, a)
+        return listOf(ops.divScalar(gradAOverA, kotlin.math.ln(10.0)))
     }
 
     override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -921,6 +952,11 @@ public class DefaultGradientTape(
             "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
             "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
             "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
+            "pow" -> BackwardOp(inputs, output) { upstream -> powBackward(upstream, output, inputs, trace.attributes) }
+            "powScalar" -> BackwardOp(inputs, output) { upstream -> powScalarBackward(upstream, output, inputs, trace.attributes) }
+            "log" -> BackwardOp(inputs, output) { upstream -> logBackward(upstream, output, inputs, trace.attributes) }
+            "log2" -> BackwardOp(inputs, output) { upstream -> log2Backward(upstream, output, inputs, trace.attributes) }
+            "log10" -> BackwardOp(inputs, output) { upstream -> log10Backward(upstream, output, inputs, trace.attributes) }
             "abs" -> BackwardOp(inputs, output) { upstream -> absBackward(upstream, output, inputs, trace.attributes) }
             "clamp" -> BackwardOp(inputs, output) { upstream -> clampBackward(upstream, output, inputs, trace.attributes) }
             "narrow" -> BackwardOp(inputs, output) { upstream -> narrowBackward(upstream, output, inputs, trace.attributes) }
