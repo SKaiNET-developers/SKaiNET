@@ -22,7 +22,8 @@ public class BasicMathConverter : StableHloOperationConverter {
 
     override val supportedOperations: Set<String> = setOf(
         "add", "subtract", "multiply", "divide",
-        "sub", "mul", "div" // Common aliases
+        "sub", "mul", "div", // Common aliases
+        "pow"
     )
 
     override fun convert(
@@ -101,6 +102,7 @@ public class BasicMathConverter : StableHloOperationConverter {
             "subtract", "sub" -> "stablehlo.subtract"
             "multiply", "mul" -> "stablehlo.multiply"
             "divide", "div" -> "stablehlo.divide"
+            "pow" -> "stablehlo.power"
             else -> null
         }
     }

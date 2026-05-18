@@ -184,6 +184,21 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         return out
     }
 
+    // --- Power ops ---
+    override fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.pow(a, b)
+        record(PowOperation<T, V>(), listOf(a, b), listOf(out))
+        return out
+    }
+
+    override fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V> {
+        val out = base.powScalar(a, n)
+        // Single-input + scalar exponent stashed in parameters so the
+        // backward formula can recover it (a-partial is n * a^(n-1)).
+        record(PowOperation<T, V>(parameters = mapOf("scalar_exponent" to n)), listOf(a), listOf(out))
+        return out
+    }
+
     // --- Scalar ops ---
     override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
         val out = base.addScalar(a, b)
@@ -426,6 +441,9 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.mean(tensor, dim)
     override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.variance(tensor, dim)
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> = base.sqrt(tensor)
+    override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> = base.log(tensor)
+    override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> = base.log2(tensor)
+    override fun <T : DType, V> log10(tensor: Tensor<T, V>): Tensor<T, V> = base.log10(tensor)
     override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> = base.abs(tensor)
     override fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V> = base.sign(tensor)
     override fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> = base.clamp(tensor, minVal, maxVal)

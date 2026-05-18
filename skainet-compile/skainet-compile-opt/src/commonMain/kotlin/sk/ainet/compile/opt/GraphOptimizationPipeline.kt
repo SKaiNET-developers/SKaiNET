@@ -6,6 +6,7 @@ import sk.ainet.compile.opt.passes.DTypeConstraintResolutionPass
 import sk.ainet.compile.opt.passes.DeadCodeEliminationPass
 import sk.ainet.compile.opt.passes.LLMFusionPass
 import sk.ainet.compile.opt.passes.OperationFusionPass
+import sk.ainet.compile.opt.passes.PowSpecializationPass
 import sk.ainet.compile.opt.passes.SharedWeightDeduplicationPass
 import sk.ainet.compile.opt.passes.TransposeEliminationPass
 
@@ -80,6 +81,11 @@ public class GraphOptimizationPipeline(
                 // is the boundary where dtype problems surface — every
                 // later pass can assume dtype-validity.
                 DTypeConstraintResolutionPass(),
+                // Rewrite pow(x, 2) to multiply(x, x) before fusion so
+                // the downstream passes see the multiply form. Runs after
+                // dtype resolution (still benefits from resolved dtypes)
+                // and before everything else.
+                PowSpecializationPass(),
                 DeadCodeEliminationPass(),
                 ConstantFoldingPass(),
                 OperationFusionPass()
@@ -92,6 +98,7 @@ public class GraphOptimizationPipeline(
         public fun createAggressive(): GraphOptimizationPipeline = GraphOptimizationPipeline(
             passes = listOf(
                 DTypeConstraintResolutionPass(),
+                PowSpecializationPass(),
                 DeadCodeEliminationPass(),
                 ConstantFoldingPass(),
                 OperationFusionPass()

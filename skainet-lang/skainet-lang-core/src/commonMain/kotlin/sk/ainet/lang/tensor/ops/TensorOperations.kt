@@ -935,3 +935,129 @@ public class ScaledDotProductAttentionOperation(
     override fun clone(newParameters: Map<String, Any>): Operation =
         ScaledDotProductAttentionOperation(newParameters)
 }
+
+/**
+ * Element-wise power: `c[i] = a[i] ^ b[i]` (binary form) or
+ * `c[i] = a[i] ^ n` (scalar form — recorded with the same op class
+ * but a single input and the exponent stashed in
+ * `parameters["scalar_exponent"]` so the backward can recover it).
+ *
+ * The scalar-form distinction matters for autograd: the backward
+ * w.r.t. a scalar exponent is just `n * a^(n-1) * grad_out` and
+ * doesn't need `log`, while the binary form's exponent partial
+ * needs `a^b * log(a) * grad_out`.
+ */
+public class PowOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("pow", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        // Either binary (base + exponent tensor) or unary (base only, scalar exponent in params).
+        return when (inputs.size) {
+            1 -> if (parameters.containsKey("scalar_exponent")) {
+                ValidationResult.Valid
+            } else {
+                ValidationResult.Invalid(listOf("Pow with one input requires parameters['scalar_exponent']"))
+            }
+            2 -> ValidationResult.Valid
+            else -> ValidationResult.Invalid(listOf("Pow operation requires 1 (scalar) or 2 (tensor) inputs, got ${inputs.size}"))
+        }
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.isNotEmpty()) { "Pow operation requires at least 1 input" }
+        return listOf(
+            TensorSpec(
+                name = "pow_output",
+                shape = inputs[0].shape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs.any { it.requiresGrad },
+            ),
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = PowOperation<T, V>(newParameters)
+}
+
+/**
+ * Element-wise natural logarithm: `c[i] = ln(a[i])`. Mirror of
+ * `stablehlo.log`. Backward: `∂log(a)/∂a = grad_out / a` — formula
+ * lands in Tier C of #617.
+ */
+public class LogOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap(),
+) : BaseOperation("log", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult =
+        if (inputs.size == 1) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("Log operation requires exactly 1 input, got ${inputs.size}"))
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(
+        TensorSpec(
+            name = "log_output",
+            shape = inputs[0].shape,
+            dtype = inputs[0].dtype,
+            requiresGrad = inputs[0].requiresGrad,
+        ),
+    )
+
+    override fun clone(newParameters: Map<String, Any>): Operation = LogOperation<T, V>(newParameters)
+}
+
+/** Element-wise base-2 logarithm: `c[i] = log2(a[i])`. */
+public class Log2Operation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap(),
+) : BaseOperation("log2", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult =
+        if (inputs.size == 1) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("Log2 operation requires exactly 1 input, got ${inputs.size}"))
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(
+        TensorSpec(
+            name = "log2_output",
+            shape = inputs[0].shape,
+            dtype = inputs[0].dtype,
+            requiresGrad = inputs[0].requiresGrad,
+        ),
+    )
+
+    override fun clone(newParameters: Map<String, Any>): Operation = Log2Operation<T, V>(newParameters)
+}
+
+/** Element-wise base-10 logarithm: `c[i] = log10(a[i])`. */
+public class Log10Operation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap(),
+) : BaseOperation("log10", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult =
+        if (inputs.size == 1) ValidationResult.Valid
+        else ValidationResult.Invalid(listOf("Log10 operation requires exactly 1 input, got ${inputs.size}"))
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(
+        TensorSpec(
+            name = "log10_output",
+            shape = inputs[0].shape,
+            dtype = inputs[0].dtype,
+            requiresGrad = inputs[0].requiresGrad,
+        ),
+    )
+
+    override fun clone(newParameters: Map<String, Any>): Operation = Log10Operation<T, V>(newParameters)
+}

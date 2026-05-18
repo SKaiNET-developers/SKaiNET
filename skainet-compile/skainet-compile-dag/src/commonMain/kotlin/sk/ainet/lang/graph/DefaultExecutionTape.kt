@@ -519,12 +519,26 @@ public class DefaultGradientTape(
             trace.inputs.mapNotNull { session.resolve(it) as? Tensor<DType, Any> }
         }
         val out = outputs.firstOrNull() ?: return
-        
+
         val anyInputRequiresGrad = inputs.any { it.requiresGrad }
 
-        // Propagate requiresGrad to output if any input requires it
-        if (anyInputRequiresGrad && !out.requiresGrad) {
-            (out as? Tensor<DType, Any>)?.withRequiresGrad(true)
+        // Propagate requiresGrad to output if any input requires it.
+        // For multi-output ops (split) propagate to every chunk so the user
+        // can attach a loss to any of them.
+        if (anyInputRequiresGrad) {
+            outputs.forEach { o ->
+                if (!o.requiresGrad) (o as? Tensor<DType, Any>)?.withRequiresGrad(true)
+            }
+        }
+
+        // Special-case split: the standard "one backward per opTrace" shape
+        // doesn't fit because each chunk is its own tensor with its own
+        // upstream gradient. Register one backward op per chunk; each
+        // contributes a sparse input grad (zero everywhere except the slice
+        // it produced). Standard tape accumulation concats them naturally.
+        if (trace.opType == "split" && outputs.size > 1 && anyInputRequiresGrad) {
+            registerSplitBackwards(trace, inputs[0], outputs)
+            return
         }
 
         if (!out.requiresGrad) {
@@ -533,6 +547,56 @@ public class DefaultGradientTape(
 
         val backward = buildBackwardFromTrace(trace, inputs, out) ?: return
         backwardOps += backward
+    }
+
+    private fun registerSplitBackwards(
+        trace: OpTrace,
+        input: Tensor<DType, Any>,
+        outputs: List<Tensor<DType, Any>>,
+    ) {
+        val splitSize = (trace.attributes["splitSize"] as? Number)?.toInt() ?: return
+        val dim = (trace.attributes["dim"] as? Number)?.toInt() ?: 0
+        outputs.forEachIndexed { chunkIndex, chunkOut ->
+            val offset = chunkIndex * splitSize
+            backwardOps += BackwardOp(listOf(input), chunkOut) { upstream ->
+                val grad = zerosLike(input)
+                scatterAlongDim(grad, upstream, dim, offset)
+                listOf<Tensor<DType, Any>?>(grad)
+            }
+        }
+    }
+
+    /**
+     * Copy every element of [src] into [dest] at position `[offset, offset + src.shape[dim])`
+     * along [dim], leaving the rest of [dest] untouched. Used by the split
+     * backward to scatter each chunk's upstream gradient back into the right
+     * region of the input gradient.
+     */
+    private fun scatterAlongDim(
+        dest: Tensor<DType, Any>,
+        src: Tensor<DType, Any>,
+        dim: Int,
+        offset: Int,
+    ) {
+        val destDims = dest.shape.dimensions
+        val srcDims = src.shape.dimensions
+        val rank = destDims.size
+        val destIdx = IntArray(rank)
+        val srcIdx = IntArray(rank)
+        fun walk(d: Int) {
+            if (d == rank) {
+                @Suppress("UNCHECKED_CAST")
+                dest.data.set(*destIdx, value = src.data.get(*srcIdx) as Any)
+                return
+            }
+            val len = if (d == dim) srcDims[dim] else destDims[d]
+            for (i in 0 until len) {
+                srcIdx[d] = i
+                destIdx[d] = if (d == dim) i + offset else i
+                walk(d + 1)
+            }
+        }
+        walk(0)
     }
 
     override fun addBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> =
@@ -639,33 +703,120 @@ public class DefaultGradientTape(
     }
 
     override fun conv1dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Conv1d backward is complex, return null for now
-        return listOf(null, null, null)
+        val input = inputs[0]
+        val weight = inputs[1]
+        val bias = inputs.getOrNull(2)
+        val stride = (attributes["stride"] as? Number)?.toInt() ?: 1
+        val padding = (attributes["padding"] as? Number)?.toInt() ?: 0
+        val dilation = (attributes["dilation"] as? Number)?.toInt() ?: 1
+        val groups = (attributes["groups"] as? Number)?.toInt() ?: 1
+        return conv1dGrads(upstream, input, weight, bias, stride, padding, dilation, groups)
+    }
+
+    override fun powBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // c = a^b
+        //   ∂c/∂a = b * a^(b-1) * upstream
+        //   ∂c/∂b = a^b * log(a) * upstream   (note: log(a) is undefined for a <= 0)
+        val a = inputs[0]
+        val b = inputs[1]
+        val ops = a.ops
+        // ∂c/∂a = b * a^(b-1) * upstream
+        // Compute a^(b-1) via a^b / a = output / a (cheaper, reuses cached output).
+        val aPowBMinus1 = ops.divide(output, a)
+        val dA = ops.multiply(upstream, ops.multiply(b, aPowBMinus1))
+        // ∂c/∂b = output * log(a) * upstream
+        val logA = ops.log(a)
+        val dB = ops.multiply(upstream, ops.multiply(output, logA))
+        return listOf(dA, dB)
+    }
+
+    override fun powScalarBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // c = a^n (n is the scalar exponent — stashed by KSP as "n" String,
+        // by RecordingTensorOpsDecorator as "scalar_exponent" Number).
+        //   ∂c/∂a = n * a^(n-1) * upstream
+        // n isn't differentiable — single-input op, single-output gradient.
+        val a = inputs[0]
+        val nRaw = attributes["n"] ?: attributes["scalar_exponent"]
+            ?: error("powScalarBackward requires attributes['n'] or ['scalar_exponent']; got attrs=$attributes")
+        val n = when (nRaw) {
+            is Number -> nRaw.toFloat()
+            is String -> nRaw.toFloat()
+            else -> error("powScalarBackward: unexpected exponent type ${nRaw::class}")
+        }
+        val ops = a.ops
+        // a^(n-1) — compute directly (cheaper than output / a which has a 0-divide
+        // hazard when a contains zeros and n > 0).
+        val aPowNMinus1 = ops.powScalar(a, n - 1f)
+        val dA = ops.mulScalar(ops.multiply(upstream, aPowNMinus1), n)
+        return listOf(dA)
+    }
+
+    override fun logBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // ∂log(a)/∂a = 1/a, so da = upstream / a.
+        val a = inputs[0]
+        return listOf(a.ops.divide(upstream, a))
+    }
+
+    override fun log2Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // ∂log2(a)/∂a = 1/(a · ln 2), so da = upstream / (a · ln 2).
+        val a = inputs[0]
+        val ops = a.ops
+        val gradAOverA = ops.divide(upstream, a)
+        return listOf(ops.divScalar(gradAOverA, kotlin.math.ln(2.0)))
+    }
+
+    override fun log10Backward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // ∂log10(a)/∂a = 1/(a · ln 10).
+        val a = inputs[0]
+        val ops = a.ops
+        val gradAOverA = ops.divide(upstream, a)
+        return listOf(ops.divScalar(gradAOverA, kotlin.math.ln(10.0)))
     }
 
     override fun conv2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // d(conv2d(x, w, b))/dx, d(conv2d(x, w, b))/dw, d(conv2d(x, w, b))/db
-        // This is complex and usually implemented in the backend.
-        // For now we return null to signal it's not implemented yet, or throw if we want to be strict.
-        return listOf(null, null, null)
+        val input = inputs[0]
+        val weight = inputs[1]
+        val bias = inputs.getOrNull(2)
+        val stride = pair2(attributes["stride"], 1)
+        val padding = pair2(attributes["padding"], 0)
+        val dilation = pair2(attributes["dilation"], 1)
+        val groups = (attributes["groups"] as? Number)?.toInt() ?: 1
+        return conv2dGrads(upstream, input, weight, bias, stride, padding, dilation, groups)
     }
 
     override fun conv3dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // Conv3d backward is complex, return null for now
-        return listOf(null, null, null)
+        val input = inputs[0]
+        val weight = inputs[1]
+        val bias = inputs.getOrNull(2)
+        val stride = triple3(attributes["stride"], 1)
+        val padding = triple3(attributes["padding"], 0)
+        val dilation = triple3(attributes["dilation"], 1)
+        val groups = (attributes["groups"] as? Number)?.toInt() ?: 1
+        return conv3dGrads(upstream, input, weight, bias, stride, padding, dilation, groups)
     }
 
     override fun maxPool2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        return listOf(null)
+        val input = inputs[0]
+        val kernel = pair2(attributes["kernelSize"], 1)
+        val stride = pair2(attributes["stride"], 1)
+        val padding = pair2(attributes["padding"], 0)
+        return listOf(maxPool2dGrad(upstream, input, kernel, stride, padding))
     }
 
     override fun avgPool2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // AvgPool2d backward is complex, return null for now
-        return listOf(null)
+        val input = inputs[0]
+        val kernel = pair2(attributes["kernelSize"], 1)
+        val stride = pair2(attributes["stride"], 1)
+        val padding = pair2(attributes["padding"], 0)
+        val countIncludePad = (attributes["countIncludePad"] as? Boolean) ?: true
+        return listOf(avgPool2dGrad(upstream, input, kernel, stride, padding, countIncludePad))
     }
 
     override fun upsample2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        return listOf(null)
+        val input = inputs[0]
+        val scale = pair2(attributes["scale"], 1)
+        val mode = (attributes["mode"] as? String) ?: "Nearest"
+        return listOf(upsample2dGrad(upstream, input, scale, mode))
     }
 
     override fun leakyReluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -714,9 +865,10 @@ public class DefaultGradientTape(
     }
 
     override fun splitBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // splitBackward: d(split(x))/dx = concat(upstreams)
-        // Since each output of split is recorded separately, we need to accumulate them.
-        // This is not easily handled in the current tape.
+        // Unused: split's per-chunk backwards are registered directly by
+        // recordTrace via registerSplitBackwards, because a single
+        // BackwardOp(output=...) can't carry N upstream gradients.
+        // Kept here only to satisfy the DifferentiableTensorOps interface.
         return listOf(null)
     }
     override fun squeezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.unsqueeze(upstream, (attributes["dim"] as? Int) ?: 0)) // simplistic
@@ -892,6 +1044,11 @@ public class DefaultGradientTape(
             "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
             "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
             "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
+            "pow" -> BackwardOp(inputs, output) { upstream -> powBackward(upstream, output, inputs, trace.attributes) }
+            "powScalar" -> BackwardOp(inputs, output) { upstream -> powScalarBackward(upstream, output, inputs, trace.attributes) }
+            "log" -> BackwardOp(inputs, output) { upstream -> logBackward(upstream, output, inputs, trace.attributes) }
+            "log2" -> BackwardOp(inputs, output) { upstream -> log2Backward(upstream, output, inputs, trace.attributes) }
+            "log10" -> BackwardOp(inputs, output) { upstream -> log10Backward(upstream, output, inputs, trace.attributes) }
             "abs" -> BackwardOp(inputs, output) { upstream -> absBackward(upstream, output, inputs, trace.attributes) }
             "clamp" -> BackwardOp(inputs, output) { upstream -> clampBackward(upstream, output, inputs, trace.attributes) }
             "narrow" -> BackwardOp(inputs, output) { upstream -> narrowBackward(upstream, output, inputs, trace.attributes) }
@@ -900,6 +1057,7 @@ public class DefaultGradientTape(
             "conv2d" -> BackwardOp(inputs, output) { upstream -> conv2dBackward(upstream, output, inputs, trace.attributes) }
             "conv3d" -> BackwardOp(inputs, output) { upstream -> conv3dBackward(upstream, output, inputs, trace.attributes) }
             "maxPool2d" -> BackwardOp(inputs, output) { upstream -> maxPool2dBackward(upstream, output, inputs, trace.attributes) }
+            "avgPool2d" -> BackwardOp(inputs, output) { upstream -> avgPool2dBackward(upstream, output, inputs, trace.attributes) }
             "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
             "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }
             "split" -> BackwardOp(inputs, output) { upstream -> splitBackward(upstream, output, inputs, trace.attributes) }
@@ -1215,6 +1373,425 @@ public class DefaultGradientTape(
         }
         fill(0)
         return gradOut
+    }
+
+    /**
+     * Coerce a Pair-shaped attribute (KSP records pairs as `List<Int>` of size 2,
+     * the decorator may record them as `Pair<Int, Int>`) to a `Pair<Int, Int>`,
+     * falling back to (default, default).
+     */
+    private fun pair2(raw: Any?, default: Int): Pair<Int, Int> = when (raw) {
+        is List<*> -> {
+            val a = (raw.getOrNull(0) as? Number)?.toInt() ?: default
+            val b = (raw.getOrNull(1) as? Number)?.toInt() ?: default
+            a to b
+        }
+        is Pair<*, *> -> {
+            val a = (raw.first as? Number)?.toInt() ?: default
+            val b = (raw.second as? Number)?.toInt() ?: default
+            a to b
+        }
+        else -> default to default
+    }
+
+    private fun triple3(raw: Any?, default: Int): Triple<Int, Int, Int> = when (raw) {
+        is List<*> -> Triple(
+            (raw.getOrNull(0) as? Number)?.toInt() ?: default,
+            (raw.getOrNull(1) as? Number)?.toInt() ?: default,
+            (raw.getOrNull(2) as? Number)?.toInt() ?: default,
+        )
+        is Triple<*, *, *> -> Triple(
+            (raw.first as? Number)?.toInt() ?: default,
+            (raw.second as? Number)?.toInt() ?: default,
+            (raw.third as? Number)?.toInt() ?: default,
+        )
+        else -> Triple(default, default, default)
+    }
+
+    /**
+     * Direct CPU loops for conv2d backward. Correctness-first first-cut; perf
+     * follow-up tracked separately. Reuses the forward windowing formula
+     * (`ih = oh*sH - pH + kh*dH`) — the closed-form derivatives are:
+     *   dInput[b, ic, ih, iw]    += upstream[b, oc, oh, ow] * weight[oc, kc, kh, kw]
+     *   dWeight[oc, kc, kh, kw]  += upstream[b, oc, oh, ow] * input[b, ic, ih, iw]
+     *   dBias[oc]                += upstream[b, oc, oh, ow]
+     */
+    private fun conv2dGrads(
+        upstream: Tensor<DType, Any>,
+        input: Tensor<DType, Any>,
+        weight: Tensor<DType, Any>,
+        bias: Tensor<DType, Any>?,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+        groups: Int,
+    ): List<Tensor<DType, Any>?> {
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+        val cOut = weight.shape[0]
+        val cInPerGroup = weight.shape[1]
+        val kH = weight.shape[2]
+        val kW = weight.shape[3]
+        val outH = upstream.shape[2]
+        val outW = upstream.shape[3]
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        val (dH, dW) = dilation
+
+        val dInput = zerosLike(input)
+        val dWeight = zerosLike(weight)
+        val dBias = bias?.let { zerosLike(it) }
+        val biasRank = bias?.rank ?: 0
+
+        for (b in 0 until n) {
+            for (oc in 0 until cOut) {
+                val groupIdx = (oc * groups) / cOut
+                val inCStart = groupIdx * cInPerGroup
+                for (oh in 0 until outH) {
+                    val hBase = oh * sH - pH
+                    for (ow in 0 until outW) {
+                        val wBase = ow * sW - pW
+                        val gOut = (upstream.data.get(b, oc, oh, ow) as Number).toFloat()
+                        if (dBias != null) {
+                            val cur = when (biasRank) {
+                                1 -> (dBias.data.get(oc) as Number).toFloat()
+                                4 -> (dBias.data.get(0, oc, 0, 0) as Number).toFloat()
+                                else -> 0f
+                            }
+                            val updated = cur + gOut
+                            @Suppress("UNCHECKED_CAST")
+                            when (biasRank) {
+                                1 -> dBias.data.set(oc, value = updated as Any)
+                                4 -> dBias.data.set(0, oc, 0, 0, value = updated as Any)
+                            }
+                        }
+                        for (kc in 0 until cInPerGroup) {
+                            val ic = inCStart + kc
+                            for (kh in 0 until kH) {
+                                val ih = hBase + kh * dH
+                                if (ih !in 0 until inH) continue
+                                for (kw in 0 until kW) {
+                                    val iw = wBase + kw * dW
+                                    if (iw !in 0 until inW) continue
+                                    val vIn = (input.data.get(b, ic, ih, iw) as Number).toFloat()
+                                    val vW = (weight.data.get(oc, kc, kh, kw) as Number).toFloat()
+                                    val curIn = (dInput.data.get(b, ic, ih, iw) as Number).toFloat()
+                                    @Suppress("UNCHECKED_CAST")
+                                    dInput.data.set(b, ic, ih, iw, value = (curIn + gOut * vW) as Any)
+                                    val curW = (dWeight.data.get(oc, kc, kh, kw) as Number).toFloat()
+                                    @Suppress("UNCHECKED_CAST")
+                                    dWeight.data.set(oc, kc, kh, kw, value = (curW + gOut * vIn) as Any)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return listOf(dInput, dWeight, dBias)
+    }
+
+    /** conv1d backward — 1D analogue of conv2dGrads (input [N, C, L]). */
+    private fun conv1dGrads(
+        upstream: Tensor<DType, Any>,
+        input: Tensor<DType, Any>,
+        weight: Tensor<DType, Any>,
+        bias: Tensor<DType, Any>?,
+        stride: Int,
+        padding: Int,
+        dilation: Int,
+        groups: Int,
+    ): List<Tensor<DType, Any>?> {
+        val n = input.shape[0]
+        val inL = input.shape[2]
+        val cOut = weight.shape[0]
+        val cInPerGroup = weight.shape[1]
+        val kL = weight.shape[2]
+        val outL = upstream.shape[2]
+
+        val dInput = zerosLike(input)
+        val dWeight = zerosLike(weight)
+        val dBias = bias?.let { zerosLike(it) }
+        val biasRank = bias?.rank ?: 0
+
+        for (b in 0 until n) {
+            for (oc in 0 until cOut) {
+                val groupIdx = (oc * groups) / cOut
+                val inCStart = groupIdx * cInPerGroup
+                for (ol in 0 until outL) {
+                    val lBase = ol * stride - padding
+                    val gOut = (upstream.data.get(b, oc, ol) as Number).toFloat()
+                    if (dBias != null) {
+                        val cur = when (biasRank) {
+                            1 -> (dBias.data.get(oc) as Number).toFloat()
+                            else -> 0f
+                        }
+                        @Suppress("UNCHECKED_CAST")
+                        if (biasRank == 1) dBias.data.set(oc, value = (cur + gOut) as Any)
+                    }
+                    for (kc in 0 until cInPerGroup) {
+                        val ic = inCStart + kc
+                        for (kl in 0 until kL) {
+                            val il = lBase + kl * dilation
+                            if (il !in 0 until inL) continue
+                            val vIn = (input.data.get(b, ic, il) as Number).toFloat()
+                            val vW = (weight.data.get(oc, kc, kl) as Number).toFloat()
+                            val curIn = (dInput.data.get(b, ic, il) as Number).toFloat()
+                            @Suppress("UNCHECKED_CAST")
+                            dInput.data.set(b, ic, il, value = (curIn + gOut * vW) as Any)
+                            val curW = (dWeight.data.get(oc, kc, kl) as Number).toFloat()
+                            @Suppress("UNCHECKED_CAST")
+                            dWeight.data.set(oc, kc, kl, value = (curW + gOut * vIn) as Any)
+                        }
+                    }
+                }
+            }
+        }
+        return listOf(dInput, dWeight, dBias)
+    }
+
+    /** conv3d backward — 3D analogue (input [N, C, D, H, W]). */
+    private fun conv3dGrads(
+        upstream: Tensor<DType, Any>,
+        input: Tensor<DType, Any>,
+        weight: Tensor<DType, Any>,
+        bias: Tensor<DType, Any>?,
+        stride: Triple<Int, Int, Int>,
+        padding: Triple<Int, Int, Int>,
+        dilation: Triple<Int, Int, Int>,
+        groups: Int,
+    ): List<Tensor<DType, Any>?> {
+        val n = input.shape[0]
+        val inD = input.shape[2]
+        val inH = input.shape[3]
+        val inW = input.shape[4]
+        val cOut = weight.shape[0]
+        val cInPerGroup = weight.shape[1]
+        val kD = weight.shape[2]
+        val kH = weight.shape[3]
+        val kW = weight.shape[4]
+        val outD = upstream.shape[2]
+        val outH = upstream.shape[3]
+        val outW = upstream.shape[4]
+        val (sD, sH, sW) = stride
+        val (pD, pH, pW) = padding
+        val (eD, eH, eW) = dilation
+
+        val dInput = zerosLike(input)
+        val dWeight = zerosLike(weight)
+        val dBias = bias?.let { zerosLike(it) }
+        val biasRank = bias?.rank ?: 0
+
+        for (b in 0 until n) {
+            for (oc in 0 until cOut) {
+                val groupIdx = (oc * groups) / cOut
+                val inCStart = groupIdx * cInPerGroup
+                for (od in 0 until outD) {
+                    val dBaseI = od * sD - pD
+                    for (oh in 0 until outH) {
+                        val hBase = oh * sH - pH
+                        for (ow in 0 until outW) {
+                            val wBase = ow * sW - pW
+                            val gOut = (upstream.data.get(b, oc, od, oh, ow) as Number).toFloat()
+                            if (dBias != null && biasRank == 1) {
+                                val cur = (dBias.data.get(oc) as Number).toFloat()
+                                @Suppress("UNCHECKED_CAST")
+                                dBias.data.set(oc, value = (cur + gOut) as Any)
+                            }
+                            for (kc in 0 until cInPerGroup) {
+                                val ic = inCStart + kc
+                                for (kd in 0 until kD) {
+                                    val id = dBaseI + kd * eD
+                                    if (id !in 0 until inD) continue
+                                    for (kh in 0 until kH) {
+                                        val ih = hBase + kh * eH
+                                        if (ih !in 0 until inH) continue
+                                        for (kw in 0 until kW) {
+                                            val iw = wBase + kw * eW
+                                            if (iw !in 0 until inW) continue
+                                            val vIn = (input.data.get(b, ic, id, ih, iw) as Number).toFloat()
+                                            val vW = (weight.data.get(oc, kc, kd, kh, kw) as Number).toFloat()
+                                            val curIn = (dInput.data.get(b, ic, id, ih, iw) as Number).toFloat()
+                                            @Suppress("UNCHECKED_CAST")
+                                            dInput.data.set(b, ic, id, ih, iw, value = (curIn + gOut * vW) as Any)
+                                            val curW = (dWeight.data.get(oc, kc, kd, kh, kw) as Number).toFloat()
+                                            @Suppress("UNCHECKED_CAST")
+                                            dWeight.data.set(oc, kc, kd, kh, kw, value = (curW + gOut * vIn) as Any)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return listOf(dInput, dWeight, dBias)
+    }
+
+    /**
+     * maxPool2d backward — re-runs argmax over each window from the cached
+     * input and routes the upstream gradient to that single position. Ties
+     * resolved by taking the first encountered max (matches forward iteration
+     * order — kh outer, kw inner).
+     */
+    private fun maxPool2dGrad(
+        upstream: Tensor<DType, Any>,
+        input: Tensor<DType, Any>,
+        kernel: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+    ): Tensor<DType, Any> {
+        val n = input.shape[0]
+        val c = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+        val (kH, kW) = kernel
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        val outH = upstream.shape[2]
+        val outW = upstream.shape[3]
+        val dInput = zerosLike(input)
+
+        for (b in 0 until n) {
+            for (ch in 0 until c) {
+                for (oh in 0 until outH) {
+                    val hBase = oh * sH - pH
+                    for (ow in 0 until outW) {
+                        val wBase = ow * sW - pW
+                        var bestH = -1
+                        var bestW = -1
+                        var bestVal = Float.NEGATIVE_INFINITY
+                        for (kh in 0 until kH) {
+                            val ih = hBase + kh
+                            if (ih !in 0 until inH) continue
+                            for (kw in 0 until kW) {
+                                val iw = wBase + kw
+                                if (iw !in 0 until inW) continue
+                                val v = (input.data.get(b, ch, ih, iw) as Number).toFloat()
+                                if (v > bestVal) {
+                                    bestVal = v
+                                    bestH = ih
+                                    bestW = iw
+                                }
+                            }
+                        }
+                        if (bestH < 0) continue
+                        val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
+                        val cur = (dInput.data.get(b, ch, bestH, bestW) as Number).toFloat()
+                        @Suppress("UNCHECKED_CAST")
+                        dInput.data.set(b, ch, bestH, bestW, value = (cur + gOut) as Any)
+                    }
+                }
+            }
+        }
+        return dInput
+    }
+
+    /**
+     * avgPool2d backward — distribute each upstream element uniformly across
+     * the pooling window it came from. Divisor matches the forward rule:
+     *   countIncludePad = true → always `kH * kW`
+     *   countIncludePad = false → number of in-bounds positions per window
+     */
+    private fun avgPool2dGrad(
+        upstream: Tensor<DType, Any>,
+        input: Tensor<DType, Any>,
+        kernel: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        countIncludePad: Boolean,
+    ): Tensor<DType, Any> {
+        val n = input.shape[0]
+        val c = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+        val (kH, kW) = kernel
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        val outH = upstream.shape[2]
+        val outW = upstream.shape[3]
+        val dInput = zerosLike(input)
+
+        for (b in 0 until n) {
+            for (ch in 0 until c) {
+                for (oh in 0 until outH) {
+                    val hBase = oh * sH - pH
+                    for (ow in 0 until outW) {
+                        val wBase = ow * sW - pW
+                        // Count valid positions when countIncludePad=false (matches forward).
+                        var valid = 0
+                        for (kh in 0 until kH) {
+                            val ih = hBase + kh
+                            if (ih !in 0 until inH) continue
+                            for (kw in 0 until kW) {
+                                val iw = wBase + kw
+                                if (iw in 0 until inW) valid++
+                            }
+                        }
+                        val divisor = if (countIncludePad) (kH * kW) else maxOf(valid, 1)
+                        val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat() / divisor
+                        for (kh in 0 until kH) {
+                            val ih = hBase + kh
+                            if (ih !in 0 until inH) continue
+                            for (kw in 0 until kW) {
+                                val iw = wBase + kw
+                                if (iw !in 0 until inW) continue
+                                val cur = (dInput.data.get(b, ch, ih, iw) as Number).toFloat()
+                                @Suppress("UNCHECKED_CAST")
+                                dInput.data.set(b, ch, ih, iw, value = (cur + gOut) as Any)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return dInput
+    }
+
+    /**
+     * upsample2d backward (NEAREST only — the CPU forward only supports
+     * Nearest, so the backward mirrors that). For each input position, sum
+     * the upstream gradients of every output position it produced (the
+     * scaleH × scaleW block above-left of [ih*scaleH, iw*scaleW]).
+     */
+    private fun upsample2dGrad(
+        upstream: Tensor<DType, Any>,
+        input: Tensor<DType, Any>,
+        scale: Pair<Int, Int>,
+        mode: String,
+    ): Tensor<DType, Any> {
+        require(mode.equals("Nearest", ignoreCase = true)) {
+            "upsample2dBackward: only Nearest mode implemented (got mode=$mode)"
+        }
+        val n = input.shape[0]
+        val c = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+        val (scaleH, scaleW) = scale
+        val outH = upstream.shape[2]
+        val outW = upstream.shape[3]
+        val dInput = zerosLike(input)
+
+        for (b in 0 until n) {
+            for (ch in 0 until c) {
+                for (oh in 0 until outH) {
+                    val ih = oh / scaleH
+                    if (ih !in 0 until inH) continue
+                    for (ow in 0 until outW) {
+                        val iw = ow / scaleW
+                        if (iw !in 0 until inW) continue
+                        val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
+                        val cur = (dInput.data.get(b, ch, ih, iw) as Number).toFloat()
+                        @Suppress("UNCHECKED_CAST")
+                        dInput.data.set(b, ch, ih, iw, value = (cur + gOut) as Any)
+                    }
+                }
+            }
+        }
+        return dInput
     }
 
     private fun <T : DType, V> clampGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
