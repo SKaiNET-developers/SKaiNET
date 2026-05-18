@@ -8,31 +8,22 @@ loaders (GGUF, SafeTensors, ONNX), quantization primitives
 platform compile targets, and a pluggable backend API that CPU,
 GPU, and NPU backends can implement independently.
 
-This documentation site is organized following the
-https://diataxis.fr/[Diátaxis / Divio framework] — pick the
-section that matches what you're trying to do:
+This site is split by what you're here to do:
 
 [.card-grid]
-* xref:tutorials/java-getting-started.adoc[*Tutorials*]
+* xref:using/index.adoc[*Using SKaiNET*]
 +
-Learning-oriented walkthroughs. Start here if you are new to
-SKaiNET — set up a project, build your first tensor, run a
-forward pass.
-* xref:contributing/build-from-source.adoc[*How-to guides*]
+You're building an app with SKaiNET — pulling artifacts from a BOM,
+constructing tensors, running a forward pass, loading a GGUF model,
+training a small network. Inside, content follows the
+https://diataxis.fr/[Diátaxis] framework: Tutorials (learning-oriented),
+How-to guides (task-oriented), Reference (lookup), Explanation
+(background). Java consumers — see the "From Java" callout on that page.
+* xref:contributing/index.adoc[*Contributing to SKaiNET*]
 +
-Task-oriented recipes. Build from source, load a GGUF model,
-generate C for Arduino, train a small network from Java.
-* xref:reference/architecture.adoc[*Reference*]
-+
-Information-oriented lookup: architecture, the
-xref:reference/operators/generated/index.adoc[operator catalog],
-the xref:reference/ops-status-matrix.adoc[backend coverage matrix],
-and the link:../api/index.html[Dokka API reference].
-* xref:explanation/skainet-for-ai.adoc[*Explanation*]
-+
-Understanding-oriented background: SKaiNET for AI/ML, the
-operator documentation system, mathematical theory, performance
-notes.
+You're modifying SKaiNET itself — building from source, adding
+kernels, running the benchmark suite, maintaining CI, operating the
+self-hosted runner. Audience admonition at the top of each page.
 
 [NOTE]
 ====

@@ -1,5 +1,13 @@
 == Java Getting Started Guide
 
+[NOTE]
+====
+**Audience: Java consumers.** This page uses Java syntax and the
+`SKaiNET.context()` builder surface. Kotlin users — see
+xref:tutorials/graph-dsl.adoc[Graph DSL] for the equivalent walkthrough
+with extension functions and operator overloading.
+====
+
 This guide gets you from zero to running tensor operations with SKaiNET in under 5 minutes. SKaiNET is a Kotlin Multiplatform AI framework, but every JVM-facing API is designed for idiomatic Java usage -- no Kotlin knowledge required.
 
 === Prerequisites
