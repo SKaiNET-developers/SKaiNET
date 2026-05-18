@@ -1,5 +1,12 @@
 == Java Model Training Guide
 
+[NOTE]
+====
+**Audience: Java consumers.** This page uses Java syntax. The training
+concepts (optimizers, autograd tape, loss functions) are the same on
+the Kotlin side — only the surface differs.
+====
+
 This guide covers building neural networks, defining loss functions and optimizers, loading datasets, and running training loops -- all from plain Java.
 
 === Prerequisites
