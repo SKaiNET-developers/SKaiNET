@@ -9,6 +9,25 @@
 
 ---
 
+## Start in 5 minutes
+
+SKaiNET is a Kotlin Multiplatform AI framework. New here? Choose the path that
+matches what you want to try first.
+
+| Goal | Start here | Time |
+|---|---|---:|
+| Run tensor operations | [Quickstart](#quickstart) (below) | 2–5 min |
+| Build and train a neural net | [Hello Neural Net](#hello-neural-net) (below) | 5 min |
+| Run a local GGUF model | [SKaiNET Transformers starter](https://github.com/SKaiNET-developers/SKaiNET-transformers#start-in-5-minutes) | 5 min after model setup |
+
+Working in Java? SKaiNET ships first-class Java support — see the
+[Java getting-started guide](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc).
+
+Use the version shown in this README as the source of truth for first-run snippets.
+If another page shows a different version, please open an issue or PR.
+
+---
+
 ## Quickstart
 
 Add the core dependencies (Gradle Kotlin DSL):
@@ -16,7 +35,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.23.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.23.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
