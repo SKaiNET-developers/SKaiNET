@@ -156,6 +156,62 @@ class LinalgOperationsConverterTest {
     }
 
     @Test
+    fun testMatmulOperandOrderingWithOutOfOrderEdgeInsertion() {
+        // Regression for issue #620: a dense layer whose input has no producer
+        // at trace time only gets its edge added during TraceToGraphBuilder.finalize(),
+        // so _edges contains (weight->matmul, idx=1) BEFORE (input->matmul, idx=0).
+        // getInputNodes(node) must order by destinationInputIndex, otherwise the
+        // emitter pairs operand[0]=weight with the declared lhsType=input
+        // (read from node.inputs[0]) and the resulting MLIR fails the verifier.
+        val graph = DefaultComputeGraph()
+
+        val input = GraphNode(
+            id = "x",
+            operation = InputOperation<DType, Any>(),
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("x", listOf(1, 1), "FP32"))
+        )
+        val weight = GraphNode(
+            id = "w",
+            operation = InputOperation<DType, Any>(),
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("w", listOf(1, 16), "FP32"))
+        )
+        val matmul = createMatmulNode(
+            "matmul1",
+            listOf(
+                TensorSpec("x", listOf(1, 1), "FP32"),
+                TensorSpec("w", listOf(1, 16), "FP32"),
+            ),
+            TensorSpec("y", listOf(1, 16), "FP32"),
+        )
+
+        graph.addNode(input)
+        graph.addNode(weight)
+        graph.addNode(matmul)
+
+        // Deliberately add the weight edge (idx=1) BEFORE the input edge (idx=0)
+        // to reproduce the post-finalize() edge ordering produced by the tape.
+        graph.addEdge(GraphEdge("e_w", weight, matmul, 0, 1, weight.outputs[0]))
+        graph.addEdge(GraphEdge("e_x", input, matmul, 0, 0, input.outputs[0]))
+
+        val converter = StableHloConverterFactory.createBasic()
+        val module = converter.convert(graph, "test_oop_matmul")
+
+        // The expected emission is `dot_general %arg0, %arg1 ... (1x1, 1x16) -> 1x16`.
+        // Pre-fix bug would emit operands `%arg1, %arg0` against type signature
+        // `(1x1, 1x16)`, which MLIR rejects.
+        assertTrue(
+            module.content.contains(
+                "stablehlo.dot_general %arg0, %arg1, " +
+                    "contracting_dims = [1] x [0] : " +
+                    "(tensor<1x1xf32>, tensor<1x16xf32>) -> tensor<1x16xf32>"
+            ),
+            "Expected operand order to match type signature; got:\n${module.content}",
+        )
+    }
+
+    @Test
     fun testMatmulWithDifferentDataTypes() {
         // Test matmul with different data types
         val graph = DefaultComputeGraph()
