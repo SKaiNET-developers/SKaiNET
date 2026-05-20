@@ -6,6 +6,7 @@
 ** xref:tutorials/java-getting-started.adoc[Java getting started]
 ** xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
 ** xref:tutorials/graph-dsl.adoc[Graph DSL]
+** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
 * How-to guides
 ** xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
 ** xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
@@ -26,6 +27,7 @@
 ** xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
 ** xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]
 ** xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built]
+** xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compression]
 ** xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU backend notes]
 ** xref:explanation/issues/native-macos-accelerate-simd.adoc[Native macOS Accelerate SIMD issues]
 
