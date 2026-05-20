@@ -2,6 +2,15 @@
 
 [NOTE]
 ====
+This tutorial is one of the canonical SKaiNET *five-minute start paths*.
+If you are choosing between the Tensor, Transformers, and Java entry points,
+start from the repository
+https://github.com/SKaiNET-developers/SKaiNET#start-in-5-minutes[README "Start in 5 minutes"]
+section. The version shown there is the source of truth for first-run snippets.
+====
+
+[NOTE]
+====
 **Audience: Java consumers.** This page uses Java syntax and the
 `SKaiNET.context()` builder surface. Kotlin users — see
 xref:tutorials/graph-dsl.adoc[Graph DSL] for the equivalent walkthrough
@@ -37,7 +46,7 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
 ----
 <project>
     <properties>
-        <skainet.version>0.22.2</skainet.version>
+        <skainet.version>0.23.1</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -135,7 +144,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.22.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.23.1"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")
@@ -210,6 +219,22 @@ mvn compile exec:java
 # Gradle
 ./gradlew run
 ----
+
+==== Success looks like this
+
+A successful first run prints a `2 x 2` result shape and the activated tensor
+values `58, 64, 139, 154` (the matmul of the two matrices above; all values are
+positive, so ReLU leaves them unchanged):
+
+....
+matmul result shape: [2, 2]
+after relu:          [[58.0, 64.0], [139.0, 154.0]]
+....
+
+If you see this output, SKaiNET is installed correctly and you are ready to
+move on to the next steps. If the run fails with a `module jdk.incubator.vector
+not found` error, confirm the JVM flags from the
+xref:tutorials/java-getting-started.adoc#_jvm_flags[JVM Flags] section are applied.
 
 '''''
 
