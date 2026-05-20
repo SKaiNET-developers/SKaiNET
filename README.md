@@ -126,6 +126,32 @@ Quick local replay:
 
 ---
 
+## Architecture goal
+
+SKaiNET is built around one path: **a model is defined once in the Kotlin DSL,
+then either compiled to native code or executed eagerly — without rewriting it.**
+
+1. **Define** the model with the DSL (`nn { }` / `dag { }`).
+2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph).
+3. **Run** it one of two ways:
+   - **Compile** — lower the graph to MLIR / StableHLO (`HloGenerator`) and
+     compile to **native** code (IREE-compatible) for native / edge targets.
+   - **Eager** — execute directly on an available backend. On the **JVM this is
+     the primary, go-to path.**
+
+```mermaid
+flowchart LR
+    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG"]
+    Graph --> HLO["MLIR / StableHLO"]
+    Graph --> Eager["Eager backend (JVM, …)"]
+    HLO --> Native["Native code"]
+```
+
+The same DSL model feeds both paths — eager execution for development and JVM
+deployment, the StableHLO path for native and edge targets.
+
+---
+
 ## Features
 
 ### Kotlin Multiplatform
