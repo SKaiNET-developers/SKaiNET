@@ -49,7 +49,16 @@ public interface ComputeGraph {
     public fun getOutputNodes(): List<GraphNode>
     
     /**
-     * Gets nodes that are inputs to the given node
+     * Gets nodes that are inputs to the given node, ordered by the
+     * destination input index. Callers depend on this order being
+     * positional (`result[i]` is the producer for the consumer's
+     * i-th operand) — emitters that map producers to MLIR operands
+     * (e.g. `dot_general %lhs, %rhs`) would otherwise mis-pair
+     * operands with the consumer's declared input types. Edge
+     * insertion order is not stable: nodes whose first operand has
+     * no producer at trace time only get their edge added during
+     * [TraceToGraphBuilder.finalize], producing an out-of-order
+     * `_edges` list (issue #620).
      */
     public fun getInputNodes(node: GraphNode): List<GraphNode>
     

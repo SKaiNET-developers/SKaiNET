@@ -66,6 +66,7 @@ public class DefaultComputeGraph : ComputeGraph {
     override fun getInputNodes(node: GraphNode): List<GraphNode> {
         return _edges
             .filter { it.destination == node }
+            .sortedBy { it.destinationInputIndex }
             .map { it.source }
     }
 
