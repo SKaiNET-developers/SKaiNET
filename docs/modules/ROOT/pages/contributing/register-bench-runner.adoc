@@ -1,0 +1,201 @@
+= Register a Self-Hosted Benchmark Runner
+:description: One-time setup that lets the engine benchmark workflow publish full-lane results from a maintainer-owned Linux x86 box.
+
+[NOTE]
+====
+**Audience: SKaiNET maintainers.** This page is for the engineer
+operating the self-hosted CI runner that publishes full engine
+benchmark results. Project users — teams consuming SKaiNET as a
+library — never need to read or run any of this.
+====
+
+== Why this exists
+
+The xref:contributing/benchmarks.adoc[engine benchmark workflow] has
+two jobs. The *smoke* job runs on `ubuntu-latest` for every PR and
+push to `develop`; it verifies that the harness, JSON schema, and PTS
+profiles still build. The *full* job is the one whose numbers we
+publish — but a shared, virtualized GitHub-hosted runner is too noisy
+to produce repeatable results. The full job therefore runs on a
+**self-hosted Linux x86 box** that the SKaiNET project controls.
+
+That box must be registered with GitHub Actions and given a stable
+label set (`self-hosted,linux,x86_64,skainet-bench-linux-x86`) so the
+workflow's `runs-on:` clause can route the job to it.
+
+== Prerequisites
+
+* Linux x86_64 host (Ubuntu 22.04 LTS or newer recommended).
+* Outbound HTTPS access on port 443 (see <<nat-firewall>> for what
+  the runner actually talks to).
+* `sudo` on the box — needed once to install the runner's systemd
+  service unit.
+* A SKaiNET checkout on the box, or at least the `scripts/` directory
+  containing `register_bench_runner.sh` and `install_pts.sh`.
+* JDK 21+ on the box. The workflow assumes a system JDK is on
+  `PATH`; install one with `sudo apt install temurin-21-jdk` or
+  equivalent.
+* Optional but recommended: Phoronix Test Suite, installed via
+  `./scripts/install_pts.sh`. The benchmark workflow installs it
+  itself if missing, but pre-installing avoids a per-run download.
+
+[#nat-firewall]
+== Running behind NAT — what you don't need to configure
+
+Self-hosted GitHub Actions runners work fine behind NAT — that is in
+fact their normal deployment mode. **No port forwarding, no public
+IP, no inbound firewall rules.**
+
+How it works: the runner agent opens an outbound long-poll HTTPS
+connection to `api.github.com` and holds it open. GitHub pushes new
+job assignments back down that already-open connection. There is no
+inbound traffic; the NAT box just sees a regular outbound HTTPS
+session, indistinguishable from a browser.
+
+What the runner needs to reach (all outbound, all on TCP/443):
+
+[cols="2,3",options="header"]
+|===
+| Destination | Purpose
+| `github.com`, `api.github.com` | control plane, job dispatch, token refresh
+| `*.actions.githubusercontent.com` | job descriptors, runner self-update
+| `objects.githubusercontent.com`, `*.blob.core.windows.net` | artifact upload/download, action tarballs
+| `codeload.github.com` | checkouts via `actions/checkout`
+| `ghcr.io` | only if a workflow uses container actions or pulls images
+| `*.pkg.github.com` | only if a workflow hits GitHub Packages
+|===
+
+Practical implications for this `skainet-bench-linux-x86` runner:
+
+. **No router config required.** A home NAT just needs to allow
+  outbound 443, which it almost certainly does by default.
+. **No DDNS, no public IP.** GitHub never connects to the runner —
+  the runner always initiates.
+. **`actions/checkout@v6` works normally** — it is an outbound git
+  fetch over HTTPS, NAT-friendly.
+. **`actions/upload-artifact@v7` works normally** — outbound HTTPS to
+  Azure blob storage.
+. **External model downloads inside the benchmark job** are also
+  outbound; same story.
+. **Corporate egress firewalls.** If the host sits behind one that
+  whitelists destinations, the hostnames above must be allowed.
+  GitHub publishes its IP ranges at
+  https://api.github.com/meta if stricter rules are required.
+
+The one thing NAT does affect: the runner's long-poll connection
+occasionally drops and reconnects (NAT session timeout, ISP-side
+reset). The systemd service installed by
+`register_bench_runner.sh` (via `./svc.sh install` / `start`)
+handles this automatically — the agent retries the long-poll on
+disconnect. Brief gaps will appear in
+`journalctl -u actions.runner.*` but no jobs are lost.
+
+== Step-by-step
+
+=== 1. Generate a runner registration token
+
+Tokens are short-lived (~60 minutes). Generate one immediately before
+running the script.
+
+. Open `https://github.com/SKaiNET-developers/SKaiNET/settings/actions/runners/new?arch=x64&os=linux`
+. Find the line beginning `./config.sh --url ... --token` in the
+  page's "Configure" section.
+. Copy the value after `--token`. Treat it as a secret — anyone
+  holding it for the next hour can register a runner on this repo.
+
+=== 2. Run the registration script
+
+From the SKaiNET checkout on the runner host:
+
+[source,bash]
+----
+GH_RUNNER_TOKEN="<paste-token-here>" \
+  REPO=SKaiNET-developers/SKaiNET \
+  ./scripts/register_bench_runner.sh
+----
+
+What the script does:
+
+. Downloads the `actions/runner` release tarball
+  (`RUNNER_VERSION=2.328.0` by default) into `$HOME/actions-runner`.
+. Calls `./config.sh` with name `$(hostname)-skainet-bench` and
+  labels `self-hosted,linux,x86_64,skainet-bench-linux-x86`.
+. Installs and starts a systemd service via `sudo ./svc.sh install`
+  and `sudo ./svc.sh start`. (This is the only step that prompts for
+  the sudo password.)
+
+Override the runner name with `RUNNER_NAME=…` if you want
+something other than the hostname, or the install directory with
+`RUNNER_DIR=…`. The label set is fixed in the script because the
+workflow's `runs-on:` clause expects it verbatim.
+
+=== 3. Confirm the runner is online
+
+In the GitHub UI, the runner should appear at
+`https://github.com/SKaiNET-developers/SKaiNET/settings/actions/runners`
+with status *Idle*. From the host itself:
+
+[source,bash]
+----
+systemctl status 'actions.runner.*'
+journalctl -u 'actions.runner.*' -n 50 --no-pager
+----
+
+The journal should show a `Connected to GitHub` line and then a
+heartbeat-style sequence of `Listening for Jobs` messages.
+
+=== 4. Fire the full lane to validate end-to-end
+
+Trigger the workflow manually:
+
+[source,bash]
+----
+gh workflow run engine-benchmarks.yml --ref develop
+----
+
+(This requires a PAT with `workflow` scope, or use the "Run workflow"
+button on the workflow's page in the GitHub UI.)
+
+Within ~30 seconds the runner journal should pick up the job. The
+full lane completes in 10–20 minutes; the published artifacts land
+at `engine-full-records-<run-id>` on the workflow run page.
+
+== Optional hardening
+
+The default registration script runs the agent as the invoking user
+in their home directory. For tighter isolation:
+
+* Create a dedicated `gha-runner` system user and re-run the script
+  as that user (`sudo -u gha-runner -H ./scripts/register_bench_runner.sh`).
+* Place `~gha-runner/actions-runner` on a partition with `noexec`
+  off, sufficient inodes, and at least 20 GiB of free space.
+* Set CPU governor to `performance` via a systemd-cpu-affinity unit
+  so benchmark runs are not throttled (the run script already warns
+  if `cpu0` is in `powersave`).
+* Restrict the runner to specific workflows by removing the
+  `skainet-bench-linux-x86` label from workflows that should not run
+  here.
+
+== Removing or rotating the runner
+
+To take the host out of rotation:
+
+[source,bash]
+----
+cd ~/actions-runner
+sudo ./svc.sh stop
+sudo ./svc.sh uninstall
+# Generate a removal token via the GitHub UI (same place as registration),
+# then:
+./config.sh remove --token <removal-token>
+----
+
+The GitHub UI also shows an *Offline* badge after ~10 minutes of
+disconnection; a runner that will stay offline for longer can be
+deleted directly from the UI without running `config.sh remove`.
+
+== Related
+
+* xref:contributing/benchmarks.adoc[Engine benchmark program] — the workflow this runner serves.
+* xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] — how to interpret the numbers the runner publishes.
+* xref:contributing/build-from-source.adoc[Build from source] — the build the runner executes.

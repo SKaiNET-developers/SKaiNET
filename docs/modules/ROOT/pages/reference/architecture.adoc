@@ -131,7 +131,7 @@ Introduced in 0.21.0 (PRs #554, #559, #562). The static structure:
 ----
 
 Three live providers ship; a fourth (priority 100, native FFM) is
-captured as a plan in xref:explanation/perf/native-ffm-plan.adoc[]
+captured as a plan in xref:contributing/native-ffm-plan.adoc[]
 and not yet built. For *how* the kernels are implemented, see
 xref:explanation/perf/simd-kernels.adoc[] (FP32) and
 xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized).
@@ -206,8 +206,11 @@ see the same source file (`DefaultCpuOpsJvm.transpose`).
 `sk.ainet.core:<module>-<target>:<version>`. KMP variants land per
 target (`*-jvm`, `*-android`, `*-iosarm64`, `*-macosarm64`,
 `*-linuxx64`, `*-linuxarm64`, `*-js`, `*-wasm-js`, `*-wasm-wasi`).
-* *Single BOM* — `sk.ainet.core:skainet-bom` provides a
-`platform()` import for downstream Gradle.
+* *Single BOM* — `sk.ainet:skainet-bom` provides a
+`platform()` import for downstream Gradle. Note the group is
+`sk.ainet`, not `sk.ainet.core`, so downstream BOMs (e.g.
+`sk.ainet.transformers:skainet-transformers-bom`) can import it
+under the standard umbrella group.
 * *Releases* — tags `0.X.Y` on the release branch trigger
 `.github/workflows/publish.yml` → `./gradlew publish` on macOS-latest
 with JDK 25.
@@ -265,7 +268,7 @@ canary.
 * *No native FFM provider yet.* The literal M5 milestone metric
 (`≥2.5×` for Q4_K) is met by Panama in absolute terms but not in
 the "native vs JVM" framing the metric originally specified.
-Mitigation: `xref:explanation/perf/native-ffm-plan.adoc[]`
+Mitigation: `xref:contributing/native-ffm-plan.adoc[]`
 documents what shipping it would look like.
 * *Two reverted optimizations on develop history.* MemSeg pool
 (commit 8642b322) and intra-op matmul parallelism (commit

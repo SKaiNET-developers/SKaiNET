@@ -3,10 +3,14 @@ package sk.ainet.exec.tensor.ops
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorSpecies
 import jdk.incubator.vector.VectorOperators
+import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelServiceLoader
+import sk.ainet.backend.api.kernel.KernelStrictness
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
+import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
+import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
 import sk.ainet.exec.kernel.ScalarMatmulKernel
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -16,6 +20,7 @@ import sk.ainet.lang.tensor.data.MemorySegmentBackedData
 import sk.ainet.lang.tensor.data.MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
+import sk.ainet.lang.tensor.data.Bf16TensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
@@ -71,6 +76,43 @@ internal class DefaultCpuOpsJvm(
             ?.matmulQ4K()
     }
 
+    /**
+     * Q8_0 kernel resolved via [KernelRegistry], lazily initialized on
+     * first quantized matmul call. Mirrors [q4kMatmulKernel] — auto-
+     * installs ServiceLoader-discovered providers when the registry is
+     * empty, returns `null` if no provider carries a Q8_0 kernel.
+     * Caller falls back to [JvmQuantizedVectorKernels.matmulQ8_0Vec],
+     * preserving the legacy code path when the SPI doesn't resolve.
+     */
+    private val q8_0MatmulKernel: Q8_0MatmulKernel? by lazy {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+        KernelRegistry.providers()
+            .firstOrNull { it.isAvailable() && it.matmulQ8_0() != null }
+            ?.matmulQ8_0()
+    }
+
+    /**
+     * BF16 matmul kernel resolved via [KernelRegistry]. Unlike the Q4_K
+     * and Q8_0 lookups (nullable, with legacy `JvmQuantizedVectorKernels`
+     * fallbacks), BF16 has no pre-SPI implementation in this codebase —
+     * the scalar SPI kernel is the floor. We mirror [fp32MatmulKernel]'s
+     * pattern: non-null, picks the highest-priority provider that carries
+     * a BF16 kernel (native FFM at 100, Panama Vector at 50), falls back
+     * to [ScalarBf16MatmulKernel] when no SIMD provider reports
+     * availability (e.g. tests that explicitly clear the registry).
+     */
+    private val bf16MatmulKernel: Bf16MatmulKernel by lazy {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+        KernelRegistry.providers()
+            .firstOrNull { it.isAvailable() && it.matmulBf16() != null }
+            ?.matmulBf16()
+            ?: ScalarBf16MatmulKernel
+    }
+
     override fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         vectorFloatBinary(a, b, { x, y -> x.add(y) }) { x, y -> x + y }?.let { return it }
         return super.add(a, b)
@@ -96,6 +138,20 @@ internal class DefaultCpuOpsJvm(
         chooseQuantizedMatmul(a, b)?.let { return it }
         // Fallback to standard FP32 matmul
         chooseMatmul(a, b)?.let { return it }
+        // RFC fail-fast point: if `-Dskainet.strict.kernels=true`, surface
+        // the missing kernel here rather than letting `super.matmul` quietly
+        // pick the scalar dequant + FP32 fallback. The strictness check is
+        // a no-op when the property is unset, preserving the existing
+        // adaptive behaviour.
+        KernelStrictness.failIfStrict {
+            val inDt = a.dtype.simpleName ?: a.dtype.toString()
+            val wDt = b.dtype.simpleName ?: b.dtype.toString()
+            val providers = KernelRegistry.providers().joinToString { p ->
+                "${p.name}(priority=${p.priority}, available=${p.isAvailable()})"
+            }.ifEmpty { "<none>" }
+            "matmul ($inDt × $wDt) has no SPI kernel; would silently fall back " +
+                "to super.matmul. Registered providers: $providers"
+        }
         return super.matmul(a, b)
     }
 
@@ -439,17 +495,27 @@ internal class DefaultCpuOpsJvm(
         return when (bData) {
             is Q8_0TensorData -> {
                 val outBuffer = FloatArray(batchSize * outputDim)
+                val spiKernel = q8_0MatmulKernel
                 for (batch in 0 until batchSize) {
                     val batchInput = if (batchSize == 1) inputBuffer
                     else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    JvmQuantizedVectorKernels.matmulQ8_0Vec(
-                        batchInput,
-                        bData.packedData,
-                        inputDim,
-                        outputDim,
-                        outBuffer,
-                        batch * outputDim,
-                    )
+                    if (spiKernel != null) {
+                        spiKernel.matmul(
+                            batchInput, 0,
+                            bData.packedData, 0,
+                            inputDim, outputDim,
+                            outBuffer, batch * outputDim,
+                        )
+                    } else {
+                        JvmQuantizedVectorKernels.matmulQ8_0Vec(
+                            batchInput,
+                            bData.packedData,
+                            inputDim,
+                            outputDim,
+                            outBuffer,
+                            batch * outputDim,
+                        )
+                    }
                 }
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
                 @Suppress("UNCHECKED_CAST")
@@ -479,6 +545,21 @@ internal class DefaultCpuOpsJvm(
                         )
                     }
                 }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            is Bf16TensorData -> {
+                // BF16 is dense (not block-quantized) and the kernel SPI is a
+                // full SGEMM with `(m, n, k)` strides — no per-batch loop needed,
+                // unlike the matvec-shaped Q4_K / Q8_0 / Q6_K branches.
+                val outBuffer = FloatArray(batchSize * outputDim)
+                bf16MatmulKernel.matmul(
+                    inputBuffer, 0, inputDim,
+                    bData.packedData, 0, outputDim * Bf16TensorData.BYTES_PER_ELEMENT,
+                    outBuffer, 0, outputDim,
+                    batchSize, outputDim, inputDim,
+                )
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
                 @Suppress("UNCHECKED_CAST")
                 CpuTensor(outData as TensorData<T, V>, this, a.dtype)

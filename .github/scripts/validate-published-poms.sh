@@ -15,10 +15,23 @@
 set -euo pipefail
 
 REPO_ROOT="${HOME}/.m2/repository/sk/ainet/core"
+BOM_ROOT="${HOME}/.m2/repository/sk/ainet/skainet-bom"
 
 if [[ ! -d "${REPO_ROOT}" ]]; then
   echo "ERROR: no published artifacts found under ${REPO_ROOT}" >&2
   echo "Did ./gradlew publishToMavenLocal run successfully?" >&2
+  exit 1
+fi
+
+# The umbrella BOM must publish at sk.ainet:skainet-bom — downstream
+# BOMs (e.g. sk.ainet.transformers:skainet-transformers-bom) import it
+# with that group. Catching this here prevents the 0.22.1 regression
+# where the BOM landed at sk.ainet.core:skainet-bom and was effectively
+# unresolvable by consumers following the standard BOM pattern.
+if [[ ! -d "${BOM_ROOT}" ]]; then
+  echo "ERROR: skainet-bom not published at sk.ainet:skainet-bom" >&2
+  echo "Expected directory: ${BOM_ROOT}" >&2
+  echo "Check skainet-bom/build.gradle.kts mavenPublishing { coordinates(...) }." >&2
   exit 1
 fi
 

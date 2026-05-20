@@ -1,0 +1,143 @@
+= Official Engine Benchmarks
+:url-prd: https://github.com/ainet-sk/SKaiNET/blob/main/bench-prd.md
+:url-pts: https://www.phoronix-test-suite.com/
+:url-obo: https://openbenchmarking.org/
+
+[NOTE]
+====
+**Audience: SKaiNET maintainers.** This page documents the project's
+own benchmark *publication* program — how we produce the numbers that
+appear on OpenBenchmarking. Library users consuming SKaiNET as a
+dependency do not need to read this; their performance story lives
+under xref:explanation/perf/jvm-cpu.adoc[Explanation → Performance].
+====
+
+The SKaiNET *Compute Engine Suite* publishes throughput and latency
+microbenchmarks for the engine's CPU kernel paths under Phoronix Test
+Suite + OpenBenchmarking conventions. The suite is intentionally small
+and stable so it can be re-run on every release and stay comparable
+across versions.
+
+This page covers the engine-level program only. The runtime-level LLM
+benchmark program (SKaiNET-transformers) is a separate suite shipped
+from that repository.
+
+== What the suite measures
+
+The engine suite ships eight scenarios, all driven by the same
+publication harness (`skainet-backends/benchmarks/jvm-cpu-publish`) and
+mirroring the existing JVM CPU JMH benchmarks under
+`skainet-backends/benchmarks/jvm-cpu-jmh/` plus the upstream Bf16 / Q8_0
+microbench tests under `skainet-backends/skainet-backend-native-cpu`:
+
+[cols="1m,3,1,1",options="header"]
+|===
+| Scenario | What it exercises | Unit | Direction
+| engine-fp32-gemm        | `ctx.ops.matmul` end-to-end FP32 square matmul              | GFLOPS        | higher is better
+| engine-q4-gemm          | `PanamaVectorQ4KMatmulKernel` F32 × Q4_K matmul at LLM shapes | GOP/s        | higher is better
+| engine-kernel-matmul    | Direct `Fp32MatmulKernel` (scalar vs panama-vector)         | GFLOPS        | higher is better
+| engine-bf16-matmul      | `Bf16MatmulKernel` F32 × BF16-packed matmul (scalar vs panama-vector) | GFLOPS | higher is better
+| engine-q8-matmul        | `Q8_0MatmulKernel` F32 × Q8_0-packed matvec (scalar vs panama-vector) | GOP/s | higher is better
+| engine-elementwise-add  | `ctx.ops.add` on 1M FP32 elements                           | M elements/s  | higher is better
+| engine-reductions-sum   | `ctx.ops.sum` on 1M FP32 elements                           | M elements/s  | higher is better
+| engine-reductions-mean  | `ctx.ops.mean` on 1M FP32 elements                          | M elements/s  | higher is better
+|===
+
+Each scenario is wired up as a Phoronix test profile under
+`benchmarks/openbenchmarking/profiles/` and bundled into a single suite
+`benchmarks/openbenchmarking/suites/skainet-engine-suite/`.
+
+== Headline vs secondary metrics
+
+* *Headline* — throughput on the steady-state full lane (i.e. 3 warmups +
+  5 measured runs at the manifest's full shapes). Suitable for
+  cross-release comparisons and OpenBenchmarking publication.
+* *Secondary* — smoke-mode values from CI on `ubuntu-latest`. These exist
+  to catch obvious regressions in the harness and JSON schema. They are
+  *not* publishable; virtualized cloud runners are too noisy and the
+  shapes are deliberately small.
+
+A run is automatically flagged with `"unstable": true` in its
+`BenchmarkRecord` when the coefficient of variation exceeds 3%. Unstable
+records should be excluded from public leaderboards.
+
+== Lanes
+
+[cols="1,1,2",options="header"]
+|===
+| Lane | Trigger | Notes
+| Smoke (ubuntu-latest)   | pull_request, push to main, workflow_dispatch  | `.github/workflows/engine-benchmarks.yml#smoke-ubuntu-latest`
+| Full (self-hosted)      | release, workflow_dispatch                     | `.github/workflows/engine-benchmarks.yml#full-self-hosted` — needs the `skainet-bench-linux-x86` runner label
+|===
+
+The full lane currently runs on a Linux x86 host with an
+AVX2-capable CPU. macOS Arm64 and Linux Arm64 lanes are tracked as
+follow-ups in the
+{url-prd}[engine benchmark PRD].
+
+== Reproducing a public run locally
+
+Prerequisites: JDK 21 or newer, Phoronix Test Suite (optional, only
+required to validate the local PTS profiles).
+
+[source,bash]
+----
+# 1. Build the publication harness.
+./gradlew :skainet-backends:benchmarks:jvm-cpu-publish:shadowJar
+
+# 2. Smoke run (≈30 s; same shape as the CI smoke job).
+./scripts/run_engine_smoke.sh
+
+# 3. Full run (≈minutes; same shape as the self-hosted lane).
+./scripts/run_engine_benchmarks.sh
+
+# 4. Inspect the JSON record for a single scenario.
+ls out/engine
+cat out/engine/<TIMESTAMP>/engine-fp32-gemm-panama.json
+----
+
+To install Phoronix Test Suite on Ubuntu 24.04+ (not in the default
+repos):
+
+[source,bash]
+----
+./scripts/install_pts.sh
+./scripts/validate_pts_profiles.sh
+----
+
+To register this machine as the official self-hosted runner:
+
+[source,bash]
+----
+GH_RUNNER_TOKEN=<token from repo Settings -> Actions -> Runners> \
+  REPO=ainet-sk/SKaiNET \
+  ./scripts/register_bench_runner.sh
+----
+
+== Result record schema
+
+Every scenario emits a `BenchmarkRecord` JSON (schema version `1.0.0`)
+with top-level `runtime`, `system`, `config`, `metrics`, and `samples`
+fields. The full schema is defined under
+`skainet-backends/benchmarks/jvm-cpu-publish/src/main/kotlin/sk/ainet/bench/publish/schema/`.
+
+Records are deliberately self-describing — they carry the SKaiNET
+commit, JVM args, kernel-provider list, CPU model, JDK version, and
+every raw sample so a third party can spot-check a published result
+without re-running the suite.
+
+== Methodology pinning
+
+All shapes, warmup/measured counts, JVM flags, and the schema version
+are pinned in `benchmarks/manifests/engine-release.yml`. Bumping any
+value in that manifest is a methodology change — bump the
+`manifest_version` and call it out in the release notes so historical
+comparisons don't silently break.
+
+== Related
+
+* {url-prd}[Engine + Transformers benchmark PRD]
+* {url-pts}[Phoronix Test Suite]
+* {url-obo}[OpenBenchmarking.org]
+* xref:explanation/perf/jvm-cpu.adoc[JVM CPU backend notes]
+* xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]

@@ -1,0 +1,62 @@
+= Using SKaiNET — Audience and Scope
+:description: What lives in the Using SKaiNET section, who it's for, and where Java consumers should look.
+
+[NOTE]
+====
+**Audience: people building apps with SKaiNET.** These pages document
+how to *call* SKaiNET as a library — pulling artifacts from a BOM,
+constructing tensors, running a forward pass, training a model. If you
+are *modifying* SKaiNET itself — adding kernels, running benchmarks,
+operating CI — see xref:contributing/index.adoc[Contributing].
+====
+
+== What this section covers
+
+The Using SKaiNET section is for the engineer who:
+
+- Adds SKaiNET to a Gradle / Maven build.
+- Builds tensors, runs forward passes, trains small models.
+- Loads pre-trained weights (GGUF, SafeTensors, ONNX).
+- Targets StableHLO / IREE for cross-platform deployment.
+- Reads the operator catalog to discover what's supported on which
+  backend.
+
+Inside, content follows the
+https://diataxis.fr/[Diátaxis / Divio framework]:
+
+[cols="1,3",options="header"]
+|===
+| Sub-section | What it answers
+| Tutorials | Learning-oriented walkthroughs. Start here if you are new to SKaiNET.
+| How-to guides | Task-oriented recipes — "I need to load a GGUF model", "I need to train from Java".
+| Reference | Information-oriented lookup: architecture, operator catalog, coverage matrix, Dokka API.
+| Explanation | Understanding-oriented background: theory, performance notes, design rationale.
+|===
+
+== Using SKaiNET from Java
+
+SKaiNET is a Kotlin Multiplatform library; the JVM artifact is consumable
+from Java but the idioms differ (builder factories instead of extension
+functions, no operator overloading). The following pages target Java
+specifically:
+
+- xref:tutorials/java-getting-started.adoc[Java getting started] — set up a Maven / Gradle project, run a forward pass.
+- xref:how-to/java-model-training.adoc[Train a model from Java] — assemble a training loop using the Java surface.
+
+The rest of this section is written in Kotlin. The concepts transfer
+directly; only the syntax differs.
+
+[NOTE]
+====
+LLM-specific Java runtimes (Llama, Gemma, Qwen, BERT) moved to the
+sibling https://github.com/SKaiNET-developers/SKaiNET-transformers[SKaiNET-transformers]
+repository in 2026.
+====
+
+== What this section deliberately does *not* cover
+
+- **How SKaiNET is built, benchmarked, or released.** See
+  xref:contributing/index.adoc[Contributing].
+- **Commit conventions, branch policy, issue reports.** Those live in
+  repo-root files (`CONTRIBUTING.md`, `GITFLOW.adoc`, `CHANGELOG.md`,
+  `FAQ.md`) and intentionally aren't duplicated here.

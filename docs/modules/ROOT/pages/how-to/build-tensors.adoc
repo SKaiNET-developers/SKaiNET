@@ -1,0 +1,205 @@
+= Build Tensors with the Data DSL
+:description: How to construct tensors in SKaiNET — the `data { ... }` block, the standalone `tensor(...)` entry, and the three patterns for getting values out.
+
+This page covers how to *build* tensors in user code. For loading
+tensors from disk (GGUF, SafeTensors, ONNX), see
+xref:how-to/io-readers.adoc[Load models]. For declaring a graph of
+tensor ops to be compiled, see xref:tutorials/graph-dsl.adoc[Graph DSL].
+
+== TL;DR
+
+There are two equivalent entry points:
+
+[cols="1,1,2",options="header"]
+|===
+| Style | Form | When to use
+| Inside a `data { }` block | `data(ctx) { val t = tensor<T, V> { shape(...) { from(...) } } }` | The idiomatic form. Used by every test fixture in the repo. One `tensor<T, V> { … }` level — no repetition.
+| Standalone | `tensor<T, V>(ctx, T::class) { tensor { shape(...) { from(...) } } }` | When you can't bring a `data { }` scope. Requires the `tensor { … }` block to repeat once — see <<why-double-tensor>> below.
+|===
+
+The `data { }` form is preferred because it scopes the
+`ExecutionContext` once and removes the redundant repetition.
+
+== One tensor
+
+The typed `data<T, V>(ctx) { … }` overload *returns* the last
+expression in the block — usually the tensor you built:
+
+[source,kotlin]
+----
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.data
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext.create()
+
+val t = data<FP32, Float>(ctx) {
+    tensor {
+        shape(2, 2) { from(1f, 2f, 3f, 4f) }
+    }
+}
+// t.shape == Shape(2, 2)
+// t.dtype == FP32::class
+----
+
+== Multiple tensors — capture into outer vars
+
+The non-typed `data(ctx) { … }` block returns `Unit`. Build several
+tensors inside and assign them to outer `lateinit var`s — the
+idiomatic Kotlin pattern for DSL blocks that don't return values:
+
+[source,kotlin]
+----
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.data
+import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext.create()
+
+lateinit var weights: Tensor<FP32, Float>
+lateinit var bias: Tensor<FP32, Float>
+
+data(ctx) {
+    weights = tensor<FP32, Float> { shape(4, 4) { ones() } }
+    bias    = tensor<FP32, Float> { shape(4)    { zeros() } }
+}
+
+// weights.shape == Shape(4, 4)
+// bias.shape    == Shape(4)
+----
+
+The compiler verifies both `lateinit var`s are assigned before the
+block returns; if you forget one, an `UninitializedPropertyAccessException`
+fires the first time you read it.
+
+== Many named tensors — `createDataMap`
+
+When the tensors are dynamically named (e.g. loaded weights), use
+`createDataMap`. The block returns a `Map<String, Tensor<*, *>>` keyed
+by the name passed to the named `tensor("name") { … }` overload:
+
+[source,kotlin]
+----
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.createDataMap
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext.create()
+
+val params: Map<String, Tensor<*, *>> = createDataMap(ctx) {
+    tensor<FP32, Float>("attn.weight") { shape(4, 4) { ones() } }
+    tensor<FP32, Float>("attn.bias")   { shape(4)    { zeros() } }
+}
+
+val attnWeight = params["attn.weight"]
+    ?: error("attn.weight missing")
+// cast back to Tensor<FP32, Float> as needed:
+@Suppress("UNCHECKED_CAST")
+val typed = attnWeight as Tensor<FP32, Float>
+----
+
+Names must be unique within the block — `createDataMap` enforces this
+and throws on duplicates.
+
+== Standalone `tensor(ctx, dtype)` without `data { }`
+
+When you can't wrap the call in `data { }` (e.g. utility code that
+already has the context but no DSL scope), use the standalone entry:
+
+[source,kotlin]
+----
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val ctx = DirectCpuExecutionContext.create()
+
+val t = tensor<FP32, Float>(ctx, FP32::class) {
+    tensor {                              // <-- inner block — see below
+        shape(2, 2) { from(1f, 2f, 3f, 4f) }
+    }
+}
+----
+
+[#why-double-tensor]
+=== Why the doubled `tensor { ... }`?
+
+The outer call `tensor<T, V>(ctx, dtype) { ... }` provides a
+`TensorDefineDsl<T, V>` scope whose only method is `tensor { ... }`
+— the binding-vs-factory split lets future API attach more than one
+tensor to the same `(ctx, dtype)` binding without re-passing arguments.
+The `data { }` form sidesteps the second level entirely because the
+implicit context is what the binding stage was carrying.
+
+If the repetition reads odd to you, prefer the `data { }` form.
+
+== Initialization strategies inside `shape(...) { ... }`
+
+These are available on every tensor-creation scope (`data { }`,
+`createDataMap`, and the standalone entry):
+
+[source,kotlin]
+----
+shape(28, 28) { zeros() }
+shape(28, 28) { ones() }
+shape(28, 28) { full(0.5f) }
+shape(2, 3)   { from(1f, 2f, 3f, 4f, 5f, 6f) }       // length must equal volume
+shape(2, 3)   { fromArray(myFloatArray) }
+shape(28, 28) { randn(mean = 0f, std = 0.02f) }
+shape(28, 28) { uniform(min = -1f, max = 1f) }
+shape(28, 28) { init { idx -> (idx[0] + idx[1]).toFloat() } }
+shape(28, 28) { randomInit { rng -> rng.nextFloat() } }
+----
+
+`from(vararg: Float)` and `from(vararg: Int)` both exist — pick the
+right one to match the `V` type parameter you chose.
+
+[NOTE]
+====
+The `Int` vararg `from(1, 2, 3, 4)` requires `tensor<Int32, Int>`;
+the `Float` vararg `from(1f, 2f, 3f, 4f)` requires `tensor<FP32, Float>`.
+A common slip is to pass doubles (`from(1.0, 2.0, …)`) — there's no
+`Double` overload, so the call won't resolve. Add the `f` suffix.
+====
+
+== Anti-patterns
+
+[source,kotlin]
+----
+// WRONG — won't compile. `shape(...)` lives on the inner scope,
+// not on the outer `tensor(ctx, dtype) { ... }` receiver.
+val t = tensor(ctx, FP32::class) {
+    shape(2, 2) { from(1f, 2f, 3f, 4f) }
+}
+
+// WRONG — `tensor(shape = intArrayOf(...))` doesn't exist as an entry
+// point. Older internal builders sometimes accept Shape directly via
+// `shape(Shape(...)) { … }`; the user-facing DSL always uses the
+// `tensor { ... } -> shape(...) { ... }` chain.
+val t = tensor(shape = intArrayOf(3, 2)) {
+    floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
+}
+----
+
+[source,kotlin]
+----
+// RIGHT — either the `data { }` form (preferred):
+val t = data<FP32, Float>(ctx) {
+    tensor { shape(2, 2) { from(1f, 2f, 3f, 4f) } }
+}
+
+// or the standalone form with the doubled `tensor { … }`:
+val t = tensor<FP32, Float>(ctx, FP32::class) {
+    tensor { shape(2, 2) { from(1f, 2f, 3f, 4f) } }
+}
+----
+
+== Related
+
+* xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)] — loaders bypass the DSL and produce `Tensor<T, V>` directly.
+* xref:tutorials/graph-dsl.adoc[Graph DSL] — declaring a *graph* of tensor ops to be compiled (the `dag { … }` builder).
+* xref:contributing/dtype-model.adoc[The SKaiNET dtype model] — how `Tensor.dtype: KClass<T>` flows through the engine.

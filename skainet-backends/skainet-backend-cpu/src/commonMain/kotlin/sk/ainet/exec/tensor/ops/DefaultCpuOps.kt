@@ -12,6 +12,10 @@ import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.UpsampleMode
 import sk.ainet.lang.types.FP32
+import kotlin.math.ln
+import kotlin.math.log10 as kmLog10
+import kotlin.math.log2 as kmLog2
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 @Backend(id = "cpu", displayName = "CPU")
@@ -2119,6 +2123,112 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val v = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
             sqrt(v) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    /**
+     * Element-wise power: `c[i] = a[i] ^ b[i]`. Integer-valued exponents
+     * use repeated multiply for stability; everything else routes through
+     * `kotlin.math.pow`. Shape contract: shapes must match exactly (no
+     * broadcasting yet — caller's responsibility).
+     */
+    override fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        require(
+            a.dtype == sk.ainet.lang.types.FP32::class ||
+                a.dtype == sk.ainet.lang.types.FP16::class
+        ) { "pow supports only FP16/FP32, got ${a.dtype}" }
+        require(a.shape == b.shape) { "pow requires matching shapes; got ${a.shape} and ${b.shape}" }
+        val outData = dataFactory.init<T, V>(a.shape, a.dtype) { idx ->
+            val av = a.data.get(*idx) as Float
+            val bv = b.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            scalarPow(av, bv) as V
+        }
+        return newTensor(outData, a.dtype, a)
+    }
+
+    /**
+     * Element-wise scalar power: `c[i] = a[i] ^ n`. Small-integer
+     * exponents (|n| <= 16) use repeated multiply for exactness; all
+     * other values route through `kotlin.math.pow`.
+     */
+    override fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V> {
+        require(
+            a.dtype == sk.ainet.lang.types.FP32::class ||
+                a.dtype == sk.ainet.lang.types.FP16::class
+        ) { "powScalar supports only FP16/FP32, got ${a.dtype}" }
+        val nFloat = n.toFloat()
+        val nInt = n.toInt()
+        val isSmallInt = nFloat == nInt.toFloat() && kotlin.math.abs(nInt) <= 16
+        val outData = dataFactory.init<T, V>(a.shape, a.dtype) { idx ->
+            val av = a.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            (if (isSmallInt) integerPow(av, nInt) else scalarPow(av, nFloat)) as V
+        }
+        return newTensor(outData, a.dtype, a)
+    }
+
+    /** Repeated-multiply for small integer exponents. Handles n < 0 via reciprocal. */
+    private fun integerPow(base: Float, n: Int): Float {
+        if (n == 0) return 1f
+        if (n < 0) return 1f / integerPow(base, -n)
+        var result = 1f
+        var b = base
+        var e = n
+        while (e > 0) {
+            if (e and 1 == 1) result *= b
+            b *= b
+            e = e ushr 1
+        }
+        return result
+    }
+
+    private fun scalarPow(base: Float, exp: Float): Float =
+        base.toDouble().pow(exp.toDouble()).toFloat()
+
+    /**
+     * Element-wise natural log: `c[i] = ln(a[i])`. Negative or zero
+     * inputs follow `kotlin.math.ln` semantics (negative → NaN, zero
+     * → -Infinity). Mirror of `stablehlo.log`.
+     */
+    override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> {
+        require(
+            tensor.dtype == sk.ainet.lang.types.FP32::class ||
+                tensor.dtype == sk.ainet.lang.types.FP16::class
+        ) { "log supports only FP16/FP32, got ${tensor.dtype}" }
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val v = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            ln(v) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    /** Element-wise base-2 log: `c[i] = log2(a[i])`. */
+    override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> {
+        require(
+            tensor.dtype == sk.ainet.lang.types.FP32::class ||
+                tensor.dtype == sk.ainet.lang.types.FP16::class
+        ) { "log2 supports only FP16/FP32, got ${tensor.dtype}" }
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val v = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kmLog2(v) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    /** Element-wise base-10 log: `c[i] = log10(a[i])`. */
+    override fun <T : DType, V> log10(tensor: Tensor<T, V>): Tensor<T, V> {
+        require(
+            tensor.dtype == sk.ainet.lang.types.FP32::class ||
+                tensor.dtype == sk.ainet.lang.types.FP16::class
+        ) { "log10 supports only FP16/FP32, got ${tensor.dtype}" }
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val v = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kmLog10(v) as V
         }
         return newTensor(outData, tensor.dtype, tensor)
     }

@@ -1,34 +1,41 @@
 * xref:index.adoc[Overview]
 
-.Tutorials
-* xref:tutorials/java-getting-started.adoc[Java getting started]
-* xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
-* xref:tutorials/graph-dsl.adoc[Graph DSL]
-* xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
+.Using SKaiNET
+* xref:using/index.adoc[About this section]
+* Tutorials
+** xref:tutorials/java-getting-started.adoc[Java getting started]
+** xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
+** xref:tutorials/graph-dsl.adoc[Graph DSL]
+** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
+* How-to guides
+** xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
+** xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
+** xref:how-to/java-model-training.adoc[Train a model from Java]
+** xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino]
+* Reference
+** xref:reference/architecture.adoc[Architecture]
+** xref:reference/operators/generated/index.adoc[Operator reference]
+** xref:reference/ops-status-matrix.adoc[Operator coverage matrix]
+** xref:reference/api.adoc[API reference (Dokka)]
+* Explanation
+** xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
+** xref:explanation/operator-design.adoc[Operator documentation system]
+** xref:explanation/theory/index.adoc[Mathematical theory]
+*** xref:explanation/theory/matmul.adoc[Matrix multiplication]
+** xref:explanation/examples/index.adoc[Worked examples]
+*** xref:explanation/examples/matmul.adoc[Matrix multiplication examples]
+** xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
+** xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]
+** xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built]
+** xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compression]
+** xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU backend notes]
+** xref:explanation/issues/native-macos-accelerate-simd.adoc[Native macOS Accelerate SIMD issues]
 
-.How-to guides
-* xref:how-to/build.adoc[Build from source]
-* xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
-* xref:how-to/java-model-training.adoc[Train a model from Java]
-* xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino]
-
-.Reference
-* xref:reference/architecture.adoc[Architecture]
-* xref:reference/operators/generated/index.adoc[Operator reference]
-* xref:reference/ops-status-matrix.adoc[Operator coverage matrix]
-* xref:reference/api.adoc[API reference (Dokka)]
-
-.Explanation
-* xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
-* xref:explanation/operator-design.adoc[Operator documentation system]
-* xref:explanation/theory/index.adoc[Mathematical theory]
-** xref:explanation/theory/matmul.adoc[Matrix multiplication]
-* xref:explanation/examples/index.adoc[Worked examples]
-** xref:explanation/examples/matmul.adoc[Matrix multiplication examples]
-* xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
-* xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]
-* xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built]
-* xref:explanation/perf/native-ffm-plan.adoc[Plan: native FFM kernel provider]
-* xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compression]
-* xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU backend notes]
-* xref:explanation/issues/native-macos-accelerate-simd.adoc[Native macOS Accelerate SIMD issues]
+.Contributing
+* xref:contributing/index.adoc[Audience and scope]
+* xref:contributing/build-from-source.adoc[Build from source]
+* xref:contributing/dtype-model.adoc[The SKaiNET dtype model]
+* xref:contributing/benchmarks.adoc[Engine benchmark program]
+* xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark]
+* xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner]
+* xref:contributing/native-ffm-plan.adoc[Plan: native FFM kernel provider]

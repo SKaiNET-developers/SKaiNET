@@ -1,5 +1,13 @@
 == Java Getting Started Guide
 
+[NOTE]
+====
+**Audience: Java consumers.** This page uses Java syntax and the
+`SKaiNET.context()` builder surface. Kotlin users — see
+xref:tutorials/graph-dsl.adoc[Graph DSL] for the equivalent walkthrough
+with extension functions and operator overloading.
+====
+
 This guide gets you from zero to running tensor operations with SKaiNET in under 5 minutes. SKaiNET is a Kotlin Multiplatform AI framework, but every JVM-facing API is designed for idiomatic Java usage -- no Kotlin knowledge required.
 
 === Prerequisites
@@ -29,7 +37,7 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
 ----
 <project>
     <properties>
-        <skainet.version>0.19.0</skainet.version>
+        <skainet.version>0.22.2</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -127,7 +135,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.19.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.22.2"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")

@@ -177,6 +177,11 @@ private class TestTensorOps : TensorOps {
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = tensor
     override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = tensor
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> = a
+    override fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V> = a
+    override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> log10(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> = tensor

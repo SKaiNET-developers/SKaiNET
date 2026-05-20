@@ -6,7 +6,12 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.model.DataType
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.data.Bf16DenseTensorData
+import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.DTypePolicy
+import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
 import sk.ainet.lang.types.Int8
@@ -23,7 +28,8 @@ import kotlin.reflect.KClass
  * - F32/F64 tensors -> FP32 (F64 downcast with warning)
  * - I32/I64 tensors -> Int32 (I64 downcast with warning)
  * - I8/U8 tensors -> Int8
- * - F16/BF16 tensors -> FP32 (with dequantization)
+ * - F16 tensors -> FP32 (with dequantization)
+ * - BF16 tensors -> FP32 (default) OR native BF16 storage (`bf16Policy = KEEP_NATIVE`)
  *
  * Where possible, decoded arrays are wrapped (borrowed) rather than copied
  * into TensorData, avoiding a second allocation. The raw-byte decode step
@@ -31,10 +37,16 @@ import kotlin.reflect.KClass
  *
  * @param sourceProvider Factory providing RandomAccessSource to the SafeTensors file
  * @param onProgress Optional progress callback (current, total, tensorName)
+ * @param bf16Policy How to handle `BFLOAT16` tensors. Default is
+ *   [Bf16LoadPolicy.DEQUANT_TO_FP32] — backward-compatible with all
+ *   existing consumers. Flip to [Bf16LoadPolicy.KEEP_NATIVE] to keep
+ *   weights in their on-disk BF16 layout and let the matmul dispatch
+ *   route to a vectorised BF16 kernel.
  */
 class SafeTensorsParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
-    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> }
+    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+    private val bf16Policy: Bf16LoadPolicy = Bf16LoadPolicy.DEQUANT_TO_FP32,
 ) : ParametersLoader {
 
     override suspend fun <T : DType, V> load(
@@ -82,10 +94,22 @@ class SafeTensorsParametersLoader(
 
                     DataType.BFLOAT16 -> {
                         require(dtype == FP32::class) {
-                            "SafeTensors BF16 tensor '${tensorInfo.name}' requires FP32 dtype (dequant), got ${dtype.simpleName}"
+                            "SafeTensors BF16 tensor '${tensorInfo.name}' requires FP32 dtype, got ${dtype.simpleName}"
                         }
-                        val floats = dequantBF16(bytes)
-                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        when (bf16Policy) {
+                            Bf16LoadPolicy.DEQUANT_TO_FP32 -> {
+                                val floats = dequantBF16(bytes)
+                                ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                            }
+                            Bf16LoadPolicy.KEEP_NATIVE -> {
+                                // Wrap the on-disk BF16 bytes directly. dtype stays FP32 from
+                                // the consumer's POV (Bf16TensorData : TensorData<DType, Float>
+                                // decodes on read); the storage type is what the matmul
+                                // dispatch will pattern-match on to pick the BF16 SPI kernel.
+                                val bf16Data = Bf16DenseTensorData(shape, bytes)
+                                ctx.fromData(bf16Data as TensorData<T, V>, dtype)
+                            }
+                        }
                     }
 
                     DataType.INT32 -> {
@@ -263,6 +287,66 @@ class SafeTensorsParametersLoader(
                 val v = (1.0f + mant.toFloat() / 1024.0f) * (2.0f).pow((exp shr 10) - 15)
                 if (sign != 0) -v else v
             }
+        }
+    }
+
+    companion object {
+
+        /**
+         * Constructs a SafeTensorsParametersLoader from a generalised
+         * [DTypePolicy] instead of the BF16-specific [Bf16LoadPolicy].
+         * Bridge for the policy-driven loader path described in the
+         * dtype-policy RFC (#615).
+         *
+         * Policy → behaviour mapping (BF16 source tensors only —
+         * other dtypes are handled per the per-arm `require` checks
+         * in [load]):
+         * - [DTypePolicy.Any]: BF16 dequants to FP32 (the existing
+         *   adaptive default).
+         * - [DTypePolicy.Require] target = `BF16`: KEEP_NATIVE.
+         * - [DTypePolicy.Require] target = `FP32`: DEQUANT_TO_FP32.
+         * - [DTypePolicy.Require] target = `FP16`: throws — F16
+         *   KEEP_NATIVE is a follow-up (no `Fp16DenseTensorData`
+         *   yet); use `Require(FP32)` if you want F16 dequanted, or
+         *   `Any` to inherit the adaptive default.
+         * - [DTypePolicy.Require] target = anything else: throws —
+         *   SafeTensors can't fabricate dtypes the file doesn't carry.
+         * - [DTypePolicy.Prefer] target = `BF16`: KEEP_NATIVE.
+         * - [DTypePolicy.Prefer] target = anything else: DEQUANT_TO_FP32
+         *   (the soft path falls through).
+         * - [DTypePolicy.OneOf] containing `BF16`: KEEP_NATIVE.
+         * - [DTypePolicy.OneOf] without `BF16`: DEQUANT_TO_FP32.
+         */
+        fun withPolicy(
+            sourceProvider: () -> RandomAccessSource,
+            policy: DTypePolicy,
+            onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+        ): SafeTensorsParametersLoader = SafeTensorsParametersLoader(
+            sourceProvider = sourceProvider,
+            onProgress = onProgress,
+            bf16Policy = mapPolicyToBf16(policy),
+        )
+
+        internal fun mapPolicyToBf16(policy: DTypePolicy): Bf16LoadPolicy = when (policy) {
+            DTypePolicy.Any -> Bf16LoadPolicy.DEQUANT_TO_FP32
+            is DTypePolicy.Require -> when (policy.target) {
+                BF16 -> Bf16LoadPolicy.KEEP_NATIVE
+                FP32 -> Bf16LoadPolicy.DEQUANT_TO_FP32
+                FP16 -> throw IllegalArgumentException(
+                    "SafeTensorsParametersLoader: Require(FP16) is not supported — " +
+                        "F16 KEEP_NATIVE has no Fp16DenseTensorData backing yet. " +
+                        "Use Require(FP32) to dequant F16 sources, or Any to inherit the adaptive default.",
+                )
+                else -> throw IllegalArgumentException(
+                    "SafeTensorsParametersLoader: Require(${policy.target.name}) is not satisfiable — " +
+                        "the loader produces FP32 / BF16 / Int32 / Int8 tensors depending on source dtype; " +
+                        "it cannot fabricate ${policy.target.name} from arbitrary sources.",
+                )
+            }
+            is DTypePolicy.Prefer -> if (policy.target == BF16) Bf16LoadPolicy.KEEP_NATIVE
+                                    else Bf16LoadPolicy.DEQUANT_TO_FP32
+            is DTypePolicy.OneOf -> if (BF16 in policy.allowed) Bf16LoadPolicy.KEEP_NATIVE
+                                    else Bf16LoadPolicy.DEQUANT_TO_FP32
         }
     }
 }

@@ -2,9 +2,11 @@ package sk.ainet.compile.opt
 
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.compile.opt.passes.ConstantFoldingPass
+import sk.ainet.compile.opt.passes.DTypeConstraintResolutionPass
 import sk.ainet.compile.opt.passes.DeadCodeEliminationPass
 import sk.ainet.compile.opt.passes.LLMFusionPass
 import sk.ainet.compile.opt.passes.OperationFusionPass
+import sk.ainet.compile.opt.passes.PowSpecializationPass
 import sk.ainet.compile.opt.passes.SharedWeightDeduplicationPass
 import sk.ainet.compile.opt.passes.TransposeEliminationPass
 
@@ -73,6 +75,17 @@ public class GraphOptimizationPipeline(
          */
         public fun createDefault(): GraphOptimizationPipeline = GraphOptimizationPipeline(
             passes = listOf(
+                // Resolve dtype constraints first so fusion / DCE / constant
+                // folding see the resolved-or-failed graph rather than a
+                // mix of policy-tagged and bare nodes. Per the RFC, this
+                // is the boundary where dtype problems surface — every
+                // later pass can assume dtype-validity.
+                DTypeConstraintResolutionPass(),
+                // Rewrite pow(x, 2) to multiply(x, x) before fusion so
+                // the downstream passes see the multiply form. Runs after
+                // dtype resolution (still benefits from resolved dtypes)
+                // and before everything else.
+                PowSpecializationPass(),
                 DeadCodeEliminationPass(),
                 ConstantFoldingPass(),
                 OperationFusionPass()
@@ -84,6 +97,8 @@ public class GraphOptimizationPipeline(
          */
         public fun createAggressive(): GraphOptimizationPipeline = GraphOptimizationPipeline(
             passes = listOf(
+                DTypeConstraintResolutionPass(),
+                PowSpecializationPass(),
                 DeadCodeEliminationPass(),
                 ConstantFoldingPass(),
                 OperationFusionPass()
@@ -95,6 +110,7 @@ public class GraphOptimizationPipeline(
          * Creates an LLM-optimized pipeline with transformer-specific passes.
          *
          * Pass ordering:
+         * 0. DTypeConstraintResolution — resolve dtype policies before fusion
          * 1. TransposeElimination — fold transposes into matmuls
          * 2. SharedWeightDedup — deduplicate tied weights (e.g. token_embd ↔ output)
          * 3. LLMFusion — fuse RMSNorm, SwiGLU, QKV patterns
@@ -103,6 +119,7 @@ public class GraphOptimizationPipeline(
          */
         public fun createLLM(): GraphOptimizationPipeline = GraphOptimizationPipeline(
             passes = listOf(
+                DTypeConstraintResolutionPass(),
                 TransposeEliminationPass(),
                 SharedWeightDeduplicationPass(),
                 LLMFusionPass(),

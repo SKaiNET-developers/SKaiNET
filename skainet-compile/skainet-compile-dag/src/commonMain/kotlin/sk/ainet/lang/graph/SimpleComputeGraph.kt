@@ -42,7 +42,8 @@ public class SimpleComputeGraph(
     override fun getInputNodes(): List<GraphNode> = _nodes.filter { n -> _edges.none { it.destination == n } }
     override fun getOutputNodes(): List<GraphNode> = _nodes.filter { n -> _edges.none { it.source == n } }
 
-    override fun getInputNodes(node: GraphNode): List<GraphNode> = _edges.filter { it.destination == node }.map { it.source }
+    override fun getInputNodes(node: GraphNode): List<GraphNode> =
+        _edges.filter { it.destination == node }.sortedBy { it.destinationInputIndex }.map { it.source }
     override fun getOutputNodes(node: GraphNode): List<GraphNode> = _edges.filter { it.source == node }.map { it.destination }
 
     override fun getTopologicalOrder(): List<GraphNode> {

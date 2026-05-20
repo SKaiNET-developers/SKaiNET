@@ -1,7 +1,9 @@
 package sk.ainet.exec.kernel
 
+import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
+import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 
 /**
  * Scalar (non-SIMD) [KernelProvider] — always available, lowest
@@ -21,4 +23,6 @@ public object ScalarKernelProvider : KernelProvider {
     override val priority: Int = 0
     override fun isAvailable(): Boolean = true
     override fun matmulFp32(): Fp32MatmulKernel = ScalarMatmulKernel
+    override fun matmulBf16(): Bf16MatmulKernel = ScalarBf16MatmulKernel
+    override fun matmulQ8_0(): Q8_0MatmulKernel = ScalarQ8_0MatmulKernel
 }

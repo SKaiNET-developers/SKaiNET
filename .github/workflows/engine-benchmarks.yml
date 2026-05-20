@@ -1,0 +1,128 @@
+name: Engine Benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'skainet-backends/benchmarks/jvm-cpu-publish/**'
+      - 'skainet-backends/benchmarks/jvm-cpu-jmh/**'
+      - 'skainet-backends/skainet-backend-api/**'
+      - 'skainet-backends/skainet-backend-cpu/**'
+      - 'benchmarks/**'
+      - 'scripts/run_engine_benchmarks.sh'
+      - 'scripts/run_engine_smoke.sh'
+      - 'scripts/validate_pts_profiles.sh'
+      - 'scripts/check_engine_json.sh'
+      - '.github/workflows/engine-benchmarks.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'skainet-backends/benchmarks/jvm-cpu-publish/**'
+      - 'skainet-backends/benchmarks/jvm-cpu-jmh/**'
+      - 'skainet-backends/skainet-backend-api/**'
+      - 'skainet-backends/skainet-backend-cpu/**'
+      - 'benchmarks/**'
+      - 'scripts/run_engine_benchmarks.sh'
+      - 'scripts/run_engine_smoke.sh'
+      - 'scripts/validate_pts_profiles.sh'
+      - 'scripts/check_engine_json.sh'
+      - '.github/workflows/engine-benchmarks.yml'
+  workflow_dispatch:
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-ubuntu-latest:
+    # Smoke pack on the default GitHub runner. Goal: prove the harness +
+    # JSON schema + PTS profile XMLs still compile and parse on every PR.
+    # Performance numbers from this lane are NOT publishable — virtualized
+    # runner, shared tenancy, no warmup steady-state.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+
+      - name: Install Phoronix Test Suite
+        # PTS isn't in Ubuntu 24.04's default repos; install_pts.sh pulls
+        # the upstream .deb from the official GitHub release.
+        run: |
+          ./scripts/install_pts.sh
+
+      - name: Build publication harness shadow jar
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8"
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :skainet-backends:benchmarks:jvm-cpu-publish:shadowJar
+
+      - name: Run engine smoke benchmarks
+        run: |
+          ./scripts/run_engine_smoke.sh
+
+      - name: Validate JSON schema
+        run: |
+          ./scripts/check_engine_json.sh out/engine/smoke
+
+      - name: Validate PTS profiles and suite
+        run: |
+          ./scripts/validate_pts_profiles.sh
+
+      - name: Upload smoke records
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-smoke-records-${{ github.run_id }}
+          path: out/engine/smoke/**/*.json
+          retention-days: 14
+
+  full-self-hosted:
+    # Full pack on the registered self-hosted runner. Only fires on release
+    # publish or manual dispatch — never on PRs — so untrusted code cannot
+    # land on the maintainer machine. Results land as artifacts; this
+    # session does NOT upload to OpenBenchmarking.org (separate milestone).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+    runs-on: [self-hosted, linux, x86_64, skainet-bench-linux-x86]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show runner identity
+        run: |
+          echo "Runner: $RUNNER_NAME labels=$RUNNER_LABELS"
+          uname -a
+          java -version 2>&1 | head -3
+          phoronix-test-suite version 2>/dev/null | head -1 || echo "PTS not installed"
+
+      - name: Build publication harness shadow jar
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :skainet-backends:benchmarks:jvm-cpu-publish:shadowJar
+
+      - name: Run full engine benchmarks
+        run: |
+          ./scripts/run_engine_benchmarks.sh
+
+      - name: Validate JSON schema
+        run: |
+          ./scripts/check_engine_json.sh "$(ls -td out/engine/*/ | head -1)"
+
+      - name: Validate PTS profiles and suite
+        run: |
+          ./scripts/validate_pts_profiles.sh
+
+      - name: Upload full records
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-full-records-${{ github.run_id }}
+          path: out/engine/**/*.json
+          retention-days: 90

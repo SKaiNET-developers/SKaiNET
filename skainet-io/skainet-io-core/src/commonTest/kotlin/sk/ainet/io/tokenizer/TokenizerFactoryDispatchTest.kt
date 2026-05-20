@@ -120,4 +120,42 @@ class TokenizerFactoryDispatchTest {
             TokenizerFactory.fromTokenizerJson(json)
         }
     }
+
+    @Test
+    fun `gguf llama with control tokens wraps SentencePiece in splitter`() {
+        // Vocab: <unk>(0,UNK=2) <s>(1,CONTROL=3) </s>(2,CONTROL=3) ▁(3) a(4)
+        val fields = mapOf<String, Any?>(
+            "tokenizer.ggml.model" to "llama",
+            "tokenizer.ggml.tokens" to listOf("<unk>", "<s>", "</s>", "▁", "a"),
+            "tokenizer.ggml.scores" to listOf(0.0f, 0.0f, 0.0f, -1.0f, -1.0f),
+            "tokenizer.ggml.token_type" to listOf(2, 3, 3, 1, 1),
+            "tokenizer.ggml.bos_token_id" to 1,
+            "tokenizer.ggml.eos_token_id" to 2,
+        )
+        val tok = TokenizerFactory.fromGguf(fields)
+        assertTrue(tok is SpecialTokenSplitter, "expected SpecialTokenSplitter wrapping SentencePiece, got ${tok::class.simpleName}")
+        // <s> in the middle of text encodes as the atomic id 1, not as
+        // SentencePiece byte-fallback fragments.
+        val ids = tok.encode("a<s>a")
+        assertEquals(1, ids.toList().count { it == 1 }, "exactly one <s> id expected, got ${ids.toList()}")
+    }
+
+    @Test
+    fun `tokenizer_json Unigram with added_tokens wraps SentencePiece in splitter`() {
+        val json = """
+            {
+              "added_tokens": [
+                {"id": 1, "content": "<s>", "special": true},
+                {"id": 2, "content": "</s>", "special": true}
+              ],
+              "model": {
+                "type": "Unigram",
+                "unk_id": 0,
+                "vocab": [["<unk>", 0.0], ["<s>", 0.0], ["</s>", 0.0], ["▁", -1.0], ["a", -1.0]]
+              }
+            }
+        """.trimIndent()
+        val tok = TokenizerFactory.fromTokenizerJson(json)
+        assertTrue(tok is SpecialTokenSplitter, "expected SpecialTokenSplitter wrapping SentencePiece, got ${tok::class.simpleName}")
+    }
 }

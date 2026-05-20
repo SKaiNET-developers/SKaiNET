@@ -621,7 +621,7 @@ private fun <T : DType, V> createLinear(
 
         myInitWeights == null && myInitBias != null -> {
 
-            val safeWeights = executionContext.tensorDataFactory.zeros<T, V>(Shape(outFeatures, inFeatures), kClass)
+            val safeWeights = executionContext.tensorDataFactory.placeholder<T, V>(Shape(outFeatures, inFeatures), kClass)
             val initW = executionContext.fromData(safeWeights, kClass)
 
             Linear(
@@ -635,7 +635,7 @@ private fun <T : DType, V> createLinear(
         }
 
         myInitWeights != null && myInitBias == null -> {
-            val safeBias = executionContext.tensorDataFactory.zeros<T, V>(Shape(outFeatures), kClass)
+            val safeBias = executionContext.tensorDataFactory.placeholder<T, V>(Shape(outFeatures), kClass)
             val initB = executionContext.fromData(safeBias, kClass)
 
             Linear(
@@ -649,8 +649,8 @@ private fun <T : DType, V> createLinear(
         }
 
         else -> {
-            val safeWeights = executionContext.tensorDataFactory.zeros<T, V>(Shape(outFeatures, inFeatures), kClass)
-            val safeBias = executionContext.tensorDataFactory.zeros<T, V>(Shape(outFeatures), kClass)
+            val safeWeights = executionContext.tensorDataFactory.placeholder<T, V>(Shape(outFeatures, inFeatures), kClass)
+            val safeBias = executionContext.tensorDataFactory.placeholder<T, V>(Shape(outFeatures), kClass)
             val initW = executionContext.fromData(safeWeights, kClass)
             val initB = executionContext.fromData(safeBias, kClass)
 
@@ -792,10 +792,10 @@ public class Conv2dImpl<T : DType, V>(
         require(inChannels > 0) { "Conv2d inChannels must be > 0 (set explicitly if not inferred)." }
 
         // Create default tensors if not provided
-        val weights = weightsValue ?: executionContext.zeros(weightsShape, kClass)
+        val weights = weightsValue ?: executionContext.placeholder(weightsShape, kClass)
 
         val biasParam = if (bias) {
-            biasValue ?: executionContext.zeros(biasShape, kClass)
+            biasValue ?: executionContext.placeholder(biasShape, kClass)
         } else null
 
         return Conv2d(
@@ -921,8 +921,8 @@ public class Conv1dImpl<T : DType, V>(
         require(kernelSize > 0) { "Conv1d kernelSize must be > 0." }
         require(inChannels > 0) { "Conv1d inChannels must be > 0." }
 
-        val weights = weightsValue ?: executionContext.zeros(weightsShape, kClass)
-        val biasParam = if (bias) biasValue ?: executionContext.zeros(biasShape, kClass) else null
+        val weights = weightsValue ?: executionContext.placeholder(weightsShape, kClass)
+        val biasParam = if (bias) biasValue ?: executionContext.placeholder(biasShape, kClass) else null
 
         return Conv1d(
             inChannels = inChannels,
@@ -993,8 +993,8 @@ public class Conv3dImpl<T : DType, V>(
         require(kernelSize.first > 0 && kernelSize.second > 0 && kernelSize.third > 0) { "Conv3d kernelSize must be > 0." }
         require(inChannels > 0) { "Conv3d inChannels must be > 0." }
 
-        val weights = weightsValue ?: executionContext.zeros(weightsShape, kClass)
-        val biasParam = if (bias) biasValue ?: executionContext.zeros(biasShape, kClass) else null
+        val weights = weightsValue ?: executionContext.placeholder(weightsShape, kClass)
+        val biasParam = if (bias) biasValue ?: executionContext.placeholder(biasShape, kClass) else null
 
         return Conv3d(
             inChannels = inChannels,

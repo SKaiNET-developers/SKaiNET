@@ -5,10 +5,6 @@
 
 <img src="docs/modules/ROOT/images/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-### Vision
-
-SKaiNET aims to democratize "Edge AI / On-device AI" by bridging the gap between high-level application development and low-level hardware optimization. We believe AI should be portable, type-safe, and developer-friendly, enabling seamless intelligence in everything from mobile apps to IoT devices without sacrificing performance.
-
 > For architecture details see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
@@ -19,10 +15,17 @@ Add the core dependencies (Gradle Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("sk.ainet.core:SKaiNET-lang-core:0.21.0")
-    implementation("sk.ainet.core:SKaiNET-backend-cpu:0.21.0")
+    // Recommended: import the umbrella BOM and drop versions on the engine modules.
+    implementation(platform("sk.ainet:skainet-bom:0.23.0"))
+
+    implementation("sk.ainet.core:skainet-lang-core")
+    implementation("sk.ainet.core:skainet-backend-cpu")
 }
 ```
+
+> The BOM was first correctly published to Maven Central in 0.22.2 — earlier versions
+> shipped at the wrong coordinates and could not be imported. Pin versions directly if
+> you need an older release.
 
 ### Hello Neural Net
 
@@ -71,7 +74,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 | Project | Description |
 |---|---|
-| [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) | Llama, Gemma, and BERT inference runtimes |
 | [SKaiNET-transformers](https://github.com/SKaiNET-developers/SKaiNET-transformers) | Pre-built transformer architectures and layers |
 | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) | Sample projects and integration demos |
 
@@ -83,7 +85,25 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 |---|---|
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
-| LLM inference (Llama, Gemma) | [SKaiNET-LLM](https://github.com/SKaiNET-developers/SKaiNET-LLM) |
+
+---
+
+## Official Benchmarks
+
+SKaiNET ships an official Phoronix-Test-Suite-compatible benchmark
+program for the compute engine. See the
+[methodology and replay docs](docs/modules/ROOT/pages/contributing/benchmarks.adoc),
+the [release manifest](benchmarks/manifests/engine-release.yml), and the
+[CI workflow](.github/workflows/engine-benchmarks.yml). Smoke runs fire
+on every PR via `ubuntu-latest`; full publishable runs fire on a
+self-hosted Linux x86 runner on release.
+
+Quick local replay:
+
+```bash
+./gradlew :skainet-backends:benchmarks:jvm-cpu-publish:shadowJar
+./scripts/run_engine_smoke.sh
+```
 
 ---
 
@@ -100,11 +120,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 - **SDPA & Gather**: High-performance Scaled Dot-Product Attention and indexing operations.
 - **TurboQuant**: Runtime KV-cache compression (~8x at 4-bit) for long-context LLM inference. Presets: `safe-lowbit`, `balanced`, `experimental-max`. See `TurboQuantUsage` for integration guide.
 
-### Agentic AI Infrastructure
-
-- **ComputeGraph**: Unified framework for defining agentic workflows and tool-calling loops.
-- Java facade: `JavaAgentLoop` (in `skainet-lang-java`)
-
 ### Neural Network DSL
 
 - **Sequential**: `nn { input(); dense(); relu(); dense() }`
@@ -119,10 +134,6 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 - Formats: GGUF, ONNX, SafeTensors, JSON, Image (JPEG, PNG)
 - Type-safe transform DSL: resize, crop, normalize, toTensor
 
-### Java 21+ Support
-
-- `SKaiNET` entry point, `TensorJavaOps`, builder-pattern model definition
-- Maven BOM (`sk.ainet:skainet-bom`) for one-line version management
 
 ### Edge AI: Arduino / C99 Export
 
@@ -137,10 +148,16 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ---
 
-## What's New in 0.21.0
+## What's New in 0.23.0
 
-- **JVM CPU performance — Vector API SIMD across the board.** Pluggable `KernelProvider` SPI with priority-ordered lookup; FP32 matmul tile-blocked at **8.6×–10.8× over scalar**, Q4_K matmul fully SIMD-fused with inline dequant at **~30–73 GFLOPS** on Apple Silicon. Every quantized format we support (Q4_0, Q4_K, Q4_K MemSeg, Q6_K, Q8_0) is now SIMD'd to some degree.
-- **`ScratchPool` SPI and `TensorOps.permute(axes)`** — runtime workspace allocator for transient tensors and arbitrary-axis permutation.
+- **Real-model GGUFs no longer OOM at network construction.** The DSL pre-allocated zero-filled `FloatArray(shape.volume)` for every Linear / Conv weight at module-creation time, even though downstream loaders overwrite those zeros immediately. For an Apertus-8B Q4_K_S GGUF (4.7 GB on disk) that was ~27 GB of FP32 zeros allocated and thrown away — OOMed at 12 GB heap. New `TensorDataFactory.placeholder(...)` API; every eager `zeros(...)` call site in the network builders routes through it. Lazy materialization fires only if a caller actually reads the tensor (which the load path never does). Verified end-to-end against `unsloth/Apertus-8B-Instruct-2509-GGUF`: now loads in 12 GB heap. Same fix benefits Gemma / Llama / Qwen / Voxtral DSL paths transparently. (Issue #587, PR #588)
+- **Kotlin/Native: GGUFs over ~2 GiB now load.** `createRandomAccessSource(filePath)` had no native actual; K/N consumers fell through to the legacy slurp-into-`ByteArray` reader, which capped at `Int.MAX_VALUE` bytes (~2 GiB). Practical impact: macOS / Linux / iOS native couldn't open Q8 models above ~1B parameters or Q4 above ~3B. New POSIX-`pread`-backed `PosixPreadRandomAccessSource` covers `macosArm64`, `linuxX64`, `linuxArm64`, `iosArm64`, `iosSimulatorArm64`. (Issue #589, PR #591)
+
+### Recent releases
+
+- **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)
+- **0.22.1** — `StreamingShardedSafeTensorsReader.loadTensorStorageMapped` for zero-copy reads of multi-shard tensors above the 2 GB JVM `ByteArray` limit. (PR #582)
+- **0.22.0** — Native (FFM) CPU kernel provider: **4–6× faster Q4_K matmul, 1.5–1.8× FP32 SGEMM** vs Panama Vector; auto-selected via `KernelRegistry.bestAvailable()`. (PR #571)
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
@@ -154,6 +171,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 - **Q4 2026**: Federated learning support for multi-device training
 
 ---
+
 
 ## Contributing & Community
 

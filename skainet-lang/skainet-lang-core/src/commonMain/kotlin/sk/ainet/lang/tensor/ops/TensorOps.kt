@@ -193,6 +193,32 @@ public interface TensorOps {
     @Diff
     public fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V>
 
+    /**
+     * Element-wise power with a tensor exponent: `c[i] = a[i] ^ b[i]`.
+     * Shape of [b] must broadcast against [a]. Mirror of `stablehlo.power`.
+     */
+    @Diff
+    public fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>
+
+    /**
+     * Element-wise power with a scalar exponent: `c[i] = a[i] ^ n`.
+     * Backward formula only differentiates w.r.t. [a]; [n] is a constant.
+     */
+    @Diff
+    public fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V>
+
+    /** Element-wise natural logarithm: `c[i] = ln(a[i])`. Mirror of `stablehlo.log`. */
+    @Diff
+    public fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /** Element-wise base-2 logarithm: `c[i] = log2(a[i])`. */
+    @Diff
+    public fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /** Element-wise base-10 logarithm: `c[i] = log10(a[i])`. */
+    @Diff
+    public fun <T : DType, V> log10(tensor: Tensor<T, V>): Tensor<T, V>
+
     /** Element-wise absolute value: |x| */
     @Diff
     public fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V>

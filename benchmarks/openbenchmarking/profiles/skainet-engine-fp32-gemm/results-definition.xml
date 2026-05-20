@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+    <ResultsParser>
+        <OutputTemplate>engine-fp32-gemm_gflops: #_RESULT_#</OutputTemplate>
+        <LineHint>engine-fp32-gemm_gflops:</LineHint>
+    </ResultsParser>
+</PhoronixTestSuite>

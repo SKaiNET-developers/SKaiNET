@@ -1,0 +1,140 @@
+= The SKaiNET DType Model
+:description: How SKaiNET represents tensor dtypes across loaders, the kernel SPI, and the (in-progress) constraint-resolution pipeline — mapped onto the four-dtype concept from the dtype-policy RFC (#615).
+
+[NOTE]
+====
+**Audience: SKaiNET maintainers and contributors.** This page maps
+the vocabulary used in the
+https://github.com/SKaiNET-developers/SKaiNET/blob/develop/rfc.md[dtype-policy
+RFC] (issue #615) onto the existing SKaiNET implementations.
+Library consumers don't need to read this — they call
+`tensor<FP32, Float>(ctx, FP32::class) { … }` and the engine does
+the rest.
+====
+
+The RFC distinguishes four dtype concepts; the engine mostly already
+implements them, but under different names. This page is the
+glossary that keeps the two consistent.
+
+== The four dtype concepts
+
+[cols="1,2,2,3",options="header"]
+|===
+| RFC term | What it means | SKaiNET implementation today | Notes
+| **source dtype** | The dtype stored in the on-disk model file (`F16`, `F32`, `Q4_K`, `Q8_0`, …). | Set by the loader. `StreamingGgufParametersLoader` maps `GGMLQuantizationType.*` to the corresponding `TensorData` subtype. `SafeTensorsParametersLoader` maps SafeTensors `DataType` similarly. | The loader-time mapping is the **source-of-truth** for what the file actually contains.
+| **logical dtype** | The dtype the tensor advertises to graph code (op contracts, shape inference, dispatch). | `Tensor<T : DType, V>.dtype: KClass<T>` — the type-parameter `T` resolves to one of the sealed `DType` arms (`FP32`, `BF16`, `Int8`, …). | The logical dtype is **never** inferred from physical storage shape (no "1D byte array patched into 2D" antipattern — every quantized `TensorData` subtype carries explicit `shape: Shape`).
+| **required dtype** | The dtype an op, layer, or backend declares it needs. | Today: implicit in the kernel SPI accessors (`matmulFp32()`, `matmulBf16()`, `matmulQ4K()`, `matmulQ8_0()`). After W6/W7 of #615: explicit `DTypePolicy` attached to graph nodes via `attributes["dtype_policy"]`. | The `DTypePolicy` sealed type (W1, shipped in this PR series) covers the four arms from the RFC's "policy categories" section: `Any` / `Require` / `Prefer` / `OneOf`.
+| **lowered dtype** | The dtype actually passed to the executable kernel. | Whatever `KernelRegistry.bestAvailable()?.matmul*()` returns. `KernelProvider.supports(opName, dtypeKeys)` (W3, shipped) is the introspection query. | If a `Require` constraint can't be matched by any registered kernel and no cast kernel bridges the gap, the constraint-resolution pass (W7, pending) raises `DtypeConstraintViolationException` *before* forward execution — exactly the RFC's "fail before execution" rule.
+|===
+
+== Loader source → logical mapping today
+
+Both loaders are explicit about what each on-disk dtype becomes
+inside the engine. This table is the W0a audit promised by issue
+#615 — it makes the silent dequant cases visible so the loader-policy
+work (W0b / W0c) knows what to generalise.
+
+=== `StreamingGgufParametersLoader` (skainet-io-gguf)
+
+[cols="1m,1,2,2",options="header"]
+|===
+| GGUF source type | Logical dtype today | Storage class | Native or dequant?
+| F32       | `FP32`  | `FloatArrayTensorData` (dense)              | native
+| I32       | `Int32` | `IntArrayTensorData` (dense)                | native
+| F16       | `FP32`  | `FloatArrayTensorData` (dense, dequanted)   | **dequant on load** — no `KEEP_NATIVE` path yet
+| BF16      | `FP32`  | `FloatArrayTensorData` (dense, dequanted)   | **dequant on load** — no `KEEP_NATIVE` path yet
+| Q4_K      | `FP32`-tagged tensor wrapping `Q4_KBlockTensorData` | `Q4_KBlockTensorData` (packed, logical shape preserved) | native
+| Q8_0      | `FP32`-tagged tensor wrapping `Q8_0BlockTensorData` | `Q8_0BlockTensorData` (packed, logical shape preserved) | native
+|===
+
+The two dequant rows (F16, BF16) are the gap. SafeTensors already
+has a `Bf16LoadPolicy.KEEP_NATIVE` opt-in (see below) that returns
+the BF16 bytes verbatim instead of expanding to FP32. The
+equivalent for GGUF is W0c (`StreamingGgufParametersLoader.loadWithPolicy`).
+
+=== `SafeTensorsParametersLoader` (skainet-io-safetensors)
+
+[cols="1m,1,2,2",options="header"]
+|===
+| SafeTensors source type | Logical dtype today | Storage class | Native or dequant?
+| F32 / F64 | `FP32`  | `FloatArrayTensorData`                                | native (F64 down-cast with warning)
+| F16       | `FP32`  | `FloatArrayTensorData` (dequanted)                    | **dequant on load** — no `KEEP_NATIVE` path yet
+| BF16      | `FP32` or `BF16`-shaped depending on `Bf16LoadPolicy` | `FloatArrayTensorData` (dequanted) or `Bf16DenseTensorData` (native) | **policy-controlled**: `DEQUANT_TO_FP32` (default) or `KEEP_NATIVE`
+| I32 / I16 / U16 / U32 / U64 / I8 / U8 | matching `Int*` / `UInt*` | wrapped / reinterpreted appropriately | native
+|===
+
+The BF16 row is the prior art for the RFC's policy model. `Bf16LoadPolicy.toDTypePolicy()` (W2, shipped) maps the BF16-specific enum onto the generalised `DTypePolicy`:
+
+[source,kotlin]
+----
+Bf16LoadPolicy.DEQUANT_TO_FP32.toDTypePolicy()  // → DTypePolicy.Require(FP32)
+Bf16LoadPolicy.KEEP_NATIVE.toDTypePolicy()      // → DTypePolicy.Require(BF16)
+----
+
+W0b extends this same idea to F16 and the integer dtypes so the
+whole SafeTensors loader can be driven by a single `DTypePolicy`
+argument.
+
+== The `DType` registry vs the kernel capability query
+
+`DType.findByName("Float32")` returns the singleton `FP32` object —
+the sealed-interface registry is the source-of-truth for dtype
+metadata (size in bits, name, promotion rules). It currently covers
+floats and (un)signed integers from `Ternary` through `FP64`.
+
+The quantized block formats (`Q4_K`, `Q8_0`, `Q6_K`, `Q4_0`, …)
+are **not** `DType` arms — they live as `TensorData` subtypes in
+`skainet-lang-core/tensor/data/`. That's intentional: a `DType` is
+a numeric type with promotion semantics, whereas Q4_K is a *packed
+block format* with no scalar interpretation outside its block
+context.
+
+For the kernel capability query (`KernelProvider.supports(opName,
+dtypeKeys)`, W3), this means the second argument is `List<String>`
+rather than `List<DType>` — the strings `"Q4_K"` and `"Q8_0"` slot
+in alongside `"Float32"` and `"BFloat16"`. The string convention
+matches what GGUF / SafeTensors loaders and the StableHLO converter
+already use for format identification.
+
+== Fail-fast: `KernelStrictness`
+
+The RFC's "fail before execution" rule has a small, ready
+affordance today (W4, shipped):
+
+[source,bash]
+----
+java -Dskainet.strict.kernels=true …
+----
+
+When set, `DefaultCpuOpsJvm.matmul` raises
+`NoSuchKernelException` (with the failing dtype pair and the list
+of currently-registered providers) just before its silent scalar
+fallback would have run. Default off — adaptive behaviour is
+preserved.
+
+The constraint-resolution pass (W7) raises the same exception
+shape at *graph-prep* time, before forward execution can even
+start. The `KernelStrictness` affordance is the runtime equivalent
+for cases where graph prep hasn't been run (e.g. ad-hoc tensor-op
+code that calls `ctx.ops.matmul` directly).
+
+== Anti-patterns this model prevents
+
+The RFC calls out three concrete anti-patterns the engine must
+avoid; SKaiNET already prevents all three.
+
+[cols="2,3",options="header"]
+|===
+| Anti-pattern | What prevents it in SKaiNET today
+| Marker-class dtype detection (`if tensor is Q4_KMarker`) | The sealed `DType` interface carries explicit metadata (`sizeInBits`, `name`, `isCompatible`, `promoteTo`). Dispatch uses `KClass<T>` identity and the typed accessors on `KernelProvider`, not marker checks.
+| Packed bytes treated as logical shape (1D byte array patched into 2D after load) | Every quantized `TensorData` subtype (`Q4_KBlockTensorData`, `Q8_0BlockTensorData`, `Bf16DenseTensorData`) carries an explicit `shape: Shape` separate from its `packedData: ByteArray`. Loaders set the logical shape from the file header, not from `bytes.size`.
+| GGUF Q8 confused with native int8 | They're different `TensorData` subtypes. A GGUF Q8 tensor goes through `Q8_0BlockTensorData` (with FP16 scale + 32 signed int8 codes per block); a future native-int8 NPU tensor would have its own `TensorData` subtype with backend-specific layout metadata. The RFC's "GGUF Q8 ≠ native int8" rule is enforced structurally.
+|===
+
+== Related
+
+* `rfc.md` (repo root) — the design document this page implements.
+* Issue https://github.com/SKaiNET-developers/SKaiNET/issues/615[#615] — implementation tracker.
+* xref:how-to/build-tensors.adoc[Build tensors with the data DSL] — the user-facing entry points that produce the `Tensor<T, V>` values whose dtype this page describes.
+* xref:contributing/benchmarks.adoc[Engine benchmark program] — runtime numbers that the kernel SPI produces.
+* xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] — how the kernel SPI's dispatch actually shows up in measurements.

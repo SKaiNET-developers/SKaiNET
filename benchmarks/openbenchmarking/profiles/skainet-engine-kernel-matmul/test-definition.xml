@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+    <TestInformation>
+        <Title>SKaiNET Engine Kernel Matmul (scalar vs Panama)</Title>
+        <AppVersion>1.0.0</AppVersion>
+        <Description>Direct kernel-level FP32 matmul bypassing TensorOps dispatch, mirroring the JVM CPU JMH KernelMatmulBench. Kernel provider is selected by the --provider option (scalar or panama). Higher is better.</Description>
+        <ResultScale>GFLOPS</ResultScale>
+        <Proportion>HIB</Proportion>
+        <TimesToRun>1</TimesToRun>
+    </TestInformation>
+    <TestProfile>
+        <Version>1.0.0</Version>
+        <SupportedPlatforms>Linux, MacOSX</SupportedPlatforms>
+        <SoftwareType>Library</SoftwareType>
+        <TestType>Processor</TestType>
+        <License>MIT</License>
+        <Status>Testing</Status>
+        <Maintainer>SKaiNET Developers</Maintainer>
+        <Executable>skainet-engine-kernel-matmul</Executable>
+    </TestProfile>
+    <TestSettings>
+        <Default>
+            <Arguments>--smoke false --provider panama</Arguments>
+        </Default>
+        <Option>
+            <DisplayName>Kernel Provider</DisplayName>
+            <Identifier>provider</Identifier>
+            <Menu>
+                <Entry>
+                    <Name>Panama Vector</Name>
+                    <Value>--smoke false --provider panama</Value>
+                </Entry>
+                <Entry>
+                    <Name>Scalar</Name>
+                    <Value>--smoke false --provider scalar</Value>
+                </Entry>
+            </Menu>
+        </Option>
+    </TestSettings>
+</PhoronixTestSuite>

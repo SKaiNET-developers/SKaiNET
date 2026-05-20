@@ -17,6 +17,17 @@ import sk.ainet.backend.api.kernel.Fp32MatmulKernel
  *   ([TILE_M], [TILE_N], [TILE_K]). Default 8×8×128 keeps a working
  *   set well under L1 — eight A rows × 128 floats + eight Bᵀ rows ×
  *   128 floats ≈ 8 KB, within typical 32 KB L1.
+ * - Within each (TILE_M × TILE_N) sub-tile, [mnpack] recursively
+ *   dispatches into `RM × RN` micro-kernels — `gemm4x3`, `gemm2x2`,
+ *   `gemm2x1`, `gemm1x2`, `gemm1x1`. Each micro-kernel keeps
+ *   `RM × RN` `FloatVector` accumulators in locals and amortizes
+ *   every A-row load across `RN` columns and every B-column load
+ *   across `RM` rows. This mirrors the tile-dispatch pattern from
+ *   tinyBLAS (`sgemm.cpp`, Justine Tunney / llamafile).
+ * - On AVX2 the largest microkernel that fits inside 16 YMM registers
+ *   is `4 × 3` (12 accumulators + at most 4 A vectors + 1 B vector
+ *   live at once). Smaller microkernels cover residual rows and
+ *   columns that don't divide evenly into the larger tile shape.
  * - Inner reduction is a vector-width FMA accumulator
  *   (`v.fma(w, acc)`), reduced via `reduceLanes(ADD)` once per
  *   `(i, j)` cell per K-tile. Tail elements that don't fill a vector
@@ -59,7 +70,7 @@ public object PanamaVectorMatmulKernel : Fp32MatmulKernel {
         }
         if (k == 0) return
 
-        // Pack B^T: bt[j, kk] = b[kk, j].
+        // Pack B^T: bt[j, kk] = b[kk, j]. Row stride in bt is k.
         val bt = FloatArray(n * k)
         for (kk in 0 until k) {
             val src = bOffset + kk * bStride
@@ -67,8 +78,6 @@ public object PanamaVectorMatmulKernel : Fp32MatmulKernel {
                 bt[j * k + kk] = b[src + j]
             }
         }
-
-        val step = species.length()
 
         var mTile = 0
         while (mTile < m) {
@@ -79,34 +88,338 @@ public object PanamaVectorMatmulKernel : Fp32MatmulKernel {
                 var kTile = 0
                 while (kTile < k) {
                     val kEnd = minOf(kTile + TILE_K, k)
-                    val kLen = kEnd - kTile
-                    val loopBound = species.loopBound(kLen)
-                    for (i in mTile until mEnd) {
-                        val aRowBase = aOffset + i * aStride + kTile
-                        val outRowBase = outOffset + i * outStride
-                        for (j in nTile until nEnd) {
-                            val btRowBase = j * k + kTile
-                            var acc = FloatVector.zero(species)
-                            var idx = 0
-                            while (idx < loopBound) {
-                                val va = FloatVector.fromArray(species, a, aRowBase + idx)
-                                val vb = FloatVector.fromArray(species, bt, btRowBase + idx)
-                                acc = va.fma(vb, acc)
-                                idx += step
-                            }
-                            var sum = acc.reduceLanes(VectorOperators.ADD)
-                            while (idx < kLen) {
-                                sum += a[aRowBase + idx] * bt[btRowBase + idx]
-                                idx++
-                            }
-                            out[outRowBase + j] += sum
-                        }
-                    }
+                    mnpack(
+                        a, aOffset, aStride,
+                        bt, k,
+                        out, outOffset, outStride,
+                        mTile, mEnd, nTile, nEnd,
+                        kTile, kEnd - kTile,
+                    )
                     kTile = kEnd
                 }
                 nTile = nEnd
             }
             mTile = mEnd
+        }
+    }
+
+    /**
+     * Recursive (m, n) tile dispatch. Picks the largest microkernel
+     * shape `(RM, RN)` that fits the residual `(m1-m0, n1-n0)`, calls it
+     * over the aligned sub-rectangle `[m0..mp) × [n0..np)`, then recurses
+     * on the residual rows `[mp..m1) × [n0..np)` and the residual columns
+     * `[m0..m1) × [np..n1)`. Mirrors the tinyBLAS `mnpack` switch but
+     * uses only the AVX2-friendly microkernel set (16 vector registers).
+     */
+    private fun mnpack(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        bt: FloatArray, btStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m0: Int, m1: Int, n0: Int, n1: Int,
+        kStart: Int, kLen: Int,
+    ) {
+        if (m1 <= m0 || n1 <= n0) return
+
+        val rm = minOf(m1 - m0, 4)
+        val rn = minOf(n1 - n0, 3)
+        val mc: Int
+        val nc: Int
+        when ((rm shl 4) or rn) {
+            0x43 -> {
+                mc = 4; nc = 3
+                gemm4x3(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+                    m0, m0 + ((m1 - m0) / mc) * mc, n0, n0 + ((n1 - n0) / nc) * nc, kStart, kLen)
+            }
+            0x42, 0x33, 0x32, 0x23, 0x22 -> {
+                mc = 2; nc = 2
+                gemm2x2(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+                    m0, m0 + ((m1 - m0) / mc) * mc, n0, n0 + ((n1 - n0) / nc) * nc, kStart, kLen)
+            }
+            0x41, 0x31, 0x21 -> {
+                mc = 2; nc = 1
+                gemm2x1(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+                    m0, m0 + ((m1 - m0) / mc) * mc, n0, n0 + ((n1 - n0) / nc) * nc, kStart, kLen)
+            }
+            0x13, 0x12 -> {
+                mc = 1; nc = 2
+                gemm1x2(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+                    m0, m0 + ((m1 - m0) / mc) * mc, n0, n0 + ((n1 - n0) / nc) * nc, kStart, kLen)
+            }
+            0x11 -> {
+                mc = 1; nc = 1
+                gemm1x1(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+                    m0, m0 + ((m1 - m0) / mc) * mc, n0, n0 + ((n1 - n0) / nc) * nc, kStart, kLen)
+            }
+            else -> return
+        }
+        val mp = m0 + ((m1 - m0) / mc) * mc
+        val np = n0 + ((n1 - n0) / nc) * nc
+        if (mp < m1) mnpack(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+            mp, m1, n0, np, kStart, kLen)
+        if (np < n1) mnpack(a, aOffset, aStride, bt, btStride, out, outOffset, outStride,
+            m0, m1, np, n1, kStart, kLen)
+    }
+
+    /**
+     * Largest AVX2-friendly microkernel: 4 rows × 3 cols, 12 accumulators.
+     * Loads 4 A vectors and 3 B vectors per `k` step, issues 12 FMAs.
+     * Caller guarantees `(m1 - m0)` is a multiple of 4 and `(n1 - n0)` of 3.
+     */
+    private fun gemm4x3(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        bt: FloatArray, btStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m0: Int, m1: Int, n0: Int, n1: Int,
+        kStart: Int, kLen: Int,
+    ) {
+        val step = species.length()
+        val loopBound = species.loopBound(kLen)
+        var ii = m0
+        while (ii < m1) {
+            val a0Base = aOffset + ii * aStride + kStart
+            val a1Base = a0Base + aStride
+            val a2Base = a1Base + aStride
+            val a3Base = a2Base + aStride
+            val outRow0 = outOffset + ii * outStride
+            val outRow1 = outRow0 + outStride
+            val outRow2 = outRow1 + outStride
+            val outRow3 = outRow2 + outStride
+            var jj = n0
+            while (jj < n1) {
+                val b0Base = jj * btStride + kStart
+                val b1Base = b0Base + btStride
+                val b2Base = b1Base + btStride
+
+                var c00 = FloatVector.zero(species); var c01 = FloatVector.zero(species); var c02 = FloatVector.zero(species)
+                var c10 = FloatVector.zero(species); var c11 = FloatVector.zero(species); var c12 = FloatVector.zero(species)
+                var c20 = FloatVector.zero(species); var c21 = FloatVector.zero(species); var c22 = FloatVector.zero(species)
+                var c30 = FloatVector.zero(species); var c31 = FloatVector.zero(species); var c32 = FloatVector.zero(species)
+
+                var idx = 0
+                while (idx < loopBound) {
+                    val va0 = FloatVector.fromArray(species, a, a0Base + idx)
+                    val va1 = FloatVector.fromArray(species, a, a1Base + idx)
+                    val va2 = FloatVector.fromArray(species, a, a2Base + idx)
+                    val va3 = FloatVector.fromArray(species, a, a3Base + idx)
+
+                    val vb0 = FloatVector.fromArray(species, bt, b0Base + idx)
+                    c00 = va0.fma(vb0, c00); c10 = va1.fma(vb0, c10); c20 = va2.fma(vb0, c20); c30 = va3.fma(vb0, c30)
+
+                    val vb1 = FloatVector.fromArray(species, bt, b1Base + idx)
+                    c01 = va0.fma(vb1, c01); c11 = va1.fma(vb1, c11); c21 = va2.fma(vb1, c21); c31 = va3.fma(vb1, c31)
+
+                    val vb2 = FloatVector.fromArray(species, bt, b2Base + idx)
+                    c02 = va0.fma(vb2, c02); c12 = va1.fma(vb2, c12); c22 = va2.fma(vb2, c22); c32 = va3.fma(vb2, c32)
+
+                    idx += step
+                }
+
+                var s00 = c00.reduceLanes(VectorOperators.ADD); var s01 = c01.reduceLanes(VectorOperators.ADD); var s02 = c02.reduceLanes(VectorOperators.ADD)
+                var s10 = c10.reduceLanes(VectorOperators.ADD); var s11 = c11.reduceLanes(VectorOperators.ADD); var s12 = c12.reduceLanes(VectorOperators.ADD)
+                var s20 = c20.reduceLanes(VectorOperators.ADD); var s21 = c21.reduceLanes(VectorOperators.ADD); var s22 = c22.reduceLanes(VectorOperators.ADD)
+                var s30 = c30.reduceLanes(VectorOperators.ADD); var s31 = c31.reduceLanes(VectorOperators.ADD); var s32 = c32.reduceLanes(VectorOperators.ADD)
+
+                while (idx < kLen) {
+                    val av0 = a[a0Base + idx]; val av1 = a[a1Base + idx]; val av2 = a[a2Base + idx]; val av3 = a[a3Base + idx]
+                    val bv0 = bt[b0Base + idx]; val bv1 = bt[b1Base + idx]; val bv2 = bt[b2Base + idx]
+                    s00 += av0 * bv0; s10 += av1 * bv0; s20 += av2 * bv0; s30 += av3 * bv0
+                    s01 += av0 * bv1; s11 += av1 * bv1; s21 += av2 * bv1; s31 += av3 * bv1
+                    s02 += av0 * bv2; s12 += av1 * bv2; s22 += av2 * bv2; s32 += av3 * bv2
+                    idx++
+                }
+
+                out[outRow0 + jj] += s00; out[outRow0 + jj + 1] += s01; out[outRow0 + jj + 2] += s02
+                out[outRow1 + jj] += s10; out[outRow1 + jj + 1] += s11; out[outRow1 + jj + 2] += s12
+                out[outRow2 + jj] += s20; out[outRow2 + jj + 1] += s21; out[outRow2 + jj + 2] += s22
+                out[outRow3 + jj] += s30; out[outRow3 + jj + 1] += s31; out[outRow3 + jj + 2] += s32
+
+                jj += 3
+            }
+            ii += 4
+        }
+    }
+
+    /** 2 × 2 microkernel: 4 accumulators, 2 A loads + 2 B loads + 4 FMAs per step. */
+    private fun gemm2x2(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        bt: FloatArray, btStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m0: Int, m1: Int, n0: Int, n1: Int,
+        kStart: Int, kLen: Int,
+    ) {
+        val step = species.length()
+        val loopBound = species.loopBound(kLen)
+        var ii = m0
+        while (ii < m1) {
+            val a0Base = aOffset + ii * aStride + kStart
+            val a1Base = a0Base + aStride
+            val outRow0 = outOffset + ii * outStride
+            val outRow1 = outRow0 + outStride
+            var jj = n0
+            while (jj < n1) {
+                val b0Base = jj * btStride + kStart
+                val b1Base = b0Base + btStride
+
+                var c00 = FloatVector.zero(species); var c01 = FloatVector.zero(species)
+                var c10 = FloatVector.zero(species); var c11 = FloatVector.zero(species)
+
+                var idx = 0
+                while (idx < loopBound) {
+                    val va0 = FloatVector.fromArray(species, a, a0Base + idx)
+                    val va1 = FloatVector.fromArray(species, a, a1Base + idx)
+                    val vb0 = FloatVector.fromArray(species, bt, b0Base + idx)
+                    val vb1 = FloatVector.fromArray(species, bt, b1Base + idx)
+                    c00 = va0.fma(vb0, c00); c10 = va1.fma(vb0, c10)
+                    c01 = va0.fma(vb1, c01); c11 = va1.fma(vb1, c11)
+                    idx += step
+                }
+
+                var s00 = c00.reduceLanes(VectorOperators.ADD); var s01 = c01.reduceLanes(VectorOperators.ADD)
+                var s10 = c10.reduceLanes(VectorOperators.ADD); var s11 = c11.reduceLanes(VectorOperators.ADD)
+
+                while (idx < kLen) {
+                    val av0 = a[a0Base + idx]; val av1 = a[a1Base + idx]
+                    val bv0 = bt[b0Base + idx]; val bv1 = bt[b1Base + idx]
+                    s00 += av0 * bv0; s10 += av1 * bv0
+                    s01 += av0 * bv1; s11 += av1 * bv1
+                    idx++
+                }
+
+                out[outRow0 + jj] += s00; out[outRow0 + jj + 1] += s01
+                out[outRow1 + jj] += s10; out[outRow1 + jj + 1] += s11
+
+                jj += 2
+            }
+            ii += 2
+        }
+    }
+
+    /** 2 × 1 microkernel: 2 accumulators, 2 A loads + 1 B load + 2 FMAs per step. */
+    private fun gemm2x1(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        bt: FloatArray, btStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m0: Int, m1: Int, n0: Int, n1: Int,
+        kStart: Int, kLen: Int,
+    ) {
+        val step = species.length()
+        val loopBound = species.loopBound(kLen)
+        var ii = m0
+        while (ii < m1) {
+            val a0Base = aOffset + ii * aStride + kStart
+            val a1Base = a0Base + aStride
+            val outRow0 = outOffset + ii * outStride
+            val outRow1 = outRow0 + outStride
+            for (jj in n0 until n1) {
+                val b0Base = jj * btStride + kStart
+
+                var c0 = FloatVector.zero(species)
+                var c1 = FloatVector.zero(species)
+
+                var idx = 0
+                while (idx < loopBound) {
+                    val va0 = FloatVector.fromArray(species, a, a0Base + idx)
+                    val va1 = FloatVector.fromArray(species, a, a1Base + idx)
+                    val vb = FloatVector.fromArray(species, bt, b0Base + idx)
+                    c0 = va0.fma(vb, c0); c1 = va1.fma(vb, c1)
+                    idx += step
+                }
+
+                var s0 = c0.reduceLanes(VectorOperators.ADD)
+                var s1 = c1.reduceLanes(VectorOperators.ADD)
+
+                while (idx < kLen) {
+                    val bv = bt[b0Base + idx]
+                    s0 += a[a0Base + idx] * bv
+                    s1 += a[a1Base + idx] * bv
+                    idx++
+                }
+
+                out[outRow0 + jj] += s0
+                out[outRow1 + jj] += s1
+            }
+            ii += 2
+        }
+    }
+
+    /** 1 × 2 microkernel: 2 accumulators, 1 A load + 2 B loads + 2 FMAs per step. */
+    private fun gemm1x2(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        bt: FloatArray, btStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m0: Int, m1: Int, n0: Int, n1: Int,
+        kStart: Int, kLen: Int,
+    ) {
+        val step = species.length()
+        val loopBound = species.loopBound(kLen)
+        for (ii in m0 until m1) {
+            val aBase = aOffset + ii * aStride + kStart
+            val outRow = outOffset + ii * outStride
+            var jj = n0
+            while (jj < n1) {
+                val b0Base = jj * btStride + kStart
+                val b1Base = b0Base + btStride
+
+                var c0 = FloatVector.zero(species)
+                var c1 = FloatVector.zero(species)
+
+                var idx = 0
+                while (idx < loopBound) {
+                    val va = FloatVector.fromArray(species, a, aBase + idx)
+                    val vb0 = FloatVector.fromArray(species, bt, b0Base + idx)
+                    val vb1 = FloatVector.fromArray(species, bt, b1Base + idx)
+                    c0 = va.fma(vb0, c0); c1 = va.fma(vb1, c1)
+                    idx += step
+                }
+
+                var s0 = c0.reduceLanes(VectorOperators.ADD)
+                var s1 = c1.reduceLanes(VectorOperators.ADD)
+
+                while (idx < kLen) {
+                    val av = a[aBase + idx]
+                    s0 += av * bt[b0Base + idx]
+                    s1 += av * bt[b1Base + idx]
+                    idx++
+                }
+
+                out[outRow + jj] += s0
+                out[outRow + jj + 1] += s1
+
+                jj += 2
+            }
+        }
+    }
+
+    /** 1 × 1 microkernel: single-cell fallback. Equivalent to the pre-change inner loop. */
+    private fun gemm1x1(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        bt: FloatArray, btStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m0: Int, m1: Int, n0: Int, n1: Int,
+        kStart: Int, kLen: Int,
+    ) {
+        val step = species.length()
+        val loopBound = species.loopBound(kLen)
+        for (ii in m0 until m1) {
+            val aBase = aOffset + ii * aStride + kStart
+            val outRow = outOffset + ii * outStride
+            for (jj in n0 until n1) {
+                val bBase = jj * btStride + kStart
+                var acc = FloatVector.zero(species)
+                var idx = 0
+                while (idx < loopBound) {
+                    val va = FloatVector.fromArray(species, a, aBase + idx)
+                    val vb = FloatVector.fromArray(species, bt, bBase + idx)
+                    acc = va.fma(vb, acc)
+                    idx += step
+                }
+                var sum = acc.reduceLanes(VectorOperators.ADD)
+                while (idx < kLen) {
+                    sum += a[aBase + idx] * bt[bBase + idx]
+                    idx++
+                }
+                out[outRow + jj] += sum
+            }
         }
     }
 }

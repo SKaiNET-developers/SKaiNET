@@ -1,0 +1,118 @@
+name: Native CPU multi-arch build
+
+# Cross-arch CI for the FFM native kernel provider
+# (skainet-backends/skainet-backend-native-cpu). The local Gradle build
+# only produces a host-arch .so/.dylib/.dll; this workflow proves the
+# CMake + Kotlin pipeline works on every supported host so consumers
+# on Apple Silicon, ARM Linux, and Windows aren't silently broken when
+# they pull a published JAR built on x86_64 Linux.
+#
+# Each matrix job runs the native module's jvmTest end-to-end (CMake
+# configure + build + bundle into JAR resources + parity tests via
+# FFM downcall). The built shared library is uploaded as an artifact
+# so a later "fat-JAR" aggregation step (deferred to a follow-up PR)
+# can stage all four arches into one publishable artifact.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'skainet-backends/skainet-backend-native-cpu/**'
+      - 'skainet-backends/skainet-backend-api/src/jvmMain/kotlin/sk/ainet/backend/api/kernel/**'
+      - '.github/workflows/native-cpu-multiarch.yml'
+  pull_request:
+    paths:
+      - 'skainet-backends/skainet-backend-native-cpu/**'
+      - 'skainet-backends/skainet-backend-api/src/jvmMain/kotlin/sk/ainet/backend/api/kernel/**'
+      - '.github/workflows/native-cpu-multiarch.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-build-test:
+    name: ${{ matrix.arch_label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch_label: linux-x86_64
+            lib_name: libskainet_kernels.so
+          # ubuntu-24.04-arm runner is removed for now — see #574 follow-up.
+          # Re-add once the runner-side issue is resolved (or replace with
+          # a self-hosted ARM64 runner). Linux ARM64 consumers fall back
+          # to the priority-50 Panama Vector provider until then.
+          - os: macos-14
+            arch_label: macos-arm64
+            lib_name: libskainet_kernels.dylib
+          - os: windows-latest
+            arch_label: windows-x86_64
+            lib_name: skainet_kernels.dll
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Copy CI gradle.properties (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p ~/.gradle
+          cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+
+      - name: Copy CI gradle.properties (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$HOME\.gradle" | Out-Null
+          Copy-Item .github\ci-gradle.properties "$HOME\.gradle\gradle.properties"
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 25
+
+      - name: Verify cmake
+        run: cmake --version
+
+      - name: Build + test native module (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :skainet-backends:skainet-backend-native-cpu:jvmTest \
+            :skainet-backends:skainet-backend-native-cpu:jvmJar
+
+      - name: Build + test native module (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          .\gradlew.bat --no-daemon --stacktrace `
+            :skainet-backends:skainet-backend-native-cpu:jvmTest `
+            :skainet-backends:skainet-backend-native-cpu:jvmJar
+
+      - name: Upload native library
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: libskainet_kernels-${{ matrix.arch_label }}
+          path: skainet-backends/skainet-backend-native-cpu/build/native/resources/native/${{ matrix.arch_label }}/${{ matrix.lib_name }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-cpu-test-reports-${{ matrix.arch_label }}
+          path: |
+            skainet-backends/skainet-backend-native-cpu/build/reports/tests/**
+            skainet-backends/skainet-backend-native-cpu/build/test-results/**
+          retention-days: 14
