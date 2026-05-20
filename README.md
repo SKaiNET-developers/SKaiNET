@@ -11,13 +11,17 @@
 
 ## Start in 5 minutes
 
-New to SKaiNET? Choose the path that matches what you want to try first.
+SKaiNET is a Kotlin Multiplatform AI framework. New here? Choose the path that
+matches what you want to try first.
 
 | Goal | Start here | Time |
 |---|---|---:|
-| Run tensor operations on the JVM | [Quickstart](#quickstart) (below) | 2–5 min |
+| Run tensor operations | [Quickstart](#quickstart) (below) | 2–5 min |
+| Build and train a neural net | [Hello Neural Net](#hello-neural-net) (below) | 5 min |
 | Run a local GGUF model | [SKaiNET Transformers starter](https://github.com/SKaiNET-developers/SKaiNET-transformers#start-in-5-minutes) | 5 min after model setup |
-| Use SKaiNET from Java | [Java getting started](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc) | 5 min |
+
+Working in Java? SKaiNET ships first-class Java support — see the
+[Java getting-started guide](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc).
 
 Use the version shown in this README as the source of truth for first-run snippets.
 If another page shows a different version, please open an issue or PR.
