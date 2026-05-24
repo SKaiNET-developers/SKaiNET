@@ -36,7 +36,12 @@ data class FunctionDoc(
     val parameters: List<ParameterDoc>,
     val returnType: String,
     val statusByBackend: Map<String, String>,
-    val notes: List<Note>
+    val notes: List<Note>,
+    val validated: Boolean = false,
+    val validatedBy: String = "",
+    val validatedOn: String = "",
+    val validatedCommit: String = "",
+    val referencesChecked: Boolean = true,
 )
 
 /**

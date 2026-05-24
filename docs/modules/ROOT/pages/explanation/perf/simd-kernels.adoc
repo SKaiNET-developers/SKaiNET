@@ -31,7 +31,7 @@ don't carry that"). Three providers ship with the CPU backend today:
 | Provider | Priority | When available | Notes
 | `ScalarKernelProvider` | 0 | always | Three-loop reference; the parity baseline.
 | `PanamaVectorKernelProvider` | 50 | JDK 21+ with `--add-modules jdk.incubator.vector` and `skainet.cpu.vector.enabled != false` | Tile-blocked FMA; the production winner on every supported JVM.
-| (future) `NativeKernelProvider` | 100 | JDK 22+ with the native lib loaded | Captured as a plan in xref:contributing/native-ffm-plan.adoc[]; not yet shipped.
+| (future) `NativeKernelProvider` | 100 | JDK 22+ with the native lib loaded | Designed but not yet shipped.
 |===
 
 == Why the SPI exists
@@ -239,6 +239,3 @@ no-regression change.
 
 For quantized matmul (Q4_K, Q6_K, Q8_0, Q4_0) — same story, different
 inner loop — see xref:explanation/perf/quantized-simd-kernels.adoc[].
-
-For the still-unbuilt native FFM provider, see
-xref:contributing/native-ffm-plan.adoc[].

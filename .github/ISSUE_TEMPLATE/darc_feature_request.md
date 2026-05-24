@@ -6,7 +6,7 @@ labels: enhancement
 assignees: ""
 ---
 
-# 🧠 D: DEFINE — Problem & Opportunity
+# 🧠 D: DOCUMENT — Problem & Opportunity
 
 **What is the problem, limitation, or opportunity? Why does this matter for SKaiNET?**
 
@@ -60,7 +60,7 @@ Document research tasks or open questions that must be answered before implement
 
 ---
 
-# 🛠️ C: CONTRIBUTE — Implementation Plan
+# 🛠️ C: CODE — Implementation Plan
 
 Break down actionable steps required to deliver this feature:
 

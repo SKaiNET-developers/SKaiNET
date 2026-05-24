@@ -108,10 +108,20 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             .toSortedSet()
             .toList()
 
-        // Row view: (operator, function) pair -> per-backend status.
-        data class Row(val operator: String, val function: String, val status: Map<String, String>)
+        // Row view carries the per-function status plus DARC validation
+        // signal so the matrix can render both in one pass.
+        val partialsRoot = derivePartialsRoot(outputDir)
+        data class Row(
+            val operator: String,
+            val function: FunctionDoc,
+            val hasPartial: Boolean,
+        )
         val rows: List<Row> = module.operators.flatMap { op ->
-            op.functions.map { fn -> Row(op.name, fn.name, fn.statusByBackend) }
+            op.functions.map { fn ->
+                val relative = "ops/${op.name.lowercase()}/${fn.name.lowercase()}.adoc"
+                val present = partialsRoot?.let { File(it, relative).isFile } == true
+                Row(op.name, fn, present)
+            }
         }
 
         matrixFile.writeText(buildString {
@@ -120,7 +130,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Generated from `operators.json` version `${module.version}` on ${formatTimestamp(module.timestamp)}.")
             appendLine("")
-            appendLine("Rows are `Operator.function` pairs; columns are backends that appear in any function's `statusByBackend` map. A missing entry means the backend makes no claim about the function — treat it as \"unknown\", not \"not supported\".")
+            appendLine("Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as \"unknown\", not \"not supported\").")
             appendLine("")
             if (rows.isEmpty() || allBackends.isEmpty()) {
                 appendLine("NOTE: No backend status information found in the source data.")
@@ -128,32 +138,32 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                 return@buildString
             }
 
-            // Table header: 1 col for the row label + 1 col per backend.
-            val colSpec = (listOf("2") + List(allBackends.size) { "1" }).joinToString(",")
+            // Header: row label, validation column, then one column per backend.
+            val colSpec = (listOf("2", "1") + List(allBackends.size) { "1" }).joinToString(",")
             appendLine("[cols=\"$colSpec\", options=\"header\"]")
             appendLine("|===")
-            append("| Operator.function ")
+            append("| Operator.function | Validated ")
             allBackends.forEach { append("| $it ") }
             appendLine("")
             appendLine("")
 
             rows.forEach { row ->
-                append("| `${row.operator}.${row.function}` ")
+                append("| `${row.operator}.${row.function.name}` ")
+                append("| ${darcCell(row.function, row.hasPartial)} ")
                 allBackends.forEach { backend ->
-                    val raw = row.status[backend]
+                    val raw = row.function.statusByBackend[backend]
                     val cell = if (raw == null) "—" else shortStatus(raw)
                     append("| $cell ")
                 }
                 appendLine("")
             }
 
-            // Totals footer: number of "done" rows per backend out
-            // of total row count. A status counts as done when it
-            // maps to the green check in shortStatus.
+            // Totals footer: validated count followed by per-backend done count.
             appendLine("")
-            append("| *Done* ")
+            val validatedCount = rows.count { it.function.validated }
+            append("| *Done* | *$validatedCount / ${rows.size}* ")
             allBackends.forEach { backend ->
-                val n = rows.count { isDone(it.status[backend]) }
+                val n = rows.count { isDone(it.function.statusByBackend[backend]) }
                 append("| *$n / ${rows.size}* ")
             }
             appendLine("")
@@ -161,6 +171,42 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].")
         })
+    }
+
+    /**
+     * One-line DARC validation badge rendered above each function's
+     * signature on the generated page.
+     *
+     * Three states, ordered from strongest to weakest signal:
+     *   - validated: a reviewer (not the original author) has signed off
+     *     on the partial prose. Carries the validator and date.
+     *   - prose without validation: a partial exists but no
+     *     `@DarcValidated` annotation backs it. Treated as a stub.
+     *   - no prose: only auto-generated facts (signature, parameters,
+     *     return type). The reader is told explicitly so they don't
+     *     mistake terseness for completeness.
+     *
+     * The bracketed CSS class is a hook for the Antora UI bundle to
+     * style the badge; the visible text is the contract.
+     */
+    private fun darcBadge(function: FunctionDoc, hasPartial: Boolean): String = when {
+        function.validated -> {
+            val on = function.validatedOn.ifBlank { "an unspecified date" }
+            val by = function.validatedBy.ifBlank { "an unspecified reviewer" }
+            "[.darc-validated]#✅ DARC-validated by $by on $on#"
+        }
+        hasPartial -> "[.darc-stub]#⚠ Prose present but not DARC-validated#"
+        else -> "[.darc-none]#✖ Generated facts only (no human prose)#"
+    }
+
+    /**
+     * Emoji-only DARC status for the coverage matrix column.
+     * Matches the three branches of [darcBadge].
+     */
+    private fun darcCell(function: FunctionDoc, hasPartial: Boolean): String = when {
+        function.validated -> "✅"
+        hasPartial -> "⚠"
+        else -> "✖"
     }
 
     /**
@@ -315,6 +361,8 @@ abstract class GenerateDocumentationTask : DefaultTask() {
         val hasPartial = partialFile?.isFile == true
         builder.apply {
             appendLine("== ${function.name}")
+            appendLine("")
+            appendLine(darcBadge(function, hasPartial))
             appendLine("")
             appendLine("=== Signature")
             appendLine("")

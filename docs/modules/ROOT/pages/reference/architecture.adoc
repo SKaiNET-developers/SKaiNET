@@ -131,8 +131,7 @@ Introduced in 0.21.0 (PRs #554, #559, #562). The static structure:
 ----
 
 Three live providers ship; a fourth (priority 100, native FFM) is
-captured as a plan in xref:contributing/native-ffm-plan.adoc[]
-and not yet built. For *how* the kernels are implemented, see
+designed but not yet built. For *how* the kernels are implemented, see
 xref:explanation/perf/simd-kernels.adoc[] (FP32) and
 xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized).
 
@@ -268,8 +267,7 @@ canary.
 * *No native FFM provider yet.* The literal M5 milestone metric
 (`≥2.5×` for Q4_K) is met by Panama in absolute terms but not in
 the "native vs JVM" framing the metric originally specified.
-Mitigation: `xref:contributing/native-ffm-plan.adoc[]`
-documents what shipping it would look like.
+The priority-100 native provider is designed but not yet shipped.
 * *Two reverted optimizations on develop history.* MemSeg pool
 (commit 8642b322) and intra-op matmul parallelism (commit
 9ed633b6) were both tried and reverted. Re-attempts need a

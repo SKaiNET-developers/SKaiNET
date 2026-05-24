@@ -230,6 +230,4 @@ shape as the Q4_K rewrite, with the lane-interleave done via
 |===
 
 For the kernel SPI itself, see
-xref:explanation/perf/simd-kernels.adoc[]. For the planned native FFM
-provider that would replace the Vector path on supported hosts, see
-xref:contributing/native-ffm-plan.adoc[].
+xref:explanation/perf/simd-kernels.adoc[].

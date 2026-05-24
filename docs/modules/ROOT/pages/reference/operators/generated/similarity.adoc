@@ -6,6 +6,8 @@ Modality: Composite
 
 == cosineDistance
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]

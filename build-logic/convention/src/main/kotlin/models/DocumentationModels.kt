@@ -29,7 +29,12 @@ data class FunctionDoc(
     val parameters: List<ParameterDoc> = emptyList(),
     val returnType: String,
     val statusByBackend: Map<String, String> = emptyMap(),
-    val notes: List<Note> = emptyList()
+    val notes: List<Note> = emptyList(),
+    val validated: Boolean = false,
+    val validatedBy: String = "",
+    val validatedOn: String = "",
+    val validatedCommit: String = "",
+    val referencesChecked: Boolean = true,
 )
 
 @Serializable

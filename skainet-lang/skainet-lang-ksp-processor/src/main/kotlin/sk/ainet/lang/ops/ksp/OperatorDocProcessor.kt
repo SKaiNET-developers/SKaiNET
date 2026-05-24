@@ -30,7 +30,14 @@ data class FunctionDoc(
     val parameters: List<ParameterDoc>,
     val returnType: String,
     val statusByBackend: Map<String, String>,
-    val notes: List<Note>
+    val notes: List<Note>,
+    // DARC validation metadata. `validated = false` means @DarcValidated is
+    // absent — the generator will render a "not validated" badge.
+    val validated: Boolean = false,
+    val validatedBy: String = "",
+    val validatedOn: String = "",
+    val validatedCommit: String = "",
+    val referencesChecked: Boolean = true,
 )
 
 data class ParameterDoc(
@@ -180,13 +187,19 @@ class OperatorDocProcessor(
                 }
                 statusByBackend[backendId] = if (overrides) "implemented" else "inherited"
             }
+            val validation = extractDarcValidation(fn)
             FunctionDoc(
                 name = fn.simpleName.asString(),
                 signature = fn.toSignatureString(),
                 parameters = extractParameters(fn),
                 returnType = extractReturnType(fn),
                 statusByBackend = statusByBackend,
-                notes = emptyList()
+                notes = emptyList(),
+                validated = validation.validated,
+                validatedBy = validation.by,
+                validatedOn = validation.on,
+                validatedCommit = validation.commit,
+                referencesChecked = validation.referencesChecked,
             )
         }
 
@@ -260,13 +273,56 @@ class OperatorDocProcessor(
     }
 
     private fun createFunctionDoc(function: KSFunctionDeclaration): FunctionDoc {
+        val validation = extractDarcValidation(function)
         return FunctionDoc(
             name = function.simpleName.asString(),
             signature = function.toSignatureString(),
             parameters = extractParameters(function),
             returnType = extractReturnType(function),
             statusByBackend = deriveStatusByBackend(function),
-            notes = deriveNotes(function)
+            notes = deriveNotes(function),
+            validated = validation.validated,
+            validatedBy = validation.by,
+            validatedOn = validation.on,
+            validatedCommit = validation.commit,
+            referencesChecked = validation.referencesChecked,
+        )
+    }
+
+    private data class DarcValidation(
+        val validated: Boolean,
+        val by: String,
+        val on: String,
+        val commit: String,
+        val referencesChecked: Boolean,
+    )
+
+    /**
+     * Read the `@DarcValidated` annotation off a function, if present.
+     * Returns a sentinel with `validated = false` when the annotation is
+     * absent, which the generator renders as the "not validated" badge.
+     */
+    private fun extractDarcValidation(function: KSFunctionDeclaration): DarcValidation {
+        val annotation = function.annotations.find {
+            it.shortName.asString() == "DarcValidated"
+        } ?: return DarcValidation(false, "", "", "", true)
+
+        val by = annotation.arguments.find { it.name?.asString() == "by" }
+            ?.value?.toString().orEmpty()
+        val on = annotation.arguments.find { it.name?.asString() == "on" }
+            ?.value?.toString().orEmpty()
+        val commit = annotation.arguments.find { it.name?.asString() == "commit" }
+            ?.value?.toString().orEmpty()
+        val refsChecked = (annotation.arguments.find {
+            it.name?.asString() == "referencesChecked"
+        }?.value as? Boolean) ?: true
+
+        return DarcValidation(
+            validated = true,
+            by = by,
+            on = on,
+            commit = commit,
+            referencesChecked = refsChecked,
         )
     }
 
@@ -509,7 +565,21 @@ class OperatorDocProcessor(
                             append("{\"type\": \"${escapeJson(note.type)}\", \"backend\": \"${escapeJson(note.backend)}\", \"content\": \"${escapeJson(note.content)}\"}")
                             if (noteIndex < function.notes.size - 1) append(", ")
                         }
-                        append("]\n")
+                        append("]")
+
+                        // DARC validation block. Only emitted when an actual
+                        // @DarcValidated annotation is present, so unannotated
+                        // functions keep the JSON narrow.
+                        if (function.validated) {
+                            append(",\n")
+                            append("          \"validated\": true,\n")
+                            append("          \"validatedBy\": \"${escapeJson(function.validatedBy)}\",\n")
+                            append("          \"validatedOn\": \"${escapeJson(function.validatedOn)}\",\n")
+                            append("          \"validatedCommit\": \"${escapeJson(function.validatedCommit)}\",\n")
+                            append("          \"referencesChecked\": ${function.referencesChecked}\n")
+                        } else {
+                            append("\n")
+                        }
 
                         append("        }")
                         if (funcIndex < operator.functions.size - 1) append(",")

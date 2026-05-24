@@ -6,6 +6,8 @@ Modality: Core
 
 == add
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -23,6 +25,8 @@ fun add(a:Tensor, b:Tensor): Tensor
 `Tensor`
 
 == subtract
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -42,6 +46,8 @@ fun subtract(a:Tensor, b:Tensor): Tensor
 
 == multiply
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -59,6 +65,8 @@ fun multiply(a:Tensor, b:Tensor): Tensor
 `Tensor`
 
 == divide
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -78,6 +86,8 @@ fun divide(a:Tensor, b:Tensor): Tensor
 
 == addScalar
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -95,6 +105,8 @@ fun addScalar(a:Tensor, b:Number): Tensor
 `Tensor`
 
 == subScalar
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -114,6 +126,8 @@ fun subScalar(a:Tensor, b:Number): Tensor
 
 == mulScalar
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -131,6 +145,8 @@ fun mulScalar(a:Tensor, b:Number): Tensor
 `Tensor`
 
 == divScalar
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -150,6 +166,8 @@ fun divScalar(a:Tensor, b:Number): Tensor
 
 == rsubScalar
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -168,6 +186,8 @@ fun rsubScalar(a:Number, b:Tensor): Tensor
 
 == rdivScalar
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -185,6 +205,8 @@ fun rdivScalar(a:Number, b:Tensor): Tensor
 `Tensor`
 
 == matmul
+
+[.darc-validated]#✅ DARC-validated by SKaiNET docs maintainers on 2026-05-24#
 
 === Signature
 
@@ -222,6 +244,8 @@ include::partial$ops/tensorops/matmul.adoc[tag=references,optional]
 
 == transpose
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -237,7 +261,31 @@ fun transpose(tensor:Tensor): Tensor
 
 `Tensor`
 
+== permute
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun permute(tensor:Tensor, axes:IntArray): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+  input tensor, any rank ≥ 1
+* `axes: IntArray`
+  a permutation of `0..tensor.rank-1` (length must equal `tensor.rank`, every value in `[0, rank)` exactly once)
+
+=== Return Type
+
+`Tensor`
+
 == conv1d
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -262,6 +310,8 @@ fun conv1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, padding:Int, di
 
 == conv2d
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -285,6 +335,8 @@ fun conv2d(input:Tensor, weight:Tensor, bias:Tensor, stride:Pair, padding:Pair, 
 
 == conv3d
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -307,6 +359,8 @@ fun conv3d(input:Tensor, weight:Tensor, bias:Tensor, stride:Triple, padding:Trip
 `Tensor`
 
 == convTranspose1d
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -332,6 +386,8 @@ fun convTranspose1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, paddin
 
 == maxPool2d
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -351,6 +407,8 @@ fun maxPool2d(input:Tensor, kernelSize:Pair, stride:Pair, padding:Pair): Tensor
 `Tensor`
 
 == avgPool2d
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -373,6 +431,8 @@ fun avgPool2d(input:Tensor, kernelSize:Pair, stride:Pair, padding:Pair, countInc
 
 == upsample2d
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -393,6 +453,8 @@ fun upsample2d(input:Tensor, scale:Pair, mode:UpsampleMode, alignCorners:Boolean
 
 == reshape
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -410,6 +472,8 @@ fun reshape(tensor:Tensor, newShape:Shape): Tensor
 `Tensor`
 
 == flatten
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -430,6 +494,8 @@ fun flatten(tensor:Tensor, startDim:Int, endDim:Int): Tensor
 
 == concat
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -447,6 +513,8 @@ fun concat(tensors:List, dim:Int): Tensor
 `Tensor`
 
 == split
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -467,6 +535,8 @@ fun split(tensor:Tensor, splitSize:Int, dim:Int): List
 
 == squeeze
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -484,6 +554,8 @@ fun squeeze(tensor:Tensor, dim:Int): Tensor
 `Tensor`
 
 == unsqueeze
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -503,6 +575,8 @@ fun unsqueeze(tensor:Tensor, dim:Int): Tensor
 
 == relu
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -519,6 +593,8 @@ fun relu(tensor:Tensor): Tensor
 `Tensor`
 
 == leakyRelu
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -538,6 +614,8 @@ fun leakyRelu(tensor:Tensor, negativeSlope:Float): Tensor
 
 == elu
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -555,6 +633,8 @@ fun elu(tensor:Tensor, alpha:Float): Tensor
 `Tensor`
 
 == softmax
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -574,6 +654,8 @@ fun softmax(tensor:Tensor, dim:Int): Tensor
 
 == logSoftmax
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -592,6 +674,8 @@ fun logSoftmax(tensor:Tensor, dim:Int): Tensor
 
 == sigmoid
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -608,6 +692,8 @@ fun sigmoid(tensor:Tensor): Tensor
 `Tensor`
 
 == silu
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -626,6 +712,8 @@ fun silu(tensor:Tensor): Tensor
 
 == gelu
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -642,6 +730,8 @@ fun gelu(tensor:Tensor): Tensor
 `Tensor`
 
 == sum
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -661,6 +751,8 @@ fun sum(tensor:Tensor, dim:Int): Tensor
 
 == mean
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -678,6 +770,8 @@ fun mean(tensor:Tensor, dim:Int): Tensor
 `Tensor`
 
 == variance
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -697,6 +791,8 @@ fun variance(tensor:Tensor, dim:Int): Tensor
 
 == sqrt
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -712,7 +808,106 @@ fun sqrt(tensor:Tensor): Tensor
 
 `Tensor`
 
+== pow
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun pow(a:Tensor, b:Tensor): Tensor
+----
+
+=== Parameters
+
+* `a: Tensor`
+* `b: Tensor`
+
+=== Return Type
+
+`Tensor`
+
+== powScalar
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun powScalar(a:Tensor, n:Number): Tensor
+----
+
+=== Parameters
+
+* `a: Tensor`
+* `n: Number`
+
+=== Return Type
+
+`Tensor`
+
+== log
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun log(tensor:Tensor): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+
+=== Return Type
+
+`Tensor`
+
+== log2
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun log2(tensor:Tensor): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+
+=== Return Type
+
+`Tensor`
+
+== log10
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun log10(tensor:Tensor): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+
+=== Return Type
+
+`Tensor`
+
 == abs
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -731,6 +926,8 @@ fun abs(tensor:Tensor): Tensor
 
 == sign
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -747,6 +944,8 @@ fun sign(tensor:Tensor): Tensor
 `Tensor`
 
 == clamp
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -767,6 +966,8 @@ fun clamp(tensor:Tensor, minVal:Float, maxVal:Float): Tensor
 
 == narrow
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -786,6 +987,8 @@ fun narrow(tensor:Tensor, dim:Int, start:Int, length:Int): Tensor
 `Tensor`
 
 == pad2d
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -808,6 +1011,8 @@ fun pad2d(tensor:Tensor, padLeft:Int, padRight:Int, padTop:Int, padBottom:Int): 
 
 == unfold
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -828,6 +1033,8 @@ fun unfold(tensor:Tensor, dim:Int, size:Int, step:Int): Tensor
 
 == lt
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -845,6 +1052,8 @@ fun lt(tensor:Tensor, value:Float): Tensor
 `Tensor`
 
 == ge
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -864,6 +1073,8 @@ fun ge(tensor:Tensor, value:Float): Tensor
 
 == tril
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -882,6 +1093,8 @@ fun tril(tensor:Tensor, k:Int): Tensor
 
 == convert
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -899,6 +1112,8 @@ fun convert(tensor:Tensor, targetType:TTo): Tensor
 `Tensor`
 
 == gather
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -919,6 +1134,8 @@ fun gather(input:Tensor, indices:Tensor, dim:Int): Tensor
 
 == indexSelect
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -938,6 +1155,8 @@ fun indexSelect(input:Tensor, indices:Tensor, dim:Int): Tensor
 
 == exp
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -954,6 +1173,8 @@ fun exp(tensor:Tensor): Tensor
 `Tensor`
 
 == expm1
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -972,6 +1193,8 @@ fun expm1(tensor:Tensor): Tensor
 
 == sin
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -988,6 +1211,8 @@ fun sin(tensor:Tensor): Tensor
 `Tensor`
 
 == cos
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 
@@ -1006,6 +1231,8 @@ fun cos(tensor:Tensor): Tensor
 
 == tanh
 
+[.darc-none]#✖ Generated facts only (no human prose)#
+
 === Signature
 
 [source,kotlin]
@@ -1022,6 +1249,8 @@ fun tanh(tensor:Tensor): Tensor
 `Tensor`
 
 == scaledDotProductAttention
+
+[.darc-none]#✖ Generated facts only (no human prose)#
 
 === Signature
 

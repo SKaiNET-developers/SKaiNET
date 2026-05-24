@@ -33,9 +33,9 @@
 
 .Contributing
 * xref:contributing/index.adoc[Audience and scope]
+* xref:contributing/darc-workflow.adoc[DARC: advanced contribution workflow]
 * xref:contributing/build-from-source.adoc[Build from source]
 * xref:contributing/dtype-model.adoc[The SKaiNET dtype model]
 * xref:contributing/benchmarks.adoc[Engine benchmark program]
 * xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark]
 * xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner]
-* xref:contributing/native-ffm-plan.adoc[Plan: native FFM kernel provider]
