@@ -7,6 +7,7 @@ import sk.ainet.lang.trace.GenerateTracingWrapper
 import sk.ainet.lang.trace.Diff
 import sk.ainet.lang.nn.dsl.GenerateNetworkDsl
 import sk.ainet.lang.nn.dsl.ActivationDsl
+import sk.ainet.lang.ops.DarcValidated
 
 @GenerateTracingWrapper
 @GenerateNetworkDsl
@@ -49,6 +50,7 @@ public interface TensorOps {
      *   broadcast against [a] using the usual broadcasting rules.
      */
     @Diff
+    @DarcValidated(by = "SKaiNET docs maintainers", on = "2026-05-24")
     public fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>
     @Diff
     public fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V>

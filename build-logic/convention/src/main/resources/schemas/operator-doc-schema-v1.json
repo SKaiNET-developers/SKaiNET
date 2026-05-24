@@ -13,8 +13,8 @@
     },
     "version": {
       "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
-      "description": "Semantic version of the framework"
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$|^unknown$",
+      "description": "Semantic version of the framework, or 'unknown' when the KSP processor was invoked without the skainet.version option (e.g. from a unit-test fixture)."
     },
     "commit": {
       "type": "string",
@@ -57,7 +57,7 @@
         },
         "modality": {
           "type": "string",
-          "enum": ["core", "vision", "nlp"],
+          "enum": ["core", "composite", "vision", "nlp"],
           "description": "Modality category of the operator"
         },
         "functions": {
@@ -101,7 +101,7 @@
           "patternProperties": {
             "^[a-zA-Z][a-zA-Z0-9_]*$": {
               "type": "string",
-              "enum": ["implemented", "not_implemented", "in_progress"],
+              "enum": ["implemented", "inherited", "in_progress", "not_implemented"],
               "description": "Implementation status for this backend"
             }
           },
@@ -114,6 +114,26 @@
             "$ref": "#/$defs/Note"
           },
           "description": "Array of notes associated with the function"
+        },
+        "validated": {
+          "type": "boolean",
+          "description": "Whether the function's documentation has been DARC-validated by a reviewer. Sourced from the @DarcValidated annotation on the function."
+        },
+        "validatedBy": {
+          "type": "string",
+          "description": "Identity of the reviewer who DARC-validated this function's documentation."
+        },
+        "validatedOn": {
+          "type": "string",
+          "description": "ISO-8601 date the documentation was DARC-validated."
+        },
+        "validatedCommit": {
+          "type": "string",
+          "description": "Optional short git SHA pinning the validated prose to a specific revision."
+        },
+        "referencesChecked": {
+          "type": "boolean",
+          "description": "Whether the reviewer verified that every citation in the partial still resolves and supports its claim."
         }
       },
       "required": ["name", "signature", "parameters", "returnType", "statusByBackend", "notes"],
@@ -145,7 +165,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["owner", "issue"],
+          "enum": ["owner", "issue", "description"],
           "description": "Type of the note"
         },
         "backend": {

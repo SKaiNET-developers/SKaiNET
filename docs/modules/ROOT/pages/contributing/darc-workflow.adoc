@@ -1,0 +1,229 @@
+= DARC: Advanced Contribution Workflow
+:description: SKaiNET's general Document / Assess / Research / Code workflow for advanced contributions, plus its specialisation for operator documentation.
+
+image::darc-logo.png[DARC,240]
+
+[NOTE]
+====
+**Audience: SKaiNET maintainers and contributors taking on non-trivial
+work.** Library *consumers* do not need this page. Routine fixes — a
+typo, an obvious bug, a CI tweak — also do not need DARC; the workflow
+exists for contributions where the open question "is this even the
+right thing to build?" is real.
+====
+
+== What DARC is
+
+DARC is SKaiNET's cyclical, document-driven workflow for advanced
+contributions: new operators, new modules, algorithmic changes, kernel
+strategies, format readers, anything where the design decisions matter
+as much as the code. This page is the authoritative definition — the
+four phases, when they apply, and how their outcomes get encoded in
+source.
+
+DARC is *cyclical* and *document-driven*: the prose is the deliverable
+that survives the iteration, the code follows. Teams can enter at any
+phase and revisit earlier ones — a code review that surfaces a stale
+assumption sends the work back to Research, not forward to release.
+
+== The four phases
+
+[cols="1,4",options="header"]
+|===
+| Phase | Purpose
+
+| *D — Document*
+| Capture *what* and *why* in source-controlled prose before the code
+exists. The artefact lives in `docs/modules/ROOT/...` as AsciiDoc, or
+on the relevant feature proposal issue (see the
+https://github.com/SKaiNET-developers/SKaiNET/blob/develop/.github/ISSUE_TEMPLATE/darc_feature_request.md[DARC
+Feature Proposal] template). Documentation is a first-class part of
+the design, not a write-up of an already-shipped decision.
+
+| *A — Assess*
+| Validate the proposal against ground truth: reference implementations
+(PyTorch, JAX, NumPy), benchmarks, numerical-stability edge cases,
+cross-platform behaviour (JVM, Android, native). The output is a
+decision: approve, send back to Research, or back to Document if the
+problem statement turned out to be wrong.
+
+| *R — Research*
+| Survey existing solutions, dependencies, prior art, papers. Resolve
+the open questions raised in Document and Assess. Every claim that
+ends up in the final prose has a citation a reader can follow.
+
+| *C — Code*
+| Implement against the documented design with Gitflow, KtLint /
+Detekt, unit and integration tests, CI green. The Code phase produces
+running software, but the *design* it implements was settled in the
+prior phases — Code is execution, not invention.
+|===
+
+Repeat until the artefact converges. The minimum is one full cycle;
+in practice most non-trivial contributions go through the loop more
+than once.
+
+== When DARC applies
+
+[cols="1,1",options="header"]
+|===
+| Use DARC when | Skip DARC when
+
+| Adding a new operator, layer, module, format reader, or backend.
+| Fixing a typo or an obvious one-line bug.
+
+| Changing public API surface or numerical behaviour of existing code.
+| Reformatting, renaming a variable, removing dead code.
+
+| Introducing a new dependency, build tool, or CI workflow.
+| Bumping a dependency version with no behavioural change.
+
+| Algorithmic work where the design decisions are not self-evident from
+the diff (kernel strategies, quantisation schemes, attention variants).
+| Adding a missing test for already-shipped behaviour.
+|===
+
+The signal for "DARC applies" is whether a reasonable maintainer six
+months from now would want to know *why* the change is shaped the way
+it is. If yes, the work belongs in DARC; if the diff speaks for
+itself, it doesn't.
+
+== Specialisation: operator documentation
+
+Operator documentation is the largest single application of DARC in
+the project today — a four-figure number of method-level pages, each
+fusing auto-derived API facts with human-written math, intuition,
+examples, and references. Because the surface is huge and uneven,
+operator docs are the only DARC artefact that carries a
+machine-checkable validation flag.
+
+=== Mapping DARC to operator-doc work
+
+[cols="1,4",options="header"]
+|===
+| Phase | What it means for an operator
+
+| *D — Document*
+| Write or refresh the partial at
+`docs/modules/ROOT/partials/ops/\{operator}/\{function}.adoc`. The
+partial is sliced into the generated reference page by the `math`,
+`intuition`, `examples`, `references` AsciiDoc tags.
+
+| *A — Assess*
+| Validate the prose against ground truth: a reference implementation
+(PyTorch / JAX / NumPy), known numerical-stability edge cases, and
+SKaiNET's runtime. Run every documented example end-to-end; shapes,
+dtypes, and numerical answers must match.
+
+| *R — Research*
+| Every non-trivial claim has a citation. Reviewer clicks every link
+and confirms it still resolves and supports the claim. Dead or
+drifted citations are a hard fail.
+
+| *C — Code*
+| Confirm the implementation matches the documented contract.
+`statusByBackend` reflects reality — no `inherited` rows that should
+be `implemented`, no `implemented` rows whose backend currently
+throws.
+|===
+
+=== The `@DarcValidated` annotation
+
+When an operator function has passed DARC end-to-end, the *reviewer*
+(not the original author) annotates the function in source:
+
+[source,kotlin]
+----
+import sk.ainet.lang.ops.DarcValidated
+
+public interface TensorOps {
+    @DarcValidated(by = "First Last <user@example.com>", on = "2026-05-24")
+    public fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>
+}
+----
+
+The KSP processor (`OperatorDocProcessor`) picks up the annotation
+and threads it through `operators.json` into the generated reference
+page and the coverage matrix:
+
+[cols="1,4",options="header"]
+|===
+| Signal | Meaning
+
+| `✅ DARC-validated by … on …`
+| `@DarcValidated` is present. A reviewer has gone through all four
+phases.
+
+| `⚠ Prose present but not DARC-validated`
+| A partial exists at `partials/ops/\{op}/\{fn}.adoc` but no
+annotation backs it. Treat the prose as a stub.
+
+| `✖ Generated facts only (no human prose)`
+| No partial on disk and no annotation. The reader sees only the
+auto-derived signature, parameters, return type, and backend status.
+|===
+
+The same three states appear as `✅ / ⚠ / ✖` in the *Validated* column
+of xref:reference/ops-status-matrix.adoc[the operator coverage matrix].
+
+=== Criteria for setting `@DarcValidated`
+
+All of the following must be true before the annotation goes in:
+
+. The reviewer is not the original author. Two pairs of eyes on the
+  prose is the entire point.
+. *D — Document.* The partial has non-empty `math`, `intuition`,
+  `examples`, and `references` tags. None are placeholders.
+. *A — Assess.* Every example in the partial has been executed
+  against the SKaiNET implementation and produces the documented
+  result. Boundary cases for any numerical-stability claims have
+  been spot-checked.
+. *R — Research.* Every citation resolves and supports the specific
+  claim it backs. Broken or drifted links are a hard fail.
+. *C — Code.* `statusByBackend` reflects reality.
+
+Set `referencesChecked = false` only as a deliberate signal — e.g. a
+citation behind a paywall the reviewer could not open. The badge
+still renders as validated; the flag is there so a future reviewer
+knows what was skipped.
+
+=== Updating an already-validated operator
+
+Editing the prose of a `@DarcValidated` function invalidates the
+validation. The contributor making the change must:
+
+. Remove the `@DarcValidated` annotation in the same change that
+  edits the partial. The page falls back to the ⚠ badge until a
+  fresh review.
+. Open a new review request once the change is in.
+
+This is the price of keeping the validation signal in code: any
+prose change has to flow through a fresh review before the badge
+comes back.
+
+== Where DARC lives in the repo
+
+[cols="2,3",options="header"]
+|===
+| Location | Role
+
+| This page (`docs/modules/ROOT/pages/contributing/darc-workflow.adoc`)
+| Authoritative definition of the workflow, when it applies, and how
+its outcomes are encoded.
+
+| `.github/ISSUE_TEMPLATE/darc_feature_request.md`
+| Issue template for new DARC proposals. Section headers match the
+four phases: Document / Assess / Research / Code.
+
+| `skainet-lang-ksp-annotations/.../DarcValidated.kt`
+| The annotation that records a passed DARC review on an operator
+function. `SOURCE` retention, `FUNCTION` target.
+
+| `skainet-lang-ksp-processor/.../OperatorDocProcessor.kt`
+| Reads `@DarcValidated` per function and writes the validation
+fields into `operators.json`.
+
+| `build-logic/convention/.../GenerateDocumentationTask.kt`
+| Renders the badge above each function's signature and the
+*Validated* column in the coverage matrix.
+|===

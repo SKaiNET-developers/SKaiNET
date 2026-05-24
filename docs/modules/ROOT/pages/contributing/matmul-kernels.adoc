@@ -314,8 +314,7 @@ This kernel is now **compute-bound on a single core, near the
 single-core ceiling**. The remaining headroom requires architectural
 moves: AVX-512 (16 lanes — 2× headroom; needs a wider microkernel
 set), multi-threading (6 cores — 6× headroom; needs `ith`/`nth`
-SPI), or a hand-tuned native kernel via FFM
-(xref:contributing/native-ffm-plan.adoc[]).
+SPI), or a hand-tuned native kernel via FFM.
 
 If you take only one comparison away from this page: **the
 scalar → Panama jump (1× → 13×) is the biggest single performance
@@ -540,4 +539,3 @@ It is **not** the right answer when:
 * xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built] — the FP32 Panama kernel walk-through and the full kernel-provider SPI rationale.
 * xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built] — inner loops for Q4_0 / Q4_K / Q6_K / Q8_0.
 * xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance] — JVM flags, vector module enablement, JIT considerations.
-* xref:contributing/native-ffm-plan.adoc[Plan: native FFM kernel provider] — the path to the priority-100 native kernels.
