@@ -136,6 +136,7 @@ private fun stableInputName(op: Operation, index: Int, total: Int): String = whe
     is ReluOperation<*, *> -> "input"
     is SoftmaxOperation<*, *> -> "input"
     is SigmoidOperation<*, *> -> "input"
+    is TanhOperation<*, *> -> "input"
     is SqueezeOperation<*, *> -> "input"
     is UnsqueezeOperation<*, *> -> "input"
     else -> if (total == 1) "input" else "input_$index"
@@ -415,6 +416,12 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
         val out = base.sigmoid(tensor)
         record(SigmoidOperation<T, V>(), listOf(tensor), listOf(out))
+        return out
+    }
+
+    override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
+        val out = base.tanh(tensor)
+        record(TanhOperation<T, V>(), listOf(tensor), listOf(out))
         return out
     }
 

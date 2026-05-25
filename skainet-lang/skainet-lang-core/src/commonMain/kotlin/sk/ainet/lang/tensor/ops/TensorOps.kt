@@ -178,6 +178,9 @@ public interface TensorOps {
     public fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V>
     @Diff
     @ActivationDsl
+    public fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V>
+    @Diff
+    @ActivationDsl
     public fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V>
     @Diff
     @ActivationDsl
@@ -302,10 +305,6 @@ public interface TensorOps {
 
     public fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> {
         throw NotImplementedError("cos not implemented by this TensorOps backend")
-    }
-
-    public fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
-        throw NotImplementedError("tanh not implemented by this TensorOps backend")
     }
 
     /**
