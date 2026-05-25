@@ -175,6 +175,7 @@ public open class DefaultExecutionTape(
                     "matmul" -> listOf(ops.matmul(typedInputs[0], typedInputs[1]))
                     "relu" -> listOf(ops.relu(typedInputs[0]))
                     "sigmoid" -> listOf(ops.sigmoid(typedInputs[0]))
+                    "tanh" -> listOf(ops.tanh(typedInputs[0]))
                     "sum" -> listOf(ops.sum(typedInputs[0], params["dim"] as? Int))
                     "mean" -> listOf(ops.mean(typedInputs[0], params["dim"] as? Int))
                     "concat" -> listOf(ops.concat(typedInputs, params["dim"] as Int))
@@ -880,6 +881,13 @@ public class DefaultGradientTape(
         return listOf(grad)
     }
 
+    override fun tanhBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(tanh(x))/dx = 1 - tanh(x)^2 = 1 - output^2
+        val oneMinusSquare = output.ops.rsubScalar(1.0, output.ops.multiply(output, output))
+        val grad = upstream.ops.multiply(upstream, oneMinusSquare)
+        return listOf(grad)
+    }
+
     override fun siluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // silu(x) = x * sigmoid(x)
         // d(silu(x))/dx = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x)) = sigmoid(x) + silu(x) * (1 - sigmoid(x))
@@ -1040,6 +1048,7 @@ public class DefaultGradientTape(
             "squeeze" -> BackwardOp(inputs, output) { upstream -> squeezeBackward(upstream, output, inputs, trace.attributes) }
             "unsqueeze" -> BackwardOp(inputs, output) { upstream -> unsqueezeBackward(upstream, output, inputs, trace.attributes) }
             "sigmoid" -> BackwardOp(inputs, output) { upstream -> sigmoidBackward(upstream, output, inputs, trace.attributes) }
+            "tanh" -> BackwardOp(inputs, output) { upstream -> tanhBackward(upstream, output, inputs, trace.attributes) }
             "silu" -> BackwardOp(inputs, output) { upstream -> siluBackward(upstream, output, inputs, trace.attributes) }
             "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
             "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }

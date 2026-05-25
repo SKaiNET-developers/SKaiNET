@@ -2526,11 +2526,18 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         return newTensor(outData, tensor.dtype, tensor)
     }
 
+    @TensorOp()
+    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-tanh")
     override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
-            val x = tensor.data.get(*idx) as Float
-            @Suppress("UNCHECKED_CAST")
-            kotlin.math.tanh(x).toFloat() as V
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val x = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    kotlin.math.tanh(x) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for tanh: ${tensor.dtype}")
+            }
         }
         return newTensor(outData, tensor.dtype, tensor)
     }

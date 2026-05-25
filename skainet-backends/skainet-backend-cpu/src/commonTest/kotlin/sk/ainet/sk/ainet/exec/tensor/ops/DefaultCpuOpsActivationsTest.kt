@@ -27,6 +27,7 @@ class DefaultCpuOpsActivationsTest {
 
     private fun sigmoid(x: Float): Float = 1f / (1f + kotlin.math.exp(-x))
     private fun silu(x: Float): Float = x * sigmoid(x)
+    private fun tanh(x: Float): Float = kotlin.math.tanh(x)
 
     private fun assertAlmostEquals(expected: Float, actual: Float, eps: Float = 1e-5f, msg: String = "") {
         assertTrue(kotlin.math.abs(expected - actual) <= eps, msg.ifEmpty { "Expected $expected, got $actual" })
@@ -103,5 +104,51 @@ class DefaultCpuOpsActivationsTest {
             assertTrue(e.message?.contains("Unsupported dtype") == true)
         }
         assertTrue(threw, "Expected IllegalArgumentException for Int32 silu")
+    }
+
+    @Test
+    fun tanh_fp32_basic_values() {
+        val input = fTensor(Shape(5), floatArrayOf(-2f, -1f, 0f, 1f, 2f))
+        val out = cpuOps.tanh(input)
+        assertEquals(Shape(5), out.shape)
+        assertEquals(FP32::class, out.dtype)
+        val expected = floatArrayOf(-2f, -1f, 0f, 1f, 2f).map { tanh(it) }
+        for (i in expected.indices) {
+            assertAlmostEquals(expected[i], out.data[i] as Float, 1e-6f, "tanh at $i mismatch")
+        }
+    }
+
+    @Test
+    fun tanh_fp32_matrix_shape_preserved() {
+        val input = fTensor(Shape(2, 3), floatArrayOf(
+            -1f, 0f, 1f,
+            2f, -2f, 0.5f
+        ))
+        val out = cpuOps.tanh(input)
+        assertEquals(Shape(2, 3), out.shape)
+        assertAlmostEquals(tanh(-1f), out.data[0, 0] as Float, 1e-6f)
+        assertAlmostEquals(tanh(0.5f), out.data[1, 2] as Float, 1e-6f)
+    }
+
+    @Test
+    fun tanh_fp32_saturates_at_extremes() {
+        // tanh(x) → 1 as x → +∞, → -1 as x → -∞. kotlin.math.tanh is numerically stable.
+        val input = fTensor(Shape(2), floatArrayOf(-100f, 100f))
+        val out = cpuOps.tanh(input)
+        assertAlmostEquals(-1f, out.data[0] as Float, 1e-6f)
+        assertAlmostEquals(1f, out.data[1] as Float, 1e-6f)
+    }
+
+    @Test
+    fun tanh_unsupported_dtype_int32_throws() {
+        val input = iTensor(Shape(2), intArrayOf(1, 2))
+        var threw = false
+        try {
+            cpuOps.tanh(input as sk.ainet.lang.tensor.Tensor<Int32, Int>)
+        } catch (e: IllegalArgumentException) {
+            threw = true
+            assertTrue(e.message?.contains("Unsupported dtype") == true)
+        }
+        assertTrue(threw, "Expected IllegalArgumentException for Int32 tanh")
     }
 }

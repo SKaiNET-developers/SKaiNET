@@ -813,6 +813,37 @@ public class SigmoidOperation<T : DType, V>(
     override fun clone(newParameters: Map<String, Any>): Operation = SigmoidOperation<T, V>(newParameters)
 }
 
+public class TanhOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("tanh", "activation", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        require(inputs.size == 1) { "Tanh operation requires exactly 1 input" }
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        if (inputs.size != 1) {
+            return ValidationResult.Invalid(listOf("Tanh operation requires exactly 1 input, got ${inputs.size}"))
+        }
+        return ValidationResult.Valid
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.size == 1) { "Tanh operation requires exactly 1 input" }
+        return listOf(
+            TensorSpec(
+                name = "tanh_output",
+                shape = inputs[0].shape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs[0].requiresGrad
+            )
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = TanhOperation<T, V>(newParameters)
+}
+
 /**
  * Additional shape operations
  */
