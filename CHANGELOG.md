@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-05-25
+
+### Added
+
+- **BF16 matmul end-to-end.** New `Bf16TensorData` + `Bf16DenseTensorData` (PR #610), opt-in SafeTensors loader policy to keep BF16 native through the loader chain (PR #612), and `DefaultCpuOpsJvm` BF16 dispatch wired against `Bf16TensorData` (PR #614). The matmul kernel itself ships as `Bf16MatmulKernel` with scalar, Panama, and native implementations registered with the `KernelRegistry` SPI (PR #605).
+- **Q8_0 matmul end-to-end.** `Q8_0MatmulKernel` with scalar, Panama, and native implementations (PR #606); `DefaultCpuOpsJvm.chooseQuantizedMatmul` now resolves through the `KernelRegistry` SPI so the best-available Q8_0 kernel wins automatically (PR #608).
+- **Autograd completeness for `pow`, `log`, and conv/pool/upsample/split.** New `pow` / `powScalar` ops plus a `PowSpecializationPass` (Tier A of #617), `log` / `log2` / `log10` ops (Tier B), backward formulas filled in for `pow` / `log` with the matching dispatch arms (Tier C partial), and the remaining conv / pool / upsample / split backward formulas (Tier C). End-to-end CNN training-step test (Tier D) pins the contract. (PR #618)
+- **Hybrid adaptive DSL with optional dtype constraints — RFC implementation.** `DTypeConstraintResolutionPass` registered in the pipeline (W7), a `dtypePolicy(...)` extension on `DagBuilder` (W6), `StreamingGgufParametersLoader.withPolicy(DTypePolicy)` (W0c), a typed `ResolvedComputeGraph` view (W8), and a `toStableHlo(ResolvedComputeGraph)` overload (W9). (Issue #615, PR #616)
+- **`@DarcValidated` annotation for operator documentation.** New `sk.ainet.lang.ops.DarcValidated` annotation in `skainet-lang-ksp-annotations`; the KSP `OperatorDocProcessor` threads its values through `operators.json`, and the doc generator renders a `✅ / ⚠ / ✖` badge above each function's signature plus a `Validated` column on the operator coverage matrix. `matmul` is annotated as the worked example. The Antora `Contributing` section gains a dedicated `darc-workflow.adoc` page that defines the workflow and the criteria for setting the annotation; `.github/ISSUE_TEMPLATE/darc_feature_request.md` was aligned (`DEFINE` → `DOCUMENT`, `CONTRIBUTE` → `CODE`). (Issue #627, PR #628)
+- **SentencePiece special-token splitter.** New `SpecialTokenSplitter` decorator in `skainet-io-core` plus fixes for SentencePiece HF JSON gaps that previously misrouted control tokens. (PR #595)
+
+### Changed
+
+- **`operator-doc-schema-v1.json` widened to match what the processor actually emits.** Added the `composite` modality, the `inherited` backend status, `version: "unknown"` (mirroring the existing `commit` handling), and the `description` note type. The optional `validated` / `validatedBy` / `validatedOn` / `validatedCommit` / `referencesChecked` fields were added in support of `@DarcValidated`. `validateOperatorSchema` goes from `0/4 valid` to `4/4 valid`. (PR #628)
+
+### Fixed
+
+- **`getInputNodes` ordering.** Now ordered by `destinationInputIndex` so DAG consumers see operands in the right slot. (Issue #620, PR #622)
+
+### Documentation
+
+- **DARC workflow contributor page** (`contributing/darc-workflow.adoc`) — authoritative in-repo definition of Document / Assess / Research / Code, with the operator-doc specialisation. The Antora docs site is now declared the authoritative source over the GitHub wiki. (PR #628)
+- **SIMD kernels deep-dive + arc42 architecture page.** How FP32 and quantized Panama Vector kernels are built; how to read the matmul benchmark; the priority-100 native FFM provider plan. (PR #623)
+- **Nav split: Using SKaiNET vs Contributing.** The left nav now separates the consumer-facing Tutorials / How-to / Reference / Explanation tree from the maintainer-facing Contributing tree, and Java-specific pages are annotated. (PR #619)
+- **Canonical five-minute start path.** New tutorial path that gets a reader from zero to a working SKaiNET call in five minutes; deliberately Kotlin-first to match the framework's primary surface. (PR #624, plus follow-up "keep the start path Kotlin-first")
+- **Architecture goal in the README.** Single paragraph stating what SKaiNET is optimising for, so readers landing on the README know the framework's centre of gravity. (PR #625)
+- **`native-ffm-plan.adoc` removed from the published docs.** The page read as a PRD/issue, not user-facing reference; content is preserved as an untracked draft for promotion to a real issue. The nine incoming xrefs across six pages were surgically rewritten. (PR #628)
+
+### Dependencies
+
+- Bump `androidGradlePlugin` to 9.2.1 (PR #597).
+- Bump `org.jetbrains.kotlinx:kotlinx-benchmark-runtime` to 0.4.17 (PR #599).
+- Bump `org.jetbrains.kotlinx:kotlinx-coroutines-core` to 1.11.0 (PR #600).
+- Bump Gradle wrapper to 9.5.1 (PR #601).
+- Bump `io.ktor:ktor-client-core` to 3.5.0 (PR #602).
+- Bump `org.junit.jupiter:junit-jupiter` to 6.1.0 (PR #621).
+
 ## [0.23.0] - 2026-05-02
 
 ### Added

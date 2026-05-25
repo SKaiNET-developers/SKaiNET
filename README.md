@@ -35,7 +35,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.23.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.25.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -193,13 +193,17 @@ deployment, the StableHLO path for native and edge targets.
 
 ---
 
-## What's New in 0.23.0
+## What's New in 0.25.0
 
-- **Real-model GGUFs no longer OOM at network construction.** The DSL pre-allocated zero-filled `FloatArray(shape.volume)` for every Linear / Conv weight at module-creation time, even though downstream loaders overwrite those zeros immediately. For an Apertus-8B Q4_K_S GGUF (4.7 GB on disk) that was ~27 GB of FP32 zeros allocated and thrown away — OOMed at 12 GB heap. New `TensorDataFactory.placeholder(...)` API; every eager `zeros(...)` call site in the network builders routes through it. Lazy materialization fires only if a caller actually reads the tensor (which the load path never does). Verified end-to-end against `unsloth/Apertus-8B-Instruct-2509-GGUF`: now loads in 12 GB heap. Same fix benefits Gemma / Llama / Qwen / Voxtral DSL paths transparently. (Issue #587, PR #588)
-- **Kotlin/Native: GGUFs over ~2 GiB now load.** `createRandomAccessSource(filePath)` had no native actual; K/N consumers fell through to the legacy slurp-into-`ByteArray` reader, which capped at `Int.MAX_VALUE` bytes (~2 GiB). Practical impact: macOS / Linux / iOS native couldn't open Q8 models above ~1B parameters or Q4 above ~3B. New POSIX-`pread`-backed `PosixPreadRandomAccessSource` covers `macosArm64`, `linuxX64`, `linuxArm64`, `iosArm64`, `iosSimulatorArm64`. (Issue #589, PR #591)
+- **BF16 and Q8_0 matmul kernels across the provider stack.** End-to-end dtype paths for both formats: new `Bf16TensorData` / `Bf16DenseTensorData`, `Bf16MatmulKernel` and `Q8_0MatmulKernel` with scalar / Panama / native implementations, opt-in SafeTensors BF16-preserving loader policy, and `DefaultCpuOpsJvm.chooseQuantizedMatmul` routed through the `KernelRegistry` SPI so the best-available kernel wins automatically. (PRs #605, #606, #608, #610, #612, #614)
+- **Autograd completeness.** Backward formulas filled in for `pow` / `log` / `log2` / `log10`, the conv / pool / upsample / split family, with an end-to-end CNN training-step test pinning the contract. (PR #618)
+- **Hybrid adaptive DSL with optional dtype constraints (RFC implementation).** `DTypeConstraintResolutionPass` plus a `dtypePolicy(...)` extension on `DagBuilder`, an opt-in `StreamingGgufParametersLoader.withPolicy(...)`, and a typed `ResolvedComputeGraph` view that flows into `toStableHlo(...)`. (PR #616)
+- **DARC validation flag for operator documentation.** New `@DarcValidated` annotation read by the KSP processor and surfaced as a `✅ / ⚠ / ✖` badge on every generated operator page plus a `Validated` column on the coverage matrix. The Antora `Contributing` section gains a dedicated DARC workflow page. (Issue #627, PR #628)
+- **SentencePiece tokenizer: special-token-aware splitting.** New `SpecialTokenSplitter` decorator covering the HF JSON gaps that previously misrouted control tokens. (PR #595)
 
 ### Recent releases
 
+- **0.23.0** — Real-model GGUFs no longer OOM at network construction (lazy `TensorDataFactory.placeholder(...)`); Kotlin/Native can finally load GGUFs over 2 GiB via the new POSIX-`pread`-backed `PosixPreadRandomAccessSource`. (Issues #587, #589; PRs #588, #591)
 - **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)
 - **0.22.1** — `StreamingShardedSafeTensorsReader.loadTensorStorageMapped` for zero-copy reads of multi-shard tensors above the 2 GB JVM `ByteArray` limit. (PR #582)
 - **0.22.0** — Native (FFM) CPU kernel provider: **4–6× faster Q4_K matmul, 1.5–1.8× FP32 SGEMM** vs Panama Vector; auto-selected via `KernelRegistry.bestAvailable()`. (PR #571)
