@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  * val graph = model.toGraph()
  * graph.toGraphviz()
  */
-@Ignore
+@Ignore("Graphviz snippet is parked until the MnistMpl graph API drift is resolved")
 class MnistMplGraphvizTest {
 
 

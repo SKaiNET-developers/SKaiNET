@@ -11,7 +11,7 @@ import kotlin.test.Ignore
 
 class OnnxResourceReadTest {
 
-    @Ignore
+    @Ignore("Requires run14.onnx test fixture, which is not checked into the repository")
     @Test
     fun `read run14 onnx from resources and build graph view`() {
         val inputStream: InputStream = requireNotNull(javaClass.getResourceAsStream("/run14.onnx")) {
@@ -38,7 +38,7 @@ class OnnxResourceReadTest {
         )
     }
 
-    @Ignore
+    @Ignore("Requires run14.onnx test fixture, which is not checked into the repository")
     @Test
     fun `run14 onnx ops are covered by importer mapping`() {
         val bytes = loadResourceBytes("run14.onnx")
