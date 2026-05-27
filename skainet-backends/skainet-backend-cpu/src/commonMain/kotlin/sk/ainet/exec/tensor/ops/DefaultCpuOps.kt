@@ -9,14 +9,20 @@ import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.TensorOp
 import sk.ainet.lang.ops.InProgress
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
+import sk.ainet.lang.tensor.data.IntArrayTensorData
+import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.UpsampleMode
+import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Int32
+import sk.ainet.lang.types.Int8
 import kotlin.math.ln
 import kotlin.math.log10 as kmLog10
 import kotlin.math.log2 as kmLog2
 import kotlin.math.pow
 import kotlin.math.sqrt
+import kotlin.reflect.KClass
 
 @Backend(id = "cpu", displayName = "CPU")
 @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#defaultcpuops")
@@ -42,6 +48,56 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         dtype: kotlin.reflect.KClass<T>,
         vararg inputs: Tensor<T, V>
     ): Tensor<T, V> = CpuTensor(data, this, dtype, gradStateFrom(*inputs))
+
+    private fun rowMajorStrides(shape: Shape): IntArray {
+        val strides = IntArray(shape.rank)
+        var stride = 1
+        for (i in shape.rank - 1 downTo 0) {
+            strides[i] = stride
+            stride *= shape[i]
+        }
+        return strides
+    }
+
+    private fun flatIndexToIndices(flatIndex: Int, strides: IntArray): IntArray {
+        val indices = IntArray(strides.size)
+        var remaining = flatIndex
+        for (i in strides.indices) {
+            indices[i] = remaining / strides[i]
+            remaining %= strides[i]
+        }
+        return indices
+    }
+
+    private fun <T : DType, V> copyTensorValuesAsFloatArray(tensor: Tensor<T, V>): FloatArray {
+        val data = tensor.data
+        return when (data) {
+            is FloatArrayTensorData<*> -> data.buffer.copyOf()
+            is IntArrayTensorData<*> -> FloatArray(data.buffer.size) { data.buffer[it].toFloat() }
+            else -> {
+                val strides = rowMajorStrides(tensor.shape)
+                FloatArray(tensor.shape.volume) { flatIndex ->
+                    val indices = flatIndexToIndices(flatIndex, strides)
+                    (data.get(*indices) as Number).toFloat()
+                }
+            }
+        }
+    }
+
+    private fun <T : DType, V> copyTensorValuesAsIntArray(tensor: Tensor<T, V>): IntArray {
+        val data = tensor.data
+        return when (data) {
+            is IntArrayTensorData<*> -> data.buffer.copyOf()
+            is FloatArrayTensorData<*> -> IntArray(data.buffer.size) { data.buffer[it].toInt() }
+            else -> {
+                val strides = rowMajorStrides(tensor.shape)
+                IntArray(tensor.shape.volume) { flatIndex ->
+                    val indices = flatIndexToIndices(flatIndex, strides)
+                    (data.get(*indices) as Number).toInt()
+                }
+            }
+        }
+    }
 
     protected fun broadcastShapes(a: Shape, b: Shape): Shape {
         val ad = a.dimensions
@@ -2427,7 +2483,30 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         tensor: Tensor<TFrom, V>,
         targetType: TTo
     ): Tensor<TTo, V> {
-        TODO("Not yet implemented")
+        @Suppress("UNCHECKED_CAST")
+        val targetClass = targetType::class as KClass<TTo>
+        if (tensor.dtype == targetClass) {
+            @Suppress("UNCHECKED_CAST")
+            return tensor as Tensor<TTo, V>
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val outData = when (targetClass) {
+            FP32::class, FP16::class -> dataFactory.fromFloatArray<TTo, Float>(
+                tensor.shape,
+                targetClass,
+                copyTensorValuesAsFloatArray(tensor)
+            ) as TensorData<TTo, V>
+            Int32::class, Int8::class -> dataFactory.fromIntArray<TTo, Int>(
+                tensor.shape,
+                targetClass,
+                copyTensorValuesAsIntArray(tensor)
+            ) as TensorData<TTo, V>
+            else -> throw IllegalArgumentException(
+                "convert supports FP32, FP16, Int32, and Int8 targets, got ${targetType.name}"
+            )
+        }
+        return CpuTensor(outData, this, targetClass, GradState(requiresGrad = tensor.requiresGrad))
     }
 
     override fun <T : DType, V> gather(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
