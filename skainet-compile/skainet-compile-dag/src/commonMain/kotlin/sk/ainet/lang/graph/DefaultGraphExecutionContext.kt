@@ -126,7 +126,7 @@ public class DefaultGraphExecutionContext(
         startRecording()
         return try {
             val result = this.block()
-            stopRecordingAndGet() to result
+            stopRecording() to result
         } finally {
             if (isRecording) stopRecording()
         }
