@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.Ignore
 import kotlin.test.assertTrue
 
-@Ignore
+@Ignore("GraphExecution DSL tests are parked until the API drift is resolved")
 class GraphExecutionDSLTest {
     @Test
     fun placeholder() {

@@ -4,8 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
-import kotlin.test.Ignore
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.Phase
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.tensor.Tensor
@@ -37,11 +37,11 @@ class BatchNormalizationTest {
         }
     }
 
-    @Ignore
     @Test
     fun train_then_eval_works_and_preserves_shape() {
-        val exec = DirectCpuExecutionContext()
-        val x = makeInput2x2(exec)
+        val trainExec = DirectCpuExecutionContext(phase = Phase.TRAIN)
+        val evalExec = DirectCpuExecutionContext(phase = Phase.EVAL)
+        val x = makeInput2x2(trainExec)
         val bn = BatchNormalization<FP32, Float>(
             numFeatures = 2,
             affine = false,
@@ -49,21 +49,20 @@ class BatchNormalizationTest {
         )
         // training pass initializes running stats
         bn.train()
-        val yTrain = bn.forward(x, exec)
+        val yTrain = bn.forward(x, trainExec)
         assertNotNull(yTrain)
         assertEquals(x.shape, yTrain.shape)
 
         // eval should now work using running stats
         bn.eval()
-        val yEval = bn.forward(x, exec)
+        val yEval = bn.forward(x, evalExec)
         assertNotNull(yEval)
         assertEquals(x.shape, yEval.shape)
     }
 
-    @Ignore
     @Test
     fun simple_2x2_batch_is_normalized_per_channel() {
-        val exec = DirectCpuExecutionContext()
+        val exec = DirectCpuExecutionContext(phase = Phase.TRAIN)
         val x = makeInput2x2(exec)
         val bn = BatchNormalization<FP32, Float>(
             numFeatures = 2,
