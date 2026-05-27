@@ -13,7 +13,7 @@ kotlin {
     explicitApi()
 
     android {
-        namespace = "sk.ainet.compilie.core"
+        namespace = "sk.ainet.compile.hlo"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions {
