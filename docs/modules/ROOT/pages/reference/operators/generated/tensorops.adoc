@@ -691,6 +691,25 @@ fun sigmoid(tensor:Tensor): Tensor
 
 `Tensor`
 
+== tanh
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun tanh(tensor:Tensor): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+
+=== Return Type
+
+`Tensor`
+
 == silu
 
 [.darc-none]#✖ Generated facts only (no human prose)#
@@ -1219,25 +1238,6 @@ fun sin(tensor:Tensor): Tensor
 [source,kotlin]
 ----
 fun cos(tensor:Tensor): Tensor
-----
-
-=== Parameters
-
-* `tensor: Tensor`
-
-=== Return Type
-
-`Tensor`
-
-== tanh
-
-[.darc-none]#✖ Generated facts only (no human prose)#
-
-=== Signature
-
-[source,kotlin]
-----
-fun tanh(tensor:Tensor): Tensor
 ----
 
 === Parameters

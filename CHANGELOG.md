@@ -2,17 +2,42 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-05-30
+
 ### Added
 
 - **Q4_0 promoted to a first-class quantized format.** The older GGML 4-bit format (18 bytes / 32 elements) was previously a JVM/MemSegment-only, GGUF-only side-path; it is now wired across the full provider stack mirroring Q8_0 / Q4_K:
   - commonMain heap `Q4_0TensorData` / `Q4_0BlockTensorData` (+ `TensorEncoding.Q4_0`) so any loader can produce it and non-JVM targets can use it.
   - `Q4_0MatmulKernel` SPI + `KernelProvider.matmulQ4_0()`, with **scalar** (commonMain), **Panama Vector** (JVM SIMD), and **native FFM** (`skainet_q4_0_matmul`) implementations selected via `KernelRegistry.bestAvailable()` (native → Panama → scalar). `DefaultCpuOpsJvm.chooseQuantizedMatmul` gains an `is Q4_0TensorData` branch.
   - `Q4_0Quantizer` (FP32 → Q4_0) — the produce side was missing, so dense weights from any source (SafeTensors / JSON / in-memory) can now be quantized to canonical ggml Q4_0 without going through GGUF.
-- All Q4_0 paths use the canonical ggml **split** nibble layout (low nibbles → elements 0..15, high → 16..31, `(code - 8) * d`).
+  - All Q4_0 paths use the canonical ggml **split** nibble layout (low nibbles → elements 0..15, high → 16..31, `(code - 8) * d`). (PRs #648, #649, #650, #651)
+- **`tanh` as a first-class `TensorOps` activation primitive.** Promotes `tanh` from a default `NotImplementedError` stub to a fully wired `@Diff @ActivationDsl` primitive, eliminating the `2*sigmoid(2x)-1` polyfill that downstream consumers were forced to re-derive. Wires the standard six-layer pattern: `TensorOps` interface, `TanhOperation` class, `Tensor.tanh()` extension, CPU backend, recording decorator, and autograd backward (`1 - output^2`). A Karpathy micrograd `demo.ipynb` port lands as an end-to-end training test (moons dataset, `[2,16,16,1]` tanh-MLP, MSE + SGD, held-out accuracy) exercising the primitive through the full DSL + training stack. (Issue #630, PR #631)
+- **CPU tensor `convert` op.** Implements the dtype-conversion operation on the CPU backend. (PR #636)
+
+### Changed
+
+- **Recording decorator uses the current recording-stop API internally.** Aligns the internal call site with the current recording API surface. (PR #640)
 
 ### Fixed
 
-- **Q4_0 MemSegment matmul layout.** The pre-existing JVM MemSegment Q4_0 kernel (`JvmQuantizedVectorKernels.dotQ4_0BlockMemSeg`) and `Q4MemorySegmentTensorData` used an *interleaved* nibble layout that did not match real GGUF Q4_0 weights (a latent correctness bug; the path was unverified and had no in-repo callers). Reconciled to the canonical split layout so it now agrees with the heap type, the SPI kernels, and `DequantOps.dequantQ4_0FromBytes`.
+- **Q4_0 MemSegment matmul layout.** The pre-existing JVM MemSegment Q4_0 kernel (`JvmQuantizedVectorKernels.dotQ4_0BlockMemSeg`) and `Q4MemorySegmentTensorData` used an *interleaved* nibble layout that did not match real GGUF Q4_0 weights (a latent correctness bug; the path was unverified and had no in-repo callers). Reconciled to the canonical split layout so it now agrees with the heap type, the SPI kernels, and `DequantOps.dequantQ4_0FromBytes`. (PR #649)
+
+### Tests
+
+- **Ignored common tests made portable across KMP targets** via the shared `@Ignore` annotation, so the same skip applies consistently on every platform. (PR #638)
+- **Ignored-test clarity and BatchNorm coverage.** Clarifies why each ignored test is ignored and enables previously-disabled BatchNorm coverage. (PR #634)
+
+### Build
+
+- **Gradle build-hygiene warnings fixed.** (PR #633)
+
+### CI
+
+- **Feature-PR workflow trigger scope narrowed** to avoid duplicate workflow runs on feature PRs. (PR #645)
+
+### API
+
+- **Resynced binary-compatibility-validator baselines** to current source (the committed `.api` dumps had drifted). (PR #647)
 
 ## [0.25.0] - 2026-05-25
 

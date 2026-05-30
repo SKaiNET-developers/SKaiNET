@@ -135,6 +135,27 @@ designed but not yet built. For *how* the kernels are implemented, see
 xref:explanation/perf/simd-kernels.adoc[] (FP32) and
 xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized).
 
+[NOTE]
+.Native (FFM) provider — design summary
+====
+The planned `NativeKernelProvider` registers at priority 100 so that on
+JDK 21+ it wins `KernelRegistry.bestAvailable()` over the Panama Vector
+provider whenever the native library loads, and transparently falls back
+to Panama (priority 50) or scalar (priority 0) when it doesn't — no code
+change above the registry. The first kernel target is a native Q4_K
+matmul taking `MemorySegment` input and packed weights (canonical ggml
+layout), numerically equivalent to `PanamaVectorQ4KMatmulKernel` within
+`1e-4`, clearing the M5 metric of `≥2.5×` over the scalar dequant
+baseline. It uses FFM, not JNI (near-zero call overhead, no global lock),
+ships in a new `skainet-backend-native-cpu` module, and the first PR
+covers a single host architecture (local build only) — cross-arch builds
+and Maven classifier JARs are deliberately out of scope. The kernel SPI
+this builds on shipped across the 0.21.0 release (PRs #554–#565); the
+in-process native-FFM groundwork landed in 0.22.0 (PR #571). The full
+design draft was kept out of the published docs as it read as a PRD; this
+summary supersedes it.
+====
+
 == 6. Runtime view — eager execution
 
 The eager pipeline for a single op:
