@@ -119,6 +119,32 @@ SKAINET_API void skainet_q8_0_matmul(
     int32_t output_offset
 );
 
+/*
+ * Q4_0 matrix-vector multiply.
+ *
+ *   output[output_offset + o] = sum_j input[input_offset + j] *
+ *                                dequant(weight[block, o, j])
+ *
+ * Block layout: canonical ggml Q4_0, 32 elements per block, 18 bytes
+ * per block (2 B FP16 scale + 16 B packed 4-bit codes in split layout —
+ * low nibbles → elements 0..15, high nibbles → 16..31), with packed
+ * weights laid out as
+ *   weight + weight_byte_offset + (block_idx * output_dim + o) * 18
+ *
+ * Dequant per element: `(code - 8) * d`. input_dim must be a multiple
+ * of 32.
+ */
+SKAINET_API void skainet_q4_0_matmul(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
 #ifdef __cplusplus
 }
 #endif
