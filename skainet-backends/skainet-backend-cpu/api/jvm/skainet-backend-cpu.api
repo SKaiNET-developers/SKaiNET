@@ -81,6 +81,11 @@ public final class sk/ainet/exec/kernel/PanamaVectorQ4KMatmulKernel : sk/ainet/b
 	public fun matmul ([FI[BIII[FI)V
 }
 
+public final class sk/ainet/exec/kernel/PanamaVectorQ4_0MatmulKernel : sk/ainet/backend/api/kernel/Q4_0MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ4_0MatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
 public final class sk/ainet/exec/kernel/PanamaVectorQ8_0MatmulKernel : sk/ainet/backend/api/kernel/Q8_0MatmulKernel {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ8_0MatmulKernel;
 	public fun matmul ([FI[BIII[FI)V

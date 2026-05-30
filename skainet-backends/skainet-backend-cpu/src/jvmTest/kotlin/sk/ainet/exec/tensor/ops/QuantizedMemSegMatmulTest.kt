@@ -47,6 +47,8 @@ class QuantizedMemSegMatmulTest {
 
     /**
      * Encode a single Q4_0 block: 32 float values -> 18 bytes (2 scale + 16 packed nibbles).
+     * Uses the canonical ggml *split* layout: code[j] is the low nibble of
+     * byte j, code[j+16] is the high nibble of byte j.
      */
     private fun encodeQ4_0Block(values: FloatArray): ByteArray {
         require(values.size == 32)
@@ -62,8 +64,8 @@ class QuantizedMemSegMatmulTest {
         val out = ByteArray(18)
         out[0] = (scaleHalf and 0xFF).toByte()
         out[1] = ((scaleHalf shr 8) and 0xFF).toByte()
-        for (i in 0 until 16) {
-            out[2 + i] = ((codes[2 * i + 1] shl 4) or codes[2 * i]).toByte()
+        for (j in 0 until 16) {
+            out[2 + j] = ((codes[j + 16] shl 4) or codes[j]).toByte()
         }
         return out
     }
