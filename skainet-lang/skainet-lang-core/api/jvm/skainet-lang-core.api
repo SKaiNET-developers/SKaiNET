@@ -3056,6 +3056,12 @@ public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData$Companion {
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Q4_0BlockTensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/Q4_0Quantizer {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/data/Q4_0Quantizer;
+	public final fun quantize ([FLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/Q4_0BlockTensorData;
+	public final fun quantizeToBytes ([F)[B
+}
+
 public abstract interface class sk/ainet/lang/tensor/data/Q4_0TensorData : sk/ainet/lang/tensor/data/TensorData {
 	public static final field BLOCK_SIZE I
 	public static final field BYTES_PER_BLOCK I
