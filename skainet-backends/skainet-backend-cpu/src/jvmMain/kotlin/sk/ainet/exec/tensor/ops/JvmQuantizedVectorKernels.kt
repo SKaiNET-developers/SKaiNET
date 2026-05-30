@@ -549,13 +549,14 @@ internal object JvmQuantizedVectorKernels {
         // Read f16 scale
         val scale = halfToFloat(read2BytesLE(weightSeg, blockByteOffset))
 
-        // Unpack 16 packed bytes → 32 sign-corrected nibbles. Two
-        // nibbles per byte load means half the byte traffic of the
-        // straight scalar dot product.
+        // Unpack 16 packed bytes → 32 sign-corrected nibbles in the
+        // canonical ggml *split* layout: low nibbles decode elements
+        // 0..15, high nibbles decode elements 16..31. (Matches
+        // DequantOps.dequantQ4_0FromBytes and Q4_0BlockTensorData.)
         for (k in 0 until 16) {
             val b = weightSeg.get(JAVA_BYTE_LE, codesOffset + k.toLong()).toInt() and 0xFF
-            codeBuf[2 * k] = (b and 0x0F).toFloat() - 8f
-            codeBuf[2 * k + 1] = (b ushr 4).toFloat() - 8f
+            codeBuf[k] = (b and 0x0F).toFloat() - 8f
+            codeBuf[16 + k] = (b ushr 4).toFloat() - 8f
         }
 
         // SIMD FMA dot product.
