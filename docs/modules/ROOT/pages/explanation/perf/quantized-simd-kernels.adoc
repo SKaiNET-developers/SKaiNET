@@ -170,40 +170,45 @@ already existed; this change only replaced the scalar dequant loop.
 
 === Q4_0 — 32 elements / 18 bytes
 
-The simplest layout (single FP16 scale + 16 packed nibble bytes), but
-also the *least* SIMD-friendly: adjacent elements share a byte
-(`code[2k]` lo, `code[2k+1]` hi), so getting codes in natural element
-order from a `ByteVector` would need a lane-interleave shuffle or a
-strided gather. NEON has no native gather instruction, so on Apple
-Silicon a gather-based pipeline would fall back to scalar loads.
+The simplest layout: a single FP16 scale + 16 packed nibble bytes.
+Q4_0 uses the canonical ggml *split* layout — the low nibbles of bytes
+0..15 decode elements 0..15, the high nibbles decode elements 16..31
+(`(nibble - 8) * d`). This is the layout real GGUF Q4_0 weights ship in
+and what `DequantOps.dequantQ4_0FromBytes` produces.
 
-The shipped Q4_0 implementation uses the *partial-vec* pattern Q4_K
-used before its fully-fused rewrite:
+As of the first-class promotion, Q4_0 is a full SPI format on par with
+Q8_0 / Q4_K: a `Q4_0MatmulKernel` interface with scalar (commonMain),
+Panama Vector, and native FFM implementations, selected via
+`KernelRegistry.bestAvailable()`, plus a `Q4_0Quantizer` for producing
+Q4_0 from dense FP32. The Panama kernel uses the *partial-vec* pattern
+Q4_K used before its fully-fused rewrite — a scalar split-layout unpack
+into a 32-element scratch buffer, then a SIMD FMA dot product:
 
 [source,kotlin]
 ----
-// Stage 1: scalar byte-pair unpack into a 32-element scratch FloatArray.
-for (k in 0 until 16) {
-    val b = weightSeg.get(JAVA_BYTE_LE, codesOffset + k.toLong()).toInt() and 0xFF
-    codeBuf[2 * k] = (b and 0x0F).toFloat() - 8f
-    codeBuf[2 * k + 1] = (b ushr 4).toFloat() - 8f
+// Stage 1: split-layout unpack into a 32-element scratch FloatArray.
+for (j in 0 until 16) {
+    val b = weight[codesBase + j].toInt() and 0xFF
+    codeBuf[j] = ((b and 0x0F) - 8).toFloat()       // elements 0..15
+    codeBuf[16 + j] = ((b ushr 4) - 8).toFloat()    // elements 16..31
 }
 // Stage 2: SIMD FMA dot product.
 var accVec = FloatVector.zero(floatSpecies)
 while (idx < loopBound) {
-    val iv = FloatVector.fromArray(floatSpecies, input, inputOffset + idx)
+    val iv = FloatVector.fromArray(floatSpecies, input, inputBase + idx)
     val cv = FloatVector.fromArray(floatSpecies, codeBuf, idx)
     accVec = iv.fma(cv, accVec)
     idx += step
 }
-return (accVec.reduceLanes(ADD) + scalarTail) * scale
+return (accVec.reduceLanes(ADD) + scalarTail) * d
 ----
 
-If Q4_0 ever becomes a hot path (it's rarely seen in modern weights —
-Q4_K_M / Q4_K_S dominate Gemma 4, Llama, Qwen), the upgrade to a
-fully-fused `ByteVector` pipeline is a reasonable follow-up — same
-shape as the Q4_K rewrite, with the lane-interleave done via
-`VectorShuffle`.
+Q4_0 is rarely the hot path in modern weights (Q4_K_M / Q4_K_S dominate
+Gemma 4, Llama, Qwen), so the scratch-then-SIMD shape is a deliberate
+balance. A fully-fused `ByteVector` pipeline is a reasonable follow-up:
+the split layout is friendlier than it looks — lo/hi nibble masks of a
+16-byte `ByteVector` load yield elements 0..15 and 16..31 directly, no
+lane-interleave shuffle required.
 
 == Per-format coverage matrix
 
@@ -213,7 +218,7 @@ shape as the Q4_K rewrite, with the lane-interleave done via
 | Q8_0 | no | yes | Fully fused (`ByteVector.castShape` + scaled FMA)
 | Q4_K | yes (`Q4KMatmulKernel`) | yes (inline, same algorithm) | Fully fused (single byte load → lo+hi nibble accumulators, lazy `dmin`)
 | Q6_K | no | n/a | SIMD dequant into scratch + SIMD dot (two-stage)
-| Q4_0 | no | yes | Scalar unpack into scratch + SIMD dot (two-stage)
+| Q4_0 | yes (`Q4_0MatmulKernel`) | yes | Scalar split-layout unpack into scratch + SIMD dot (two-stage)
 |===
 
 == Where to look in the code
