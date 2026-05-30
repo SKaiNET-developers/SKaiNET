@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Q4_0 promoted to a first-class quantized format.** The older GGML 4-bit format (18 bytes / 32 elements) was previously a JVM/MemSegment-only, GGUF-only side-path; it is now wired across the full provider stack mirroring Q8_0 / Q4_K:
+  - commonMain heap `Q4_0TensorData` / `Q4_0BlockTensorData` (+ `TensorEncoding.Q4_0`) so any loader can produce it and non-JVM targets can use it.
+  - `Q4_0MatmulKernel` SPI + `KernelProvider.matmulQ4_0()`, with **scalar** (commonMain), **Panama Vector** (JVM SIMD), and **native FFM** (`skainet_q4_0_matmul`) implementations selected via `KernelRegistry.bestAvailable()` (native → Panama → scalar). `DefaultCpuOpsJvm.chooseQuantizedMatmul` gains an `is Q4_0TensorData` branch.
+  - `Q4_0Quantizer` (FP32 → Q4_0) — the produce side was missing, so dense weights from any source (SafeTensors / JSON / in-memory) can now be quantized to canonical ggml Q4_0 without going through GGUF.
+- All Q4_0 paths use the canonical ggml **split** nibble layout (low nibbles → elements 0..15, high → 16..31, `(code - 8) * d`).
+
+### Fixed
+
+- **Q4_0 MemSegment matmul layout.** The pre-existing JVM MemSegment Q4_0 kernel (`JvmQuantizedVectorKernels.dotQ4_0BlockMemSeg`) and `Q4MemorySegmentTensorData` used an *interleaved* nibble layout that did not match real GGUF Q4_0 weights (a latent correctness bug; the path was unverified and had no in-repo callers). Reconciled to the canonical split layout so it now agrees with the heap type, the SPI kernels, and `DequantOps.dequantQ4_0FromBytes`.
+
 ## [0.25.0] - 2026-05-25
 
 ### Added
