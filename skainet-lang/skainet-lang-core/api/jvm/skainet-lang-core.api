@@ -204,13 +204,20 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -224,13 +231,20 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public abstract fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public abstract fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public abstract fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public abstract fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public abstract fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -242,9 +256,16 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun full (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun getHooks (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/ExecutionContext;)Z
+	public static fun getMemoryPlanner (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryTracker (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public static fun getScratch (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun ones (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun placeholder (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun wrapByteArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public static fun wrapFloatArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public static fun wrapIntArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public static fun zeros (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -334,13 +355,20 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -374,9 +402,16 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun full (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun getHooks (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/TrainingExecutionContext;)Z
+	public static fun getMemoryPlanner (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryTracker (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public static fun getScratch (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun ones (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun placeholder (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun wrapByteArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public static fun wrapFloatArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public static fun wrapIntArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public static fun zeros (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -717,13 +752,20 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -918,6 +960,16 @@ public abstract class sk/ainet/lang/nn/InternalMixedPrecisionModule : sk/ainet/l
 	protected abstract fun forwardImpl (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 }
 
+public final class sk/ainet/lang/nn/LayerScale : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (ILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;)V
+	public synthetic fun <init> (ILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun getDim ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public fun getParams ()Ljava/util/List;
+}
+
 public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
@@ -998,9 +1050,16 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun full (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun getHooks (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
+	public static fun getMemoryPlanner (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryTracker (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public static fun getScratch (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun ones (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun placeholder (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun wrapByteArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public static fun wrapFloatArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public static fun wrapIntArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public static fun zeros (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -1010,6 +1069,26 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContextKt {
 
 public final class sk/ainet/lang/nn/TrainingRunnerKt {
 	public static final fun trainStep (Lsk/ainet/lang/nn/Module;Lsk/ainet/lang/nn/loss/Loss;Lsk/ainet/lang/nn/optim/Optimizer;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/nn/TransposedConv1d : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IIIIIIIIZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
+	public synthetic fun <init> (IIIIIIIIZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun getBias ()Z
+	public final fun getDilation ()I
+	public final fun getGroups ()I
+	public final fun getInChannels ()I
+	public final fun getKernelSize ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public final fun getOutChannels ()I
+	public final fun getOutputPadding ()I
+	public final fun getPadding ()I
+	public fun getParams ()Ljava/util/List;
+	public final fun getStride ()I
+	public final fun getTrainable ()Z
+	public final fun outputSize (I)I
 }
 
 public final class sk/ainet/lang/nn/TransposedConv2d : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
@@ -1145,6 +1224,16 @@ public final class sk/ainet/lang/nn/activations/Sigmoid : sk/ainet/lang/nn/Modul
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
 	public fun getModules ()Ljava/util/List;
 	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/nn/activations/Snake : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (ILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;)V
+	public synthetic fun <init> (ILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun getChannels ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public fun getParams ()Ljava/util/List;
 }
 
 public final class sk/ainet/lang/nn/activations/Softmax : sk/ainet/lang/nn/Module {
@@ -1504,7 +1593,9 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public abstract fun groupNorm (IIDZLjava/lang/String;)V
 	public static synthetic fun groupNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIDZLjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun input (ILjava/lang/String;Z)V
+	public fun input ([ILjava/lang/String;Z)V
 	public static synthetic fun input$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ZILjava/lang/Object;)V
+	public static synthetic fun input$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[ILjava/lang/String;ZILjava/lang/Object;)V
 	public abstract fun layerNorm ([IDZLjava/lang/String;)V
 	public static synthetic fun layerNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[IDZLjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
@@ -1536,7 +1627,9 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDsl$DefaultImpls {
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun flatten$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun groupNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;IIDZLjava/lang/String;ILjava/lang/Object;)V
+	public static fun input (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[ILjava/lang/String;Z)V
 	public static synthetic fun input$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ZILjava/lang/Object;)V
+	public static synthetic fun input$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[ILjava/lang/String;ZILjava/lang/Object;)V
 	public static synthetic fun layerNorm$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;[IDZLjava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;ILjava/lang/Object;)V
@@ -1560,16 +1653,19 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun getCurrentShape ()[I
 	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
 	public final fun getKClass ()Lkotlin/reflect/KClass;
 	public final fun getLastDimension ()I
 	public final fun getModules ()Ljava/util/List;
 	public fun groupNorm (IIDZLjava/lang/String;)V
 	public fun input (ILjava/lang/String;Z)V
+	public fun input ([ILjava/lang/String;Z)V
 	public fun layerNorm ([IDZLjava/lang/String;)V
 	public fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
 	public fun sequential (Lkotlin/jvm/functions/Function1;)V
+	public final fun setCurrentShape ([I)V
 	public final fun setLastDimension (I)V
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
@@ -1597,6 +1693,7 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public final fun getCurrentShape ()[I
 	public fun getExecutionContext ()Lsk/ainet/context/ExecutionContext;
 	public final fun getInputDimension ()I
 	public final fun getKClass ()Lkotlin/reflect/KClass;
@@ -1604,10 +1701,12 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public final fun getModules ()Ljava/util/List;
 	public fun groupNorm (IIDZLjava/lang/String;)V
 	public fun input (ILjava/lang/String;Z)V
+	public fun input ([ILjava/lang/String;Z)V
 	public fun layerNorm ([IDZLjava/lang/String;)V
 	public fun maxPool2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun maxPool2d (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Ljava/lang/String;)V
 	public fun sequential (Lkotlin/jvm/functions/Function1;)V
+	public final fun setCurrentShape ([I)V
 	public final fun setInputDimension (I)V
 	public final fun setLastDimension (I)V
 	public fun softmax (ILjava/lang/String;)V
@@ -1634,6 +1733,8 @@ public final class sk/ainet/lang/nn/dsl/TensorOpsNetworkDslKt {
 	public static synthetic fun sigmoid$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 	public static final fun silu (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;)V
 	public static synthetic fun silu$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
+	public static final fun tanh (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;)V
+	public static synthetic fun tanh$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class sk/ainet/lang/nn/dsl/TrainingConfig {
@@ -2132,6 +2233,30 @@ public final class sk/ainet/lang/nn/topology/TraversalKt {
 	public static final fun walkDepthFirst (Lsk/ainet/lang/nn/topology/ModuleNode;Lkotlin/jvm/functions/Function1;)V
 }
 
+public class sk/ainet/lang/tensor/ArrayCreationBenchmark {
+	public fun <init> ()V
+	public final fun fromFloatArray_copy ()Lsk/ainet/lang/tensor/data/TensorData;
+	public final fun setup ()V
+	public final fun wrapFloatArray_zeroCopy ()Lsk/ainet/lang/tensor/data/TensorData;
+}
+
+public class sk/ainet/lang/tensor/BitPackerBenchmark {
+	public fun <init> ()V
+	public final fun pack_2bit_1024 ()[B
+	public final fun pack_4bit_1024 ()[B
+	public final fun pack_4bit_128 ()[B
+	public final fun setup ()V
+	public final fun unpack_2bit_1024 ()[B
+	public final fun unpack_4bit_1024 ()[B
+}
+
+public class sk/ainet/lang/tensor/BufferAccessorBenchmark {
+	public fun <init> ()V
+	public final fun heapAccessor_readByte_sequential ()J
+	public final fun heapAccessor_readBytes_1KB ()[B
+	public final fun setup ()V
+}
+
 public final class sk/ainet/lang/tensor/ContiguityAnalysis {
 	public fun <init> (ZIIDLjava/util/List;Ljava/lang/String;)V
 	public final fun component1 ()Z
@@ -2175,6 +2300,14 @@ public class sk/ainet/lang/tensor/DefaultTensorViewStrategy : sk/ainet/lang/tens
 	public final fun setMaxStrideThreshold (I)V
 	public final fun setViewSizeThreshold (D)V
 	public fun shouldCreateView (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Z
+}
+
+public class sk/ainet/lang/tensor/DequantizationBenchmark {
+	public fun <init> ()V
+	public final fun dequantQ4K ()[F
+	public final fun dequantQ8_0 ()[F
+	public final fun dequantTernary ()[F
+	public final fun setup ()V
 }
 
 public final class sk/ainet/lang/tensor/GradState {
@@ -2235,10 +2368,12 @@ public final class sk/ainet/lang/tensor/LazyMaterializationStrategy : sk/ainet/l
 public final class sk/ainet/lang/tensor/MaterializationExtensionsKt {
 	public static final fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;)Z
 	public static final fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/MaterializationStrategy;)Z
+	public static final fun copyMaterialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun estimateMaterializationCost (Lsk/ainet/lang/tensor/TensorView;)J
 	public static final fun estimateMaterializationCost (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/MaterializationStrategy;)J
 	public static final fun materialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun materialize (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/MaterializationStrategy;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun realizeAlias (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public abstract interface class sk/ainet/lang/tensor/MaterializationStrategy {
@@ -2282,6 +2417,14 @@ public final class sk/ainet/lang/tensor/NonIntegralIndexException : java/lang/Il
 
 public final class sk/ainet/lang/tensor/PprintKt {
 	public static final fun pprint (Lsk/ainet/lang/tensor/Tensor;)Ljava/lang/String;
+}
+
+public class sk/ainet/lang/tensor/RandomRotationBenchmark {
+	public fun <init> ()V
+	public final fun rotateInverse_128d ()[F
+	public final fun rotate_128d ()[F
+	public final fun rotate_256d ()[F
+	public final fun setup ()V
 }
 
 public final class sk/ainet/lang/tensor/SegmentBuilder {
@@ -2406,6 +2549,15 @@ public final class sk/ainet/lang/tensor/SlicedTensorView : sk/ainet/lang/tensor/
 	public fun zeroGrad ()V
 }
 
+public class sk/ainet/lang/tensor/StorageBridgeBenchmark {
+	public fun <init> ()V
+	public final fun floatTensorData_toStorage ()Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun q4kTensorData_toStorage ()Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun setup ()V
+	public final fun storage_toTensorData_float ()Lsk/ainet/lang/tensor/data/TensorData;
+	public final fun storage_toTensorData_q4k ()Lsk/ainet/lang/tensor/data/TensorData;
+}
+
 public abstract interface class sk/ainet/lang/tensor/Tensor {
 	public fun accumulateGrad (Lsk/ainet/lang/tensor/Tensor;)V
 	public abstract fun getData ()Lsk/ainet/lang/tensor/data/TensorData;
@@ -2461,6 +2613,9 @@ public final class sk/ainet/lang/tensor/TensorExtensionsKt {
 	public static final fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun leakyRelu$default (Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun log (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun log10 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun log2 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun logSoftmax$default (Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -2475,6 +2630,8 @@ public final class sk/ainet/lang/tensor/TensorExtensionsKt {
 	public static final fun plus (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun plus (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun plus (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun pow (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun pow (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -2488,6 +2645,7 @@ public final class sk/ainet/lang/tensor/TensorExtensionsKt {
 	public static final fun sum (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun sum$default (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun t (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun tanh (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun times (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun times (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun times (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -2551,6 +2709,35 @@ public final class sk/ainet/lang/tensor/TesnorExtKt {
 	public static final fun isVector (Lsk/ainet/lang/tensor/Tensor;)Z
 }
 
+public class sk/ainet/lang/tensor/TurboQuantDecodeBenchmark {
+	public fun <init> ()V
+	public final fun decode_3bit_128d ()[F
+	public final fun decode_4bit_128d ()[F
+	public final fun decode_4bit_256d ()[F
+	public final fun decode_4bit_qjl_128d ()[F
+	public final fun decode_8bit_128d ()[F
+	public final fun setup ()V
+}
+
+public class sk/ainet/lang/tensor/TurboQuantEncodeBenchmark {
+	public fun <init> ()V
+	public final fun encode_3bit_128d ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public final fun encode_4bit_128d ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public final fun encode_4bit_256d ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public final fun encode_4bit_qjl_128d ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public final fun encode_8bit_128d ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public final fun setup ()V
+}
+
+public class sk/ainet/lang/tensor/TurboQuantKvCacheBenchmark {
+	public fun <init> ()V
+	public final fun appendToken_dense ()V
+	public final fun appendToken_turbo4bit ()V
+	public final fun readKeys_dense_16tokens ()V
+	public final fun readKeys_turbo4bit_16tokens ()V
+	public final fun setup ()V
+}
+
 public final class sk/ainet/lang/tensor/ViewManagementExtensionsKt {
 	public static final fun analyzeContiguity (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/ContiguityAnalysis;
 	public static final fun batchMaterialize (Ljava/util/List;)Ljava/util/List;
@@ -2600,6 +2787,43 @@ public final class sk/ainet/lang/tensor/benchmark/SlicingBenchmarksKt {
 	public static synthetic fun slicingBenchmarkSuite$default (Ljava/lang/String;Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuite;
 }
 
+public final class sk/ainet/lang/tensor/data/Bf16DenseTensorData : sk/ainet/lang/tensor/data/Bf16TensorData {
+	public static final field Companion Lsk/ainet/lang/tensor/data/Bf16DenseTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getPackedData ()[B
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+}
+
+public final class sk/ainet/lang/tensor/data/Bf16DenseTensorData$Companion {
+	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/data/Bf16DenseTensorData;
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Bf16DenseTensorData;
+}
+
+public abstract interface class sk/ainet/lang/tensor/data/Bf16TensorData : sk/ainet/lang/tensor/data/TensorData {
+	public static final field BYTES_PER_ELEMENT I
+	public static final field Companion Lsk/ainet/lang/tensor/data/Bf16TensorData$Companion;
+	public abstract fun getPackedData ()[B
+}
+
+public final class sk/ainet/lang/tensor/data/Bf16TensorData$Companion {
+	public static final field BYTES_PER_ELEMENT I
+	public final fun bf16BitsToFloat (I)F
+	public final fun floatToBf16Bits (F)I
+}
+
+public final class sk/ainet/lang/tensor/data/Bf16TensorData$DefaultImpls {
+	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Bf16TensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/Bf16TensorDataKt {
+	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Bf16TensorData;)[F
+}
+
 public final class sk/ainet/lang/tensor/data/DenseFloatArrayTensorData : sk/ainet/lang/tensor/data/FloatArrayTensorData {
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[F)V
 	public fun copyToFloatArray ()[F
@@ -2636,6 +2860,7 @@ public final class sk/ainet/lang/tensor/data/DenseTensorDataFactory : sk/ainet/l
 	public fun init (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/data/TensorData;
 	public final fun matrix ([[Ljava/lang/Object;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 	public final fun randn (Lsk/ainet/lang/tensor/Shape;FFLsk/ainet/lang/types/DType;Lkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun randn (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public static synthetic fun randn$default (Lsk/ainet/lang/tensor/data/DenseTensorDataFactory;Lsk/ainet/lang/tensor/Shape;FFLsk/ainet/lang/types/DType;Lkotlin/random/Random;ILjava/lang/Object;)Lsk/ainet/lang/tensor/data/TensorData;
@@ -2644,6 +2869,9 @@ public final class sk/ainet/lang/tensor/data/DenseTensorDataFactory : sk/ainet/l
 	public final fun scalar (Ljava/lang/Object;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun uniform (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public final fun vector ([Ljava/lang/Object;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 }
 
@@ -2677,6 +2905,28 @@ public abstract interface class sk/ainet/lang/tensor/data/ItemsAccessor {
 	public abstract fun set ([ILjava/lang/Object;)V
 }
 
+public final class sk/ainet/lang/tensor/data/LazyZeroFloatArrayTensorData : sk/ainet/lang/tensor/data/FloatArrayTensorData {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBuffer ()[F
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+}
+
+public final class sk/ainet/lang/tensor/data/LazyZeroIntArrayTensorData : sk/ainet/lang/tensor/data/IntArrayTensorData {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Integer;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBuffer ()[I
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([II)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+}
+
 public abstract interface class sk/ainet/lang/tensor/data/MemorySegmentBackedData {
 	public abstract fun getSegment ()Ljava/lang/foreign/MemorySegment;
 	public abstract fun getSegmentByteOffset ()J
@@ -2704,8 +2954,8 @@ public final class sk/ainet/lang/tensor/data/MemorySegmentTensorData : sk/ainet/
 
 public final class sk/ainet/lang/tensor/data/MemorySegmentTensorDataFactory : java/lang/AutoCloseable, sk/ainet/lang/tensor/data/TensorDataFactory {
 	public fun <init> ()V
-	public fun <init> (Ljava/lang/foreign/Arena;J)V
-	public synthetic fun <init> (Ljava/lang/foreign/Arena;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (J)V
+	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
@@ -2713,9 +2963,13 @@ public final class sk/ainet/lang/tensor/data/MemorySegmentTensorDataFactory : ja
 	public fun full (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun init (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun randn (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun randomInit (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;Lkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun uniform (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 }
 
@@ -2776,22 +3030,29 @@ public final class sk/ainet/lang/tensor/data/Q4MemorySegmentTensorData$Companion
 	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/data/Q4MemorySegmentTensorData$Companion;Lsk/ainet/lang/tensor/Shape;[BLjava/lang/foreign/Arena;JILjava/lang/Object;)Lsk/ainet/lang/tensor/data/Q4MemorySegmentTensorData;
 }
 
-public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang/tensor/data/Q4_KTensorData {
+public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang/tensor/data/Q4_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q4_KBlockTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
 	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
 	public fun getBlockCount ()I
 	public fun getBlockD (I)F
 	public fun getBlockDMin (I)F
+	public fun getBlockSize ()I
 	public fun getCode (II)I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getSubBlockMin (II)F
 	public fun getSubBlockScale (II)F
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData$Companion {
@@ -2828,6 +3089,61 @@ public final class sk/ainet/lang/tensor/data/Q4_KTensorDataKt {
 	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Q4_KTensorData;)[F
 }
 
+public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData : sk/ainet/lang/tensor/data/Q6_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q6_KBlockTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Byte;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockD (I)F
+	public fun getBlockSize ()I
+	public fun getCode (II)I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getSubBlockScale (II)I
+	public fun set ([IB)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData$Companion {
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Q6_KBlockTensorData;
+}
+
+public abstract interface class sk/ainet/lang/tensor/data/Q6_KTensorData : sk/ainet/lang/tensor/data/TensorData {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q6_KTensorData$Companion;
+	public static final field SUB_BLOCKS_PER_BLOCK I
+	public static final field SUB_BLOCK_SIZE I
+	public abstract fun getBlockCount ()I
+	public abstract fun getBlockD (I)F
+	public abstract fun getCode (II)I
+	public abstract fun getPackedData ()[B
+	public abstract fun getSubBlockScale (II)I
+}
+
+public final class sk/ainet/lang/tensor/data/Q6_KTensorData$Companion {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field SUB_BLOCKS_PER_BLOCK I
+	public static final field SUB_BLOCK_SIZE I
+}
+
+public final class sk/ainet/lang/tensor/data/Q6_KTensorData$DefaultImpls {
+	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q6_KTensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/Q6_KTensorDataKt {
+	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Q6_KTensorData;)[F
+}
+
 public abstract interface class sk/ainet/lang/tensor/data/Q8MemorySegmentMarker : sk/ainet/lang/tensor/data/MemorySegmentBackedData {
 	public abstract fun getBlockCount ()I
 	public abstract fun getBlockSize ()I
@@ -2856,19 +3172,26 @@ public final class sk/ainet/lang/tensor/data/Q8MemorySegmentTensorData$Companion
 	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/data/Q8MemorySegmentTensorData$Companion;Lsk/ainet/lang/tensor/Shape;[BLjava/lang/foreign/Arena;JILjava/lang/Object;)Lsk/ainet/lang/tensor/data/Q8MemorySegmentTensorData;
 }
 
-public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang/tensor/data/Q8_0TensorData {
+public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang/tensor/data/Q8_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q8_0BlockTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
 	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
 	public fun getBlockCount ()I
 	public fun getBlockScale (I)F
+	public fun getBlockSize ()I
 	public fun getCode (II)B
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData$Companion {
@@ -2914,10 +3237,21 @@ public abstract interface class sk/ainet/lang/tensor/data/TensorDataFactory {
 	public abstract fun full (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun init (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun randn (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun randomInit (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;Lkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun uniform (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
+public final class sk/ainet/lang/tensor/data/TensorDataFactory$DefaultImpls {
+	public static fun placeholder (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+	public static fun wrapByteArray (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
+	public static fun wrapFloatArray (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public static fun wrapIntArray (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
 }
 
 public final class sk/ainet/lang/tensor/data/TensorFactoryRegistry {
@@ -2927,18 +3261,26 @@ public final class sk/ainet/lang/tensor/data/TensorFactoryRegistry {
 	public final fun registerFactory (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/data/TensorDataFactory;)V
 }
 
-public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData : sk/ainet/lang/tensor/data/TernaryTensorData {
+public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData : sk/ainet/lang/tensor/data/TernaryTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Ternary2BitTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BF)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BFILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockSize ()I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
 	public fun getScale ()F
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData$Companion {
@@ -3396,6 +3738,15 @@ public final class sk/ainet/lang/tensor/ops/Conv3dOperation : sk/ainet/lang/tens
 	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
 }
 
+public final class sk/ainet/lang/tensor/ops/ConvShapeUtils {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/ConvShapeUtils;
+	public final fun conv1dOutputShape ([I[IIII)[I
+	public final fun conv2dOutputShape ([I[ILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;)[I
+	public final fun conv3dOutputShape ([I[ILkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;)[I
+	public final fun pool2dOutputShape ([ILkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;)[I
+	public final fun upsample2dOutputShape ([ILkotlin/Pair;)[I
+}
+
 public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps {
 	public abstract fun absBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun addBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -3414,6 +3765,9 @@ public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps
 	public abstract fun flattenBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun geluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun leakyReluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun log10Backward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun log2Backward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun logBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun logSoftmaxBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun matmulBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun maxPool2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -3422,6 +3776,9 @@ public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps
 	public abstract fun multiplyBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun narrowBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun pad2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun permuteBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun powBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun powScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun rdivScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun reluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun reshapeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -3436,6 +3793,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps
 	public abstract fun subScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun subtractBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun sumBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun tanhBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun transposeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun unsqueezeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun upsample2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -3496,7 +3854,9 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun conv1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv3d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;I)Lsk/ainet/lang/tensor/Tensor;
+	public fun convTranspose1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
+	public fun cos (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3508,6 +3868,9 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+	public fun log (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun log10 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun log2 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun matmul (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3517,6 +3880,9 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun multiply (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun narrow (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	public fun pad2d (Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
+	public fun permute (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun pow (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun powScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rdivScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
@@ -3525,6 +3891,7 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun sin (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun softmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun split (Lsk/ainet/lang/tensor/Tensor;II)Ljava/util/List;
 	public fun sqrt (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3532,12 +3899,43 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun subScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun subtract (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sum (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
+	public fun tanh (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun transpose (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun tril (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun unfold (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	public fun unsqueeze (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun upsample2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;Z)Lsk/ainet/lang/tensor/Tensor;
 	public fun variance (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/tensor/ops/Log10Operation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public final class sk/ainet/lang/tensor/ops/Log2Operation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public final class sk/ainet/lang/tensor/ops/LogOperation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
 }
 
 public final class sk/ainet/lang/tensor/ops/MatmulOperation : sk/ainet/lang/tensor/ops/BaseOperation {
@@ -3563,6 +3961,12 @@ public final class sk/ainet/lang/tensor/ops/MaxPool2dOperation : sk/ainet/lang/t
 public abstract interface class sk/ainet/lang/tensor/ops/MixedPrecisionTensorOps : sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun addMixed (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/tensor/ops/MixedPrecisionTensorOps$DefaultImpls {
+	public static fun convTranspose1d (Lsk/ainet/lang/tensor/ops/MixedPrecisionTensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
+	public static fun cos (Lsk/ainet/lang/tensor/ops/MixedPrecisionTensorOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun sin (Lsk/ainet/lang/tensor/ops/MixedPrecisionTensorOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/lang/tensor/ops/MultiplyOperation : sk/ainet/lang/tensor/ops/BaseOperation {
@@ -3593,6 +3997,16 @@ public final class sk/ainet/lang/tensor/ops/Operation$DefaultImpls {
 	public static fun getDescription (Lsk/ainet/lang/tensor/ops/Operation;)Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/tensor/ops/PowOperation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
 public final class sk/ainet/lang/tensor/ops/QuantizedMatmul {
 	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/QuantizedMatmul;
 	public final fun isQ4_KWeight (Lsk/ainet/lang/tensor/Tensor;)Z
@@ -3619,6 +4033,16 @@ public final class sk/ainet/lang/tensor/ops/ReluOperation : sk/ainet/lang/tensor
 }
 
 public final class sk/ainet/lang/tensor/ops/ReshapeOperation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public final class sk/ainet/lang/tensor/ops/ScaledDotProductAttentionOperation : sk/ainet/lang/tensor/ops/BaseOperation {
 	public fun <init> ()V
 	public fun <init> (Ljava/util/Map;)V
 	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -3668,6 +4092,16 @@ public final class sk/ainet/lang/tensor/ops/SubtractOperation : sk/ainet/lang/te
 	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
 }
 
+public final class sk/ainet/lang/tensor/ops/TanhOperation : sk/ainet/lang/tensor/ops/BaseOperation {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clone (Ljava/util/Map;)Lsk/ainet/lang/tensor/ops/Operation;
+	public fun execute (Ljava/util/List;)Ljava/util/List;
+	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
+	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
 public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun abs (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun add (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3682,7 +4116,10 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public static synthetic fun conv2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun conv3d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public fun convTranspose1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun convTranspose1d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIIIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
+	public fun cos (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3699,6 +4136,9 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public static synthetic fun indexSelect$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun leakyRelu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun log (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun log10 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun log2 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun logSoftmax$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3711,6 +4151,9 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun multiply (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun narrow (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun pad2d (Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun permute (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun pow (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun powScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun rdivScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
@@ -3720,6 +4163,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun sin (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun softmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun softmax$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun split (Lsk/ainet/lang/tensor/Tensor;II)Ljava/util/List;
@@ -3730,6 +4174,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun subtract (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun sum (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun sum$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun tanh (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun transpose (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun tril (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun tril$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
@@ -3746,6 +4191,9 @@ public final class sk/ainet/lang/tensor/ops/TensorOps$DefaultImpls {
 	public static synthetic fun conv1d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun conv2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun convTranspose1d (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
+	public static synthetic fun convTranspose1d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIIIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun cos (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun elu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun flatten$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun gather$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
@@ -3755,6 +4203,7 @@ public final class sk/ainet/lang/tensor/ops/TensorOps$DefaultImpls {
 	public static synthetic fun maxPool2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun mean$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun scaledDotProductAttention$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun sin (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun softmax$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun squeeze$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun sum$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
@@ -3781,6 +4230,13 @@ public final class sk/ainet/lang/tensor/ops/TensorSpec {
 	public final fun getShape ()Ljava/util/List;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/ops/TensorSpecs {
+	public static final field TENSOR_ENCODING_METADATA_KEY Ljava/lang/String;
+	public static final fun getTensorEncoding (Lsk/ainet/lang/tensor/ops/TensorSpec;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static final fun inferTensorEncoding (Lsk/ainet/lang/tensor/data/TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static final fun withTensorEncoding (Lsk/ainet/lang/tensor/ops/TensorSpec;Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/ops/TensorSpec;
 }
 
 public final class sk/ainet/lang/tensor/ops/TernaryMatmul {
@@ -3861,7 +4317,9 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun conv1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv3d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;I)Lsk/ainet/lang/tensor/Tensor;
+	public fun convTranspose1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
+	public fun cos (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -3873,6 +4331,9 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+	public fun log (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun log10 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun log2 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun matmul (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3882,6 +4343,9 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun multiply (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun narrow (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	public fun pad2d (Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
+	public fun permute (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun pow (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun powScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rdivScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
@@ -3890,6 +4354,7 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun sin (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun softmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun split (Lsk/ainet/lang/tensor/Tensor;II)Ljava/util/List;
 	public fun sqrt (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -3897,12 +4362,954 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun subScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun subtract (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sum (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
+	public fun tanh (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun transpose (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun tril (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun unfold (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	public fun unsqueeze (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun upsample2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;Z)Lsk/ainet/lang/tensor/Tensor;
 	public fun variance (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/BitPacker {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/BitPacker;
+	public final fun pack ([BI)[B
+	public final fun packedSize (II)I
+	public final fun unpack ([BII)[B
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/EncodedResidual {
+	public fun <init> ([BFII)V
+	public final fun component1 ()[B
+	public final fun component2 ()F
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy ([BFII)Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;[BFIIILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getElementCount ()I
+	public final fun getPacked ()[B
+	public final fun getPackedSizeBytes ()I
+	public final fun getResidualBits ()I
+	public final fun getScale ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/QjlResidual {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/QjlResidual;
+	public final fun decode (Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;[FI)V
+	public final fun encode ([FII)Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/QuantizedVector {
+	public fun <init> ([B[FI)V
+	public final fun component1 ()[B
+	public final fun component2 ()[F
+	public final fun component3 ()I
+	public final fun copy ([B[FI)Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;[B[FIILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBits ()I
+	public final fun getCodes ()[B
+	public final fun getElementCount ()I
+	public final fun getNumGroups ()I
+	public final fun getScales ()[F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/RandomRotation {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/RandomRotation;
+	public final fun inverseRotate ([FI)V
+	public final fun rotate ([FI)V
+	public final fun seedFor (III)I
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/ScalarQuantizer {
+	public static final field GROUP_SIZE I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/ScalarQuantizer;
+	public final fun dequantize (Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;)[F
+	public final fun dequantizeInto ([B[F[FI)V
+	public static synthetic fun dequantizeInto$default (Lsk/ainet/lang/tensor/ops/turboquant/ScalarQuantizer;[B[F[FIILjava/lang/Object;)V
+	public final fun quantize ([FI)Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock {
+	public fun <init> ([B[FIIILsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;)V
+	public synthetic fun <init> ([B[FIIILsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()[B
+	public final fun component2 ()[F
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;
+	public final fun copy ([B[FIIILsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;[B[FIIILsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;ILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBits ()I
+	public final fun getElementCount ()I
+	public final fun getPackedCodes ()[B
+	public final fun getResidual ()Lsk/ainet/lang/tensor/ops/turboquant/EncodedResidual;
+	public final fun getScales ()[F
+	public final fun getSeed ()I
+	public final fun getSizeInBytes ()I
+	public fun hashCode ()I
+	public final fun isPolarOnly ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantCodec {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantCodec;
+	public final fun decode (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;)[F
+	public final fun encode ([FLsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantBlock;
+	public final fun encodedSize (ILsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;)I
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig {
+	public static final field Companion Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig$Companion;
+	public fun <init> ()V
+	public fun <init> (IZII)V
+	public synthetic fun <init> (IZIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Z
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (IZII)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;IZIIILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBits ()I
+	public final fun getResidualBits ()I
+	public final fun getSeed ()I
+	public final fun getUseQjl ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig$Companion {
+	public final fun polarOnly (II)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public static synthetic fun polarOnly$default (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig$Companion;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public final fun polarPlusQjl (III)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public static synthetic fun polarPlusQjl$default (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig$Companion;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public final fun component3 ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public final fun component4 ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;ILjava/lang/Object;)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCacheConfig ()Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public final fun getKeyQuantConfig ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getValueQuantConfig ()Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantPresets {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPresets;
+	public final fun balanced (IIII)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;
+	public final fun experimentalMax (IIII)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;
+	public final fun forModel (Ljava/lang/String;IIII)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;
+	public final fun getAvailablePresets ()Ljava/util/List;
+	public final fun safeLowbit (IIII)Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;
+}
+
+public final class sk/ainet/lang/tensor/ops/turboquant/TurboQuantUsage {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantUsage;
+	public final fun exampleAsymmetricCache ()Lsk/ainet/lang/tensor/storage/KvCacheStore;
+	public final fun exampleGenerationLoop ()V
+	public final fun exampleLlamaCache ()Lsk/ainet/lang/tensor/storage/KvCacheStore;
+}
+
+public final class sk/ainet/lang/tensor/scratch/NoopScratchPool : sk/ainet/lang/tensor/scratch/ScratchPool {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/scratch/NoopScratchPool;
+	public fun acquireFloat (I)[F
+	public fun acquireFloatZeroed (I)[F
+	public fun scope (Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public fun stats ()Lsk/ainet/lang/tensor/scratch/ScratchStats;
+}
+
+public abstract interface class sk/ainet/lang/tensor/scratch/ScratchPool {
+	public abstract fun acquireFloat (I)[F
+	public abstract fun acquireFloatZeroed (I)[F
+	public abstract fun scope (Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public abstract fun stats ()Lsk/ainet/lang/tensor/scratch/ScratchStats;
+}
+
+public final class sk/ainet/lang/tensor/scratch/ScratchStats {
+	public fun <init> (JJJI)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()I
+	public final fun copy (JJJI)Lsk/ainet/lang/tensor/scratch/ScratchStats;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/scratch/ScratchStats;JJJIILjava/lang/Object;)Lsk/ainet/lang/tensor/scratch/ScratchStats;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAcquireCount ()J
+	public final fun getActiveBuffers ()I
+	public final fun getCacheHits ()J
+	public final fun getHighWaterBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/scratch/SizeClassedScratchPool : sk/ainet/lang/tensor/scratch/ScratchPool {
+	public static final field Companion Lsk/ainet/lang/tensor/scratch/SizeClassedScratchPool$Companion;
+	public static final field LOG_MIN_SIZE I
+	public static final field MAX_CLASSES I
+	public static final field MIN_SIZE I
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun acquireFloat (I)[F
+	public fun acquireFloatZeroed (I)[F
+	public fun scope (Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public fun stats ()Lsk/ainet/lang/tensor/scratch/ScratchStats;
+}
+
+public final class sk/ainet/lang/tensor/scratch/SizeClassedScratchPool$Companion {
+	public final fun sizeClass (I)I
+	public final fun sizeForClass (I)I
+}
+
+public final class sk/ainet/lang/tensor/storage/ActiveMemoryTracker {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/ActiveMemoryTracker;
+	public final fun getCurrent ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public final fun recordCopy (Ljava/lang/String;J)V
+	public final fun setCurrent (Lsk/ainet/lang/tensor/storage/MemoryTracker;)V
+}
+
+public final class sk/ainet/lang/tensor/storage/AggregateMemoryReport {
+	public fun <init> (IJJJIIIIJJLjava/util/List;)V
+	public final fun component1 ()I
+	public final fun component10 ()J
+	public final fun component11 ()Ljava/util/List;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun component8 ()I
+	public final fun component9 ()J
+	public final fun copy (IJJJIIIIJJLjava/util/List;)Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;IJJJIIIIJJLjava/util/List;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAliasedCount ()I
+	public final fun getBorrowedCount ()I
+	public final fun getCopyBytes ()J
+	public final fun getCopyCount ()J
+	public final fun getEntries ()Ljava/util/List;
+	public final fun getFileBackedBytes ()J
+	public final fun getFileBackedCount ()I
+	public final fun getOverallCompressionRatio ()D
+	public final fun getOwnedCount ()I
+	public final fun getTensorCount ()I
+	public final fun getTotalLogicalBytes ()J
+	public final fun getTotalPhysicalBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/lang/tensor/storage/BufferAccessor : java/lang/AutoCloseable {
+	public abstract fun getSizeInBytes ()J
+	public fun readAllBytes ()[B
+	public abstract fun readByte (J)B
+	public abstract fun readBytes (JI)[B
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferAccessor$DefaultImpls {
+	public static fun readAllBytes (Lsk/ainet/lang/tensor/storage/BufferAccessor;)[B
+}
+
+public abstract interface class sk/ainet/lang/tensor/storage/BufferHandle {
+	public abstract fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public abstract fun getSizeInBytes ()J
+	public abstract fun isMutable ()Z
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferHandle$Aliased : sk/ainet/lang/tensor/storage/BufferHandle {
+	public fun <init> (Lsk/ainet/lang/tensor/storage/BufferHandle;JJ)V
+	public final fun getByteOffset ()J
+	public fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun getParent ()Lsk/ainet/lang/tensor/storage/BufferHandle;
+	public fun getSizeInBytes ()J
+	public fun isMutable ()Z
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferHandle$Borrowed : sk/ainet/lang/tensor/storage/BufferHandle {
+	public fun <init> ([BIJZ)V
+	public synthetic fun <init> ([BIJZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getData ()[B
+	public final fun getOffset ()I
+	public fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public fun getSizeInBytes ()J
+	public fun isMutable ()Z
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferHandle$DeviceResident : sk/ainet/lang/tensor/storage/BufferHandle {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Object;JZ)V
+	public final fun getBackendHandle ()Ljava/lang/Object;
+	public final fun getDeviceId ()Ljava/lang/String;
+	public fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public fun getSizeInBytes ()J
+	public fun isMutable ()Z
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferHandle$FileBacked : sk/ainet/lang/tensor/storage/BufferHandle {
+	public fun <init> (Ljava/lang/String;JJ)V
+	public final fun getFileOffset ()J
+	public fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun getPath ()Ljava/lang/String;
+	public fun getSizeInBytes ()J
+	public fun isMutable ()Z
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferHandle$Owned : sk/ainet/lang/tensor/storage/BufferHandle {
+	public fun <init> ([BIJ)V
+	public synthetic fun <init> ([BIJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getData ()[B
+	public final fun getOffset ()I
+	public fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public fun getSizeInBytes ()J
+	public fun isMutable ()Z
+}
+
+public final class sk/ainet/lang/tensor/storage/BufferHandleFactory {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/BufferHandleFactory;
+	public final fun borrow ([BIIZ)Lsk/ainet/lang/tensor/storage/BufferHandle$Borrowed;
+	public final fun borrow ([BZ)Lsk/ainet/lang/tensor/storage/BufferHandle$Borrowed;
+	public static synthetic fun borrow$default (Lsk/ainet/lang/tensor/storage/BufferHandleFactory;[BIIZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/BufferHandle$Borrowed;
+	public static synthetic fun borrow$default (Lsk/ainet/lang/tensor/storage/BufferHandleFactory;[BZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/BufferHandle$Borrowed;
+	public final fun fileBacked (Ljava/lang/String;JJ)Lsk/ainet/lang/tensor/storage/BufferHandle$FileBacked;
+	public final fun owned ([B)Lsk/ainet/lang/tensor/storage/BufferHandle$Owned;
+	public final fun owned ([F)Lsk/ainet/lang/tensor/storage/BufferHandle$Owned;
+	public final fun owned ([I)Lsk/ainet/lang/tensor/storage/BufferHandle$Owned;
+	public final fun slice (Lsk/ainet/lang/tensor/storage/BufferHandle;JJ)Lsk/ainet/lang/tensor/storage/BufferHandle$Aliased;
+}
+
+public abstract interface class sk/ainet/lang/tensor/storage/BufferResolver {
+	public abstract fun resolve (Lsk/ainet/lang/tensor/storage/BufferHandle;)Lsk/ainet/lang/tensor/storage/BufferAccessor;
+}
+
+public final class sk/ainet/lang/tensor/storage/ByteArrayAccessor : sk/ainet/lang/tensor/storage/BufferAccessor {
+	public fun <init> ([BIJ)V
+	public synthetic fun <init> ([BIJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getSizeInBytes ()J
+	public fun readAllBytes ()[B
+	public fun readByte (J)B
+	public fun readBytes (JI)[B
+	public final fun sliced (JJ)Lsk/ainet/lang/tensor/storage/ByteArrayAccessor;
+}
+
+public final class sk/ainet/lang/tensor/storage/CompressedKvAttention {
+	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheStore;Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheStore;Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun isKeyCompressed ()Z
+	public final fun isValueCompressed ()Z
+	public final fun loadKeyStorageRaw (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun loadKeyStorageRaw$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun loadKeysForAttention (III)[F
+	public static synthetic fun loadKeysForAttention$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)[F
+	public final fun loadValueStorageRaw (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun loadValueStorageRaw$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun loadValuesForAttention (III)[F
+	public static synthetic fun loadValuesForAttention$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)[F
+	public final fun storeKeyValue (I[F[F)V
+}
+
+public final class sk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy : java/lang/Enum {
+	public static final field FULL_TILE Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;
+	public static final field RAW_STORAGE Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;
+}
+
+public final class sk/ainet/lang/tensor/storage/DefaultBufferResolver : sk/ainet/lang/tensor/storage/BufferResolver {
+	public fun <init> ()V
+	public fun <init> (Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun resolve (Lsk/ainet/lang/tensor/storage/BufferHandle;)Lsk/ainet/lang/tensor/storage/BufferAccessor;
+}
+
+public final class sk/ainet/lang/tensor/storage/DefaultKvCacheStore : sk/ainet/lang/tensor/storage/KvCacheStore {
+	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;)V
+	public fun appendToken (I[F[F)V
+	public fun clear ()V
+	public fun evict (I)V
+	public fun getCurrentSeqLen ()I
+	public fun getHeadDim ()I
+	public fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getMaxSeqLen ()I
+	public fun getNumHeads ()I
+	public fun getNumLayers ()I
+	public fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
+	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun readKeys (III)[F
+	public fun readValueStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun readValues (III)[F
+}
+
+public final class sk/ainet/lang/tensor/storage/DeviceKind : java/lang/Enum {
+	public static final field AUTO Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public static final field CPU Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public static final field GPU Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public static final field NPU Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/DeviceKind;
+}
+
+public abstract interface annotation class sk/ainet/lang/tensor/storage/KvCache : java/lang/annotation/Annotation {
+	public abstract fun device ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public abstract fun keyBits ()I
+	public abstract fun maxSeqLen ()I
+	public abstract fun preset ()Ljava/lang/String;
+	public abstract fun useQjl ()Z
+	public abstract fun valueBits ()I
+}
+
+public final class sk/ainet/lang/tensor/storage/KvCacheAnnotationResolver {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/KvCacheAnnotationResolver;
+	public final fun resolve (Ljava/lang/String;IIII)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+	public final fun resolve (Lsk/ainet/lang/tensor/storage/KvCache;IIII)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+}
+
+public abstract interface annotation class sk/ainet/lang/tensor/storage/KvCacheBypass : java/lang/annotation/Annotation {
+}
+
+public final class sk/ainet/lang/tensor/storage/KvCacheConfig {
+	public static final field Companion Lsk/ainet/lang/tensor/storage/KvCacheConfig$Companion;
+	public fun <init> (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;)V
+	public synthetic fun <init> (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component6 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component7 ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun copy (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/KvCacheConfig;IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeadDim ()I
+	public final fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun getMaxSeqLen ()I
+	public final fun getNumHeads ()I
+	public final fun getNumLayers ()I
+	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/KvCacheConfig$Companion {
+	public final fun dense (IIII)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public final fun q8 (IIII)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+}
+
+public final class sk/ainet/lang/tensor/storage/KvCacheMemoryReport {
+	public fun <init> (IIIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;JJJJ)V
+	public final fun component1 ()I
+	public final fun component10 ()J
+	public final fun component11 ()J
+	public final fun component12 ()J
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component7 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component8 ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun component9 ()J
+	public final fun copy (IIIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;JJJJ)Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;IIIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;JJJJILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompressionRatio ()D
+	public final fun getCurrentSeqLen ()I
+	public final fun getHeadDim ()I
+	public final fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun getKeyLogicalBytes ()J
+	public final fun getKeyPhysicalBytes ()J
+	public final fun getMaxSeqLen ()I
+	public final fun getNumHeads ()I
+	public final fun getNumLayers ()I
+	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getTotalLogicalBytes ()J
+	public final fun getTotalPhysicalBytes ()J
+	public final fun getUtilizationRatio ()D
+	public final fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun getValueLogicalBytes ()J
+	public final fun getValuePhysicalBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/lang/tensor/storage/KvCacheStore {
+	public static final field Companion Lsk/ainet/lang/tensor/storage/KvCacheStore$Companion;
+	public abstract fun appendToken (I[F[F)V
+	public abstract fun clear ()V
+	public abstract fun evict (I)V
+	public abstract fun getCurrentSeqLen ()I
+	public abstract fun getHeadDim ()I
+	public abstract fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public abstract fun getMaxSeqLen ()I
+	public abstract fun getNumHeads ()I
+	public abstract fun getNumLayers ()I
+	public abstract fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public abstract fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public abstract fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
+	public abstract fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun readKeyStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public abstract fun readKeys (III)[F
+	public static synthetic fun readKeys$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
+	public abstract fun readValueStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun readValueStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public abstract fun readValues (III)[F
+	public static synthetic fun readValues$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
+}
+
+public final class sk/ainet/lang/tensor/storage/KvCacheStore$Companion {
+	public final fun dense (IIII)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+	public final fun fromPreset (Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantPreset;)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+	public final fun turboQuant (IIIIIIZ)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+	public final fun turboQuant (Ljava/lang/String;IIII)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+	public static synthetic fun turboQuant$default (Lsk/ainet/lang/tensor/storage/KvCacheStore$Companion;IIIIIIZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/KvCacheStore;
+}
+
+public final class sk/ainet/lang/tensor/storage/KvCacheStore$DefaultImpls {
+	public static synthetic fun readKeyStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun readKeys$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
+	public static synthetic fun readValueStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun readValues$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
+}
+
+public final class sk/ainet/lang/tensor/storage/LogicalDType : java/lang/Enum {
+	public static final field BFLOAT16 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field Companion Lsk/ainet/lang/tensor/storage/LogicalDType$Companion;
+	public static final field FLOAT16 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field FLOAT32 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field FLOAT64 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field INT16 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field INT32 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field INT4 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field INT64 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field INT8 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field TERNARY Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field UINT16 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field UINT32 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field UINT64 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static final field UINT8 Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getSizeInBits ()I
+	public final fun getSizeInBytes ()I
+	public final fun isFloatingPoint ()Z
+	public final fun isSigned ()Z
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/LogicalDType;
+}
+
+public final class sk/ainet/lang/tensor/storage/LogicalDType$Companion {
+	public final fun fromDType (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/LogicalDType;
+}
+
+public final class sk/ainet/lang/tensor/storage/MemoryDomain : java/lang/Enum {
+	public static final field DEVICE_LOCAL Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static final field HOST_HEAP Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static final field HOST_PINNED Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static final field MMAP_FILE Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static final field UNIFIED Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/MemoryDomain;
+}
+
+public final class sk/ainet/lang/tensor/storage/MemoryPlanner {
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Set;)V
+	public synthetic fun <init> (Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun resolve (Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/ResolvedPlacement;
+	public final fun suggestActivationPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun suggestWeightPlacement (Z)Lsk/ainet/lang/tensor/storage/Placement;
+}
+
+public final class sk/ainet/lang/tensor/storage/MemoryTracker {
+	public fun <init> ()V
+	public final fun clear ()V
+	public final fun record (Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorStorage;)V
+	public final fun recordCopy (Ljava/lang/String;J)V
+	public final fun report ()Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
+}
+
+public final class sk/ainet/lang/tensor/storage/Ownership : java/lang/Enum {
+	public static final field ALIASED Lsk/ainet/lang/tensor/storage/Ownership;
+	public static final field BORROWED Lsk/ainet/lang/tensor/storage/Ownership;
+	public static final field DEVICE_RESIDENT Lsk/ainet/lang/tensor/storage/Ownership;
+	public static final field FILE_BACKED Lsk/ainet/lang/tensor/storage/Ownership;
+	public static final field OWNED Lsk/ainet/lang/tensor/storage/Ownership;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/Ownership;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/Ownership;
+}
+
+public abstract interface class sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public abstract fun dequantizeBlock (I[FI)V
+	public static synthetic fun dequantizeBlock$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;I[FIILjava/lang/Object;)V
+	public abstract fun getBlockCount ()I
+	public abstract fun getBlockSize ()I
+	public fun getElementCount ()J
+	public abstract fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public abstract fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
+	public abstract fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/storage/PackedBlockStorage$DefaultImpls {
+	public static synthetic fun dequantizeBlock$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;I[FIILjava/lang/Object;)V
+	public static fun getElementCount (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)J
+	public static fun getPhysicalBytes (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)J
+	public static fun toFloatArray (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)[F
+	public static fun toTensorStorage (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public abstract interface annotation class sk/ainet/lang/tensor/storage/Place : java/lang/annotation/Annotation {
+	public abstract fun device ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public abstract fun memory ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public abstract fun requirement ()Lsk/ainet/lang/tensor/storage/Requirement;
+}
+
+public final class sk/ainet/lang/tensor/storage/Placement {
+	public static final field Companion Lsk/ainet/lang/tensor/storage/Placement$Companion;
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public final fun component2 ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public final fun component3 ()Lsk/ainet/lang/tensor/storage/Residency;
+	public final fun component4 ()Lsk/ainet/lang/tensor/storage/Requirement;
+	public final fun component5 ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public final fun copy (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;)Lsk/ainet/lang/tensor/storage/Placement;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/Placement;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDevice ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public final fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public final fun getFallback ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public final fun getRequirement ()Lsk/ainet/lang/tensor/storage/Requirement;
+	public final fun getResidency ()Lsk/ainet/lang/tensor/storage/Residency;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/Placement$Companion {
+	public final fun getCPU_HEAP ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getGPU_PREFERRED ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getMMAP_WEIGHTS ()Lsk/ainet/lang/tensor/storage/Placement;
+}
+
+public final class sk/ainet/lang/tensor/storage/PlacementUnavailableException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class sk/ainet/lang/tensor/storage/Requirement : java/lang/Enum {
+	public static final field PREFERRED Lsk/ainet/lang/tensor/storage/Requirement;
+	public static final field REQUIRED Lsk/ainet/lang/tensor/storage/Requirement;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/Requirement;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/Requirement;
+}
+
+public final class sk/ainet/lang/tensor/storage/Residency : java/lang/Enum {
+	public static final field PERSISTENT Lsk/ainet/lang/tensor/storage/Residency;
+	public static final field TRANSIENT Lsk/ainet/lang/tensor/storage/Residency;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/Residency;
+	public static fun values ()[Lsk/ainet/lang/tensor/storage/Residency;
+}
+
+public final class sk/ainet/lang/tensor/storage/ResolvedPlacement {
+	public fun <init> (Lsk/ainet/lang/tensor/storage/Placement;Z)V
+	public final fun component1 ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun component2 ()Z
+	public final fun copy (Lsk/ainet/lang/tensor/storage/Placement;Z)Lsk/ainet/lang/tensor/storage/ResolvedPlacement;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/ResolvedPlacement;Lsk/ainet/lang/tensor/storage/Placement;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/ResolvedPlacement;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActual ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getUsedFallback ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/StorageMemoryReport {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;JJZZZ)V
+	public final fun component1 ()Lsk/ainet/lang/tensor/Shape;
+	public final fun component10 ()Z
+	public final fun component2 ()Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public final fun component3 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component4 ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun component5 ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun component6 ()J
+	public final fun component7 ()J
+	public final fun component8 ()Z
+	public final fun component9 ()Z
+	public final fun copy (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;JJZZZ)Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/StorageMemoryReport;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;JJZZZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompressionRatio ()D
+	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun getLogicalBytes ()J
+	public final fun getLogicalType ()Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public final fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun getPhysicalBytes ()J
+	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun hashCode ()I
+	public final fun isAlias ()Z
+	public final fun isFileBacked ()Z
+	public final fun isMutable ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/StorageSpec {
+	public static final field Companion Lsk/ainet/lang/tensor/storage/StorageSpec$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public final fun component2 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component3 ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun component4 ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun copy (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/StorageSpec;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun getLogicalType ()Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public final fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/StorageSpec$Companion {
+	public final fun borrowed (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public final fun fromDType (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public final fun mmapWeights (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public final fun q4k (Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public static synthetic fun q4k$default (Lsk/ainet/lang/tensor/storage/StorageSpec$Companion;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public final fun q80 (Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+	public static synthetic fun q80$default (Lsk/ainet/lang/tensor/storage/StorageSpec$Companion;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
+}
+
+public abstract interface class sk/ainet/lang/tensor/storage/TensorEncoding {
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun physicalBytes (J)Ljava/lang/Long;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Dense : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lsk/ainet/lang/tensor/storage/TensorEncoding$Dense;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TensorEncoding$Dense;IILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorEncoding$Dense;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytesPerElement ()I
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Opaque : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Lsk/ainet/lang/tensor/storage/TensorEncoding$Opaque;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TensorEncoding$Opaque;Ljava/lang/String;JILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorEncoding$Opaque;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getRawBytes ()J
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q4_K : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q4_K;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q6_K : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q6_K;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q8_0 : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q8_0;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$TernaryPacked : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$TernaryPacked;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolar : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public fun <init> ()V
+	public fun <init> (II)V
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lsk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolar;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolar;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolar;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitsPerElement ()I
+	public final fun getBlockSize ()I
+	public fun getName ()Ljava/lang/String;
+	public final fun getNumGroups ()I
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolarQjl : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public fun <init> ()V
+	public fun <init> (III)V
+	public synthetic fun <init> (IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lsk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolarQjl;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolarQjl;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolarQjl;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitsPerElement ()I
+	public final fun getBlockSize ()I
+	public fun getName ()Ljava/lang/String;
+	public final fun getNumGroups ()I
+	public final fun getResidualBits ()I
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorStorage {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZ)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/lang/tensor/Shape;
+	public final fun component2 ()Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public final fun component3 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun component4 ()Lsk/ainet/lang/tensor/storage/BufferHandle;
+	public final fun component5 ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun component6 ()J
+	public final fun component7 ()[J
+	public final fun component8 ()Z
+	public final fun copy (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZ)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TensorStorage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun copyMaterialize ()Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun copyToDevice (Lsk/ainet/lang/tensor/storage/DeviceKind;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun copyToHost ()Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuffer ()Lsk/ainet/lang/tensor/storage/BufferHandle;
+	public final fun getByteOffset ()J
+	public final fun getElementCount ()J
+	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public final fun getLogicalBytes ()J
+	public final fun getLogicalType ()Lsk/ainet/lang/tensor/storage/LogicalDType;
+	public final fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public final fun getPhysicalBytes ()J
+	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public final fun getStrides ()[J
+	public fun hashCode ()I
+	public final fun isAlias ()Z
+	public final fun isContiguous ()Z
+	public final fun isFileBacked ()Z
+	public final fun isMutable ()Z
+	public final fun memoryReport ()Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
+	public final fun repackTo (Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorStorageFactory {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorStorageFactory;
+	public final fun borrowFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fileBacked (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Ljava/lang/String;JJ)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromIntArray (Lsk/ainet/lang/tensor/Shape;[I)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/storage/TensorStorageFactory;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromRawBytesOwned (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun fromRawBytesOwned$default (Lsk/ainet/lang/tensor/storage/TensorStorageFactory;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromTensorData (Lsk/ainet/lang/tensor/data/TensorData;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun toTensorData (Lsk/ainet/lang/tensor/storage/TensorStorage;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
+public final class sk/ainet/lang/tensor/storage/TrackedEntry {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/storage/StorageMemoryReport;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/storage/StorageMemoryReport;)Lsk/ainet/lang/tensor/storage/TrackedEntry;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TrackedEntry;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/StorageMemoryReport;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TrackedEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getReport ()Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TurboQuantKvCacheStore : sk/ainet/lang/tensor/storage/KvCacheStore {
+	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;Lsk/ainet/lang/tensor/ops/turboquant/TurboQuantConfig;)V
+	public fun appendToken (I[F[F)V
+	public fun clear ()V
+	public fun evict (I)V
+	public fun getCurrentSeqLen ()I
+	public fun getHeadDim ()I
+	public fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getMaxSeqLen ()I
+	public fun getNumHeads ()I
+	public fun getNumLayers ()I
+	public fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
+	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun readKeys (III)[F
+	public fun readValueStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun readValues (III)[F
+}
+
+public abstract interface annotation class sk/ainet/lang/tensor/storage/Weights : java/lang/annotation/Annotation {
+	public abstract fun memory ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
 }
 
 public final class sk/ainet/lang/trace/CompositeSink : sk/ainet/lang/trace/OpSink {
@@ -4023,6 +5430,66 @@ public final class sk/ainet/lang/types/DTypeExtensionsKt {
 	public static final fun commonPrecisionWith (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 	public static final fun isConvertibleTo (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Z
 	public static final fun kotlinClass (Lsk/ainet/lang/types/DType;)Lkotlin/reflect/KClass;
+}
+
+public abstract interface class sk/ainet/lang/types/DTypePolicy {
+	public static final field Companion Lsk/ainet/lang/types/DTypePolicy$Companion;
+	public static fun any ()Lsk/ainet/lang/types/DTypePolicy;
+	public abstract fun isSatisfiedBy (Lsk/ainet/lang/types/DType;)Z
+	public static fun oneOf ([Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy;
+	public static fun prefer (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy;
+	public static fun require (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy;
+}
+
+public final class sk/ainet/lang/types/DTypePolicy$Any : sk/ainet/lang/types/DTypePolicy {
+	public static final field INSTANCE Lsk/ainet/lang/types/DTypePolicy$Any;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun isSatisfiedBy (Lsk/ainet/lang/types/DType;)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/types/DTypePolicy$Companion {
+	public final fun any ()Lsk/ainet/lang/types/DTypePolicy;
+	public final fun oneOf ([Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy;
+	public final fun prefer (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy;
+	public final fun require (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy;
+}
+
+public final class sk/ainet/lang/types/DTypePolicy$OneOf : sk/ainet/lang/types/DTypePolicy {
+	public fun <init> (Ljava/util/Set;)V
+	public final fun component1 ()Ljava/util/Set;
+	public final fun copy (Ljava/util/Set;)Lsk/ainet/lang/types/DTypePolicy$OneOf;
+	public static synthetic fun copy$default (Lsk/ainet/lang/types/DTypePolicy$OneOf;Ljava/util/Set;ILjava/lang/Object;)Lsk/ainet/lang/types/DTypePolicy$OneOf;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllowed ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun isSatisfiedBy (Lsk/ainet/lang/types/DType;)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/types/DTypePolicy$Prefer : sk/ainet/lang/types/DTypePolicy {
+	public fun <init> (Lsk/ainet/lang/types/DType;)V
+	public final fun component1 ()Lsk/ainet/lang/types/DType;
+	public final fun copy (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy$Prefer;
+	public static synthetic fun copy$default (Lsk/ainet/lang/types/DTypePolicy$Prefer;Lsk/ainet/lang/types/DType;ILjava/lang/Object;)Lsk/ainet/lang/types/DTypePolicy$Prefer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTarget ()Lsk/ainet/lang/types/DType;
+	public fun hashCode ()I
+	public fun isSatisfiedBy (Lsk/ainet/lang/types/DType;)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/types/DTypePolicy$Require : sk/ainet/lang/types/DTypePolicy {
+	public fun <init> (Lsk/ainet/lang/types/DType;)V
+	public final fun component1 ()Lsk/ainet/lang/types/DType;
+	public final fun copy (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DTypePolicy$Require;
+	public static synthetic fun copy$default (Lsk/ainet/lang/types/DTypePolicy$Require;Lsk/ainet/lang/types/DType;ILjava/lang/Object;)Lsk/ainet/lang/types/DTypePolicy$Require;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTarget ()Lsk/ainet/lang/types/DType;
+	public fun hashCode ()I
+	public fun isSatisfiedBy (Lsk/ainet/lang/types/DType;)Z
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class sk/ainet/lang/types/FP16 : sk/ainet/lang/types/DType {

@@ -17,6 +17,13 @@ public abstract class sk/ainet/lang/dag/DagModule {
 	public abstract fun apply (Lsk/ainet/lang/dag/DagBuilder;Ljava/util/List;)Ljava/util/List;
 }
 
+public final class sk/ainet/lang/dag/DtypePolicyDslKt {
+	public static final field DTYPE_POLICY_ATTRIBUTE_KEY Ljava/lang/String;
+	public static final fun dtypePolicy (Lsk/ainet/lang/dag/GraphNodeDefinition;)Lsk/ainet/lang/types/DTypePolicy;
+	public static final fun op (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Lsk/ainet/lang/types/DTypePolicy;Ljava/lang/String;Ljava/util/Map;)Ljava/util/List;
+	public static synthetic fun op$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Lsk/ainet/lang/types/DTypePolicy;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/List;
+}
+
 public final class sk/ainet/lang/dag/GraphDslKt {
 	public static final fun dag (Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/dag/GraphProgram;
 	public static final fun dagModule (Lkotlin/jvm/functions/Function2;)Lsk/ainet/lang/dag/DagModule;
@@ -25,6 +32,12 @@ public final class sk/ainet/lang/dag/GraphDslKt {
 }
 
 public abstract interface class sk/ainet/lang/dag/GraphDslOps : sk/ainet/lang/tensor/ops/TensorOps {
+}
+
+public final class sk/ainet/lang/dag/GraphDslOps$DefaultImpls {
+	public static fun convTranspose1d (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
+	public static fun cos (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun sin (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
@@ -68,6 +81,12 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun indexSelect$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun leakyRelu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun leakyRelu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun log (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun log$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun log10 (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun log10$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun log2 (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun log2$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun logSoftmax (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun logSoftmax$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun lt (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
@@ -86,6 +105,12 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun narrow$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;IIILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun pad2d (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;IIIILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun pad2d$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;IIIILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun permute (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;[ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun permute$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;[ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun pow (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun pow$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun powScalar (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/Number;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun powScalar$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/Number;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun rdivScalar (Lsk/ainet/lang/dag/DagBuilder;Ljava/lang/Number;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun rdivScalar$default (Lsk/ainet/lang/dag/DagBuilder;Ljava/lang/Number;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun relu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
@@ -114,6 +139,8 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun subtract$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun sum (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun sum$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun tanh (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun tanh$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun transpose (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun transpose$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun tril (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;

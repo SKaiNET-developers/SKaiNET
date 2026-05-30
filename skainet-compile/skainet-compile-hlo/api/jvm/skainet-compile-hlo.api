@@ -113,7 +113,9 @@ public final class sk/ainet/compile/hlo/ConversionResult$Unsupported : sk/ainet/
 
 public final class sk/ainet/compile/hlo/Dag2hloKt {
 	public static final fun toStableHlo (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static final fun toStableHlo (Lsk/ainet/lang/graph/ResolvedComputeGraph;Ljava/lang/String;Z)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun toStableHlo$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun toStableHlo$default (Lsk/ainet/lang/graph/ResolvedComputeGraph;Ljava/lang/String;ZILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static final fun toStableHloLegacy (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun toStableHloLegacy$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 }
@@ -323,7 +325,19 @@ public final class sk/ainet/compile/hlo/converters/ReductionOperationsConverter 
 	public fun getSupportedOperations ()Ljava/util/Set;
 }
 
+public final class sk/ainet/compile/hlo/converters/ScalarOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
 public final class sk/ainet/compile/hlo/converters/ShapeOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/UnaryMathConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
 	public fun getSupportedOperations ()Ljava/util/Set;
