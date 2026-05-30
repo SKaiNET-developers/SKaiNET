@@ -9,9 +9,11 @@ import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelServiceLoader
 import sk.ainet.backend.api.kernel.KernelStrictness
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
+import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
 import sk.ainet.exec.kernel.ScalarMatmulKernel
+import sk.ainet.exec.kernel.ScalarQ4_0MatmulKernel
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
@@ -21,6 +23,7 @@ import sk.ainet.lang.tensor.data.MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Bf16TensorData
+import sk.ainet.lang.tensor.data.Q4_0TensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
@@ -111,6 +114,24 @@ internal class DefaultCpuOpsJvm(
             .firstOrNull { it.isAvailable() && it.matmulBf16() != null }
             ?.matmulBf16()
             ?: ScalarBf16MatmulKernel
+    }
+
+    /**
+     * Q4_0 matmul kernel resolved via [KernelRegistry]. Mirrors
+     * [bf16MatmulKernel]: non-null, picks the highest-priority provider
+     * that carries a Q4_0 kernel (native FFM at 100, Panama Vector at
+     * 50), falling back to [ScalarQ4_0MatmulKernel] — the scalar SPI
+     * kernel is the floor (every `KernelProvider` carries one), so Q4_0
+     * has no pre-SPI legacy fallback to thread through.
+     */
+    private val q4_0MatmulKernel: Q4_0MatmulKernel by lazy {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+        KernelRegistry.providers()
+            .firstOrNull { it.isAvailable() && it.matmulQ4_0() != null }
+            ?.matmulQ4_0()
+            ?: ScalarQ4_0MatmulKernel
     }
 
     override fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
@@ -516,6 +537,22 @@ internal class DefaultCpuOpsJvm(
                             batch * outputDim,
                         )
                     }
+                }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            is Q4_0TensorData -> {
+                val outBuffer = FloatArray(batchSize * outputDim)
+                for (batch in 0 until batchSize) {
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                    q4_0MatmulKernel.matmul(
+                        batchInput, 0,
+                        bData.packedData, 0,
+                        inputDim, outputDim,
+                        outBuffer, batch * outputDim,
+                    )
                 }
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
                 @Suppress("UNCHECKED_CAST")

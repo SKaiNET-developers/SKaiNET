@@ -68,6 +68,12 @@ public interface KernelProvider {
     public fun matmulQ8_0(): Q8_0MatmulKernel? = null
 
     /**
+     * F32 × Q4_0 matmul kernel exposed by this provider, or `null` if
+     * this provider does not specialize Q4_0. Same fall-through pattern.
+     */
+    public fun matmulQ4_0(): Q4_0MatmulKernel? = null
+
+    /**
      * Capability query: does this provider carry a kernel for
      * [opName] with the given [dtypeKeys]?
      *
@@ -100,6 +106,7 @@ public interface KernelProvider {
             "BFloat16" -> matmulBf16() != null
             "Q4_K" -> matmulQ4K() != null
             "Q8_0" -> matmulQ8_0() != null
+            "Q4_0" -> matmulQ4_0() != null
             else -> false
         }
     }

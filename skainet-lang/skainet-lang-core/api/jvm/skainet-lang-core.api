@@ -3030,6 +3030,55 @@ public final class sk/ainet/lang/tensor/data/Q4MemorySegmentTensorData$Companion
 	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/data/Q4MemorySegmentTensorData$Companion;Lsk/ainet/lang/tensor/Shape;[BLjava/lang/foreign/Arena;JILjava/lang/Object;)Lsk/ainet/lang/tensor/data/Q4MemorySegmentTensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData : sk/ainet/lang/tensor/data/Q4_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q4_0BlockTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Byte;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockScale (I)F
+	public fun getBlockSize ()I
+	public fun getCode (II)B
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IB)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData$Companion {
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Q4_0BlockTensorData;
+}
+
+public abstract interface class sk/ainet/lang/tensor/data/Q4_0TensorData : sk/ainet/lang/tensor/data/TensorData {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q4_0TensorData$Companion;
+	public abstract fun getBlockCount ()I
+	public abstract fun getBlockScale (I)F
+	public abstract fun getCode (II)B
+	public abstract fun getPackedData ()[B
+}
+
+public final class sk/ainet/lang/tensor/data/Q4_0TensorData$Companion {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+}
+
+public final class sk/ainet/lang/tensor/data/Q4_0TensorData$DefaultImpls {
+	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q4_0TensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/Q4_0TensorDataKt {
+	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Q4_0TensorData;)[F
+}
+
 public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang/tensor/data/Q4_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q4_KBlockTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
@@ -5138,6 +5187,17 @@ public final class sk/ainet/lang/tensor/storage/TensorEncoding$Opaque : sk/ainet
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getName ()Ljava/lang/String;
 	public final fun getRawBytes ()J
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q4_0 : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q4_0;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun physicalBytes (J)Ljava/lang/Long;
 	public fun toString ()Ljava/lang/String;
