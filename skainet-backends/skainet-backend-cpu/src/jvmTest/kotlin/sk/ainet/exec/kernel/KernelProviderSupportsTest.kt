@@ -47,6 +47,11 @@ class KernelProviderSupportsTest {
             p.supports("matmul", listOf("Float32", "Q8_0")),
             "Q8_0 matmul support must mirror matmulQ8_0() != null",
         )
+        assertEquals(
+            p.matmulQ4_0() != null,
+            p.supports("matmul", listOf("Float32", "Q4_0")),
+            "Q4_0 matmul support must mirror matmulQ4_0() != null",
+        )
     }
 
     @Test
@@ -62,6 +67,9 @@ class KernelProviderSupportsTest {
             p.matmulQ4K() != null,
             p.supports("matmul", listOf("Float32", "Q4_K")),
         )
+        // Scalar carries the Q4_0 floor kernel, so the capability query
+        // must report it as supported.
+        assertTrue(p.supports("matmul", listOf("Float32", "Q4_0")))
     }
 
     @Test

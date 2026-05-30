@@ -17,13 +17,20 @@ public final class sk/ainet/context/DirectCpuExecutionContext : sk/ainet/context
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 }
 
@@ -31,6 +38,103 @@ public final class sk/ainet/context/DirectCpuExecutionContext$Companion {
 	public final fun create ()Lsk/ainet/context/DirectCpuExecutionContext;
 	public final fun create (Lsk/ainet/context/Phase;)Lsk/ainet/context/DirectCpuExecutionContext;
 	public static synthetic fun create$default (Lsk/ainet/context/DirectCpuExecutionContext$Companion;Lsk/ainet/context/Phase;ILjava/lang/Object;)Lsk/ainet/context/DirectCpuExecutionContext;
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorBf16MatmulKernel : sk/ainet/backend/api/kernel/Bf16MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorBf16MatmulKernel;
+	public fun matmul ([FII[BII[FIIIII)V
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorKernelProvider : sk/ainet/backend/api/kernel/KernelProvider {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorKernelProvider;
+	public fun getName ()Ljava/lang/String;
+	public fun getPriority ()I
+	public fun isAvailable ()Z
+	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
+	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorKernelProviderFactory : sk/ainet/backend/api/kernel/KernelProvider {
+	public fun <init> ()V
+	public fun getName ()Ljava/lang/String;
+	public fun getPriority ()I
+	public fun isAvailable ()Z
+	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
+	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorMatmulKernel : sk/ainet/backend/api/kernel/Fp32MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorMatmulKernel;
+	public fun matmul ([FII[FII[FIIIII)V
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorQ4KMatmulKernel : sk/ainet/backend/api/kernel/Q4KMatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ4KMatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorQ4_0MatmulKernel : sk/ainet/backend/api/kernel/Q4_0MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ4_0MatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorQ8_0MatmulKernel : sk/ainet/backend/api/kernel/Q8_0MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ8_0MatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
+public final class sk/ainet/exec/kernel/ScalarBf16MatmulKernel : sk/ainet/backend/api/kernel/Bf16MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarBf16MatmulKernel;
+	public fun matmul ([FII[BII[FIIIII)V
+}
+
+public final class sk/ainet/exec/kernel/ScalarKernelProvider : sk/ainet/backend/api/kernel/KernelProvider {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarKernelProvider;
+	public fun getName ()Ljava/lang/String;
+	public fun getPriority ()I
+	public fun isAvailable ()Z
+	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
+	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
+}
+
+public final class sk/ainet/exec/kernel/ScalarKernelProviderFactory : sk/ainet/backend/api/kernel/KernelProvider {
+	public fun <init> ()V
+	public fun getName ()Ljava/lang/String;
+	public fun getPriority ()I
+	public fun isAvailable ()Z
+	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
+	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
+}
+
+public final class sk/ainet/exec/kernel/ScalarMatmulKernel : sk/ainet/backend/api/kernel/Fp32MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarMatmulKernel;
+	public fun matmul ([FII[FII[FIIIII)V
+}
+
+public final class sk/ainet/exec/kernel/ScalarQ4_0MatmulKernel : sk/ainet/backend/api/kernel/Q4_0MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarQ4_0MatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
+public final class sk/ainet/exec/kernel/ScalarQ8_0MatmulKernel : sk/ainet/backend/api/kernel/Q8_0MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarQ8_0MatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
 }
 
 public final class sk/ainet/exec/tensor/ops/DefaultCpuOps : sk/ainet/exec/tensor/ops/DefaultCpuOpsBase {
@@ -49,7 +153,9 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun conv1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv3d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;I)Lsk/ainet/lang/tensor/Tensor;
+	public fun convTranspose1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
+	public fun cos (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun elementwise (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/jvm/functions/Function3;)Lsk/ainet/lang/tensor/Tensor;
@@ -64,6 +170,9 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	protected final fun gradStateFrom ([Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/GradState;
 	public fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+	public fun log (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun log10 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun log2 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun logSoftmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun lt (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun mapIndex ([ILsk/ainet/lang/tensor/Shape;)[I
@@ -75,6 +184,9 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun narrow (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun newTensor (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;[Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun pad2d (Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
+	public fun permute (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun pow (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun powScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rdivScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun requireSameDType (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
@@ -84,6 +196,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public fun sin (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun softmax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun split (Lsk/ainet/lang/tensor/Tensor;II)Ljava/util/List;
 	public fun sqrt (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -91,6 +204,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun subScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun subtract (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sum (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
+	public fun tanh (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun transpose (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun tril (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun unfold (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
@@ -113,6 +227,15 @@ protected final class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase$CpuTensor : sk/
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getVolume ()I
 	public fun zeroGrad ()V
+}
+
+public final class sk/ainet/exec/tensor/ops/JvmTurboQuantKernels {
+	public static final field INSTANCE Lsk/ainet/exec/tensor/ops/JvmTurboQuantKernels;
+	public final fun absMax ([FII)F
+	public final fun dequantize ([B[F[FI)V
+	public static synthetic fun dequantize$default (Lsk/ainet/exec/tensor/ops/JvmTurboQuantKernels;[B[F[FIILjava/lang/Object;)V
+	public final fun quantize ([FI)Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;
+	public final fun walshHadamardButterfly ([FII)V
 }
 
 public final class sk/ainet/java/SKaiNET {

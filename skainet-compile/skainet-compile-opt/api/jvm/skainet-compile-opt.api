@@ -53,10 +53,26 @@ public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/co
 	public fun getName ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/opt/passes/DTypeConstraintResolutionPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public static final field Companion Lsk/ainet/compile/opt/passes/DTypeConstraintResolutionPass$Companion;
+	public static final field POLICY_KEY Ljava/lang/String;
+	public static final field RESOLVED_KEY Ljava/lang/String;
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/DTypeConstraintResolutionPass$Companion {
+}
+
 public final class sk/ainet/compile/opt/passes/DeadCodeEliminationPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
 	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/DtypeConstraintViolationException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
 }
 
 public final class sk/ainet/compile/opt/passes/LLMFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {
@@ -66,6 +82,12 @@ public final class sk/ainet/compile/opt/passes/LLMFusionPass : sk/ainet/compile/
 }
 
 public final class sk/ainet/compile/opt/passes/OperationFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/PowSpecializationPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
 	public fun getName ()Ljava/lang/String;

@@ -27,9 +27,11 @@ public interface Q4MemorySegmentMarker : MemorySegmentBackedData {
  *
  * Q4_0 block layout (18 bytes per 32 elements):
  * - 2 bytes: f16 scale (little-endian)
- * - 16 bytes: packed 4-bit codes (32 values, 2 per byte)
+ * - 16 bytes: packed 4-bit codes (32 values) in the canonical ggml
+ *   *split* layout — low nibbles decode elements 0..15, high nibbles
+ *   decode elements 16..31.
  *
- * Dequantization: output[i] = (nibble[i] - 8) * scale
+ * Dequantization: output[j] = (nibble[j] - 8) * scale
  *
  * The segment is arena-managed and 64-byte aligned for SIMD access.
  */
@@ -52,9 +54,12 @@ public class Q4MemorySegmentTensorData(
         val flatIndex = calcFlatIndex(indices)
         val blockIdx = flatIndex / blockSize
         val elemIdx = flatIndex % blockSize
-        val codesByteOffset = segmentByteOffset + blockIdx.toLong() * bytesPerBlock + 2 + (elemIdx / 2).toLong()
+        // Split layout: elements 0..15 are low nibbles of bytes 0..15,
+        // elements 16..31 are the high nibbles of the same bytes.
+        val byteInBlock = if (elemIdx < 16) elemIdx else elemIdx - 16
+        val codesByteOffset = segmentByteOffset + blockIdx.toLong() * bytesPerBlock + 2 + byteInBlock.toLong()
         val packedByte = segment.get(JAVA_BYTE, codesByteOffset).toInt() and 0xFF
-        val code = if (elemIdx % 2 == 0) packedByte and 0x0F else packedByte ushr 4
+        val code = if (elemIdx < 16) packedByte and 0x0F else packedByte ushr 4
         return code.toByte()
     }
 
@@ -62,10 +67,11 @@ public class Q4MemorySegmentTensorData(
         val flatIndex = calcFlatIndex(indices)
         val blockIdx = flatIndex / blockSize
         val elemIdx = flatIndex % blockSize
-        val codesByteOffset = segmentByteOffset + blockIdx.toLong() * bytesPerBlock + 2 + (elemIdx / 2).toLong()
+        val byteInBlock = if (elemIdx < 16) elemIdx else elemIdx - 16
+        val codesByteOffset = segmentByteOffset + blockIdx.toLong() * bytesPerBlock + 2 + byteInBlock.toLong()
         val currentByte = segment.get(JAVA_BYTE, codesByteOffset).toInt() and 0xFF
         val newNibble = value.toInt() and 0x0F
-        val updated = if (elemIdx % 2 == 0) {
+        val updated = if (elemIdx < 16) {
             (currentByte and 0xF0) or newNibble
         } else {
             (currentByte and 0x0F) or (newNibble shl 4)
@@ -83,11 +89,14 @@ public class Q4MemorySegmentTensorData(
             val scale = halfToFloat((b1 shl 8) or b0)
             val elemsInBlock = minOf(blockSize, shape.volume - outIdx)
             for (i in 0 until elemsInBlock) {
-                val codeOff = blockOff + 2 + (i / 2).toLong()
+                // Split layout: i<16 → low nibble of byte i; i>=16 → high nibble of byte i-16.
+                val byteInBlock = if (i < 16) i else i - 16
+                val codeOff = blockOff + 2 + byteInBlock.toLong()
                 val packedByte = segment.get(JAVA_BYTE, codeOff).toInt() and 0xFF
-                val code = if (i % 2 == 0) packedByte and 0x0F else packedByte ushr 4
-                result[outIdx++] = (code - 8).toFloat() * scale
+                val code = if (i < 16) packedByte and 0x0F else packedByte ushr 4
+                result[outIdx + i] = (code - 8).toFloat() * scale
             }
+            outIdx += elemsInBlock
         }
         return result
     }
