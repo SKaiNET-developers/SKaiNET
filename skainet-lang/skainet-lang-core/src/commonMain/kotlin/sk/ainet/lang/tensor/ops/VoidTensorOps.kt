@@ -466,9 +466,15 @@ public class VoidTensorOps : TensorOps {
     }
 
     override fun <T : DType, V> gather(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
-        // Gather selects rows along dim — output shape replaces dim with indices length
-        val resultDims = input.shape.dimensions.copyOf()
-        resultDims[dim] = indices.shape.dimensions[0]
+        // Gather selects rows along `dim`, replacing that axis with the FULL
+        // indices shape (not just its first dim). Matches DefaultCpuOps.gather:
+        // for a [vocab, emb] table and [batch, seq] indices the result is
+        // [batch, seq, emb]. The previous `resultDims[dim] = indices.shape[0]`
+        // collapsed multi-dim indices to a single row, breaking the downstream
+        // reshape (e.g. embedding lookup) during weight-free tracing.
+        val inDims = input.shape.dimensions
+        val idxDims = indices.shape.dimensions
+        val resultDims = inDims.copyOfRange(0, dim) + idxDims + inDims.copyOfRange(dim + 1, inDims.size)
         val resultData = dataFactory.zeros<T, V>(Shape(resultDims), input.dtype)
         return VoidOpsTensor(resultData, input.dtype)
     }
