@@ -236,15 +236,11 @@ public class IrpaWriter {
     }
 
     private fun writeByteArray(sink: Sink, data: ByteArray, offset: Int, length: Int) {
-        // Byte-at-a-time for the same reason noted below — and because
-        // under the sizes we see in practice for single-op values
-        // (tens to a few thousand bytes) the overhead is lost in the
-        // wider write cost. FileBacked paths use a chunked copy on
-        // their platform-specific side, which is where the byte
-        // volume is meaningful.
-        for (i in offset until offset + length) {
-            sink.writeByte(data[i])
-        }
+        // Bulk range write. Owned/Borrowed buffers can be large for real
+        // LLM weights (a 262153x640 FP32 embedding = ~670MB); a
+        // byte-at-a-time loop there is pathological (hundreds of millions
+        // of calls). kotlinx-io's range write copies in one shot.
+        sink.write(data, offset, offset + length)
     }
 
     private fun writePadding(sink: Sink, bytes: Int) {

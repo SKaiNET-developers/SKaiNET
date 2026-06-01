@@ -277,7 +277,12 @@ public class TraceToGraphBuilder(
                     name = "weight",
                     type = "constant",
                     parameters = mapOf(
-                        "initial_value" to constantValues.toList(),
+                        // Store the primitive FloatArray, NOT .toList(): boxing a
+                        // real LLM weight (e.g. 262153x640 embedding) into a
+                        // List<Float> is ~2.7GB and OOMs the trace. The HLO
+                        // converter handles FloatArray for both inline and
+                        // external (.irpa) materialization.
+                        "initial_value" to constantValues,
                         "trainable" to false
                     )
                 )
