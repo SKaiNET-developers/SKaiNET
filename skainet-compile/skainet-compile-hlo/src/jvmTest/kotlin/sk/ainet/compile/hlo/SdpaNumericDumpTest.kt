@@ -26,7 +26,7 @@ class SdpaNumericDumpTest {
             operation = object : Operation {
                 override val name = "scaledDotProductAttention"
                 override val type = "trace"
-                override val parameters = mapOf<String, Any>("scale" to 0.0f, "causal" to false)
+                override val parameters = mapOf<String, Any>("scale" to 0.0f, "causal" to true)
                 override fun <T : DType, V2> execute(inputs: List<sk.ainet.lang.tensor.Tensor<T, V2>>) =
                     throw UnsupportedOperationException("test op")
                 override fun validateInputs(inputs: List<TensorSpec>) = sk.ainet.lang.tensor.ops.ValidationResult.Valid

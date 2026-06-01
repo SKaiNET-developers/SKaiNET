@@ -21,9 +21,10 @@ import kotlin.math.sqrt
  * SDPA is a core `TensorOps` op (KSP-generated), so its converter lives here in
  * core alongside dot_general/softmax — the transformer modules just decompose to it.
  *
- * v1 limitation: the optional attention `mask` / `causal` flag is not yet
- * emitted (structurally correct, numerically unmasked). TODO: emit a causal mask
- * (iota + compare + select, additive -inf) before the softmax.
+ * Causal masking: when the `causal` attribute is set, an additive -inf mask
+ * (built from iota row/col indices + compare + select) is added to the scaled
+ * scores before softmax so each query only attends to keys at or before it.
+ * An explicit `mask` operand is not yet consumed (TODO: add operands[3]).
  */
 public class AttentionOperationsConverter : StableHloOperationConverter {
 
@@ -81,6 +82,11 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val contractAttn = scoresShape.size - 1   // attn key-length axis
         val contractV = rank - 2                  // V key-length axis
 
+        val causal = (node.operation.parameters["causal"] as? Boolean) ?: false
+        val qAxis = rank - 2 // query position in scores [.., Sq, Sk]
+        val scoresI32Type = "tensor<${scoresShape.joinToString("x")}xi32>"
+        val scoresI1Type = "tensor<${scoresShape.joinToString("x")}xi1>"
+
         val scores = context.nextTempValue()
         val scaleC = context.nextTempValue()
         val scaled = context.nextTempValue()
@@ -90,22 +96,41 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val attn = context.nextTempValue()
         val out = context.nextTempValue()
 
-        val ops = listOf(
+        val ops = mutableListOf(
             "$scores = stablehlo.dot_general ${operands[0]}, ${operands[1]}, ${batchClause}contracting_dims = [$contractQK] x [$contractQK] : ($qType, $kType) -> $scoresType",
             "$scaleC = stablehlo.constant dense<$scaleVal> : $scoresType",
             "$scaled = stablehlo.multiply $scores, $scaleC : $scoresType",
-            // softmax(scaled) over the key-length axis
-            "$maxInit = stablehlo.constant dense<0xFF800000> : tensor<$elem>",
-            "$maxV = stablehlo.reduce($scaled init: $maxInit) applies stablehlo.maximum across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType",
-            "$maxB = stablehlo.broadcast_in_dim $maxV, dims = [$bcastDims] : ($reducedType) -> $scoresType",
-            "$shifted = stablehlo.subtract $scaled, $maxB : $scoresType",
-            "$expV = stablehlo.exponential $shifted : $scoresType",
-            "$sumInit = stablehlo.constant dense<0.0> : tensor<$elem>",
-            "$sumV = stablehlo.reduce($expV init: $sumInit) applies stablehlo.add across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType",
-            "$sumB = stablehlo.broadcast_in_dim $sumV, dims = [$bcastDims] : ($reducedType) -> $scoresType",
-            "$attn = stablehlo.divide $expV, $sumB : $scoresType",
-            "$out = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outputType",
         )
+
+        // Causal mask: keep key_index <= query_index, set the rest to -inf
+        // before softmax (additive mask, built from iota row/col indices).
+        var softmaxIn = scaled
+        if (causal) {
+            val iotaQ = context.nextTempValue(); val iotaK = context.nextTempValue()
+            val keep = context.nextTempValue(); val zeros = context.nextTempValue()
+            val ninf = context.nextTempValue(); val maskAdd = context.nextTempValue()
+            val masked = context.nextTempValue()
+            ops += "$iotaQ = stablehlo.iota dim = $qAxis : $scoresI32Type"
+            ops += "$iotaK = stablehlo.iota dim = $sdAxis : $scoresI32Type"
+            ops += "$keep = stablehlo.compare GE, $iotaQ, $iotaK : ($scoresI32Type, $scoresI32Type) -> $scoresI1Type"
+            ops += "$zeros = stablehlo.constant dense<0.0> : $scoresType"
+            ops += "$ninf = stablehlo.constant dense<0xFF800000> : $scoresType"
+            ops += "$maskAdd = stablehlo.select $keep, $zeros, $ninf : $scoresI1Type, $scoresType"
+            ops += "$masked = stablehlo.add $scaled, $maskAdd : $scoresType"
+            softmaxIn = masked
+        }
+
+        // softmax(softmaxIn) over the key-length axis
+        ops += "$maxInit = stablehlo.constant dense<0xFF800000> : tensor<$elem>"
+        ops += "$maxV = stablehlo.reduce($softmaxIn init: $maxInit) applies stablehlo.maximum across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
+        ops += "$maxB = stablehlo.broadcast_in_dim $maxV, dims = [$bcastDims] : ($reducedType) -> $scoresType"
+        ops += "$shifted = stablehlo.subtract $softmaxIn, $maxB : $scoresType"
+        ops += "$expV = stablehlo.exponential $shifted : $scoresType"
+        ops += "$sumInit = stablehlo.constant dense<0.0> : tensor<$elem>"
+        ops += "$sumV = stablehlo.reduce($expV init: $sumInit) applies stablehlo.add across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
+        ops += "$sumB = stablehlo.broadcast_in_dim $sumV, dims = [$bcastDims] : ($reducedType) -> $scoresType"
+        ops += "$attn = stablehlo.divide $expV, $sumB : $scoresType"
+        ops += "$out = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outputType"
         ops.forEach { context.emitOperation(it) }
         return ConversionResult.Success(outputValueName = out, emittedOperations = ops)
     }
