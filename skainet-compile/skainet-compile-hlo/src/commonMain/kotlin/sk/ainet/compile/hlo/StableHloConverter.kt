@@ -194,9 +194,11 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
         val converter = registry.getConverter(node.operation.name)
             ?: throw UnsupportedOperationException("No converter found for operation: ${node.operation.name}")
 
-        // Get input operands from context
-        val inputNodes = context.getInputNodes(node)
-        val operands = inputNodes.mapNotNull { context.getValueName(it.id) }
+        // Get input operands in input-port order, honoring each incoming edge's
+        // source output port so consumers of a multi-output op (e.g. split) get
+        // the right chunk. Equivalent to the prior node-based resolution for
+        // single-output producers.
+        val operands = context.resolveOperands(node)
 
         // Surface any physical storage encoding declared on this node's
         // result specs as an MLIR comment before the operation is

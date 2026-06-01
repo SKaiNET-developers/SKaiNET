@@ -44,6 +44,34 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
         valueNames[nodeId] = valueName
     }
 
+    // --- Multi-output support ------------------------------------------------
+    // A node may produce several results (e.g. `split` -> N chunks). Each output
+    // port gets its own SSA name; port 0 stays keyed by the bare nodeId so all
+    // existing single-output callers are unchanged.
+    private fun key(nodeId: String, port: Int): String = if (port == 0) nodeId else "$nodeId#$port"
+
+    /** Set the SSA value name for a specific output port of a node. */
+    public fun setValueName(nodeId: String, port: Int, valueName: String) {
+        valueNames[key(nodeId, port)] = valueName
+    }
+
+    /** Get the SSA value name for a specific output port of a node. */
+    public fun getValueName(nodeId: String, port: Int): String? = valueNames[key(nodeId, port)]
+
+    /**
+     * Resolve a node's input operands in input-port order, honoring the source
+     * output port of each incoming edge (so a consumer of `split`'s chunk N gets
+     * chunk N, not chunk 0). Equivalent to the old node-based resolution for
+     * single-output producers (all source ports are 0).
+     */
+    public fun resolveOperands(node: GraphNode): List<String> {
+        val g = graph ?: return emptyList()
+        return g.edges
+            .filter { it.destination.id == node.id }
+            .sortedBy { it.destinationInputIndex }
+            .mapNotNull { getValueName(it.source.id, it.sourceOutputIndex) }
+    }
+
     /**
      * Record the MLIR tensor type associated with an SSA value name.
      *

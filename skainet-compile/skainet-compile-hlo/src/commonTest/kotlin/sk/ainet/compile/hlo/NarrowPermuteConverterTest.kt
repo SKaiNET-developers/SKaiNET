@@ -74,4 +74,45 @@ class NarrowPermuteConverterTest {
         assertTrue(mlir.contains("start_indices = [0, 2]"), "expected start [0,2] in:\n$mlir")
         assertTrue(mlir.contains("limit_indices = [2, 6]"), "expected limit [2,6] in:\n$mlir")
     }
+
+    /** Multi-output: split -> N slices, and a consumer of chunk 1 resolves to chunk 1. */
+    @Test
+    fun splitMultiOutputAndPortResolution() {
+        val g = DefaultComputeGraph()
+        val a = GraphNode("a", InputOperation<DType, Any>(), emptyList(), listOf(TensorSpec("a", listOf(2, 8), "FP32")))
+        val c0 = TensorSpec("c0", listOf(2, 4), "FP32")
+        val c1 = TensorSpec("c1", listOf(2, 4), "FP32")
+        val split = GraphNode(
+            id = "s",
+            operation = object : Operation {
+                override val name = "split"
+                override val type = "shape"
+                override val parameters = mapOf<String, Any>("splitSize" to 4, "dim" to 1)
+                override fun <T : DType, V> execute(inputs: List<sk.ainet.lang.tensor.Tensor<T, V>>): List<sk.ainet.lang.tensor.Tensor<T, V>> =
+                    throw UnsupportedOperationException("test op")
+                override fun validateInputs(inputs: List<TensorSpec>) = sk.ainet.lang.tensor.ops.ValidationResult.Valid
+                override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(c0, c1)
+                override fun clone(newParameters: Map<String, Any>): Operation = this
+                override fun serialize(): Map<String, Any> = parameters
+            },
+            inputs = listOf(TensorSpec("a", listOf(2, 8), "FP32")),
+            outputs = listOf(c0, c1),
+        )
+        // relu consumes split output PORT 1 (chunk 1)
+        val relu = opNode("r", "relu", "activation", emptyMap(), c1, TensorSpec("o", listOf(2, 4), "FP32"))
+        g.addNode(a); g.addNode(split); g.addNode(relu)
+        g.addEdge(GraphEdge("e1", a, split, 0, 0, a.outputs[0]))
+        g.addEdge(GraphEdge("e2", split, relu, 1, 0, c1))
+
+        val mlir = StableHloConverterFactory.createBasic().convert(g, "split_test").content
+        // Two chunk slices: chunk0 = [.., 0:4], chunk1 = [.., 4:8].
+        assertTrue(mlir.contains("limit_indices = [2, 4]"), "expected chunk0 slice in:\n$mlir")
+        assertTrue(mlir.contains("start_indices = [0, 4]") && mlir.contains("limit_indices = [2, 8]"),
+            "expected chunk1 slice [0,4]..[2,8] in:\n$mlir")
+        // The chunk-1 slice's SSA value must be the operand the relu consumes.
+        val chunk1Val = mlir.lines().first { it.contains("stablehlo.slice") && it.contains("limit_indices = [2, 8]") }
+            .trim().substringBefore(" =")
+        val reluLine = mlir.lines().first { it.contains("stablehlo.maximum") }
+        assertTrue(reluLine.contains(chunk1Val), "relu must consume chunk1 ($chunk1Val): $reluLine")
+    }
 }
