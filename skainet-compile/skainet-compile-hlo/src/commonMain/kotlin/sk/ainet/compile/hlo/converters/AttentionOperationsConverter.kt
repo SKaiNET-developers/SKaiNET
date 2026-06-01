@@ -102,10 +102,30 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
             "$scaled = stablehlo.multiply $scores, $scaleC : $scoresType",
         )
 
-        // Causal mask: keep key_index <= query_index, set the rest to -inf
-        // before softmax (additive mask, built from iota row/col indices).
+        // Explicit additive mask (operands[3]) — e.g. a sliding-window+causal
+        // mask the caller built and passed with causal=false. It already
+        // encodes causality/window, so it takes priority over the built-in
+        // iota causal path. Broadcast (trailing-aligned) to the scores shape
+        // and add. Without this the masked layers run UNMASKED (attend to
+        // future tokens) — correct only at position 0.
         var softmaxIn = scaled
-        if (causal) {
+        val maskOperand = operands.getOrNull(3)
+        if (maskOperand != null) {
+            val maskShape = node.inputs.getOrNull(3)?.shape ?: scoresShape
+            val maskType = context.getValueType(maskOperand) ?: typeOf(maskShape)
+            val maskBc = if (maskShape == scoresShape) {
+                maskOperand
+            } else {
+                val mb = context.nextTempValue()
+                val offset = scoresShape.size - maskShape.size
+                val dims = maskShape.indices.joinToString(", ") { (it + offset).toString() }
+                ops += "$mb = stablehlo.broadcast_in_dim $maskOperand, dims = [$dims] : ($maskType) -> $scoresType"
+                mb
+            }
+            val masked = context.nextTempValue()
+            ops += "$masked = stablehlo.add $scaled, $maskBc : $scoresType"
+            softmaxIn = masked
+        } else if (causal) {
             val iotaQ = context.nextTempValue(); val iotaK = context.nextTempValue()
             val keep = context.nextTempValue(); val zeros = context.nextTempValue()
             val ninf = context.nextTempValue(); val maskAdd = context.nextTempValue()
