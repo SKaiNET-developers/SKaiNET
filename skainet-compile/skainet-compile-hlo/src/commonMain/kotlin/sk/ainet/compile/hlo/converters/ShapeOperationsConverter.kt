@@ -90,7 +90,14 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
 
         val resultValue = context.nextTempValue()
         val operandList = operands.joinToString(", ")
-        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : $outputType"
+        // concatenate's custom form needs the full functional type:
+        //   (t0, t1, ...) -> outType  (a bare `: outType` is rejected).
+        val operandTypes = operands.indices.joinToString(", ") { i ->
+            context.getValueType(operands[i])
+                ?: node.inputs.getOrNull(i)?.let { context.getTypeMapper().mapTensorType(it) }
+                ?: "tensor<?xf32>"
+        }
+        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : ($operandTypes) -> $outputType"
         context.emitOperation(operation)
 
         return ConversionResult.Success(
@@ -141,15 +148,9 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         val strides = (node.operation.parameters["strides"] as? List<Int>)
             ?: List(rank) { 1 }
 
-        val startsAttr = starts.joinToString(", ")
-        val limitsAttr = limits.joinToString(", ")
-        val stridesAttr = strides.joinToString(", ")
-
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.slice ${operands[0]} " +
-            "{start_indices = [$startsAttr], " +
-            "limit_indices = [$limitsAttr], " +
-            "strides = [$stridesAttr]} : $outputType"
+        val operation = sliceLine(resultValue, operands[0], starts, limits, strides,
+            resolveOperandType(operands[0], node, context), outputType)
         context.emitOperation(operation)
 
         return ConversionResult.Success(
@@ -204,10 +205,8 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         val strides = List(rank) { 1 }
 
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.slice ${operands[0]} " +
-            "{start_indices = [${starts.joinToString(", ")}], " +
-            "limit_indices = [${limits.joinToString(", ")}], " +
-            "strides = [${strides.joinToString(", ")}]} : $outputType"
+        val operation = sliceLine(resultValue, operands[0], starts, limits, strides,
+            resolveOperandType(operands[0], node, context), outputType)
         context.emitOperation(operation)
 
         return ConversionResult.Success(
@@ -266,10 +265,8 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             val outType = node.outputs.getOrNull(i)
                 ?.let { context.getTypeMapper().mapTensorType(it) } ?: "tensor<?xf32>"
             val v = context.nextTempValue()
-            val op = "$v = stablehlo.slice ${operands[0]} " +
-                "{start_indices = [${starts.joinToString(", ")}], " +
-                "limit_indices = [${limits.joinToString(", ")}], " +
-                "strides = [${strides.joinToString(", ")}]} : $outType"
+            val op = sliceLine(v, operands[0], starts, limits, strides,
+                resolveOperandType(operands[0], node, context), outType)
             context.emitOperation(op)
             context.setValueName(node.id, i, v)
             context.setValueType(v, outType)
@@ -452,6 +449,24 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             outputValueName = resultValue,
             emittedOperations = listOf(operation)
         )
+    }
+
+    /**
+     * Emit a `stablehlo.slice` in the canonical bracket assembly form
+     * `%out = stablehlo.slice %x [s0:l0:st0, s1:l1:st1, ...] : (inType) -> outType`.
+     * (stablehlo.slice has no attribute-dict custom form — iree-compile rejects it.)
+     */
+    private fun sliceLine(
+        result: String,
+        operand: String,
+        starts: List<Int>,
+        limits: List<Int>,
+        strides: List<Int>,
+        inType: String,
+        outType: String,
+    ): String {
+        val ranges = starts.indices.joinToString(", ") { "${starts[it]}:${limits[it]}:${strides[it]}" }
+        return "$result = stablehlo.slice $operand [$ranges] : ($inType) -> $outType"
     }
 
     /**

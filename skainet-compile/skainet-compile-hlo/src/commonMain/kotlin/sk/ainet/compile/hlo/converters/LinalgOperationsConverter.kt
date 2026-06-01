@@ -83,19 +83,23 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
         val rhsType = rhsSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?x?x?xf32>"
 
-        // Infer batching rank: for A[..., M, K] x B[..., K, N], batching dims
-        // are all leading dims except the last two. Falls back to rank 3 if
-        // shape is unknown (matches prior hard-coded behavior).
-        val rank = lhsSpec?.shape?.size ?: rhsSpec?.shape?.size ?: 3
-        val batchCount = (rank - 2).coerceAtLeast(0)
+        // Batching dims are the leading dims shared by BOTH operands. When the
+        // ranks differ — e.g. batched activations A[..,M,K] times a 2-D weight
+        // B[K,N] (the common Linear-projection case) — there are no batch dims:
+        // A's leading dims are free output dims, not batch dims. Using lhsRank
+        // for both (the old behavior) produced batching_dims=[0]x[0] with
+        // mismatched sizes (1 vs 64).
+        val lhsRank = lhsSpec?.shape?.size ?: 3
+        val rhsRank = rhsSpec?.shape?.size ?: lhsRank
+        val batchCount = (minOf(lhsRank, rhsRank) - 2).coerceAtLeast(0)
         val explicitBatch = node.operation.parameters["batch_dims"] as? List<*>
         val batchDimsList = if (explicitBatch != null && explicitBatch.isNotEmpty()) {
             explicitBatch.map { it.toString() }
         } else {
             (0 until batchCount).map { it.toString() }
         }
-        val contractingLhs = rank - 1
-        val contractingRhs = (rank - 2).coerceAtLeast(0)
+        val contractingLhs = lhsRank - 1
+        val contractingRhs = (rhsRank - 2).coerceAtLeast(0)
 
         val resultValue = context.nextTempValue()
 

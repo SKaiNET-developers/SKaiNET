@@ -71,8 +71,7 @@ class NarrowPermuteConverterTest {
 
         val mlir = StableHloConverterFactory.createBasic().convert(g, "narrow_test").content
         assertTrue(mlir.contains("stablehlo.slice"), "expected slice in:\n$mlir")
-        assertTrue(mlir.contains("start_indices = [0, 2]"), "expected start [0,2] in:\n$mlir")
-        assertTrue(mlir.contains("limit_indices = [2, 6]"), "expected limit [2,6] in:\n$mlir")
+        assertTrue(mlir.contains("[0:2:1, 2:6:1]"), "expected bracket slice [0:2:1, 2:6:1] in:\n$mlir")
     }
 
     /** Multi-output: split -> N slices, and a consumer of chunk 1 resolves to chunk 1. */
@@ -105,12 +104,11 @@ class NarrowPermuteConverterTest {
         g.addEdge(GraphEdge("e2", split, relu, 1, 0, c1))
 
         val mlir = StableHloConverterFactory.createBasic().convert(g, "split_test").content
-        // Two chunk slices: chunk0 = [.., 0:4], chunk1 = [.., 4:8].
-        assertTrue(mlir.contains("limit_indices = [2, 4]"), "expected chunk0 slice in:\n$mlir")
-        assertTrue(mlir.contains("start_indices = [0, 4]") && mlir.contains("limit_indices = [2, 8]"),
-            "expected chunk1 slice [0,4]..[2,8] in:\n$mlir")
+        // Two chunk slices: chunk0 = [.., 0:4], chunk1 = [.., 4:8] (bracket form).
+        assertTrue(mlir.contains("[0:2:1, 0:4:1]"), "expected chunk0 slice [0:2:1, 0:4:1] in:\n$mlir")
+        assertTrue(mlir.contains("[0:2:1, 4:8:1]"), "expected chunk1 slice [0:2:1, 4:8:1] in:\n$mlir")
         // The chunk-1 slice's SSA value must be the operand the relu consumes.
-        val chunk1Val = mlir.lines().first { it.contains("stablehlo.slice") && it.contains("limit_indices = [2, 8]") }
+        val chunk1Val = mlir.lines().first { it.contains("stablehlo.slice") && it.contains("4:8:1") }
             .trim().substringBefore(" =")
         val reluLine = mlir.lines().first { it.contains("stablehlo.maximum") }
         assertTrue(reluLine.contains(chunk1Val), "relu must consume chunk1 ($chunk1Val): $reluLine")

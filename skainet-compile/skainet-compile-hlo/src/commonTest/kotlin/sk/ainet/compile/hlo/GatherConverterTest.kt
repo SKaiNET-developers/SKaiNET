@@ -88,12 +88,15 @@ class GatherConverterTest {
         // (Earlier draft accidentally emitted
         //  `stablehlo.gather([%arg0, %arg1][0], [%arg0, %arg1][1])`
         // because of a `$operands[0]` Kotlin string-template pitfall.)
+        // Generic MLIR form ("stablehlo.gather" has no custom assembly form):
+        //   "stablehlo.gather"(%operand, %indices) <{...}>
+        // Operands must be bare SSA values, not a `[%arg0, %arg1][0]` expression.
         assertTrue(
-            module.content.contains("stablehlo.gather(%arg0, %arg1)"),
-            "gather must reference operands as bare SSA values, not `[%arg0, %arg1][0]`"
+            module.content.contains("\"stablehlo.gather\"(%arg0, %arg1)"),
+            "gather must reference operands as bare SSA values in the generic form"
         )
         assertFalse(
-            module.content.contains("stablehlo.gather([%"),
+            module.content.contains("gather\"([%"),
             "gather must not emit operand lists as Kotlin-string `[..., ...][0]` junk"
         )
     }
