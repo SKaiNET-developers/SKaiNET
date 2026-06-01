@@ -26,7 +26,10 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
     override val supportedOperations: Set<String> = setOf(
         "matmul", "transpose",
         // Common aliases
-        "dot", "mm", "bmm", "batch_matmul"
+        "dot", "mm", "bmm", "batch_matmul",
+        // permute is an arbitrary-axis transpose; convertTranspose already
+        // reads the `axes` parameter, so route it through the same lowering.
+        "permute"
     )
     
     override fun convert(
@@ -41,7 +44,7 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
             // where `[1] x [0]` is wrong — contract last/second-to-last.
             "matmul", "dot", "mm", "bmm", "batch_matmul" ->
                 convertBatchMatmul(node, operands, context)
-            "transpose" -> convertTranspose(node, operands, context)
+            "transpose", "permute" -> convertTranspose(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by LinalgOperationsConverter"

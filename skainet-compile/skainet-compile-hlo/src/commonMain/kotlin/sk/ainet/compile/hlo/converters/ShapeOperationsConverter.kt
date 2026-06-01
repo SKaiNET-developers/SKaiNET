@@ -27,7 +27,10 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         // flatten / squeeze. concat glues tensors along an axis,
         // slice extracts a static window of a tensor.
         "concat", "concatenate", "cat", "stack",
-        "slice"
+        "slice",
+        // narrow(dim, start, length) is a single-axis slice — RoPE / attention
+        // head splitting use it heavily.
+        "narrow"
     )
 
     override fun convert(
@@ -42,6 +45,7 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             "unsqueeze" -> convertUnsqueeze(node, operands, context)
             "concat", "concatenate", "cat", "stack" -> convertConcat(node, operands, context)
             "slice" -> convertSlice(node, operands, context)
+            "narrow" -> convertNarrow(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by ShapeOperationsConverter"
@@ -150,6 +154,64 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         )
     }
     
+    /**
+     * Convert narrow(dim, start, length) to a single-axis stablehlo.slice.
+     *
+     * narrow keeps `[start, start+length)` along `dim` and the full extent of
+     * every other axis. Reads `dim`/`start`/`length` from parameters (the keys
+     * the graph tape records); falls back to the output shape for `length`.
+     *
+     *     %out = stablehlo.slice %x {start_indices=[..], limit_indices=[..], strides=[..]} : <type>
+     */
+    private fun convertNarrow(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Narrow operation requires exactly 1 operand, got ${operands.size}",
+                "Unsupported narrow arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+
+        val inputShape = node.inputs.firstOrNull()?.shape ?: emptyList()
+        val rank = inputShape.size
+        if (rank == 0) {
+            return ConversionResult.Failure(
+                "Narrow requires a known input rank",
+                "Missing input shape for narrow node ${node.id}"
+            )
+        }
+
+        val rawDim = node.operation.parameters["dim"] as? Int ?: 0
+        val dim = if (rawDim < 0) rank + rawDim else rawDim
+        val start = node.operation.parameters["start"] as? Int ?: 0
+        val length = node.operation.parameters["length"] as? Int
+            ?: outputSpec?.shape?.getOrNull(dim)
+            ?: (inputShape[dim] - start)
+
+        val starts = List(rank) { if (it == dim) start else 0 }
+        val limits = List(rank) { if (it == dim) start + length else inputShape[it] }
+        val strides = List(rank) { 1 }
+
+        val resultValue = context.nextTempValue()
+        val operation = "$resultValue = stablehlo.slice ${operands[0]} " +
+            "{start_indices = [${starts.joinToString(", ")}], " +
+            "limit_indices = [${limits.joinToString(", ")}], " +
+            "strides = [${strides.joinToString(", ")}]} : $outputType"
+        context.emitOperation(operation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
+    }
+
     /**
      * Convert reshape operation using stablehlo.reshape.
      * Handles both static and dynamic shape specifications.
