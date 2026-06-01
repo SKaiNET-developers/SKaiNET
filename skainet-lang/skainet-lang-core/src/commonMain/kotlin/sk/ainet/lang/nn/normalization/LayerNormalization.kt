@@ -27,7 +27,9 @@ public class LayerNormalization<T : DType, V>(
     private val elementwiseAffine: Boolean = true,
     override val name: String = "LayerNormalization",
     initGamma: Tensor<T, V>? = null,
-    initBeta: Tensor<T, V>? = null
+    initBeta: Tensor<T, V>? = null,
+    // Logical element type prescribed by the DSL; keeps placeholder weights typed.
+    private val dtype: KClass<T>? = null,
 ) : Module<T, V>(), ModuleParameters<T, V> {
 
     override val params: List<ModuleParameter<T, V>> = if (elementwiseAffine) {
@@ -52,7 +54,7 @@ public class LayerNormalization<T : DType, V>(
                 override fun get(vararg indices: Int): V = 1.0f as V
                 override fun set(vararg indices: Int, value: V) {}
             },
-            Any::class as KClass<T>
+            (dtype ?: Any::class) as KClass<T>
         )
     }
 
@@ -66,7 +68,7 @@ public class LayerNormalization<T : DType, V>(
                 override fun get(vararg indices: Int): V = 0.0f as V
                 override fun set(vararg indices: Int, value: V) {}
             },
-            Any::class as KClass<T>
+            (dtype ?: Any::class) as KClass<T>
         )
     }
 
