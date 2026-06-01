@@ -1,6 +1,7 @@
 package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ActivationOperationsConverter
+import sk.ainet.compile.hlo.converters.AttentionOperationsConverter
 import sk.ainet.compile.hlo.converters.ConstantOperationsConverter
 import sk.ainet.compile.hlo.converters.GatherOperationsConverter
 import sk.ainet.compile.hlo.converters.LegacyOperationsConverter
@@ -67,6 +68,9 @@ public object StableHloConverterFactory {
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
 
+        // Register attention (scaledDotProductAttention) converter
+        registry.register(AttentionOperationsConverter())
+
         // Register gather / embedding / index_select converter — the
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
@@ -120,6 +124,9 @@ public object StableHloConverterFactory {
 
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
+
+        // Register attention (scaledDotProductAttention) converter
+        registry.register(AttentionOperationsConverter())
 
         // Register gather / embedding / index_select converter — the
         // LLM front-door op for token-id \u2192 embedding lookups.

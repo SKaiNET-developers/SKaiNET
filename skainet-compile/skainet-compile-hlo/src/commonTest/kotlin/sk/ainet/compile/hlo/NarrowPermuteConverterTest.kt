@@ -115,4 +115,41 @@ class NarrowPermuteConverterTest {
         val reluLine = mlir.lines().first { it.contains("stablehlo.maximum") }
         assertTrue(reluLine.contains(chunk1Val), "relu must consume chunk1 ($chunk1Val): $reluLine")
     }
+
+    /** scaledDotProductAttention lowers to QKᵀ · scale · softmax · ·V (two dot_generals). */
+    @Test
+    fun sdpaLowersToAttentionSubgraph() {
+        val g = DefaultComputeGraph()
+        // batched [B=1, H=2, S=4, D=8]
+        val qkvShape = listOf(1, 2, 4, 8)
+        fun inNode(id: String) = GraphNode(id, InputOperation<DType, Any>(), emptyList(), listOf(TensorSpec(id, qkvShape, "FP32")))
+        val q = inNode("q"); val k = inNode("k"); val v = inNode("v")
+        val sdpa = GraphNode(
+            id = "att",
+            operation = object : Operation {
+                override val name = "scaledDotProductAttention"
+                override val type = "trace"
+                override val parameters = mapOf<String, Any>("scale" to 0.0f, "causal" to true)
+                override fun <T : DType, V2> execute(inputs: List<sk.ainet.lang.tensor.Tensor<T, V2>>): List<sk.ainet.lang.tensor.Tensor<T, V2>> =
+                    throw UnsupportedOperationException("test op")
+                override fun validateInputs(inputs: List<TensorSpec>) = sk.ainet.lang.tensor.ops.ValidationResult.Valid
+                override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = listOf(TensorSpec("o", qkvShape, "FP32"))
+                override fun clone(newParameters: Map<String, Any>): Operation = this
+                override fun serialize(): Map<String, Any> = parameters
+            },
+            inputs = listOf(TensorSpec("q", qkvShape, "FP32"), TensorSpec("k", qkvShape, "FP32"), TensorSpec("v", qkvShape, "FP32")),
+            outputs = listOf(TensorSpec("o", qkvShape, "FP32")),
+        )
+        g.addNode(q); g.addNode(k); g.addNode(v); g.addNode(sdpa)
+        g.addEdge(GraphEdge("e0", q, sdpa, 0, 0, q.outputs[0]))
+        g.addEdge(GraphEdge("e1", k, sdpa, 0, 1, k.outputs[0]))
+        g.addEdge(GraphEdge("e2", v, sdpa, 0, 2, v.outputs[0]))
+
+        val mlir = StableHloConverterFactory.createBasic().convert(g, "sdpa_test").content
+        // Two dot_generals (scores = QKᵀ, out = attn·V).
+        assertTrue(Regex("stablehlo\\.dot_general").findAll(mlir).count() == 2, "expected 2 dot_general in:\n$mlir")
+        // Softmax decomposition present (exponential), and scores shape is [1,2,4,4].
+        assertTrue(mlir.contains("stablehlo.exponential"), "expected softmax exp in:\n$mlir")
+        assertTrue(mlir.contains("1x2x4x4xf32"), "expected scores type 1x2x4x4 in:\n$mlir")
+    }
 }
