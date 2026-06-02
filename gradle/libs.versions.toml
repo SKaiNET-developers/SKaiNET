@@ -1,6 +1,6 @@
 [versions]
 agp = "9.2.1"
-jacksonDatabind = "2.21.4"
+jacksonDatabind = "2.22.0"
 jsonSchemaValidator = "3.0.3"
 jsonSchemaValidatorVersion = "0.5.4"
 junit = "4.13.2"
