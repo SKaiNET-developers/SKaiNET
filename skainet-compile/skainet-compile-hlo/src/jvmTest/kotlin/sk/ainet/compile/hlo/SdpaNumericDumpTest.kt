@@ -44,7 +44,10 @@ class SdpaNumericDumpTest {
         g.addEdge(GraphEdge("e2", v, sdpa, 0, 2, v.outputs[0]))
 
         val mlir = StableHloConverterFactory.createBasic().convert(g, "sdpa").content
-        val out = File(System.getProperty("sdpaMlirOut") ?: "/home/miso/projects/coral/build-mlir/sdpa.mlir")
+        val out = File(
+            System.getProperty("sdpaMlirOut")
+                ?: File(System.getProperty("java.io.tmpdir"), "skainet-mlir/sdpa.mlir").path,
+        )
         out.parentFile?.mkdirs()
         out.writeText(mlir)
         println("WROTE_SDPA ${out.absolutePath}")
