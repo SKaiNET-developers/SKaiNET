@@ -35,7 +35,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.26.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.27.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -193,15 +193,16 @@ deployment, the StableHLO path for native and edge targets.
 
 ---
 
-## What's New in 0.26.0
+## What's New in 0.27.0
 
-- **Q4_0 is now a first-class quantized format.** The older GGML 4-bit format joins Q8_0 / Q4_K across the full provider stack: a heap `Q4_0TensorData` any loader can produce, a `Q4_0MatmulKernel` SPI with scalar / Panama-Vector / native-FFM implementations auto-selected by `KernelRegistry`, and a `Q4_0Quantizer` to pack dense FP32 weights into canonical ggml Q4_0 without going through GGUF. (PRs #648–#651)
-- **`tanh` is now a first-class activation primitive.** Promoted from a `NotImplementedError` stub to a fully wired `@Diff @ActivationDsl` op — `TensorOps` interface, `Tensor.tanh()` extension, CPU backend, recording decorator, and autograd backward (`1 - output^2`) — so downstream consumers no longer re-derive the `2*sigmoid(2x)-1` polyfill. Pinned end-to-end by a micrograd tanh-MLP training test on the moons dataset. (Issue #630, PR #631)
-- **CPU tensor `convert` op.** Dtype conversion now has a real CPU backend implementation. (PR #636)
-- Plus test, build, and CI hygiene: portable KMP `@Ignore` for common tests, restored BatchNorm coverage, Gradle build-warning cleanup, and narrower feature-PR CI triggers. (PRs #633, #634, #638, #640, #645)
+- **A full gemma3 network now lowers to StableHLO and compiles to an IREE `vmfb`.** A batch of new core converters closes every remaining op gap on the Kotlin DSL → MLIR StableHLO path, so a complete gemma3 graph traces and lowers end-to-end with zero gaps (verified by `GemmaTraceTest`: 140 nodes → 255 lines, 0 unsupported), then compiles through `iree-compile` (llvm-cpu; +neon aarch64) to a `vmfb` for both host x64 and aarch64.
+- **`scaledDotProductAttention` converter.** Lowers the atomic SDPA op to the standard StableHLO subgraph (`Q·Kᵀ` → scale → stable softmax → `attn·V`), with causal-mask emission and explicit additive-mask operand support (fixes gemma sliding-window layers). Numerically validated EXACT against a NumPy reference via `iree-run-module`.
+- **`permute`, `narrow`, and multi-output `split` converters.** Per-`(nodeId, outputPort)` SSA naming and edge-accurate operand resolution let a consumer of a multi-output op (e.g. RoPE's `split`) get the right output port.
+- **Boxing-free `FloatArray` weight externalization for `.irpa` baking.** Resolved weights stay primitive `FloatArray` (no `List<Float>` boxing that OOMed multi-GB embeddings); the real Gemma-270M function bakes its 360 weights to `util.global #flow.parameter.named`.
 
 ### Recent releases
 
+- **0.26.0** — Q4_0 promoted to a first-class quantized format across the provider stack, `tanh` as a first-class activation primitive, and a CPU tensor `convert` op, plus test/build/CI hygiene. (PRs #648–#651, #631, #636)
 - **0.25.0** — BF16 and Q8_0 matmul kernels end-to-end across the provider stack, autograd completeness for `pow`/`log` and the conv/pool/upsample/split family, the hybrid adaptive dtype-constraint DSL, the `@DarcValidated` operator-doc flag, and the SentencePiece special-token splitter. (PRs #595, #605–#628)
 - **0.23.0** — Real-model GGUFs no longer OOM at network construction (lazy `TensorDataFactory.placeholder(...)`); Kotlin/Native can finally load GGUFs over 2 GiB via the new POSIX-`pread`-backed `PosixPreadRandomAccessSource`. (Issues #587, #589; PRs #588, #591)
 - **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)

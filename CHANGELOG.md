@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-06-04
+
+### Added
+
+- **Full gemma3 network lowers to StableHLO with zero gaps.** A batch of new core converters closes every remaining op gap on the Kotlin DSL → MLIR StableHLO path, so a complete gemma3 graph traces and lowers end-to-end (verified by `GemmaTraceTest` over the composite build: 140 nodes → 255 lines, 0 unsupported, 0 arity errors):
+  - **`scaledDotProductAttention` converter** (`AttentionOperationsConverter`) — lowers the atomic SDPA op to the standard StableHLO subgraph: `scores = Q·Kᵀ` (`dot_general`, contract `head_dim`), `* scale` (arg or `1/sqrt(head_dim)`), numerically stable softmax over key length, `out = attn·V`. Batched `[..,S,D]` with all leading dims as batching dims. SDPA is a core `TensorOps` op, so its converter lives in core.
+  - **Causal mask for SDPA** — when the node's `causal` attr is set, emits an additive `-inf` mask before softmax (`iota`/`compare GE`/`select`) so each query attends only to keys at or before it. Validated EXACT against a NumPy causal reference and accepted by `iree-compile`.
+  - **Explicit SDPA mask operand** — `AttentionOperationsConverter` now consumes `operands[3]` (the additive mask), broadcasting it trailing-aligned to the scores shape before softmax. Fixes gemma sliding-window layers (`causal=false` + explicit causal+window mask) that previously exported unmasked and attended to future tokens. (PR #661)
+  - **`permute` + `narrow` converters** — `permute` registered as an arbitrary-axis alias routed to the existing transpose path; `narrow` slicing support.
+  - **Multi-output converter support + `split` converter** — per-`(nodeId, outputPort)` SSA naming in `ConversionContext`, operand resolution that walks incoming edges by `destinationInputIndex` and resolves each by the edge's `sourceOutputIndex`, and `split`/`chunk` lowering to N `stablehlo.slice` ops each registered on its own output port (lowers the RoPE `split` gap).
+- **Boxing-free `FloatArray` weight externalization for `.irpa` baking.** `finalize()` now stores resolved weights as the primitive `FloatArray` instead of `.toList()` (boxing a real LLM weight — e.g. a 262153×640 embedding → ~2.7 GB `List<Float>` — OOMed the trace). `ConstantOperationsConverter` externalizes `FloatArray` directly (`floatArrayToLittleEndianBytes` + `tryMaterializeExternalFloats`, inlining small/`InlineAlways` tensors via `asList()`), and `IrpaWriter` writes byte ranges in one shot. With this, the real Gemma-270M function bakes: 1 func arg (tokens) + 360 weights externalized to `util.global #flow.parameter.named`.
+- **DSL prescribes element dtype for placeholder weights.** The DSL can now specify the element dtype for placeholder weights during tracing.
+- **Numerical validation harness for SDPA lowering.** Dumps a small `scaledDotProductAttention` StableHLO graph; `iree-compile` + `iree-run-module` output matches a NumPy reference exactly to 5 decimals, confirming the attention converter is numerically correct, not just structurally valid.
+
+### Fixed
+
+- **IREE-valid StableHLO syntax — full gemma3 compiles to `vmfb`.** Aligned converter emission to what `iree-compile`'s StableHLO parser accepts (verified by compiling the full gemma3 graph end-to-end): `gather` uses the generic MLIR form, `slice`/`narrow`/`split` use the canonical bracket form via a shared `sliceLine()` helper, `concatenate` emits the full functional type, and batch matmul derives batch dims as `min(lhsRank,rhsRank)-2` (fixes 3D-activation @ 2D-weight Linear projections). Result: SKaiNET gemma3 DSL → StableHLO → `iree-compile` (llvm-cpu; +neon aarch64) → `vmfb` for both host x64 and aarch64 targets.
+- **`VoidTensorOps.gather` output shape for multi-dim indices.** The void/tracing gather collapsed the gathered axis to `indices.shape[0]`, so a `[vocab,emb]` table with `[batch,seq]` indices traced to `[batch,emb]` instead of `[batch,seq,emb]` (breaking the embedding's downstream reshape during weight-free tracing). Now replaces the axis with the full indices shape, matching `DefaultCpuOps.gather`, unblocking tracing of full transformer (gemma3) graphs.
+
 ## [0.26.0] - 2026-05-30
 
 ### Added
