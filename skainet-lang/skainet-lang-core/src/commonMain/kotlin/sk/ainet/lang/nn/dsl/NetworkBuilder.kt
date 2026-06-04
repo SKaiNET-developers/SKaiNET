@@ -1299,7 +1299,8 @@ public class StageImpl<T : DType, V>(
                 eps = eps,
                 momentum = momentum,
                 affine = affine,
-                name = getDefaultName(id, "BatchNorm", modules.size)
+                name = getDefaultName(id, "BatchNorm", modules.size),
+                dtype = kClass
             )
         )
     }
@@ -1317,7 +1318,8 @@ public class StageImpl<T : DType, V>(
                 numChannels = numChannels,
                 eps = eps,
                 affine = affine,
-                name = getDefaultName(id, "GroupNorm", modules.size)
+                name = getDefaultName(id, "GroupNorm", modules.size),
+                dtype = kClass
             )
         )
     }
@@ -1333,7 +1335,8 @@ public class StageImpl<T : DType, V>(
                 normalizedShape = normalizedShape,
                 eps = eps,
                 elementwiseAffine = elementwiseAffine,
-                name = getDefaultName(id, "LayerNorm", modules.size)
+                name = getDefaultName(id, "LayerNorm", modules.size),
+                dtype = kClass
             )
         )
     }
@@ -1675,7 +1678,8 @@ public class NeuralNetworkDslImpl<T : DType, V>(
                 eps = eps,
                 momentum = momentum,
                 affine = affine,
-                name = getDefaultName(id, "BatchNorm", modules.size)
+                name = getDefaultName(id, "BatchNorm", modules.size),
+                dtype = kClass
             )
         )
     }
@@ -1693,7 +1697,8 @@ public class NeuralNetworkDslImpl<T : DType, V>(
                 numChannels = numChannels,
                 eps = eps,
                 affine = affine,
-                name = getDefaultName(id, "GroupNorm", modules.size)
+                name = getDefaultName(id, "GroupNorm", modules.size),
+                dtype = kClass
             )
         )
     }
@@ -1709,7 +1714,8 @@ public class NeuralNetworkDslImpl<T : DType, V>(
                 normalizedShape = normalizedShape,
                 eps = eps,
                 elementwiseAffine = elementwiseAffine,
-                name = getDefaultName(id, "LayerNorm", modules.size)
+                name = getDefaultName(id, "LayerNorm", modules.size),
+                dtype = kClass
             )
         )
     }

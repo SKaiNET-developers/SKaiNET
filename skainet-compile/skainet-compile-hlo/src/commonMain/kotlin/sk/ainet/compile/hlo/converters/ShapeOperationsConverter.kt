@@ -27,7 +27,13 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         // flatten / squeeze. concat glues tensors along an axis,
         // slice extracts a static window of a tensor.
         "concat", "concatenate", "cat", "stack",
-        "slice"
+        "slice",
+        // narrow(dim, start, length) is a single-axis slice — RoPE / attention
+        // head splitting use it heavily.
+        "narrow",
+        // split(splitSize, dim) -> N equal chunks along dim. Multi-output: each
+        // chunk is a stablehlo.slice registered on its own output port.
+        "split", "chunk"
     )
 
     override fun convert(
@@ -42,6 +48,8 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             "unsqueeze" -> convertUnsqueeze(node, operands, context)
             "concat", "concatenate", "cat", "stack" -> convertConcat(node, operands, context)
             "slice" -> convertSlice(node, operands, context)
+            "narrow" -> convertNarrow(node, operands, context)
+            "split", "chunk" -> convertSplit(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by ShapeOperationsConverter"
@@ -82,7 +90,14 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
 
         val resultValue = context.nextTempValue()
         val operandList = operands.joinToString(", ")
-        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : $outputType"
+        // concatenate's custom form needs the full functional type:
+        //   (t0, t1, ...) -> outType  (a bare `: outType` is rejected).
+        val operandTypes = operands.indices.joinToString(", ") { i ->
+            context.getValueType(operands[i])
+                ?: node.inputs.getOrNull(i)?.let { context.getTypeMapper().mapTensorType(it) }
+                ?: "tensor<?xf32>"
+        }
+        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : ($operandTypes) -> $outputType"
         context.emitOperation(operation)
 
         return ConversionResult.Success(
@@ -133,15 +148,9 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         val strides = (node.operation.parameters["strides"] as? List<Int>)
             ?: List(rank) { 1 }
 
-        val startsAttr = starts.joinToString(", ")
-        val limitsAttr = limits.joinToString(", ")
-        val stridesAttr = strides.joinToString(", ")
-
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.slice ${operands[0]} " +
-            "{start_indices = [$startsAttr], " +
-            "limit_indices = [$limitsAttr], " +
-            "strides = [$stridesAttr]} : $outputType"
+        val operation = sliceLine(resultValue, operands[0], starts, limits, strides,
+            resolveOperandType(operands[0], node, context), outputType)
         context.emitOperation(operation)
 
         return ConversionResult.Success(
@@ -150,6 +159,127 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         )
     }
     
+    /**
+     * Convert narrow(dim, start, length) to a single-axis stablehlo.slice.
+     *
+     * narrow keeps `[start, start+length)` along `dim` and the full extent of
+     * every other axis. Reads `dim`/`start`/`length` from parameters (the keys
+     * the graph tape records); falls back to the output shape for `length`.
+     *
+     *     %out = stablehlo.slice %x {start_indices=[..], limit_indices=[..], strides=[..]} : <type>
+     */
+    private fun convertNarrow(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Narrow operation requires exactly 1 operand, got ${operands.size}",
+                "Unsupported narrow arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+
+        val inputShape = node.inputs.firstOrNull()?.shape ?: emptyList()
+        val rank = inputShape.size
+        if (rank == 0) {
+            return ConversionResult.Failure(
+                "Narrow requires a known input rank",
+                "Missing input shape for narrow node ${node.id}"
+            )
+        }
+
+        val rawDim = node.operation.parameters["dim"] as? Int ?: 0
+        val dim = if (rawDim < 0) rank + rawDim else rawDim
+        val start = node.operation.parameters["start"] as? Int ?: 0
+        val length = node.operation.parameters["length"] as? Int
+            ?: outputSpec?.shape?.getOrNull(dim)
+            ?: (inputShape[dim] - start)
+
+        val starts = List(rank) { if (it == dim) start else 0 }
+        val limits = List(rank) { if (it == dim) start + length else inputShape[it] }
+        val strides = List(rank) { 1 }
+
+        val resultValue = context.nextTempValue()
+        val operation = sliceLine(resultValue, operands[0], starts, limits, strides,
+            resolveOperandType(operands[0], node, context), outputType)
+        context.emitOperation(operation)
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
+    }
+
+    /**
+     * Convert split(splitSize, dim) / chunk to N stablehlo.slice ops — one per
+     * output chunk. Multi-output: each chunk's SSA name is registered on its own
+     * output port (context.setValueName(node.id, port, name)) so downstream
+     * consumers, resolved by their incoming edge's source port, pick the right
+     * chunk. Returns chunk 0 as the nominal result.
+     */
+    private fun convertSplit(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Split operation requires exactly 1 operand, got ${operands.size}",
+                "Unsupported split arity for node ${node.id}"
+            )
+        }
+        val inputShape = node.inputs.firstOrNull()?.shape ?: emptyList()
+        val rank = inputShape.size
+        if (rank == 0) {
+            return ConversionResult.Failure(
+                "Split requires a known input rank",
+                "Missing input shape for split node ${node.id}"
+            )
+        }
+        val rawDim = node.operation.parameters["dim"] as? Int ?: 0
+        val dim = if (rawDim < 0) rank + rawDim else rawDim
+        val splitSize = (node.operation.parameters["splitSize"] as? Int)
+            ?: (node.operation.parameters["split_size"] as? Int)
+            ?: return ConversionResult.Failure(
+                "Split requires a 'splitSize' parameter",
+                "Missing splitSize for split node ${node.id}"
+            )
+        val axisLen = inputShape[dim]
+        val nChunks = node.outputs.size.takeIf { it > 0 }
+            ?: ((axisLen + splitSize - 1) / splitSize)
+
+        val emitted = mutableListOf<String>()
+        var firstName: String? = null
+        for (i in 0 until nChunks) {
+            val start = i * splitSize
+            if (start >= axisLen) break
+            val end = minOf(start + splitSize, axisLen)
+            val starts = List(rank) { if (it == dim) start else 0 }
+            val limits = List(rank) { if (it == dim) end else inputShape[it] }
+            val strides = List(rank) { 1 }
+            val outType = node.outputs.getOrNull(i)
+                ?.let { context.getTypeMapper().mapTensorType(it) } ?: "tensor<?xf32>"
+            val v = context.nextTempValue()
+            val op = sliceLine(v, operands[0], starts, limits, strides,
+                resolveOperandType(operands[0], node, context), outType)
+            context.emitOperation(op)
+            context.setValueName(node.id, i, v)
+            context.setValueType(v, outType)
+            emitted += op
+            if (i == 0) firstName = v
+        }
+        return if (firstName != null) {
+            ConversionResult.Success(outputValueName = firstName, emittedOperations = emitted)
+        } else {
+            ConversionResult.Failure("Split produced no chunks", "Empty split for node ${node.id}")
+        }
+    }
+
     /**
      * Convert reshape operation using stablehlo.reshape.
      * Handles both static and dynamic shape specifications.
@@ -319,6 +449,24 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             outputValueName = resultValue,
             emittedOperations = listOf(operation)
         )
+    }
+
+    /**
+     * Emit a `stablehlo.slice` in the canonical bracket assembly form
+     * `%out = stablehlo.slice %x [s0:l0:st0, s1:l1:st1, ...] : (inType) -> outType`.
+     * (stablehlo.slice has no attribute-dict custom form — iree-compile rejects it.)
+     */
+    private fun sliceLine(
+        result: String,
+        operand: String,
+        starts: List<Int>,
+        limits: List<Int>,
+        strides: List<Int>,
+        inType: String,
+        outType: String,
+    ): String {
+        val ranges = starts.indices.joinToString(", ") { "${starts[it]}:${limits[it]}:${strides[it]}" }
+        return "$result = stablehlo.slice $operand [$ranges] : ($inType) -> $outType"
     }
 
     /**

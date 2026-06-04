@@ -104,17 +104,15 @@ class ConcatSliceCastConverterTest {
     fun slice_carries_start_limit_stride_attributes() {
         val module = buildSliceModule()
         println("[DEBUG_LOG] slice export:\n${module.content}")
+        // Canonical bracket form `stablehlo.slice %x [s:l:st, ...] : (in) -> out`
+        // (stablehlo.slice has no attribute-dict custom form).
         assertTrue(
-            module.content.contains("start_indices"),
-            "slice must emit start_indices"
+            module.content.contains("[0:4:1, 0:8:1]"),
+            "slice must emit per-dim start:limit:stride brackets, got:\n${module.content}"
         )
         assertTrue(
-            module.content.contains("limit_indices"),
-            "slice must emit limit_indices"
-        )
-        assertTrue(
-            module.content.contains("strides"),
-            "slice must emit strides"
+            module.content.contains("(tensor<8x16xf32>) -> tensor<4x8xf32>"),
+            "slice must carry (operand) -> result types"
         )
     }
 

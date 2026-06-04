@@ -78,6 +78,50 @@ internal fun numberListToLittleEndianBytes(
 }
 
 /**
+ * Boxing-free variant for tensors whose values arrive as a primitive
+ * [FloatArray] — the form produced by `TraceToGraphBuilder.finalize`
+ * for resolved (dequantized) weights. Avoids the `FloatArray.toList()`
+ * boxing that turns a 262153x640 embedding into a ~2.7GB `List<Float>`
+ * and OOMs the trace. FP32 / I32 only (the dtypes a float-backed
+ * weight resolves to); other dtypes throw so the caller falls back.
+ */
+internal fun floatArrayToLittleEndianBytes(
+    values: FloatArray,
+    dtype: String,
+    expectedElements: Int
+): ByteArray {
+    val count = expectedElements.coerceAtLeast(values.size)
+    val n = minOf(count, values.size)
+    return when (dtype.uppercase()) {
+        "FP32", "F32", "FLOAT32" -> {
+            val bytes = ByteArray(count * 4)
+            for (i in 0 until n) {
+                val bits = values[i].toRawBits()
+                bytes[i * 4]     = (bits         and 0xff).toByte()
+                bytes[i * 4 + 1] = (bits ushr  8 and 0xff).toByte()
+                bytes[i * 4 + 2] = (bits ushr 16 and 0xff).toByte()
+                bytes[i * 4 + 3] = (bits ushr 24 and 0xff).toByte()
+            }
+            bytes
+        }
+        "I32", "INT32" -> {
+            val bytes = ByteArray(count * 4)
+            for (i in 0 until n) {
+                val v = values[i].toInt()
+                bytes[i * 4]     = (v         and 0xff).toByte()
+                bytes[i * 4 + 1] = (v ushr  8 and 0xff).toByte()
+                bytes[i * 4 + 2] = (v ushr 16 and 0xff).toByte()
+                bytes[i * 4 + 3] = (v ushr 24 and 0xff).toByte()
+            }
+            bytes
+        }
+        else -> throw IllegalArgumentException(
+            "Boxing-free external materialization supports FP32 / I32 FloatArray; got dtype=$dtype."
+        )
+    }
+}
+
+/**
  * Expected element count for a (possibly empty) shape. Empty shape
  * (scalar) means one element; `null` / absent dims degrade to 0 so the
  * caller can detect "no declared shape".

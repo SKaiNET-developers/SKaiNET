@@ -6,6 +6,7 @@ import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.ExternalParameterRef
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.compile.hlo.elementCountFromShape
+import sk.ainet.compile.hlo.floatArrayToLittleEndianBytes
 import sk.ainet.compile.hlo.numberListToLittleEndianBytes
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.ops.TensorSpec
@@ -227,10 +228,13 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val paramType = if (isTrainable) "trainable parameter" else "frozen parameter"
         context.emitComment("${node.operation.name} ${node.id}: $paramType")
 
-        // Policy seam — same shape as convertTensorConstant. Only a
-        // List-valued initial_value can be externalized with bytes
-        // available today; Number (splat) and missing cases fall
-        // through to the inline path intentionally.
+        // Policy seam — same shape as convertTensorConstant. List- and
+        // FloatArray-valued initial_value can be externalized with bytes;
+        // Number (splat) and missing cases fall through to inline.
+        // FloatArray is the boxing-free form from finalize for real weights.
+        if (initialValue is FloatArray) {
+            tryMaterializeExternalFloats(node, outputSpec, outputType, initialValue, context)?.let { return it }
+        }
         if (initialValue is List<*>) {
             tryMaterializeExternal(node, outputSpec, outputType, initialValue, context)?.let { return it }
         }
@@ -240,6 +244,13 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val operation = when {
             initialValue is Number -> {
                 "$resultValue = stablehlo.constant dense<${formatConstantValue(initialValue)}> : $outputType"
+            }
+            initialValue is FloatArray -> {
+                // Inline path (small tensors / InlineAlways): asList() boxes
+                // lazily during formatting; acceptable since big tensors take
+                // the external branch above.
+                val formattedValues = formatTensorValues(initialValue.asList(), outputSpec)
+                "$resultValue = stablehlo.constant dense<$formattedValues> : $outputType"
             }
             initialValue is List<*> -> {
                 val formattedValues = formatTensorValues(initialValue, outputSpec)
@@ -448,6 +459,71 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val operation = "$resultValue = util.global.load @${key} : $outputType"
         context.emitOperation(operation)
 
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(operation)
+        )
+    }
+
+    /**
+     * Boxing-free twin of [tryMaterializeExternal] for [FloatArray]
+     * weights (the form `finalize` now produces). Serializes the
+     * primitive array straight to little-endian bytes — never building
+     * a `List<Float>` — so a 262153x640 embedding externalizes without
+     * the ~2.7GB boxing that OOMs the trace. Same emission/registration
+     * contract as the List variant.
+     */
+    private fun tryMaterializeExternalFloats(
+        node: GraphNode,
+        outputSpec: TensorSpec?,
+        outputType: String,
+        values: FloatArray,
+        context: ConversionContext
+    ): ConversionResult? {
+        val policy = context.materializationPolicy
+        if (policy is ConstantMaterializationPolicy.InlineAlways) return null
+        if (outputSpec == null) return null
+
+        val encoding = outputSpec.tensorEncoding
+            ?: TensorEncoding.Dense(bytesPerElement = bytesPerElement(outputSpec.dtype))
+        val elementCount = elementCountFromShape(outputSpec.shape)
+        if (elementCount <= 0) return null
+
+        val logicalBytes = encoding.physicalBytes(elementCount.toLong()) ?: return null
+        val scope = when (policy) {
+            is ConstantMaterializationPolicy.InlineAlways -> return null
+            is ConstantMaterializationPolicy.ExternalAlways -> policy.scope
+            is ConstantMaterializationPolicy.SizeThreshold -> {
+                if (logicalBytes < policy.bytes) return null
+                policy.scope
+            }
+        }
+
+        val bytes = try {
+            floatArrayToLittleEndianBytes(values, outputSpec.dtype, elementCount)
+        } catch (e: IllegalArgumentException) {
+            context.emitComment(
+                "external materialization fell back to inline for ${node.id}: ${e.message}"
+            )
+            return null
+        }
+
+        val key = outputSpec.name.ifEmpty { node.id }
+        context.registerExternalParameter(
+            ExternalParameterRef(
+                scope = scope,
+                key = key,
+                encoding = encoding,
+                source = BufferHandle.Owned(bytes)
+            )
+        )
+        context.emitModuleDeclaration(
+            "util.global private @${key} = " +
+                "#flow.parameter.named<\"${scope}\"::\"${key}\"> : $outputType"
+        )
+        val resultValue = context.nextTempValue()
+        val operation = "$resultValue = util.global.load @${key} : $outputType"
+        context.emitOperation(operation)
         return ConversionResult.Success(
             outputValueName = resultValue,
             emittedOperations = listOf(operation)

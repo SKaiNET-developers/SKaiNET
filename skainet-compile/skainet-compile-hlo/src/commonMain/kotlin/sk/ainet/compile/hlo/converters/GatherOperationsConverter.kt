@@ -133,14 +133,16 @@ public class GatherOperationsConverter : StableHloOperationConverter {
         val weightOperand = operands[0]
         val indicesOperand = operands[1]
         val resultValue = context.nextTempValue()
-        val gatherOp = "$resultValue = stablehlo.gather($weightOperand, $indicesOperand) " +
-            "{ dimension_numbers = #stablehlo.gather<" +
+        // stablehlo.gather has no custom (pretty) assembly form — emit the
+        // generic MLIR op form: "stablehlo.gather"(%operand, %indices) <{attrs}>.
+        val gatherOp = "$resultValue = \"stablehlo.gather\"($weightOperand, $indicesOperand) " +
+            "<{dimension_numbers = #stablehlo.gather<" +
             "offset_dims = [$offsetDims], " +
             "collapsed_slice_dims = [$collapsedSliceDims], " +
             "start_index_map = [$startIndexMap], " +
             "index_vector_dim = $indexVectorDim>, " +
             "slice_sizes = array<i64: $sliceSizes>, " +
-            "indices_are_sorted = false } " +
+            "indices_are_sorted = false}> " +
             ": ($weightType, $indicesType) -> $outputType"
 
         context.emitOperation(gatherOp)

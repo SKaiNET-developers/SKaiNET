@@ -29,7 +29,9 @@ public class GroupNormalization<T : DType, V>(
     private val affine: Boolean = true,
     override val name: String = "GroupNormalization",
     initGamma: Tensor<T, V>? = null,
-    initBeta: Tensor<T, V>? = null
+    initBeta: Tensor<T, V>? = null,
+    // Logical element type prescribed by the DSL; keeps placeholder weights typed.
+    private val dtype: KClass<T>? = null,
 ) : Module<T, V>(), ModuleParameters<T, V> {
 
     init {
@@ -62,7 +64,7 @@ public class GroupNormalization<T : DType, V>(
                 override fun get(vararg indices: Int): V = 1.0f as V
                 override fun set(vararg indices: Int, value: V) {}
             },
-            Any::class as KClass<T>
+            (dtype ?: Any::class) as KClass<T>
         )
     }
 
@@ -76,7 +78,7 @@ public class GroupNormalization<T : DType, V>(
                 override fun get(vararg indices: Int): V = 0.0f as V
                 override fun set(vararg indices: Int, value: V) {}
             },
-            Any::class as KClass<T>
+            (dtype ?: Any::class) as KClass<T>
         )
     }
 
