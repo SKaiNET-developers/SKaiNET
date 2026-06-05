@@ -6,6 +6,7 @@ import sk.ainet.compile.hlo.StableHloModule
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.model.Model
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.operators.bind
 import sk.ainet.lang.tensor.ops.VoidTensorOps
 import sk.ainet.lang.tape.toComputeGraph
 import sk.ainet.lang.types.DType
@@ -32,16 +33,17 @@ public object HloGenerator {
         functionName: String = "main"
     ): StableHloModule {
         val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
+        val traceInput = sampleInput.bind(ctx)
 
-        // Capture the sample input's tensor ref ID so we can mark it as a function argument
+        // Capture the rebound sample input's tensor ref ID so we can mark it as a function argument.
         @Suppress("UNCHECKED_CAST")
-        val inputRefId = ctx.session.refOf(sampleInput as sk.ainet.lang.tensor.Tensor<*, *>).id
+        val inputRefId = ctx.session.refOf(traceInput as sk.ainet.lang.tensor.Tensor<*, *>).id
 
         val (tape, _) = ctx.record {
             @Suppress("UNCHECKED_CAST")
             traceForwardPass(
                 model as Model<DType, Any?, Tensor<DType, Any?>, Tensor<DType, Any?>>,
-                sampleInput as Tensor<DType, Any?>,
+                traceInput as Tensor<DType, Any?>,
                 ctx
             )
         }
