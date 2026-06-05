@@ -1,5 +1,6 @@
 package sk.ainet.lang.dag
 
+import sk.ainet.lang.tensor.ops.GenericOperation
 import sk.ainet.lang.tensor.ops.InputOperation
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
@@ -80,6 +81,8 @@ public class DagBuilder {
         inputs: List<GraphValue<*>>,
         nodeId: String
     ): List<TensorSpec> {
+        inferDagOutputSpecs(operation, inputs, nodeId)?.let { return it }
+
         val inputSpecs = inputs.map { it.spec }
         val inferred = runCatching { operation.inferOutputs(inputSpecs) }
             .getOrElse {
@@ -150,11 +153,11 @@ public class DagBuilder {
     }
 
     /**
-     * Declare a constant placeholder (treated like an input node).
+     * Declare a constant tensor with any available initializer data embedded in the graph.
      */
     @DagDsl
     public fun <T : DType> constant(name: String, spec: TensorSpec): GraphValue<T> {
-        val op = InputOperation<T, Any>(parameters = mapOf("kind" to "const"))
+        val op = GenericOperation("weight", constantParameters(spec), type = "constant")
         val recorded = recordNode("const", op, emptyList(), id = "const_$name").first()
         @Suppress("UNCHECKED_CAST")
         val typed = (recorded as GraphValue<T>)
@@ -163,8 +166,61 @@ public class DagBuilder {
         return updated
     }
 
+    private fun inferDagOutputSpecs(
+        operation: Operation,
+        inputs: List<GraphValue<*>>,
+        nodeId: String
+    ): List<TensorSpec>? {
+        if (operation.name.lowercase() !in setOf("sum", "mean", "variance")) return null
+        val input = inputs.firstOrNull()?.spec ?: return null
+        val outputShape = reductionOutputShape(input.shape, operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int)
+        return listOf(
+            TensorSpec(
+                name = "${nodeId}_out0",
+                shape = outputShape,
+                dtype = input.dtype,
+                requiresGrad = input.requiresGrad
+            )
+        )
+    }
+
+    private fun reductionOutputShape(shape: List<Int>?, dim: Int?): List<Int>? {
+        if (shape == null) return null
+        if (dim == null) return listOf(1)
+
+        val actualDim = if (dim < 0) shape.size + dim else dim
+        require(actualDim in shape.indices) {
+            "Reduction dimension $dim is out of bounds for tensor rank ${shape.size}"
+        }
+
+        val reduced = shape.filterIndexed { index, _ -> index != actualDim }
+        return reduced.ifEmpty { listOf(1) }
+    }
+
+    private fun constantParameters(spec: TensorSpec): Map<String, Any> {
+        val params = mutableMapOf<String, Any>("trainable" to false)
+        when (spec.metadata["init"] as? String) {
+            "fromArray" -> {
+                val values = spec.metadata["values"] as? FloatArray
+                if (values != null) params["initial_value"] = values
+            }
+            "fromIntArray" -> {
+                val values = spec.metadata["values"] as? IntArray
+                if (values != null) params["initial_value"] = values.toList()
+            }
+            "ones" -> params["initial_value"] = 1.0f
+            "zeros" -> params["initial_value"] = 0.0f
+            else -> {
+                if ((spec.metadata["init"] as? String)?.startsWith("full(") == true) {
+                    params["initial_value"] = spec.metadata["value"] as? Number ?: 0.0f
+                }
+            }
+        }
+        return params
+    }
+
     /**
-     * Parameter helper that reuses a symbolic, allocation-free data DSL to declare shape/dtype.
+     * Parameter helper that reuses the symbolic data DSL to declare shape/dtype.
      *
      * Example:
      * ```
@@ -182,7 +238,7 @@ public class DagBuilder {
     }
 
     /**
-     * Constant helper that reuses a symbolic, allocation-free data DSL to declare shape/dtype.
+     * Constant helper that reuses the symbolic data DSL to declare shape/dtype and initializer data.
      */
     @DagDsl
     public inline fun <reified T : DType, V> constant(
