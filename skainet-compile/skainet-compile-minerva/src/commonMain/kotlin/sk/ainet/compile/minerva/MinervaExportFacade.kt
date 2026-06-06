@@ -20,7 +20,8 @@ import sk.ainet.tape.Execution
  */
 public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
     public val backendName: String = MinervaExportBackend.backendName,
-    public val compatibilityValidator: MinervaCompatibilityValidator = MinervaCompatibilityValidator()
+    public val compatibilityValidator: MinervaCompatibilityValidator = MinervaCompatibilityValidator(),
+    public val graphCanonicalizer: MinervaGraphCanonicalizer = MinervaGraphCanonicalizer()
 ) {
 
     /**
@@ -91,14 +92,23 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             return compatibilityValidationFailedResult(options, context, compatibilityReport)
         }
 
+        val intermediate = try {
+            graphCanonicalizer.convert(graph, context)
+        } catch (exception: MinervaLoweringException) {
+            return loweringFailedResult(options, context, compatibilityReport, exception)
+        }
+
         val failure = MinervaExportFailure(
             kind = MinervaExportFailureKind.NOT_IMPLEMENTED,
-            stage = GraphExportStage.LOWERING,
+            stage = GraphExportStage.WRITING,
             code = "minerva.export.not_implemented",
-            message = "Minerva export passed phase-one compatibility validation; lowering, compiler invocation, packaging, and verification are implemented in follow-up issues.",
+            message = "Minerva export lowered the graph to phase-one IR; compiler invocation, packaging, and verification are implemented in follow-up issues.",
             details = mapOf(
-                "nextStep" to "Implement MinervaGraphCanonicalizer",
-                "issue" to "#692"
+                "nextStep" to "Invoke the Minerva compiler and write the runtime project.",
+                "issue" to "#693",
+                "layers" to intermediate.layerCount.toString(),
+                "input" to intermediate.input.id,
+                "output" to intermediate.output.id
             )
         )
         context.error(
@@ -107,7 +117,13 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             message = failure.message,
             details = failure.details
         )
-        return failedResult(options, context, failure, compatibilityReport)
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate
+        )
     }
 
     private fun unsupportedModelResult(model: Any, options: MinervaExportOptions): MinervaExportResult {
@@ -179,11 +195,40 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         return failedResult(options, context, failure, report)
     }
 
+    private fun loweringFailedResult(
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        compatibilityReport: MinervaCompatibilityReport,
+        exception: MinervaLoweringException
+    ): MinervaExportResult {
+        val details = mutableMapOf(
+            "code" to exception.code,
+            "issue" to "#692"
+        )
+        exception.nodeId?.let { details["nodeId"] = it }
+        exception.operationName?.let { details["operationName"] = it }
+        details += exception.details
+        val failure = MinervaExportFailure(
+            kind = MinervaExportFailureKind.LOWERING_FAILED,
+            stage = GraphExportStage.LOWERING,
+            code = exception.code,
+            message = exception.message ?: "Minerva graph lowering failed.",
+            details = details
+        )
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport
+        )
+    }
+
     private fun failedResult(
         options: MinervaExportOptions,
         context: GraphExportContext,
         failure: MinervaExportFailure,
-        compatibilityReport: MinervaCompatibilityReport? = null
+        compatibilityReport: MinervaCompatibilityReport? = null,
+        intermediate: MinervaIntermediate? = null
     ): MinervaExportResult {
         return MinervaExportResult(
             options = options,
@@ -192,7 +237,8 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             artifacts = context.artifacts,
             failure = failure,
             metadata = context.metadata,
-            compatibilityReport = compatibilityReport
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate
         )
     }
 
