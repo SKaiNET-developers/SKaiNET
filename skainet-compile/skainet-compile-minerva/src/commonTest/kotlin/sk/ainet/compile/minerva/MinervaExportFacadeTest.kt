@@ -8,17 +8,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import sk.ainet.compile.export.GraphExportStatus
 import sk.ainet.lang.graph.DefaultComputeGraph
-import sk.ainet.lang.graph.GraphNode
-import sk.ainet.lang.tensor.ops.InputOperation
-import sk.ainet.lang.tensor.ops.TensorSpec
-import sk.ainet.lang.types.DType
 
 class MinervaExportFacadeTest {
 
     @Test
     fun createsFacadeAndDefaultOptions() {
         val facade = MinervaExportFacade()
-        val options = testOptions()
+        val options = minervaTestOptions()
 
         assertEquals(MinervaExportBackend.backendName, facade.backendName)
         assertEquals(MinervaTarget.ATMEGA328P, options.target)
@@ -29,35 +25,37 @@ class MinervaExportFacadeTest {
     @Test
     fun rejectsInvalidOptionsWithClearMessages() {
         val outputError = assertFailsWith<IllegalArgumentException> {
-            testOptions(outputDir = "")
+            minervaTestOptions(outputDir = "")
         }
         assertTrue(outputError.message?.contains("outputDir cannot be blank") == true)
 
         val projectError = assertFailsWith<IllegalArgumentException> {
-            testOptions(projectName = "nested/project")
+            minervaTestOptions(projectName = "nested/project")
         }
         assertTrue(projectError.message?.contains("simple project directory name") == true)
     }
 
     @Test
     fun exportGraphRejectsEmptyGraphBeforePlaceholderStage() {
-        val result = MinervaExportFacade().exportGraph(DefaultComputeGraph(), testOptions())
+        val result = MinervaExportFacade().exportGraph(DefaultComputeGraph(), minervaTestOptions())
 
         assertEquals(GraphExportStatus.FAILED, result.status)
         assertFalse(result.succeeded)
-        assertEquals(MinervaExportFailureKind.GRAPH_VALIDATION_FAILED, result.failure?.kind)
+        assertEquals(MinervaExportFailureKind.COMPATIBILITY_VALIDATION_FAILED, result.failure?.kind)
+        assertEquals(MinervaCompatibilityIssueKind.GRAPH_VALIDATION, result.compatibilityReport?.issues?.first()?.kind)
         assertTrue(result.diagnostics.hasErrors)
-        assertTrue(result.failure?.details?.values?.any { it.contains("at least one graph node") } == true)
+        assertTrue(result.failure?.message?.contains("at least one graph node") == true)
     }
 
     @Test
     fun exportGraphReturnsNotImplementedForValidatedGraph() {
-        val result = MinervaExportFacade().exportGraph(singleInputGraph(), testOptions())
+        val result = MinervaExportFacade().exportGraph(validMinervaMlpGraph(), minervaTestOptions())
 
         assertEquals(GraphExportStatus.FAILED, result.status)
         assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
         assertEquals("minerva.export.not_implemented", result.failure?.code)
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.graph.validation.passed" })
+        assertTrue(result.compatibilityReport?.compatible == true)
         assertTrue(result.metadata["target"] == MinervaTarget.ATMEGA328P.compilerId)
         assertFailsWith<IllegalStateException> {
             result.requireSuccess()
@@ -66,15 +64,16 @@ class MinervaExportFacadeTest {
 
     @Test
     fun exportModelAcceptsComputeGraphFastPath() {
-        val graph = singleInputGraph()
-        val result = MinervaExportFacade().exportModel(graph, testOptions())
+        val graph = validMinervaMlpGraph()
+        val result = MinervaExportFacade().exportModel(graph, minervaTestOptions())
 
         assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
+        assertTrue(result.compatibilityReport?.compatible == true)
     }
 
     @Test
     fun exportModelReportsUnsupportedModelWithoutForwardPass() {
-        val result = MinervaExportFacade().exportModel("not-a-graph", testOptions())
+        val result = MinervaExportFacade().exportModel("not-a-graph", minervaTestOptions())
 
         assertEquals(GraphExportStatus.FAILED, result.status)
         assertEquals(MinervaExportFailureKind.UNSUPPORTED_MODEL_TYPE, result.failure?.kind)
@@ -86,38 +85,35 @@ class MinervaExportFacadeTest {
         val result = MinervaExportFacade().exportModel(
             model = object {},
             forwardPass = { },
-            options = testOptions(projectName = "RecordedModel")
+            options = minervaTestOptions(projectName = "RecordedModel")
         )
 
         assertEquals(GraphExportStatus.FAILED, result.status)
         val failure = assertNotNull(result.failure)
         assertTrue(
-            failure.kind == MinervaExportFailureKind.GRAPH_VALIDATION_FAILED ||
+            failure.kind == MinervaExportFailureKind.COMPATIBILITY_VALIDATION_FAILED ||
                 failure.kind == MinervaExportFailureKind.RECORDING_FAILED
         )
     }
 
-    private fun testOptions(
-        outputDir: String = "build/minerva",
-        projectName: String = "TinyMlp"
-    ): MinervaExportOptions {
-        return MinervaExportOptions(
-            outputDir = outputDir,
-            projectName = projectName,
-            metadata = mapOf("test" to "true")
+    @Test
+    fun exportGraphIncludesCompatibilityReportForUnsupportedGraph() {
+        val result = MinervaExportFacade().exportGraph(
+            graph = unsupportedMinervaOperationGraph(),
+            options = minervaTestOptions()
         )
-    }
 
-    private fun singleInputGraph(): DefaultComputeGraph {
-        val graph = DefaultComputeGraph()
-        graph.addNode(
-            GraphNode(
-                id = "input",
-                operation = InputOperation<DType, Any>(),
-                inputs = emptyList(),
-                outputs = listOf(TensorSpec("x", listOf(1, 4), "FP32"))
-            )
+        assertEquals(GraphExportStatus.FAILED, result.status)
+        assertEquals(MinervaExportFailureKind.COMPATIBILITY_VALIDATION_FAILED, result.failure?.kind)
+        val report = assertNotNull(result.compatibilityReport)
+        assertFalse(report.compatible)
+        assertTrue(
+            report.issues.any {
+                it.kind == MinervaCompatibilityIssueKind.UNSUPPORTED_OPERATION &&
+                    it.nodeId == "conv" &&
+                    it.operationName == "conv1d"
+            }
         )
-        return graph
+        assertEquals("conv", result.failure?.details?.get("nodeId"))
     }
 }

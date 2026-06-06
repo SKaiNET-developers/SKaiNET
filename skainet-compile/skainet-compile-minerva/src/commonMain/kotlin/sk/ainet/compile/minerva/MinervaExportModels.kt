@@ -90,6 +90,7 @@ public enum class MinervaExportFailureKind {
     UNSUPPORTED_MODEL_TYPE,
     RECORDING_FAILED,
     GRAPH_VALIDATION_FAILED,
+    COMPATIBILITY_VALIDATION_FAILED,
     NOT_IMPLEMENTED
 }
 
@@ -131,6 +132,65 @@ public data class MinervaExportBundle(
 }
 
 /**
+ * Stable categories for Minerva compatibility findings.
+ */
+public enum class MinervaCompatibilityIssueKind {
+    GRAPH_VALIDATION,
+    UNSUPPORTED_OPERATION,
+    UNSUPPORTED_TOPOLOGY,
+    MISSING_SHAPE,
+    INVALID_SHAPE,
+    INCOMPATIBLE_ACTIVATION_PLACEMENT,
+    MEMORY_BUDGET_EXCEEDED,
+    UNSUPPORTED_QUANTIZATION
+}
+
+/**
+ * Backend-specific compatibility issue that also appears as a graph-export diagnostic.
+ */
+public data class MinervaCompatibilityIssue(
+    public val kind: MinervaCompatibilityIssueKind,
+    public val code: String,
+    public val message: String,
+    public val nodeId: String? = null,
+    public val operationName: String? = null,
+    public val remediation: String,
+    public val details: Map<String, String> = emptyMap()
+) {
+    init {
+        require(code.isNotBlank()) { "compatibility issue code cannot be blank" }
+        require(message.isNotBlank()) { "compatibility issue message cannot be blank" }
+        require(remediation.isNotBlank()) { "compatibility issue remediation cannot be blank" }
+    }
+}
+
+/**
+ * Phase-one Minerva compatibility report.
+ */
+public data class MinervaCompatibilityReport(
+    public val compatible: Boolean,
+    public val diagnostics: GraphExportDiagnosticReport,
+    public val issues: List<MinervaCompatibilityIssue>,
+    public val target: MinervaTarget,
+    public val quantization: MinervaQuantization,
+    public val layerCount: Int,
+    public val estimatedSramBytes: Int,
+    public val estimatedFlashBytes: Int,
+    public val metadata: Map<String, String> = emptyMap()
+) {
+    public val failed: Boolean
+        get() = !compatible
+
+    public fun requireCompatible(): MinervaCompatibilityReport {
+        if (!compatible) {
+            val summary = issues.joinToString("; ") { "${it.code}: ${it.message}" }
+            error("Minerva compatibility validation failed: $summary")
+        }
+        return this
+    }
+}
+
+/**
  * Public result shape for Minerva export attempts.
  */
 public data class MinervaExportResult(
@@ -140,7 +200,8 @@ public data class MinervaExportResult(
     public val diagnostics: GraphExportDiagnosticReport = GraphExportDiagnosticReport.empty(),
     public val artifacts: List<GraphExportArtifact> = emptyList(),
     public val failure: MinervaExportFailure? = null,
-    public val metadata: Map<String, String> = emptyMap()
+    public val metadata: Map<String, String> = emptyMap(),
+    public val compatibilityReport: MinervaCompatibilityReport? = null
 ) {
     init {
         require(status != GraphExportStatus.SUCCESS || bundle != null) {

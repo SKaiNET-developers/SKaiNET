@@ -1,3 +1,87 @@
+public final class sk/ainet/compile/minerva/MinervaCompatibilityIssue {
+	public fun <init> (Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/util/Map;
+	public final fun copy (Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lsk/ainet/compile/minerva/MinervaCompatibilityIssue;
+	public static synthetic fun copy$default (Lsk/ainet/compile/minerva/MinervaCompatibilityIssue;Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/minerva/MinervaCompatibilityIssue;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCode ()Ljava/lang/String;
+	public final fun getDetails ()Ljava/util/Map;
+	public final fun getKind ()Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getNodeId ()Ljava/lang/String;
+	public final fun getOperationName ()Ljava/lang/String;
+	public final fun getRemediation ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/minerva/MinervaCompatibilityIssueKind : java/lang/Enum {
+	public static final field GRAPH_VALIDATION Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field INCOMPATIBLE_ACTIVATION_PLACEMENT Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field INVALID_SHAPE Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field MEMORY_BUDGET_EXCEEDED Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field MISSING_SHAPE Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field UNSUPPORTED_OPERATION Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field UNSUPPORTED_QUANTIZATION Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static final field UNSUPPORTED_TOPOLOGY Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+	public static fun values ()[Lsk/ainet/compile/minerva/MinervaCompatibilityIssueKind;
+}
+
+public final class sk/ainet/compile/minerva/MinervaCompatibilityReport {
+	public fun <init> (ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaTarget;Lsk/ainet/compile/minerva/MinervaQuantization;IIILjava/util/Map;)V
+	public synthetic fun <init> (ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaTarget;Lsk/ainet/compile/minerva/MinervaQuantization;IIILjava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Lsk/ainet/compile/minerva/MinervaTarget;
+	public final fun component5 ()Lsk/ainet/compile/minerva/MinervaQuantization;
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun component8 ()I
+	public final fun component9 ()Ljava/util/Map;
+	public final fun copy (ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaTarget;Lsk/ainet/compile/minerva/MinervaQuantization;IIILjava/util/Map;)Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
+	public static synthetic fun copy$default (Lsk/ainet/compile/minerva/MinervaCompatibilityReport;ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaTarget;Lsk/ainet/compile/minerva/MinervaQuantization;IIILjava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompatible ()Z
+	public final fun getDiagnostics ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun getEstimatedFlashBytes ()I
+	public final fun getEstimatedSramBytes ()I
+	public final fun getFailed ()Z
+	public final fun getIssues ()Ljava/util/List;
+	public final fun getLayerCount ()I
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getQuantization ()Lsk/ainet/compile/minerva/MinervaQuantization;
+	public final fun getTarget ()Lsk/ainet/compile/minerva/MinervaTarget;
+	public fun hashCode ()I
+	public final fun requireCompatible ()Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/minerva/MinervaCompatibilityValidator {
+	public static final field Companion Lsk/ainet/compile/minerva/MinervaCompatibilityValidator$Companion;
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getSramSafetyBytes ()I
+	public final fun validate (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/minerva/MinervaExportOptions;)Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
+	public final fun validate (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportContext;)Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
+}
+
+public final class sk/ainet/compile/minerva/MinervaCompatibilityValidator$Companion {
+	public final fun getActivationOperations ()Ljava/util/Set;
+	public final fun getActivationProducerOperations ()Ljava/util/Set;
+	public final fun getLayerOperations ()Ljava/util/Set;
+}
+
 public final class sk/ainet/compile/minerva/MinervaExportBackend {
 	public static final field INSTANCE Lsk/ainet/compile/minerva/MinervaExportBackend;
 	public static final field backendName Ljava/lang/String;
@@ -29,11 +113,13 @@ public final class sk/ainet/compile/minerva/MinervaExportBundle {
 public final class sk/ainet/compile/minerva/MinervaExportFacade {
 	public fun <init> ()V
 	public fun <init> (Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Lsk/ainet/compile/minerva/MinervaCompatibilityValidator;)V
+	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/compile/minerva/MinervaCompatibilityValidator;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun exportGraph (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/minerva/MinervaExportOptions;)Lsk/ainet/compile/minerva/MinervaExportResult;
 	public final fun exportModel (Ljava/lang/Object;Lkotlin/jvm/functions/Function1;Lsk/ainet/compile/minerva/MinervaExportOptions;)Lsk/ainet/compile/minerva/MinervaExportResult;
 	public final fun exportModel (Ljava/lang/Object;Lsk/ainet/compile/minerva/MinervaExportOptions;)Lsk/ainet/compile/minerva/MinervaExportResult;
 	public final fun getBackendName ()Ljava/lang/String;
+	public final fun getCompatibilityValidator ()Lsk/ainet/compile/minerva/MinervaCompatibilityValidator;
 }
 
 public final class sk/ainet/compile/minerva/MinervaExportFailure {
@@ -57,6 +143,7 @@ public final class sk/ainet/compile/minerva/MinervaExportFailure {
 }
 
 public final class sk/ainet/compile/minerva/MinervaExportFailureKind : java/lang/Enum {
+	public static final field COMPATIBILITY_VALIDATION_FAILED Lsk/ainet/compile/minerva/MinervaExportFailureKind;
 	public static final field GRAPH_VALIDATION_FAILED Lsk/ainet/compile/minerva/MinervaExportFailureKind;
 	public static final field NOT_IMPLEMENTED Lsk/ainet/compile/minerva/MinervaExportFailureKind;
 	public static final field RECORDING_FAILED Lsk/ainet/compile/minerva/MinervaExportFailureKind;
@@ -104,8 +191,8 @@ public final class sk/ainet/compile/minerva/MinervaExportOptions {
 }
 
 public final class sk/ainet/compile/minerva/MinervaExportResult {
-	public fun <init> (Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;)V
-	public synthetic fun <init> (Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;Lsk/ainet/compile/minerva/MinervaCompatibilityReport;)V
+	public synthetic fun <init> (Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;Lsk/ainet/compile/minerva/MinervaCompatibilityReport;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lsk/ainet/compile/minerva/MinervaExportOptions;
 	public final fun component2 ()Lsk/ainet/compile/export/GraphExportStatus;
 	public final fun component3 ()Lsk/ainet/compile/minerva/MinervaExportBundle;
@@ -113,11 +200,13 @@ public final class sk/ainet/compile/minerva/MinervaExportResult {
 	public final fun component5 ()Ljava/util/List;
 	public final fun component6 ()Lsk/ainet/compile/minerva/MinervaExportFailure;
 	public final fun component7 ()Ljava/util/Map;
-	public final fun copy (Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;)Lsk/ainet/compile/minerva/MinervaExportResult;
-	public static synthetic fun copy$default (Lsk/ainet/compile/minerva/MinervaExportResult;Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/minerva/MinervaExportResult;
+	public final fun component8 ()Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
+	public final fun copy (Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;Lsk/ainet/compile/minerva/MinervaCompatibilityReport;)Lsk/ainet/compile/minerva/MinervaExportResult;
+	public static synthetic fun copy$default (Lsk/ainet/compile/minerva/MinervaExportResult;Lsk/ainet/compile/minerva/MinervaExportOptions;Lsk/ainet/compile/export/GraphExportStatus;Lsk/ainet/compile/minerva/MinervaExportBundle;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Lsk/ainet/compile/minerva/MinervaExportFailure;Ljava/util/Map;Lsk/ainet/compile/minerva/MinervaCompatibilityReport;ILjava/lang/Object;)Lsk/ainet/compile/minerva/MinervaExportResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getArtifacts ()Ljava/util/List;
 	public final fun getBundle ()Lsk/ainet/compile/minerva/MinervaExportBundle;
+	public final fun getCompatibilityReport ()Lsk/ainet/compile/minerva/MinervaCompatibilityReport;
 	public final fun getDiagnostics ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
 	public final fun getFailed ()Z
 	public final fun getFailure ()Lsk/ainet/compile/minerva/MinervaExportFailure;
