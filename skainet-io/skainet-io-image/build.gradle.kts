@@ -1,3 +1,6 @@
+@file:OptIn(ExperimentalWasmDsl::class)
+
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -29,8 +32,19 @@ kotlin {
         }
     }
 
-    // Non-JVM targets are intentionally omitted until image interop actuals
-    // are implemented instead of throwing NotImplementedError at runtime.
+    iosArm64()
+    iosSimulatorArm64()
+    macosArm64()
+    linuxX64()
+    linuxArm64()
+
+    js {
+        browser()
+    }
+
+    wasmJs {
+        browser()
+    }
 
     sourceSets {
         val commonMain by getting {
