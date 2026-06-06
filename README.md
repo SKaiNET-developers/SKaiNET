@@ -35,7 +35,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.27.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.28.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -193,15 +193,14 @@ deployment, the StableHLO path for native and edge targets.
 
 ---
 
-## What's New in 0.27.0
+## What's New in 0.28.0
 
-- **A full gemma3 network now lowers to StableHLO and compiles to an IREE `vmfb`.** A batch of new core converters closes every remaining op gap on the Kotlin DSL → MLIR StableHLO path, so a complete gemma3 graph traces and lowers end-to-end with zero gaps (verified by `GemmaTraceTest`: 140 nodes → 255 lines, 0 unsupported), then compiles through `iree-compile` (llvm-cpu; +neon aarch64) to a `vmfb` for both host x64 and aarch64.
-- **`scaledDotProductAttention` converter.** Lowers the atomic SDPA op to the standard StableHLO subgraph (`Q·Kᵀ` → scale → stable softmax → `attn·V`), with causal-mask emission and explicit additive-mask operand support (fixes gemma sliding-window layers). Numerically validated EXACT against a NumPy reference via `iree-run-module`.
-- **`permute`, `narrow`, and multi-output `split` converters.** Per-`(nodeId, outputPort)` SSA naming and edge-accurate operand resolution let a consumer of a multi-output op (e.g. RoPE's `split`) get the right output port.
-- **Boxing-free `FloatArray` weight externalization for `.irpa` baking.** Resolved weights stay primitive `FloatArray` (no `List<Float>` boxing that OOMed multi-GB embeddings); the real Gemma-270M function bakes its 360 weights to `util.global #flow.parameter.named`.
+- **Four StableHLO export bugs fixed — the Kotlin DSL → MLIR path lowers reshape, concatenate, constants, and reductions correctly.** `reshape` whose target shape lives only in an op parameter now lowers to a typed `stablehlo.reshape` (#666); multi-input `concatenate` sums the operands' extents on the concatenated axis instead of echoing operand-0's (`1×1 + 1×4 + 1×1` on dim 1 → `1×6`, not `1×1`) (#667); DAG constants are inlined into the module and reductions drop the reduced dimension (#663); and `HloGenerator`'s forward-pass tracing now binds the sample input and synthesizes external inputs so it emits real ops instead of a structure-only module (#668). (PRs #664, #670)
+- **Non-JVM image runtime support.** Image and data-transform modules are scoped to their supported KMP targets, with a non-JVM image runtime so the image/data-transform APIs build honestly across targets. (PR #671)
 
 ### Recent releases
 
+- **0.27.0** — A full gemma3 network lowers to StableHLO and compiles to an IREE `vmfb` (zero op gaps, verified by `GemmaTraceTest`): new `scaledDotProductAttention` (with causal + explicit additive mask), `permute`, `narrow`, and multi-output `split` converters, plus boxing-free `FloatArray` weight externalization for `.irpa` baking. (PRs #661 et al.)
 - **0.26.0** — Q4_0 promoted to a first-class quantized format across the provider stack, `tanh` as a first-class activation primitive, and a CPU tensor `convert` op, plus test/build/CI hygiene. (PRs #648–#651, #631, #636)
 - **0.25.0** — BF16 and Q8_0 matmul kernels end-to-end across the provider stack, autograd completeness for `pow`/`log` and the conv/pool/upsample/split family, the hybrid adaptive dtype-constraint DSL, the `@DarcValidated` operator-doc flag, and the SentencePiece special-token splitter. (PRs #595, #605–#628)
 - **0.23.0** — Real-model GGUFs no longer OOM at network construction (lazy `TensorDataFactory.placeholder(...)`); Kotlin/Native can finally load GGUFs over 2 GiB via the new POSIX-`pread`-backed `PosixPreadRandomAccessSource`. (Issues #587, #589; PRs #588, #591)
