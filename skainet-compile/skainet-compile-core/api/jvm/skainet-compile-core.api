@@ -1,3 +1,244 @@
+public final class sk/ainet/compile/export/GraphExportArtifact {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportArtifactRole;Ljava/lang/String;ZLjava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportArtifactRole;Ljava/lang/String;ZLjava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun component5 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportArtifactRole;Ljava/lang/String;ZLjava/util/Map;)Lsk/ainet/compile/export/GraphExportArtifact;
+	public static synthetic fun copy$default (Lsk/ainet/compile/export/GraphExportArtifact;Ljava/lang/String;Lsk/ainet/compile/export/GraphExportArtifactRole;Ljava/lang/String;ZLjava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportArtifact;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getRole ()Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public final fun getSensitive ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/export/GraphExportArtifactRole : java/lang/Enum {
+	public static final field BINARY Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field DOCUMENTATION Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field HEADER Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field INTERMEDIATE Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field LOG Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field MANIFEST Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field PROJECT_DIRECTORY Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field SOURCE Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static final field TEST_REPORT Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/export/GraphExportArtifactRole;
+	public static fun values ()[Lsk/ainet/compile/export/GraphExportArtifactRole;
+}
+
+public final class sk/ainet/compile/export/GraphExportComponentRole : java/lang/Enum {
+	public static final field CONTEXT Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static final field CONVERTER Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static final field FACTORY Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static final field REGISTRY Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static final field VERIFIER Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static final field WRITER Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getResponsibility ()Ljava/lang/String;
+	public final fun getSuffix ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/export/GraphExportComponentRole;
+	public static fun values ()[Lsk/ainet/compile/export/GraphExportComponentRole;
+}
+
+public final class sk/ainet/compile/export/GraphExportContext {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun addArtifact (Lsk/ainet/compile/export/GraphExportArtifact;)Lsk/ainet/compile/export/GraphExportArtifact;
+	public final fun diagnosticReport ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun error (Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public static synthetic fun error$default (Lsk/ainet/compile/export/GraphExportContext;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public final fun getArtifacts ()Ljava/util/List;
+	public final fun getBackendName ()Ljava/lang/String;
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getTargetName ()Ljava/lang/String;
+	public final fun info (Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public static synthetic fun info$default (Lsk/ainet/compile/export/GraphExportContext;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public final fun report (Lsk/ainet/compile/export/GraphExportDiagnostic;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public final fun snapshot ()Lsk/ainet/compile/export/GraphExportContextSnapshot;
+	public final fun warning (Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public static synthetic fun warning$default (Lsk/ainet/compile/export/GraphExportContext;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+}
+
+public final class sk/ainet/compile/export/GraphExportContextSnapshot {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportContextSnapshot;
+	public static synthetic fun copy$default (Lsk/ainet/compile/export/GraphExportContextSnapshot;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportContextSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifacts ()Ljava/util/List;
+	public final fun getBackendName ()Ljava/lang/String;
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getTargetName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/compile/export/GraphExportConverter {
+	public abstract fun convert (Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportContext;)Ljava/lang/Object;
+	public abstract fun getBackendName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/export/GraphExportDiagnostic {
+	public fun <init> (Lsk/ainet/compile/export/GraphExportSeverity;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (Lsk/ainet/compile/export/GraphExportSeverity;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/compile/export/GraphExportSeverity;
+	public final fun component2 ()Lsk/ainet/compile/export/GraphExportStage;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/util/Map;
+	public final fun copy (Lsk/ainet/compile/export/GraphExportSeverity;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public static synthetic fun copy$default (Lsk/ainet/compile/export/GraphExportDiagnostic;Lsk/ainet/compile/export/GraphExportSeverity;Lsk/ainet/compile/export/GraphExportStage;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportDiagnostic;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCode ()Ljava/lang/String;
+	public final fun getDetails ()Ljava/util/Map;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getNodeId ()Ljava/lang/String;
+	public final fun getOperationName ()Ljava/lang/String;
+	public final fun getSeverity ()Lsk/ainet/compile/export/GraphExportSeverity;
+	public final fun getStage ()Lsk/ainet/compile/export/GraphExportStage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/export/GraphExportDiagnosticReport {
+	public static final field Companion Lsk/ainet/compile/export/GraphExportDiagnosticReport$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public static synthetic fun copy$default (Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getErrors ()Ljava/util/List;
+	public final fun getHasErrors ()Z
+	public final fun getInfos ()Ljava/util/List;
+	public final fun getWarnings ()Ljava/util/List;
+	public fun hashCode ()I
+	public final fun plus (Lsk/ainet/compile/export/GraphExportDiagnostic;)Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun plus (Lsk/ainet/compile/export/GraphExportDiagnosticReport;)Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun requireNoErrors ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/export/GraphExportDiagnosticReport$Companion {
+	public final fun empty ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+}
+
+public final class sk/ainet/compile/export/GraphExportResult {
+	public static final field Companion Lsk/ainet/compile/export/GraphExportResult$Companion;
+	public fun <init> (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportStatus;Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportStatus;Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/compile/export/GraphExportStatus;
+	public final fun component3 ()Ljava/lang/Object;
+	public final fun component4 ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportStatus;Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportResult;
+	public static synthetic fun copy$default (Lsk/ainet/compile/export/GraphExportResult;Ljava/lang/String;Lsk/ainet/compile/export/GraphExportStatus;Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifacts ()Ljava/util/List;
+	public final fun getBackendName ()Ljava/lang/String;
+	public final fun getDiagnostics ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun getFailed ()Z
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getOutput ()Ljava/lang/Object;
+	public final fun getStatus ()Lsk/ainet/compile/export/GraphExportStatus;
+	public final fun getSucceeded ()Z
+	public fun hashCode ()I
+	public final fun requireSuccess ()Ljava/lang/Object;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/export/GraphExportResult$Companion {
+	public final fun failure (Ljava/lang/String;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportResult;
+	public static synthetic fun failure$default (Lsk/ainet/compile/export/GraphExportResult$Companion;Ljava/lang/String;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportResult;
+	public final fun skipped (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportResult;
+	public static synthetic fun skipped$default (Lsk/ainet/compile/export/GraphExportResult$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportResult;
+	public final fun success (Ljava/lang/String;Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportResult;
+	public static synthetic fun success$default (Lsk/ainet/compile/export/GraphExportResult$Companion;Ljava/lang/String;Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportResult;
+}
+
+public final class sk/ainet/compile/export/GraphExportSeverity : java/lang/Enum {
+	public static final field ERROR Lsk/ainet/compile/export/GraphExportSeverity;
+	public static final field INFO Lsk/ainet/compile/export/GraphExportSeverity;
+	public static final field WARNING Lsk/ainet/compile/export/GraphExportSeverity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/export/GraphExportSeverity;
+	public static fun values ()[Lsk/ainet/compile/export/GraphExportSeverity;
+}
+
+public final class sk/ainet/compile/export/GraphExportStage : java/lang/Enum {
+	public static final field CAPTURE Lsk/ainet/compile/export/GraphExportStage;
+	public static final field Companion Lsk/ainet/compile/export/GraphExportStage$Companion;
+	public static final field LOWERING Lsk/ainet/compile/export/GraphExportStage;
+	public static final field PACKAGING Lsk/ainet/compile/export/GraphExportStage;
+	public static final field VALIDATION Lsk/ainet/compile/export/GraphExportStage;
+	public static final field VERIFICATION Lsk/ainet/compile/export/GraphExportStage;
+	public static final field WRITING Lsk/ainet/compile/export/GraphExportStage;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/export/GraphExportStage;
+	public static fun values ()[Lsk/ainet/compile/export/GraphExportStage;
+}
+
+public final class sk/ainet/compile/export/GraphExportStage$Companion {
+	public final fun getDefaultOrder ()Ljava/util/List;
+}
+
+public final class sk/ainet/compile/export/GraphExportStatus : java/lang/Enum {
+	public static final field FAILED Lsk/ainet/compile/export/GraphExportStatus;
+	public static final field SKIPPED Lsk/ainet/compile/export/GraphExportStatus;
+	public static final field SUCCESS Lsk/ainet/compile/export/GraphExportStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/export/GraphExportStatus;
+	public static fun values ()[Lsk/ainet/compile/export/GraphExportStatus;
+}
+
+public final class sk/ainet/compile/export/GraphExportVerification {
+	public fun <init> (ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/Map;
+	public final fun copy (ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;)Lsk/ainet/compile/export/GraphExportVerification;
+	public static synthetic fun copy$default (Lsk/ainet/compile/export/GraphExportVerification;ZLsk/ainet/compile/export/GraphExportDiagnosticReport;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/compile/export/GraphExportVerification;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifacts ()Ljava/util/List;
+	public final fun getDiagnostics ()Lsk/ainet/compile/export/GraphExportDiagnosticReport;
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getPassed ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/compile/export/GraphExportVerifier {
+	public abstract fun getBackendName ()Ljava/lang/String;
+	public abstract fun verify (Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportContext;)Lsk/ainet/compile/export/GraphExportVerification;
+}
+
+public abstract interface class sk/ainet/compile/export/GraphExportWriter {
+	public abstract fun getBackendName ()Ljava/lang/String;
+	public abstract fun write (Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportContext;)Ljava/lang/Object;
+}
+
 public final class sk/ainet/compile/nn/DefaultNetworkContext : sk/ainet/compile/nn/NeuralNetworkContext {
 	public fun <init> ()V
 	public fun getExecutionContext ()Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;

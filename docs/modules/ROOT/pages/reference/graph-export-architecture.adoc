@@ -1,0 +1,100 @@
+= Graph Export Architecture
+
+SKaiNET export backends should share the same graph-export workflow while keeping backend writers separate.
+
+The shared boundary is the captured graph representation. The shared contracts live in `skainet-compile-core` under `sk.ainet.compile.export` and cover diagnostics, generated artifact metadata, result envelopes, mutable export contexts, writers, verifiers, and component naming conventions.
+
+== Shared workflow
+
+[source,text]
+----
+source model or imported model
+  -> graph capture
+  -> validation
+  -> backend lowering
+  -> backend writer
+  -> optional packaging
+  -> optional verification
+----
+
+Backends can skip stages that do not apply. For example, StableHLO does not need a project packager, while Minerva does.
+
+== Backend writers
+
+StableHLO and Minerva should not be forced into one writer abstraction beyond the common result and diagnostic model.
+
+[cols="1,2,2", options="header"]
+|===
+| Backend
+| Lowering model
+| Writer output
+
+| StableHLO
+| Individual graph operations are lowered through operation converters.
+| MLIR module text represented by `StableHloModule`.
+
+| Minerva
+| Supported graph patterns are lowered into sequential layer descriptors.
+| Minerva intermediate model, `.npz` compiler input, generated C artifacts, packaged host and firmware project.
+|===
+
+== Naming conventions
+
+Use the following suffixes consistently for export components:
+
+[cols="1,2", options="header"]
+|===
+| Suffix
+| Responsibility
+
+| `Converter`
+| Lower source graph structures into a backend intermediate.
+
+| `Context`
+| Carry backend state, diagnostics, and generated artifacts.
+
+| `Registry`
+| Map operation names or graph patterns to backend converters.
+
+| `Factory`
+| Construct a backend exporter with standard converter registrations.
+
+| `Writer`
+| Write a backend intermediate to files, text, or model bytes.
+
+| `Verifier`
+| Run backend-specific validation after writing artifacts.
+|===
+
+== StableHLO alignment
+
+The current StableHLO implementation already follows most of this shape:
+
+* `StableHloConverter` is the backend converter.
+* `ConversionContext` is the backend context.
+* `StableHloOperationRegistry` maps operation names to converters.
+* `StableHloConverterFactory` creates standard converter sets.
+* `StableHloModule` is the backend result object.
+
+StableHLO should keep its public API and MLIR output stable while adopting shared diagnostics where useful.
+
+== Minerva direction
+
+Minerva should start as a sibling backend, not as a hidden mode of the Arduino/C99 exporter.
+
+The first Minerva implementation should use this shape:
+
+[source,text]
+----
+ComputeGraph
+  -> MinervaCompatibilityValidator
+  -> MinervaLayerPatternRegistry
+  -> MinervaLayerPatternConverter
+  -> MinervaIntermediate
+  -> MinervaNpzWriter
+  -> PythonMinervaCompilerAdapter
+  -> MinervaProjectPackager
+  -> MinervaHostVerifier
+----
+
+Minerva should fail fast for unsupported graphs. StableHLO may keep comments or fallback paths where that behavior is already part of its compatibility story, but Minerva export should not invoke the compiler after a compatibility error.
