@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-06-06
+
+### Fixed
+
+- **`reshape` whose target shape lives only in an operation parameter now lowers.** `ShapeOperationsConverter.convertReshape` previously depended on a declared output `TensorSpec`; a graph that carried the target only in the op's `outputShape` / `shape` / `newShape` parameter produced an empty/untyped module. It now reads the parameter and synthesizes a typed `stablehlo.reshape` result. (Issue #666, PR #670)
+- **Multi-input `concatenate` sums the operands' extents on the concatenated axis.** `convertConcat` echoed operand-0's extent into the result type, so e.g. concatenating `1×1×8×8 + 1×4×8×8 + 1×1×8×8` on dim 1 emitted `tensor<1x1x8x8xf32>` instead of `tensor<1x6x8x8xf32>`. The result type now sums the axis across all operands. (Issue #667, PR #670)
+- **StableHLO DSL export for constants and reductions.** DAG constants are inlined (baked) into the emitted module rather than externalized as function arguments, and a reduction drops the reduced dimension. (Issue #663, PR #664)
+- **`HloGenerator` forward-pass tracing records ops.** The sample input is bound to the tape execution context and external inputs are synthesized (`toComputeGraph(synthesizeExternalInputs = true, …)`), so tracing a `Model` emits real StableHLO ops instead of a structure-only module. (Issue #668)
+
+### Added
+
+- **Non-JVM image runtime support.** Image and data-transform modules are scoped to their supported KMP targets, with a non-JVM image runtime implementation so the image/data-transform APIs build honestly across targets. (PR #671)
+
 ## [0.27.0] - 2026-06-04
 
 ### Added
