@@ -112,20 +112,25 @@ public class MlirValidator {
             // not).
             if (trimmed.isEmpty() || trimmed.startsWith("//") || trimmed.startsWith("module")) continue
 
-            // Extract defined SSA values
-            if (trimmed.contains(" = ")) {
-                val parts = trimmed.split(" = ", limit = 2)
-                if (parts.size == 2) {
-                    val valueName = parts[0].trim()
-                    if (valueName.startsWith("%")) {
-                        if (definedValues.contains(valueName)) {
-                            errors.add("Line ${lineNum + 1}: SSA value $valueName redefined")
-                        }
-                        definedValues.add(valueName)
-                    }
+            // Extract defined SSA values. A line may carry more than one result
+            // definition when an op with a region is emitted on a single line
+            // (e.g. `reduce_window … ({ ^bb0(%a, %b): %r = … })`), so register every
+            // `%name =` result, not just the leading assignment.
+            Regex("(%[a-zA-Z0-9_]+)\\s*=").findAll(trimmed).forEach { m ->
+                val valueName = m.groupValues[1]
+                if (definedValues.contains(valueName)) {
+                    errors.add("Line ${lineNum + 1}: SSA value $valueName redefined")
                 }
+                definedValues.add(valueName)
             }
-            
+
+            // Register block-argument definitions from region entry blocks
+            // (`^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>): …`). These bind SSA
+            // values without a ` = `, so they must be collected separately.
+            Regex("\\^[a-zA-Z0-9_]*\\(([^)]*)\\)").findAll(trimmed).forEach { block ->
+                Regex("%[a-zA-Z0-9_]+").findAll(block.groupValues[1]).forEach { definedValues.add(it.value) }
+            }
+
             // Extract used SSA values
             val usedInLine = extractUsedValues(trimmed)
             usedValues.addAll(usedInLine)

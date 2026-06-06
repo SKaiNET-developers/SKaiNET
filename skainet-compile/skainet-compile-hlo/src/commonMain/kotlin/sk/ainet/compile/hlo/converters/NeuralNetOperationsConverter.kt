@@ -184,11 +184,13 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val padding = extractPadding(params)
         
         val resultValue = context.nextTempValue()
-        
+        val inputType = node.inputs.firstOrNull()?.let { context.getTypeMapper().mapTensorType(it) } ?: outputType
+
         // Build StableHLO reduce_window operation for max pooling
         val operations = buildMaxPoolOperations(
             resultValue = resultValue,
             input = operands[0],
+            inputType = inputType,
             outputType = outputType,
             kernelSize = kernelSize,
             stride = stride,
@@ -225,11 +227,13 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val padding = extractPadding(params)
         
         val resultValue = context.nextTempValue()
-        
+        val inputType = node.inputs.firstOrNull()?.let { context.getTypeMapper().mapTensorType(it) } ?: outputType
+
         // Build StableHLO reduce_window operation for average pooling
         val operations = buildAvgPoolOperations(
             resultValue = resultValue,
             input = operands[0],
+            inputType = inputType,
             outputType = outputType,
             kernelSize = kernelSize,
             stride = stride,
@@ -691,64 +695,103 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         }
     }
 
+    /** The MLIR element type ("f32"/"f16"/…) parsed from a `tensor<…xT>` string. */
+    private fun elementTypeOf(tensorType: String): String =
+        tensorType.substringAfterLast('x').substringBefore('>').ifBlank { "f32" }
+
+    /**
+     * Emit a `reduce_window` in IREE's parseable **generic region** form. The pretty
+     * `… applies <op> over window dimensions = …` form is rejected by IREE's StableHLO
+     * parser ("has no custom assembly form"), and its 2-element window only covered H/W;
+     * the generic form carries full NCHW-rank (`[1, 1, kH, kW]`) window attributes. (#675)
+     */
+    private fun reduceWindowGeneric(
+        resultValue: String,
+        input: String,
+        inputType: String,
+        initValue: String,
+        reduceOp: String,
+        elem: String,
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        outputType: String,
+    ): String {
+        val (kH, kW) = kernelSize
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        // Single line: MLIR treats newlines as whitespace, and the line-based MLIR
+        // validator only handles one op per line. The region body ops are separated
+        // by spaces, which the MLIR parser accepts.
+        // Region-local SSA names are derived from the (unique) result value so two
+        // pooling ops in one function don't collide in the flat validator (they are
+        // region-scoped in MLIR, but the validator tracks names globally).
+        val t = resultValue.removePrefix("%")
+        return "$resultValue = \"stablehlo.reduce_window\"($input, $initValue) ({ " +
+            "^bb0(%lhs_$t: tensor<$elem>, %rhs_$t: tensor<$elem>): " +
+            "%out_$t = $reduceOp %lhs_$t, %rhs_$t : tensor<$elem> " +
+            "stablehlo.return %out_$t : tensor<$elem> " +
+            "}) {window_dimensions = array<i64: 1, 1, $kH, $kW>, " +
+            "window_strides = array<i64: 1, 1, $sH, $sW>, " +
+            "base_dilations = array<i64: 1, 1, 1, 1>, " +
+            "window_dilations = array<i64: 1, 1, 1, 1>, " +
+            "padding = dense<[[0, 0], [0, 0], [$pH, $pH], [$pW, $pW]]> : tensor<4x2xi64>} : " +
+            "($inputType, tensor<$elem>) -> $outputType"
+    }
+
     private fun buildMaxPoolOperations(
         resultValue: String,
         input: String,
+        inputType: String,
         outputType: String,
         kernelSize: Pair<Int, Int>,
         stride: Pair<Int, Int>,
         padding: Pair<Int, Int>,
         context: ConversionContext
     ): List<String> {
-        // For max pooling, we need to create a negative infinity constant as the initial value
+        val elem = elementTypeOf(outputType)
         val initValue = context.nextTempValue()
-        val initConstant = "$initValue = stablehlo.constant dense<-3.4028235e+38> : tensor<f32>"
-        
-        val poolOp = "$resultValue = stablehlo.reduce_window($input, $initValue) " +
-                "applies stablehlo.maximum " +
-                "over window dimensions = [${kernelSize.first}, ${kernelSize.second}] " +
-                "stride = [${stride.first}, ${stride.second}] " +
-                "pad = [[${padding.first}, ${padding.first}], [${padding.second}, ${padding.second}]] : $outputType"
-        
-        // Emit operations through context
+        val initConstant = "$initValue = stablehlo.constant dense<-3.4028235e+38> : tensor<$elem>"
+        val poolOp = reduceWindowGeneric(
+            resultValue, input, inputType, initValue, "stablehlo.maximum",
+            elem, kernelSize, stride, padding, outputType,
+        )
         context.emitOperation(initConstant)
         context.emitOperation(poolOp)
-        
         return listOf(initConstant, poolOp)
     }
-    
+
     private fun buildAvgPoolOperations(
         resultValue: String,
         input: String,
+        inputType: String,
         outputType: String,
         kernelSize: Pair<Int, Int>,
         stride: Pair<Int, Int>,
         padding: Pair<Int, Int>,
         context: ConversionContext
     ): List<String> {
-        // Average pooling requires sum + division by kernel size
+        // Average pooling requires sum + division by kernel size.
+        val elem = elementTypeOf(outputType)
         val kernelArea = kernelSize.first * kernelSize.second
         val initZero = context.nextTempValue()
         val kernelAreaConst = context.nextTempValue()
         val sumResult = context.nextTempValue()
-        
-        val initConstant = "$initZero = stablehlo.constant dense<0.0> : tensor<f32>"
-        val areaConstant = "$kernelAreaConst = stablehlo.constant dense<$kernelArea.0> : tensor<f32>"
-        
-        val sumOp = "$sumResult = stablehlo.reduce_window($input, $initZero) " +
-                "applies stablehlo.add " +
-                "over window dimensions = [${kernelSize.first}, ${kernelSize.second}] " +
-                "stride = [${stride.first}, ${stride.second}] " +
-                "pad = [[${padding.first}, ${padding.first}], [${padding.second}, ${padding.second}]] : $outputType"
-        
+
+        val initConstant = "$initZero = stablehlo.constant dense<0.0> : tensor<$elem>"
+        // Splat over the output type so the divide is element-type consistent (a scalar
+        // tensor<f32> divisor was a latent type mismatch).
+        val areaConstant = "$kernelAreaConst = stablehlo.constant dense<$kernelArea.0> : $outputType"
+        val sumOp = reduceWindowGeneric(
+            sumResult, input, inputType, initZero, "stablehlo.add",
+            elem, kernelSize, stride, padding, outputType,
+        )
         val divideOp = "$resultValue = stablehlo.divide $sumResult, $kernelAreaConst : $outputType"
-        
-        // Emit operations through context
+
         context.emitOperation(initConstant)
         context.emitOperation(areaConstant)
         context.emitOperation(sumOp)
         context.emitOperation(divideOp)
-        
         return listOf(initConstant, areaConstant, sumOp, divideOp)
     }
     
