@@ -35,6 +35,7 @@ include("skainet-compile:skainet-compile-opt")
 include("skainet-compile:skainet-compile-json")
 include("skainet-compile:skainet-compile-hlo")
 include("skainet-compile:skainet-compile-c")
+include("skainet-compile:skainet-compile-minerva")
 
 // ====== BACKENDS
 include("skainet-backends:skainet-backend-api")
