@@ -59,10 +59,13 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public final fun getModuleDeclarations ()Ljava/lang/String;
 	public final fun getTypeMapper ()Lsk/ainet/compile/hlo/TypeMapper;
 	public final fun getValueName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getValueName (Ljava/lang/String;I)Ljava/lang/String;
 	public final fun getValueType (Ljava/lang/String;)Ljava/lang/String;
 	public final fun nextTempValue ()Ljava/lang/String;
 	public final fun registerExternalParameter (Lsk/ainet/compile/hlo/ExternalParameterRef;)V
+	public final fun resolveOperands (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
 	public final fun setGraph (Lsk/ainet/lang/graph/ComputeGraph;)V
+	public final fun setValueName (Ljava/lang/String;ILjava/lang/String;)V
 	public final fun setValueName (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun setValueType (Ljava/lang/String;Ljava/lang/String;)V
 }
@@ -201,6 +204,38 @@ public final class sk/ainet/compile/hlo/StableHloConverterFactory {
 	public static synthetic fun createFast$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
 }
 
+public final class sk/ainet/compile/hlo/StableHloExportArchitecture {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/StableHloExportArchitecture;
+	public static final field backendName Ljava/lang/String;
+	public final fun getComponentNames ()Ljava/util/Map;
+}
+
+public final class sk/ainet/compile/hlo/StableHloGraphExportConverter : sk/ainet/compile/export/GraphExportConverter {
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloConverter;)V
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloConverter;Ljava/lang/String;)V
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloConverter;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Lsk/ainet/compile/hlo/StableHloConverter;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun convert (Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportContext;)Ljava/lang/Object;
+	public fun convert (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/export/GraphExportContext;)Lsk/ainet/compile/hlo/StableHloModule;
+	public fun getBackendName ()Ljava/lang/String;
+	public final fun getFunctionName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/StableHloGraphExporter {
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloGraphExportConverter;)V
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloGraphExportConverter;Lsk/ainet/compile/hlo/StableHloTextWriter;)V
+	public synthetic fun <init> (Lsk/ainet/compile/hlo/StableHloGraphExportConverter;Lsk/ainet/compile/hlo/StableHloTextWriter;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun exportModule (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/export/GraphExportResult;
+	public final fun exportModule (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/export/GraphExportContext;)Lsk/ainet/compile/export/GraphExportResult;
+	public final fun exportText (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/export/GraphExportResult;
+	public final fun exportText (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/export/GraphExportContext;)Lsk/ainet/compile/export/GraphExportResult;
+	public final fun getBackendName ()Ljava/lang/String;
+	public final fun getConverter ()Lsk/ainet/compile/hlo/StableHloGraphExportConverter;
+	public final fun getWriter ()Lsk/ainet/compile/hlo/StableHloTextWriter;
+}
+
 public final class sk/ainet/compile/hlo/StableHloModule {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/List;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -259,6 +294,17 @@ public final class sk/ainet/compile/hlo/StableHloOptimizer$Companion {
 	public final fun createDefault ()Lsk/ainet/compile/hlo/StableHloOptimizer;
 }
 
+public final class sk/ainet/compile/hlo/StableHloTextWriter : sk/ainet/compile/export/GraphExportWriter {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getBackendName ()Ljava/lang/String;
+	public final fun getLogicalPath ()Ljava/lang/String;
+	public synthetic fun write (Ljava/lang/Object;Lsk/ainet/compile/export/GraphExportContext;)Ljava/lang/Object;
+	public fun write (Lsk/ainet/compile/hlo/StableHloModule;Lsk/ainet/compile/export/GraphExportContext;)Ljava/lang/String;
+}
+
 public final class sk/ainet/compile/hlo/TypeMapper {
 	public fun <init> ()V
 	public final fun areTypesCompatible (Lsk/ainet/lang/tensor/ops/TensorSpec;Lsk/ainet/lang/tensor/ops/TensorSpec;)Z
@@ -272,6 +318,12 @@ public final class sk/ainet/compile/hlo/TypeMapper {
 }
 
 public final class sk/ainet/compile/hlo/converters/ActivationOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/AttentionOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
 	public fun getSupportedOperations ()Ljava/util/Set;
