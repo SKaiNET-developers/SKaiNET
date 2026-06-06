@@ -4,6 +4,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.ops.TensorSpec
 
 /**
  * Converter for shape manipulation operations.
@@ -97,7 +98,24 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
                 ?: node.inputs.getOrNull(i)?.let { context.getTypeMapper().mapTensorType(it) }
                 ?: "tensor<?xf32>"
         }
-        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : ($operandTypes) -> $outputType"
+        // Compute the result type ourselves: the extent on `axis` is the SUM of the
+        // operands' extents there (the other axes match operand 0). Trusting the node's
+        // declared output spec mis-infers the concatenated axis for >2 operands (#667).
+        val inShapes = node.inputs.mapNotNull { it.shape }
+        val resultType =
+            if (inShapes.size == node.inputs.size && inShapes.size == operands.size &&
+                inShapes.isNotEmpty() && inShapes.all { it.size == inShapes[0].size } &&
+                axis in inShapes[0].indices
+            ) {
+                val outShape = inShapes[0].toMutableList()
+                outShape[axis] = inShapes.sumOf { it[axis] }
+                context.getTypeMapper().mapTensorType(
+                    TensorSpec("${node.id}_out", outShape, outputSpec?.dtype ?: node.inputs[0].dtype),
+                )
+            } else {
+                outputType
+            }
+        val operation = "$resultValue = stablehlo.concatenate $operandList, dim = $axis : ($operandTypes) -> $resultType"
         context.emitOperation(operation)
 
         return ConversionResult.Success(
@@ -297,23 +315,14 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         }
         
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
-            ?: "tensor<?xf32>"
-        
-        // Get the new shape from parameters or output spec
-        val newShape = when {
-            outputSpec?.shape != null -> outputSpec.shape
-            node.operation.parameters.containsKey("shape") -> {
-                @Suppress("UNCHECKED_CAST")
-                node.operation.parameters["shape"] as? List<Int>
-            }
-            node.operation.parameters.containsKey("newShape") -> {
-                @Suppress("UNCHECKED_CAST")
-                node.operation.parameters["newShape"] as? List<Int>
-            }
-            else -> null
-        }
-        
+
+        // Get the new shape from the output spec or any of the parameter aliases the
+        // tape records it under (`outputShape` is the key the reshape trace uses, #666).
+        @Suppress("UNCHECKED_CAST")
+        fun param(key: String): List<Int>? = node.operation.parameters[key] as? List<Int>
+        val newShape: List<Int>? = outputSpec?.shape
+            ?: param("shape") ?: param("newShape") ?: param("outputShape")
+
         if (newShape == null || newShape.isEmpty()) {
             return ConversionResult.Failure(
                 "Reshape operation requires a target shape specification",
@@ -321,9 +330,16 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             )
         }
 
+        // Prefer the declared output type; otherwise build it from the resolved shape so
+        // a reshape whose target lives only in a parameter still emits a typed result.
+        val resultType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: context.getTypeMapper().mapTensorType(
+                TensorSpec("${node.id}_out", newShape, node.inputs.firstOrNull()?.dtype ?: "FP32"),
+            )
+
         val inputType = resolveOperandType(operands[0], node, context)
         val resultValue = context.nextTempValue()
-        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $outputType"
+        val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $resultType"
         context.emitOperation(operation)
 
         return ConversionResult.Success(
