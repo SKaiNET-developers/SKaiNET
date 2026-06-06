@@ -17,6 +17,7 @@ class MinervaExportFacadeTest {
         val options = minervaTestOptions()
 
         assertEquals(MinervaExportBackend.backendName, facade.backendName)
+        assertEquals(MinervaExportBackend.backendName, facade.graphCanonicalizer.backendName)
         assertEquals(MinervaTarget.ATMEGA328P, options.target)
         assertEquals(MinervaQuantization.Q8, options.quantization)
         assertEquals("jvm-sequential-mlp-q8", options.toMetadata()["phaseOneScope"])
@@ -54,8 +55,11 @@ class MinervaExportFacadeTest {
         assertEquals(GraphExportStatus.FAILED, result.status)
         assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
         assertEquals("minerva.export.not_implemented", result.failure?.code)
+        assertEquals("#693", result.failure?.details?.get("issue"))
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.graph.validation.passed" })
+        assertTrue(result.diagnostics.infos.any { it.code == "minerva.lowering.completed" })
         assertTrue(result.compatibilityReport?.compatible == true)
+        assertEquals(1, result.intermediate?.layerCount)
         assertTrue(result.metadata["target"] == MinervaTarget.ATMEGA328P.compilerId)
         assertFailsWith<IllegalStateException> {
             result.requireSuccess()
@@ -69,6 +73,7 @@ class MinervaExportFacadeTest {
 
         assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
         assertTrue(result.compatibilityReport?.compatible == true)
+        assertEquals(MinervaActivation.RELU, result.intermediate?.layers?.single()?.activation)
     }
 
     @Test
@@ -115,5 +120,22 @@ class MinervaExportFacadeTest {
             }
         )
         assertEquals("conv", result.failure?.details?.get("nodeId"))
+    }
+
+    @Test
+    fun exportGraphCarriesLoweredIntermediateBeforeCompilerStage() {
+        val result = MinervaExportFacade().exportGraph(
+            graph = validMinervaMlpGraph(),
+            options = minervaTestOptions(projectName = "LoweredMlp")
+        )
+        val intermediate = assertNotNull(result.intermediate)
+
+        assertEquals(GraphExportStatus.FAILED, result.status)
+        assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
+        assertEquals("LoweredMlp", intermediate.projectName)
+        assertEquals(MinervaTensorRole.INPUT, intermediate.input.role)
+        assertEquals(MinervaTensorRole.OUTPUT, intermediate.output.role)
+        assertEquals("matmul", intermediate.layers.single().id)
+        assertEquals("1", result.failure?.details?.get("layers"))
     }
 }
