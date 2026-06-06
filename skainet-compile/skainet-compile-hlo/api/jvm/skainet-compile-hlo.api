@@ -59,10 +59,13 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public final fun getModuleDeclarations ()Ljava/lang/String;
 	public final fun getTypeMapper ()Lsk/ainet/compile/hlo/TypeMapper;
 	public final fun getValueName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getValueName (Ljava/lang/String;I)Ljava/lang/String;
 	public final fun getValueType (Ljava/lang/String;)Ljava/lang/String;
 	public final fun nextTempValue ()Ljava/lang/String;
 	public final fun registerExternalParameter (Lsk/ainet/compile/hlo/ExternalParameterRef;)V
+	public final fun resolveOperands (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
 	public final fun setGraph (Lsk/ainet/lang/graph/ComputeGraph;)V
+	public final fun setValueName (Ljava/lang/String;ILjava/lang/String;)V
 	public final fun setValueName (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun setValueType (Ljava/lang/String;Ljava/lang/String;)V
 }
@@ -272,6 +275,12 @@ public final class sk/ainet/compile/hlo/TypeMapper {
 }
 
 public final class sk/ainet/compile/hlo/converters/ActivationOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
+public final class sk/ainet/compile/hlo/converters/AttentionOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
 	public fun getSupportedOperations ()Ljava/util/Set;
