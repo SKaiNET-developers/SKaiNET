@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -20,22 +19,10 @@ kotlin {
         }
     }
 
-    iosArm64()
-    iosSimulatorArm64()
-    macosArm64()
-    linuxX64()
-    linuxArm64()
-
     jvm()
 
-    js {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-    }
+    // Non-JVM targets are intentionally omitted until skainet-io-image
+    // provides working image interop actuals instead of runtime stubs.
 
     sourceSets {
         val commonMain by getting {
