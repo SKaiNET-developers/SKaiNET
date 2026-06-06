@@ -7,7 +7,6 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.tape.toComputeGraph
-import sk.ainet.lang.tensor.ops.ValidationResult
 import sk.ainet.lang.tensor.ops.VoidTensorOps
 import sk.ainet.tape.Execution
 
@@ -20,7 +19,8 @@ import sk.ainet.tape.Execution
  * implementation issues.
  */
 public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
-    public val backendName: String = MinervaExportBackend.backendName
+    public val backendName: String = MinervaExportBackend.backendName,
+    public val compatibilityValidator: MinervaCompatibilityValidator = MinervaCompatibilityValidator()
 ) {
 
     /**
@@ -86,35 +86,19 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             details = mapOf("nodes" to graph.nodes.size.toString())
         )
 
-        if (graph.nodes.isEmpty()) {
-            return graphValidationFailedResult(
-                options = options,
-                context = context,
-                errors = listOf("Minerva export requires at least one graph node.")
-            )
-        }
-
-        when (val validation = graph.validate()) {
-            is ValidationResult.Valid -> context.info(
-                stage = GraphExportStage.VALIDATION,
-                code = "minerva.graph.validation.passed",
-                message = "ComputeGraph validation passed before Minerva-specific checks."
-            )
-            is ValidationResult.Invalid -> return graphValidationFailedResult(
-                options = options,
-                context = context,
-                errors = validation.errors
-            )
+        val compatibilityReport = compatibilityValidator.validate(graph, options, context)
+        if (!compatibilityReport.compatible) {
+            return compatibilityValidationFailedResult(options, context, compatibilityReport)
         }
 
         val failure = MinervaExportFailure(
             kind = MinervaExportFailureKind.NOT_IMPLEMENTED,
             stage = GraphExportStage.LOWERING,
             code = "minerva.export.not_implemented",
-            message = "Minerva export API is scaffolded; compatibility validation, lowering, compiler invocation, packaging, and verification are implemented in follow-up issues.",
+            message = "Minerva export passed phase-one compatibility validation; lowering, compiler invocation, packaging, and verification are implemented in follow-up issues.",
             details = mapOf(
-                "nextStep" to "Implement MinervaCompatibilityValidator",
-                "issue" to "#691"
+                "nextStep" to "Implement MinervaGraphCanonicalizer",
+                "issue" to "#692"
             )
         )
         context.error(
@@ -123,7 +107,7 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             message = failure.message,
             details = failure.details
         )
-        return failedResult(options, context, failure)
+        return failedResult(options, context, failure, compatibilityReport)
     }
 
     private fun unsupportedModelResult(model: Any, options: MinervaExportOptions): MinervaExportResult {
@@ -165,31 +149,41 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         return failedResult(options, context, failure)
     }
 
-    private fun graphValidationFailedResult(
+    private fun compatibilityValidationFailedResult(
         options: MinervaExportOptions,
         context: GraphExportContext,
-        errors: List<String>
+        report: MinervaCompatibilityReport
     ): MinervaExportResult {
+        val firstIssue = report.issues.firstOrNull()
+        val details = mutableMapOf(
+            "issueCount" to report.issues.size.toString(),
+            "target" to report.target.compilerId,
+            "quantization" to report.quantization.compilerId
+        )
+        if (firstIssue != null) {
+            details += mapOf(
+                "issueKind" to firstIssue.kind.name,
+                "remediation" to firstIssue.remediation
+            )
+            firstIssue.nodeId?.let { details["nodeId"] = it }
+            firstIssue.operationName?.let { details["operationName"] = it }
+            details += firstIssue.details
+        }
         val failure = MinervaExportFailure(
-            kind = MinervaExportFailureKind.GRAPH_VALIDATION_FAILED,
+            kind = MinervaExportFailureKind.COMPATIBILITY_VALIDATION_FAILED,
             stage = GraphExportStage.VALIDATION,
-            code = "minerva.graph.validation_failed",
-            message = "ComputeGraph validation failed before Minerva-specific checks.",
-            details = errors.mapIndexed { index, error -> "error$index" to error }.toMap()
+            code = firstIssue?.code ?: "minerva.compatibility.failed",
+            message = firstIssue?.message ?: "Minerva compatibility validation failed.",
+            details = details
         )
-        context.error(
-            stage = failure.stage,
-            code = failure.code,
-            message = failure.message,
-            details = failure.details
-        )
-        return failedResult(options, context, failure)
+        return failedResult(options, context, failure, report)
     }
 
     private fun failedResult(
         options: MinervaExportOptions,
         context: GraphExportContext,
-        failure: MinervaExportFailure
+        failure: MinervaExportFailure,
+        compatibilityReport: MinervaCompatibilityReport? = null
     ): MinervaExportResult {
         return MinervaExportResult(
             options = options,
@@ -197,7 +191,8 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             diagnostics = context.diagnosticReport(),
             artifacts = context.artifacts,
             failure = failure,
-            metadata = context.metadata
+            metadata = context.metadata,
+            compatibilityReport = compatibilityReport
         )
     }
 
