@@ -196,6 +196,20 @@ public class DagBuilder {
                 val target = reshapeTargetShape(operation) ?: return null
                 return spec(target)
             }
+            "flatten" -> {
+                // Collapse dims [startDim..endDim] into one, preserving the others
+                // (notably the leading batch dim). Without this, flatten echoes operand-0
+                // or collapses everything, so a downstream dense matmul mis-types. (#675)
+                val inS = input?.shape ?: return null
+                val rank = inS.size
+                val rawStart = operation.parameters["startDim"] as? Int ?: 1
+                val rawEnd = operation.parameters["endDim"] as? Int ?: -1
+                val start = if (rawStart < 0) rank + rawStart else rawStart
+                val end = if (rawEnd < 0) rank + rawEnd else rawEnd
+                if (start !in 0 until rank || end !in 0 until rank || start > end) return null
+                val collapsed = inS.subList(start, end + 1).fold(1) { a, b -> a * b }
+                return spec(inS.subList(0, start) + collapsed + inS.subList(end + 1, rank))
+            }
             "matmul", "dot", "mm", "bmm", "batch_matmul" -> {
                 val lhs = inputs.getOrNull(0)?.spec?.shape
                 val rhs = inputs.getOrNull(1)?.spec?.shape
@@ -215,9 +229,56 @@ public class DagBuilder {
                 out[axis] = shapes.sumOf { it[axis] }
                 return spec(out)
             }
+            "conv1d" -> {
+                // (N, Cin, L) * (Cout, Cin/groups, K) -> (N, Cout, Lout). conv2d already
+                // infers via Conv2dOperation; conv1d is a GenericOperation with no inference. (#675)
+                val inS = inputs.getOrNull(0)?.spec?.shape
+                val wS = inputs.getOrNull(1)?.spec?.shape
+                if (inS == null || wS == null || inS.size != 3 || wS.size != 3) return null
+                val stride = operation.parameters["stride"] as? Int ?: 1
+                val pad = operation.parameters["padding"] as? Int ?: 0
+                val dil = operation.parameters["dilation"] as? Int ?: 1
+                return spec(listOf(inS[0], wS[0], windowedOutput(inS[2], wS[2], stride, pad, dil)))
+            }
+            "gather" -> {
+                // table[..axis..] gathered by `indices` -> table[:axis] ⊕ indices.shape ⊕ table[axis+1:]. (#675)
+                val table = inputs.getOrNull(0)?.spec?.shape
+                val idx = inputs.getOrNull(1)?.spec?.shape
+                if (table == null || idx == null || table.isEmpty()) return null
+                val rawAxis = operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int ?: -1
+                val axis = if (rawAxis < 0) table.size + rawAxis else rawAxis
+                if (axis !in table.indices) return null
+                return spec(table.subList(0, axis) + idx + table.subList(axis + 1, table.size))
+            }
+            "maxpool2d", "avgpool2d" -> {
+                // (N, C, H, W) windowed by kernel/stride/padding -> (N, C, Hout, Wout). (#675)
+                val inS = inputs.getOrNull(0)?.spec?.shape
+                if (inS == null || inS.size != 4) return null
+                val k = pairParam(operation, "kernel") ?: pairParam(operation, "kernelSize") ?: return null
+                val s = pairParam(operation, "stride") ?: (1 to 1)
+                val p = pairParam(operation, "padding") ?: (0 to 0)
+                return spec(
+                    listOf(
+                        inS[0], inS[1],
+                        windowedOutput(inS[2], k.first, s.first, p.first, 1),
+                        windowedOutput(inS[3], k.second, s.second, p.second, 1),
+                    ),
+                )
+            }
         }
         return null
     }
+
+    /** Windowed (conv/pool) output extent: floor((in + 2·pad − dilation·(k−1) − 1) / stride) + 1. */
+    private fun windowedOutput(inDim: Int, k: Int, stride: Int, pad: Int, dilation: Int): Int =
+        (inDim + 2 * pad - dilation * (k - 1) - 1) / stride + 1
+
+    private fun pairParam(operation: Operation, key: String): Pair<Int, Int>? =
+        (operation.parameters[key] as? Pair<*, *>)?.let {
+            val a = it.first as? Int
+            val b = it.second as? Int
+            if (a != null && b != null) a to b else null
+        }
 
     /** Recover a reshape/view target shape from the op's `newShape`/`shape` parameter. */
     private fun reshapeTargetShape(operation: Operation): List<Int>? {

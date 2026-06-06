@@ -73,9 +73,9 @@ class NeuralNetOperationsConverterTest {
         
         assertNotNull(module)
         assertContains(module.content, "stablehlo.reduce_window")
-        // Should contain kernel size and stride information
-        assertContains(module.content, "window dimensions")
-        assertContains(module.content, "stride")
+        // Generic region form (IREE-parseable): window_dimensions / window_strides attrs.
+        assertContains(module.content, "window_dimensions")
+        assertContains(module.content, "window_strides")
     }
 
     private fun createConv2dGraph(): DefaultComputeGraph {
