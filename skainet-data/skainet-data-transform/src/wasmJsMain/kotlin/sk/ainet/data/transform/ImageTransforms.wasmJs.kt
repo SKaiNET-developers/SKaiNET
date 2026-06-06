@@ -7,13 +7,19 @@ package sk.ainet.data.transform
 
 import sk.ainet.io.image.PlatformBitmapImage
 
+private fun PlatformBitmapImage.toPackedRgbaImage(): PackedRgbaImage =
+    PackedRgbaImage(width, height, rgba)
+
+private fun PackedRgbaImage.toPlatformBitmapImage(): PlatformBitmapImage =
+    PlatformBitmapImage(width, height, rgba)
+
 public actual fun resizePlatformImage(
     image: PlatformBitmapImage,
     width: Int,
     height: Int,
     interpolation: Interpolation
 ): PlatformBitmapImage {
-    throw NotImplementedError("Image transforms not yet implemented for WebAssembly")
+    return resizePackedRgbaImage(image.toPackedRgbaImage(), width, height, interpolation).toPlatformBitmapImage()
 }
 
 public actual fun cropPlatformImage(
@@ -23,7 +29,7 @@ public actual fun cropPlatformImage(
     width: Int,
     height: Int
 ): PlatformBitmapImage {
-    throw NotImplementedError("Image transforms not yet implemented for WebAssembly")
+    return cropPackedRgbaImage(image.toPackedRgbaImage(), x, y, width, height).toPlatformBitmapImage()
 }
 
 public actual fun rotatePlatformImage(
@@ -31,7 +37,7 @@ public actual fun rotatePlatformImage(
     degrees: Float,
     interpolation: Interpolation
 ): PlatformBitmapImage {
-    throw NotImplementedError("Image transforms not yet implemented for WebAssembly")
+    return rotatePackedRgbaImage(image.toPackedRgbaImage(), degrees, interpolation).toPlatformBitmapImage()
 }
 
 public actual fun padPlatformImage(
@@ -44,5 +50,14 @@ public actual fun padPlatformImage(
     green: Int,
     blue: Int
 ): PlatformBitmapImage {
-    throw NotImplementedError("Image transforms not yet implemented for WebAssembly")
+    return padPackedRgbaImage(
+        image.toPackedRgbaImage(),
+        top,
+        bottom,
+        left,
+        right,
+        red,
+        green,
+        blue
+    ).toPlatformBitmapImage()
 }
