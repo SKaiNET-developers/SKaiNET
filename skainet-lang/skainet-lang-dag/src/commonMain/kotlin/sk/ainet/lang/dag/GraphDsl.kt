@@ -1,5 +1,6 @@
 package sk.ainet.lang.dag
 
+import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.ops.GenericOperation
 import sk.ainet.lang.tensor.ops.InputOperation
 import sk.ainet.lang.tensor.ops.Operation
@@ -171,17 +172,65 @@ public class DagBuilder {
         inputs: List<GraphValue<*>>,
         nodeId: String
     ): List<TensorSpec>? {
-        if (operation.name.lowercase() !in setOf("sum", "mean", "variance")) return null
-        val input = inputs.firstOrNull()?.spec ?: return null
-        val outputShape = reductionOutputShape(input.shape, operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int)
-        return listOf(
+        val input = inputs.firstOrNull()?.spec
+        fun spec(shape: List<Int>?): List<TensorSpec> = listOf(
             TensorSpec(
                 name = "${nodeId}_out0",
-                shape = outputShape,
-                dtype = input.dtype,
-                requiresGrad = input.requiresGrad
-            )
+                shape = shape,
+                dtype = input?.dtype ?: "unknown",
+                requiresGrad = input?.requiresGrad ?: false,
+            ),
         )
+
+        // Shape-changing ops whose output extent differs from operand-0. Without these,
+        // ensureOutputSpecs falls back to echoing operand-0's shape, producing modules
+        // whose declared result/return type contradicts the op's real output (the value
+        // iree-compile actually sees) — e.g. matmul (1,4)x(4,3) declared as 1x4 not 1x3,
+        // concat summed axis lost, reshape target dropped. (SKaiNET#673)
+        when (operation.name.lowercase()) {
+            "sum", "mean", "variance" -> {
+                input ?: return null
+                return spec(reductionOutputShape(input.shape, operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int))
+            }
+            "reshape", "view" -> {
+                val target = reshapeTargetShape(operation) ?: return null
+                return spec(target)
+            }
+            "matmul", "dot", "mm", "bmm", "batch_matmul" -> {
+                val lhs = inputs.getOrNull(0)?.spec?.shape
+                val rhs = inputs.getOrNull(1)?.spec?.shape
+                if (lhs == null || rhs == null || lhs.size < 2 || rhs.size < 2) return null
+                // (..., M, K) @ (..., K, N) -> (..., M, N)
+                return spec(lhs.dropLast(1) + rhs.last())
+            }
+            "concat", "concatenate", "cat" -> {
+                val shapes = inputs.mapNotNull { it.spec.shape }
+                if (shapes.size != inputs.size || shapes.isEmpty()) return null
+                if (shapes.any { it.size != shapes[0].size }) return null
+                val rank = shapes[0].size
+                val rawAxis = operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int ?: return null
+                val axis = if (rawAxis < 0) rank + rawAxis else rawAxis
+                if (axis !in 0 until rank) return null
+                val out = shapes[0].toMutableList()
+                out[axis] = shapes.sumOf { it[axis] }
+                return spec(out)
+            }
+        }
+        return null
+    }
+
+    /** Recover a reshape/view target shape from the op's `newShape`/`shape` parameter. */
+    private fun reshapeTargetShape(operation: Operation): List<Int>? {
+        val raw = operation.parameters["newShape"]
+            ?: operation.parameters["shape"]
+            ?: operation.parameters["outputShape"]
+            ?: return null
+        return when (raw) {
+            is Shape -> raw.dimensions.toList()
+            is IntArray -> raw.toList()
+            is List<*> -> raw.filterIsInstance<Int>().takeIf { it.size == raw.size }
+            else -> null
+        }
     }
 
     private fun reductionOutputShape(shape: List<Int>?, dim: Int?): List<Int>? {
