@@ -34,7 +34,10 @@ kotlin {
         browser {
             testTask {
                 useMocha {
-                    timeout = "10s"
+                    // Generous timeout: the micrograd moons demo trains a 200-epoch MLP,
+                    // which is slow in a browser engine (especially wasmJs under CI/parallel
+                    // load) and can exceed Mocha's 2s default before the computation finishes.
+                    timeout = "60s"
                 }
             }
         }
@@ -45,7 +48,10 @@ kotlin {
         browser {
             testTask {
                 useMocha {
-                    timeout = "10s"
+                    // Generous timeout: the micrograd moons demo trains a 200-epoch MLP,
+                    // which is slow in a browser engine (especially wasmJs under CI/parallel
+                    // load) and can exceed Mocha's 2s default before the computation finishes.
+                    timeout = "60s"
                 }
             }
         }
