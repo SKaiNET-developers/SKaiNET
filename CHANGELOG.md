@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-06-06
+
+### Fixed
+
+- **DAG-DSL StableHLO export now compiles end-to-end with IREE for the full conformance suite (7/7 models, 27/27 ops).** Shape-changing ops declared a result/return type inferred from operand-0 instead of the op's real output, so `iree-compile` rejected the modules (*"inferred shape … is incompatible with return type"*). `DagBuilder.inferDagOutputSpecs` now computes the correct output spec for:
+  - **`reshape`/`view`** — reads the target shape from the op's `newShape` parameter (a `Shape`, which the converter's `as? List<Int>` had missed). (#673, PR #674)
+  - **`matmul`/`dot`/`mm`/`bmm`** — `(…, M, K) @ (…, K, N) → (…, M, N)` instead of echoing operand-0. (#673, PR #674)
+  - **`concatenate`** — the corrected summed-axis extent propagates to the consumers and the `func.func` return type, not just the op line. (#673, PR #674)
+  - **`conv1d`** — windowed `(N, Cout, Lout)`; `conv2d` already inferred via `Conv2dOperation`, but `conv1d` was a `GenericOperation`. (#675, PR #676)
+  - **`gather`** — `table[:axis] ⊕ indices.shape ⊕ table[axis+1:]`. (#675, PR #676)
+  - **`maxpool2d`/`avgpool2d`** — windowed `(N, C, Hout, Wout)`. (#675, PR #676)
+  - **`flatten`** — collapses `[startDim..endDim]` while preserving the leading batch dim (it was collapsing everything to rank-1, breaking the dense layer in mnist-cnn). (#675, PR #676)
+- **`reduce_window` is emitted in IREE's parseable generic region form.** Pooling previously used the pretty `… applies <op> over window …` form, which IREE rejects (*"has no custom assembly form"*). Now emits `"stablehlo.reduce_window"(…) ({ ^bb0(…): … })` with full NCHW-rank window attributes; average pooling's divisor is splatted to the output type (was a scalar-vs-tensor mismatch). (#675, PR #676)
+- **`MlirValidator` understands region block arguments.** It now registers `^bb0(%a, %b)` block-argument SSA definitions and every `%x =` result on a line, so single-line region ops (e.g. `reduce_window`) validate. (PR #676)
+
+### Changed
+
+- Regenerated the JVM binary-compatibility baselines (`apiDump`) to match the public API exposed since 0.27.0 (`AttentionOperationsConverter`, multi-output port helpers, `KClass` dtype constructors).
+
 ## [0.28.0] - 2026-06-06
 
 ### Fixed

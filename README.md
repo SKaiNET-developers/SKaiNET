@@ -35,7 +35,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.28.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.28.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -193,13 +193,15 @@ deployment, the StableHLO path for native and edge targets.
 
 ---
 
-## What's New in 0.28.0
+## What's New in 0.28.1
 
-- **Four StableHLO export bugs fixed — the Kotlin DSL → MLIR path lowers reshape, concatenate, constants, and reductions correctly.** `reshape` whose target shape lives only in an op parameter now lowers to a typed `stablehlo.reshape` (#666); multi-input `concatenate` sums the operands' extents on the concatenated axis instead of echoing operand-0's (`1×1 + 1×4 + 1×1` on dim 1 → `1×6`, not `1×1`) (#667); DAG constants are inlined into the module and reductions drop the reduced dimension (#663); and `HloGenerator`'s forward-pass tracing now binds the sample input and synthesizes external inputs so it emits real ops instead of a structure-only module (#668). (PRs #664, #670)
-- **Non-JVM image runtime support.** Image and data-transform modules are scoped to their supported KMP targets, with a non-JVM image runtime so the image/data-transform APIs build honestly across targets. (PR #671)
+- **The Kotlin DSL → StableHLO → IREE path is green end-to-end for the whole conformance suite — 7/7 models and 27/27 ops `iree-compile` to a `vmfb`** (grayscale, tiny-mlp, whisper, mnist-cnn, yolo, leaf-embed, gemma3-260m). Shape-changing ops had been declaring a result/return type from operand-0 instead of their real output, so IREE rejected the modules. `inferDagOutputSpecs` now computes the correct output spec for `reshape`, `matmul`, `concatenate` (#673), and `conv1d`, `gather`, `maxpool2d`/`avgpool2d`, `flatten` (#675), and the corrected shapes flow to both the op result type and the `func.func` return.
+- **`reduce_window` (pooling) is emitted in IREE's generic region form** instead of the pretty `applies … over window` form IREE rejects; the `MlirValidator` now understands region block arguments. (#675, PR #676)
+- Verified end-to-end by publishing each candidate to mavenLocal and running the `skainet-iree-conformance` harness before release.
 
 ### Recent releases
 
+- **0.28.0** — Four StableHLO export bugs fixed (reshape #666, concatenate #667, constants/reductions #663, `HloGenerator` tracing #668) plus non-JVM image runtime support (#671). (PRs #664, #670, #671)
 - **0.27.0** — A full gemma3 network lowers to StableHLO and compiles to an IREE `vmfb` (zero op gaps, verified by `GemmaTraceTest`): new `scaledDotProductAttention` (with causal + explicit additive mask), `permute`, `narrow`, and multi-output `split` converters, plus boxing-free `FloatArray` weight externalization for `.irpa` baking. (PRs #661 et al.)
 - **0.26.0** — Q4_0 promoted to a first-class quantized format across the provider stack, `tanh` as a first-class activation primitive, and a CPU tensor `convert` op, plus test/build/CI hygiene. (PRs #648–#651, #631, #636)
 - **0.25.0** — BF16 and Q8_0 matmul kernels end-to-end across the provider stack, autograd completeness for `pow`/`log` and the conv/pool/upsample/split family, the hybrid adaptive dtype-constraint DSL, the `@DarcValidated` operator-doc flag, and the SentencePiece special-token splitter. (PRs #595, #605–#628)
