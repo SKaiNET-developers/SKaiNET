@@ -24,9 +24,11 @@ class MinervaExportFacadeTest {
         assertEquals(MinervaExportBackend.backendName, facade.npzWriter.backendName)
         assertEquals(MinervaExportBackend.backendName, facade.compilerAdapter.backendName)
         assertEquals(MinervaExportBackend.backendName, facade.projectPackager.backendName)
+        assertEquals(MinervaExportBackend.backendName, facade.hostVerifier.backendName)
         assertEquals(MinervaTarget.ATMEGA328P, options.target)
         assertEquals(MinervaQuantization.Q8, options.quantization)
         assertEquals("python3", options.pythonExecutable)
+        assertEquals(1.0e-3f, options.hostVerificationTolerance)
         assertEquals("jvm-sequential-mlp-q8", options.toMetadata()["phaseOneScope"])
     }
 
@@ -46,6 +48,11 @@ class MinervaExportFacadeTest {
             MinervaExportOptions(outputDir = "build/minerva", projectName = "TinyMlp", pythonExecutable = "")
         }
         assertTrue(pythonError.message?.contains("pythonExecutable cannot be blank") == true)
+
+        val toleranceError = assertFailsWith<IllegalArgumentException> {
+            MinervaExportOptions(outputDir = "build/minerva", projectName = "TinyMlp", hostVerificationTolerance = 0.0f)
+        }
+        assertTrue(toleranceError.message?.contains("hostVerificationTolerance") == true)
     }
 
     @Test
@@ -173,31 +180,50 @@ class MinervaExportFacadeTest {
         assertTrue(bundle.generatedFiles.contains("generated/weights.c"))
         assertTrue(bundle.generatedFiles.contains("include/secrets.example.h"))
         assertEquals("build/minerva/PackagedMlp/generated/weights.c", result.compilerOutput?.weightsCPath)
+        assertEquals(MinervaHostVerificationStatus.SKIPPED, result.hostVerification?.status)
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.compiler.completed" })
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.packaging.completed" })
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.export.completed_without_verification" })
     }
 
     @Test
-    fun exportGraphStopsAtVerificationPlaceholderAfterPackagingByDefault() {
+    fun exportGraphRunsHostVerificationBeforeSuccessByDefault() {
         val result = packagingFacade().exportGraph(
             graph = validMinervaMlpGraph(),
-            options = minervaTestOptions(projectName = "NeedsVerification")
+            options = minervaTestOptions(projectName = "VerifiedMlp")
+        )
+
+        assertEquals(GraphExportStatus.SUCCESS, result.status)
+        assertEquals("build/minerva/VerifiedMlp", result.bundle?.outputDir)
+        assertEquals(MinervaHostVerificationStatus.PASSED, result.hostVerification?.status)
+        assertEquals(MinervaHostVerificationStatus.PASSED, result.hostVerification?.parityStatus)
+        assertNotNull(result.compilerOutput)
+        assertNotNull(result.npzModel)
+        assertTrue(result.diagnostics.infos.any { it.code == "minerva.host_verification.passed" })
+    }
+
+    @Test
+    fun exportGraphReturnsTypedVerificationFailure() {
+        val result = packagingFacade(hostVerifier = FakeHostVerifier(MinervaHostVerificationStatus.FAILED)).exportGraph(
+            graph = validMinervaMlpGraph(),
+            options = minervaTestOptions(projectName = "BadVerification")
         )
 
         assertEquals(GraphExportStatus.FAILED, result.status)
-        assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
+        assertEquals(MinervaExportFailureKind.VERIFICATION_FAILED, result.failure?.kind)
         assertEquals(GraphExportStage.VERIFICATION, result.failure?.stage)
         assertEquals("#695", result.failure?.details?.get("issue"))
-        assertEquals("build/minerva/NeedsVerification", result.bundle?.outputDir)
-        assertNotNull(result.compilerOutput)
-        assertNotNull(result.npzModel)
+        assertEquals(MinervaHostVerificationStatus.FAILED, result.hostVerification?.status)
+        assertEquals("minerva.host_verification.fake_failed", result.failure?.code)
     }
 
-    private fun packagingFacade(): MinervaExportFacade {
+    private fun packagingFacade(
+        hostVerifier: MinervaHostVerifier = FakeHostVerifier(MinervaHostVerificationStatus.PASSED)
+    ): MinervaExportFacade {
         return MinervaExportFacade(
             compilerAdapter = FakeCompilerAdapter(),
-            projectPackager = FakeProjectPackager()
+            projectPackager = FakeProjectPackager(),
+            hostVerifier = hostVerifier
         )
     }
 
@@ -256,6 +282,43 @@ class MinervaExportFacadeTest {
                 generatedFiles = generatedFiles,
                 manifestPath = "manifest.json",
                 compilerOutput = request.compilerOutput
+            )
+        }
+    }
+
+    private class FakeHostVerifier(
+        private val status: MinervaHostVerificationStatus
+    ) : MinervaHostVerifier {
+        override val backendName: String = MinervaExportBackend.backendName
+
+        override fun verify(
+            request: MinervaHostVerificationRequest,
+            context: GraphExportContext
+        ): MinervaHostVerification {
+            val code = if (status == MinervaHostVerificationStatus.FAILED) {
+                "minerva.host_verification.fake_failed"
+            } else {
+                "minerva.host_verification.passed"
+            }
+            context.info(
+                stage = GraphExportStage.VERIFICATION,
+                code = code,
+                message = "Fake Minerva host verification completed.",
+                details = mapOf("projectDir" to request.bundle.outputDir)
+            )
+            return MinervaHostVerification(
+                status = status,
+                code = code,
+                message = "Fake Minerva host verification completed.",
+                hostBuildStatus = MinervaHostVerificationStatus.PASSED,
+                hostRunStatus = status,
+                parityStatus = status,
+                tolerance = request.options.hostVerificationTolerance,
+                expectedOutput = listOf(1.0f),
+                observedOutput = if (status == MinervaHostVerificationStatus.PASSED) listOf(1.0f) else listOf(2.0f),
+                maxAbsoluteError = if (status == MinervaHostVerificationStatus.PASSED) 0.0f else 1.0f,
+                remediation = "Use a real host verifier.",
+                details = mapOf("fake" to "true")
             )
         }
     }

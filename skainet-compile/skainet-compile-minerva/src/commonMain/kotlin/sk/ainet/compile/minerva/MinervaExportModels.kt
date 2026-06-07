@@ -52,6 +52,7 @@ public data class MinervaExportOptions(
     public val generateHostHarness: Boolean = true,
     public val generateFirmwareExample: Boolean = true,
     public val runHostVerification: Boolean = true,
+    public val hostVerificationTolerance: Float = 1.0e-3f,
     public val metadata: Map<String, String> = emptyMap()
 ) {
     init {
@@ -65,6 +66,9 @@ public data class MinervaExportOptions(
         requireOptionalPath("compilerScript", compilerScript)
         requireOptionalPath("keyFile", keyFile)
         requireOptionalPath("calibrationNpz", calibrationNpz)
+        require(hostVerificationTolerance.isFinite() && hostVerificationTolerance > 0.0f) {
+            "hostVerificationTolerance must be positive and finite"
+        }
         require(metadata.keys.all { it.isNotBlank() }) { "metadata keys cannot be blank" }
     }
 
@@ -77,6 +81,7 @@ public data class MinervaExportOptions(
             "generateHostHarness" to generateHostHarness.toString(),
             "generateFirmwareExample" to generateFirmwareExample.toString(),
             "runHostVerification" to runHostVerification.toString(),
+            "hostVerificationTolerance" to hostVerificationTolerance.toString(),
             "dumpWeights" to dumpWeights.toString()
         )
     }
@@ -99,6 +104,7 @@ public enum class MinervaExportFailureKind {
     COMPILER_PREREQUISITE_FAILED,
     COMPILER_FAILED,
     PACKAGING_FAILED,
+    VERIFICATION_FAILED,
     NOT_IMPLEMENTED
 }
 
@@ -213,7 +219,8 @@ public data class MinervaExportResult(
     public val compatibilityReport: MinervaCompatibilityReport? = null,
     public val intermediate: MinervaIntermediate? = null,
     public val npzModel: MinervaNpzModel? = null,
-    public val compilerOutput: MinervaCompilerOutput? = null
+    public val compilerOutput: MinervaCompilerOutput? = null,
+    public val hostVerification: MinervaHostVerification? = null
 ) {
     init {
         require(status != GraphExportStatus.SUCCESS || bundle != null) {

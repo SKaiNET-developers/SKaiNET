@@ -16,6 +16,8 @@ public actual object MinervaPlatformExportDefaults {
     public actual fun compilerAdapter(): MinervaCompilerAdapter = PythonMinervaCompilerAdapter()
 
     public actual fun projectPackager(): MinervaProjectPackager = JvmMinervaProjectPackager()
+
+    public actual fun hostVerifier(): MinervaHostVerifier = JvmMinervaHostVerifier()
 }
 
 /**
@@ -520,6 +522,11 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             |add_executable(${options.projectName}_host main.c ../generated/weights.c)
             |target_include_directories(${options.projectName}_host PRIVATE ../include)
             |
+            |include(CTest)
+            |if(BUILD_TESTING)
+            |  add_test(NAME minerva_host_smoke COMMAND ${options.projectName}_host)
+            |endif()
+            |
         """.trimMargin()
     }
 
@@ -590,6 +597,451 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             }
         }
         return "\"$escaped\""
+    }
+}
+
+/**
+ * JVM host verifier for packaged Minerva projects.
+ */
+public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
+    override val backendName: String = MinervaExportBackend.backendName
+) : MinervaHostVerifier {
+
+    override fun verify(
+        request: MinervaHostVerificationRequest,
+        context: GraphExportContext
+    ): MinervaHostVerification {
+        val options = request.options
+        val projectDir = Paths.get(request.bundle.outputDir).normalize()
+        val tolerance = options.hostVerificationTolerance
+        context.info(
+            stage = GraphExportStage.VERIFICATION,
+            code = "minerva.host_verification.started",
+            message = "Verifying packaged Minerva host project.",
+            details = mapOf(
+                "projectDir" to projectDir.toString(),
+                "tolerance" to tolerance.toString()
+            )
+        )
+
+        try {
+            structuralFailure(request, projectDir)?.let { return it }
+        } catch (exception: IOException) {
+            return failed(
+                code = "minerva.host_verification.package_read_failed",
+                message = "Unable to read packaged Minerva project files during host verification.",
+                tolerance = tolerance,
+                remediation = "Ensure the packaged project directory is readable and was not modified during verification.",
+                details = mapOf("reason" to (exception.message ?: exception.toString()))
+            )
+        }
+        val expectedOutput = try {
+            MinervaReferenceEvaluator.evaluate(request.intermediate)
+        } catch (exception: RuntimeException) {
+            return failed(
+                code = "minerva.host_verification.reference_unavailable",
+                message = "Unable to compute SKaiNET reference output for Minerva parity verification.",
+                tolerance = tolerance,
+                remediation = "Ensure lowered Minerva weights and biases contain numeric initializer values.",
+                details = mapOf("reason" to (exception.message ?: exception.toString()))
+            )
+        }
+
+        var hostBuildStatus = MinervaHostVerificationStatus.SKIPPED
+        var hostRunStatus = MinervaHostVerificationStatus.SKIPPED
+        if (metadataFlag(options, MinervaHostVerificationMetadata.RUN_CMAKE_BUILD)) {
+            val buildFailure = runCmakeBuild(projectDir, options, context, tolerance, expectedOutput)
+            if (buildFailure != null) return buildFailure
+            hostBuildStatus = MinervaHostVerificationStatus.PASSED
+            if (metadataFlag(options, MinervaHostVerificationMetadata.RUN_CTEST)) {
+                val testFailure = runCTest(projectDir, options, context, tolerance, expectedOutput)
+                if (testFailure != null) return testFailure
+                hostRunStatus = MinervaHostVerificationStatus.PASSED
+            }
+        }
+
+        val hostOutputPath = options.metadata[MinervaHostVerificationMetadata.HOST_OUTPUT_PATH]
+        val observedOutput = if (hostOutputPath != null) {
+            val outputPath = resolveProjectPath(projectDir, hostOutputPath)
+            try {
+                readFloatOutput(outputPath)
+            } catch (exception: IllegalArgumentException) {
+                return failed(
+                    code = "minerva.host_verification.host_output_invalid",
+                    message = "Configured Minerva host output could not be parsed.",
+                    tolerance = tolerance,
+                    expectedOutput = expectedOutput,
+                    remediation = "Write host output as whitespace- or comma-separated finite float values.",
+                    details = mapOf(
+                        "hostOutputPath" to outputPath.toString(),
+                        "reason" to (exception.message ?: exception.toString())
+                    )
+                )
+            }
+        } else {
+            emptyList()
+        }
+
+        val parityStatus: MinervaHostVerificationStatus
+        val maxAbsoluteError: Float?
+        if (observedOutput.isNotEmpty()) {
+            if (expectedOutput.size != observedOutput.size) {
+                return failed(
+                    code = "minerva.host_verification.parity_shape_mismatch",
+                    message = "Minerva host output length does not match the SKaiNET reference output length.",
+                    tolerance = tolerance,
+                    expectedOutput = expectedOutput,
+                    observedOutput = observedOutput,
+                    remediation = "Regenerate the host output from the same packaged project and reference input.",
+                    details = mapOf(
+                        "expected" to expectedOutput.size.toString(),
+                        "observed" to observedOutput.size.toString()
+                    )
+                )
+            }
+            maxAbsoluteError = MinervaReferenceEvaluator.maxAbsoluteError(expectedOutput, observedOutput)
+            if (maxAbsoluteError > tolerance) {
+                return failed(
+                    code = "minerva.host_verification.parity_failed",
+                    message = "Minerva host output differs from the SKaiNET reference output.",
+                    tolerance = tolerance,
+                    maxAbsoluteError = maxAbsoluteError,
+                    expectedOutput = expectedOutput,
+                    observedOutput = observedOutput,
+                    remediation = "Inspect compiler inputs, generated weights, quantization settings, and host runtime configuration.",
+                    details = mapOf("maxAbsoluteError" to maxAbsoluteError.toString())
+                )
+            }
+            parityStatus = MinervaHostVerificationStatus.PASSED
+            hostRunStatus = MinervaHostVerificationStatus.PASSED
+        } else {
+            parityStatus = MinervaHostVerificationStatus.SKIPPED
+            maxAbsoluteError = null
+        }
+
+        val verification = MinervaHostVerification(
+            status = MinervaHostVerificationStatus.PASSED,
+            code = "minerva.host_verification.passed",
+            message = "Minerva host verification completed.",
+            hostBuildStatus = hostBuildStatus,
+            hostRunStatus = hostRunStatus,
+            parityStatus = parityStatus,
+            tolerance = tolerance,
+            maxAbsoluteError = maxAbsoluteError,
+            expectedOutput = expectedOutput,
+            observedOutput = observedOutput,
+            details = mapOf(
+                "projectDir" to projectDir.toString(),
+                "referenceOutputValues" to expectedOutput.size.toString()
+            )
+        )
+        context.info(
+            stage = GraphExportStage.VERIFICATION,
+            code = verification.code,
+            message = verification.message,
+            details = mapOf(
+                "hostBuildStatus" to verification.hostBuildStatus.name,
+                "hostRunStatus" to verification.hostRunStatus.name,
+                "parityStatus" to verification.parityStatus.name,
+                "maxAbsoluteError" to (verification.maxAbsoluteError?.toString() ?: "n/a")
+            )
+        )
+        return verification
+    }
+
+    private fun structuralFailure(
+        request: MinervaHostVerificationRequest,
+        projectDir: Path
+    ): MinervaHostVerification? {
+        val tolerance = request.options.hostVerificationTolerance
+        val requiredFiles = buildList {
+            add(projectDir.resolve("manifest.json"))
+            add(projectDir.resolve("generated").resolve(request.npzModel.logicalPath.substringAfterLast('/')))
+            add(projectDir.resolve("generated/weights.c"))
+            add(projectDir.resolve("include/weights.h"))
+            add(projectDir.resolve("include/secrets.example.h"))
+            if (request.options.generateHostHarness) {
+                add(projectDir.resolve("host/CMakeLists.txt"))
+                add(projectDir.resolve("host/main.c"))
+            }
+            if (request.options.generateFirmwareExample) {
+                add(projectDir.resolve("firmware/main.c"))
+            }
+        }
+        requiredFiles.firstOrNull { !Files.isRegularFile(it) }?.let { missing ->
+            return failed(
+                code = "minerva.host_verification.required_file_missing",
+                message = "Packaged Minerva project is missing a required generated file.",
+                tolerance = tolerance,
+                remediation = "Re-run Minerva packaging and verify the generated project layout.",
+                details = mapOf("missingPath" to missing.toString())
+            )
+        }
+        listOf(projectDir.resolve("generated/weights.c"), projectDir.resolve("include/weights.h"))
+            .firstOrNull { Files.size(it) == 0L }
+            ?.let { empty ->
+                return failed(
+                    code = "minerva.host_verification.empty_generated_file",
+                    message = "Packaged Minerva project contains an empty compiler output.",
+                    tolerance = tolerance,
+                    remediation = "Inspect the libminerva compiler invocation and generated weights.",
+                    details = mapOf("emptyPath" to empty.toString())
+                )
+            }
+        val packagedModel = projectDir.resolve("generated").resolve(request.npzModel.logicalPath.substringAfterLast('/'))
+        if (!Files.readAllBytes(packagedModel).contentEquals(request.npzModel.bytes)) {
+            return failed(
+                code = "minerva.host_verification.model_tampered",
+                message = "Packaged Minerva model bytes differ from the NPZ compiler input produced by SKaiNET.",
+                tolerance = tolerance,
+                remediation = "Recreate the package from the original export result before running host verification.",
+                details = mapOf("modelPath" to packagedModel.toString())
+            )
+        }
+        secretLeakFailure(request, projectDir)?.let { return it }
+        return null
+    }
+
+    private fun secretLeakFailure(
+        request: MinervaHostVerificationRequest,
+        projectDir: Path
+    ): MinervaHostVerification? {
+        val keyPath = request.options.keyFile?.let(Paths::get) ?: return null
+        if (!Files.isRegularFile(keyPath) || Files.size(keyPath) == 0L || Files.size(keyPath) > 4096L) return null
+        val keyMaterial = Files.readString(keyPath).trim()
+        if (keyMaterial.isBlank()) return null
+        val secretsExample = projectDir.resolve("include/secrets.example.h")
+        val template = Files.readString(secretsExample)
+        if (!template.contains(keyMaterial)) return null
+        return failed(
+            code = "minerva.host_verification.secret_leak",
+            message = "Generated Minerva secret template contains real key material.",
+            tolerance = request.options.hostVerificationTolerance,
+            remediation = "Remove real secrets from generated artifacts and regenerate secrets.example.h with placeholders.",
+            details = mapOf("secretsExample" to secretsExample.toString())
+        )
+    }
+
+    private fun runCmakeBuild(
+        projectDir: Path,
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        tolerance: Float,
+        expectedOutput: List<Float>
+    ): MinervaHostVerification? {
+        val hostDir = projectDir.resolve("host")
+        val buildDir = hostDir.resolve("build")
+        Files.createDirectories(buildDir)
+        val cmake = options.metadata[MinervaHostVerificationMetadata.CMAKE_EXECUTABLE] ?: "cmake"
+        val configure = runExternalCommand(
+            command = listOf(cmake, "-S", hostDir.toString(), "-B", buildDir.toString(), "-DBUILD_TESTING=ON"),
+            workingDir = projectDir,
+            logPath = buildDir.resolve("cmake-configure.log"),
+            context = context
+        )
+        if (configure.exitCode != 0) {
+            return failedExternalStep(
+                code = "minerva.host_verification.cmake_configure_failed",
+                message = "CMake configuration failed for the packaged Minerva host project.",
+                tolerance = tolerance,
+                expectedOutput = expectedOutput,
+                result = configure,
+                logPath = buildDir.resolve("cmake-configure.log")
+            )
+        }
+        val build = runExternalCommand(
+            command = listOf(cmake, "--build", buildDir.toString()),
+            workingDir = projectDir,
+            logPath = buildDir.resolve("cmake-build.log"),
+            context = context
+        )
+        if (build.exitCode != 0) {
+            return failedExternalStep(
+                code = "minerva.host_verification.cmake_build_failed",
+                message = "CMake build failed for the packaged Minerva host project.",
+                tolerance = tolerance,
+                expectedOutput = expectedOutput,
+                result = build,
+                logPath = buildDir.resolve("cmake-build.log")
+            )
+        }
+        return null
+    }
+
+    private fun runCTest(
+        projectDir: Path,
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        tolerance: Float,
+        expectedOutput: List<Float>
+    ): MinervaHostVerification? {
+        val buildDir = projectDir.resolve("host/build")
+        val ctest = options.metadata[MinervaHostVerificationMetadata.CTEST_EXECUTABLE] ?: "ctest"
+        val result = runExternalCommand(
+            command = listOf(ctest, "--test-dir", buildDir.toString(), "--output-on-failure"),
+            workingDir = projectDir,
+            logPath = buildDir.resolve("ctest.log"),
+            context = context
+        )
+        if (result.exitCode != 0) {
+            return failedExternalStep(
+                code = "minerva.host_verification.ctest_failed",
+                message = "CTest failed for the packaged Minerva host project.",
+                tolerance = tolerance,
+                expectedOutput = expectedOutput,
+                hostBuildStatus = MinervaHostVerificationStatus.PASSED,
+                hostRunStatus = MinervaHostVerificationStatus.FAILED,
+                result = result,
+                logPath = buildDir.resolve("ctest.log")
+            )
+        }
+        return null
+    }
+
+    private fun failedExternalStep(
+        code: String,
+        message: String,
+        tolerance: Float,
+        expectedOutput: List<Float>,
+        hostBuildStatus: MinervaHostVerificationStatus = MinervaHostVerificationStatus.FAILED,
+        hostRunStatus: MinervaHostVerificationStatus = MinervaHostVerificationStatus.SKIPPED,
+        result: ProcessResult,
+        logPath: Path
+    ): MinervaHostVerification {
+        return failed(
+            code = code,
+            message = message,
+            tolerance = tolerance,
+            expectedOutput = expectedOutput,
+            hostBuildStatus = hostBuildStatus,
+            hostRunStatus = hostRunStatus,
+            parityStatus = MinervaHostVerificationStatus.SKIPPED,
+            remediation = "Inspect the host verification log and ensure CMake, compiler, and libminerva paths are configured.",
+            details = mapOf(
+                "exitCode" to result.exitCode.toString(),
+                "logPath" to logPath.toString(),
+                "stdout" to excerpt(result.stdout),
+                "stderr" to excerpt(result.stderr)
+            )
+        )
+    }
+
+    private fun runExternalCommand(
+        command: List<String>,
+        workingDir: Path,
+        logPath: Path,
+        context: GraphExportContext
+    ): ProcessResult {
+        return try {
+            Files.createDirectories(logPath.parent)
+            val result = runProcess(command, workingDir)
+            Files.writeString(
+                logPath,
+                buildString {
+                    appendLine("command: ${command.joinToString(" ")}")
+                    appendLine("exitCode: ${result.exitCode}")
+                    appendLine()
+                    appendLine("stdout:")
+                    appendLine(result.stdout)
+                    appendLine("stderr:")
+                    appendLine(result.stderr)
+                }
+            )
+            context.addArtifact(
+                GraphExportArtifact(
+                    path = logPath.toString(),
+                    role = GraphExportArtifactRole.LOG,
+                    description = "Minerva host verification log"
+                )
+            )
+            result
+        } catch (exception: IOException) {
+            ProcessResult(
+                exitCode = -1,
+                stdout = "",
+                stderr = exception.message ?: exception.toString()
+            )
+        } catch (exception: InterruptedException) {
+            Thread.currentThread().interrupt()
+            ProcessResult(
+                exitCode = -1,
+                stdout = "",
+                stderr = exception.message ?: exception.toString()
+            )
+        }
+    }
+
+    private fun runProcess(command: List<String>, workingDir: Path): ProcessResult {
+        val process = ProcessBuilder(command)
+            .directory(workingDir.toFile())
+            .start()
+        val stdout = StreamCollector(process.inputStream).also { it.start() }
+        val stderr = StreamCollector(process.errorStream).also { it.start() }
+        val exitCode = process.waitFor()
+        stdout.join()
+        stderr.join()
+        return ProcessResult(
+            exitCode = exitCode,
+            stdout = stdout.text(),
+            stderr = stderr.text()
+        )
+    }
+
+    private fun readFloatOutput(path: Path): List<Float> {
+        if (!Files.isRegularFile(path)) {
+            throw IllegalArgumentException("host output file does not exist: $path")
+        }
+        val tokens = Files.readString(path)
+            .trim()
+            .split(Regex("[,\\s]+"))
+            .filter { it.isNotBlank() }
+        require(tokens.isNotEmpty()) { "host output file does not contain numeric values" }
+        return tokens.map { token ->
+            token.toFloatOrNull()?.takeIf { it.isFinite() }
+                ?: throw IllegalArgumentException("host output token is not a finite float: $token")
+        }
+    }
+
+    private fun resolveProjectPath(projectDir: Path, value: String): Path {
+        val path = Paths.get(value)
+        return if (path.isAbsolute) path.normalize() else projectDir.resolve(path).normalize()
+    }
+
+    private fun metadataFlag(options: MinervaExportOptions, key: String): Boolean {
+        return options.metadata[key]?.equals("true", ignoreCase = true) == true
+    }
+
+    private fun failed(
+        code: String,
+        message: String,
+        tolerance: Float,
+        hostBuildStatus: MinervaHostVerificationStatus = MinervaHostVerificationStatus.SKIPPED,
+        hostRunStatus: MinervaHostVerificationStatus = MinervaHostVerificationStatus.SKIPPED,
+        parityStatus: MinervaHostVerificationStatus = MinervaHostVerificationStatus.FAILED,
+        maxAbsoluteError: Float? = null,
+        expectedOutput: List<Float> = emptyList(),
+        observedOutput: List<Float> = emptyList(),
+        remediation: String,
+        details: Map<String, String> = emptyMap()
+    ): MinervaHostVerification {
+        return MinervaHostVerification(
+            status = MinervaHostVerificationStatus.FAILED,
+            code = code,
+            message = message,
+            hostBuildStatus = hostBuildStatus,
+            hostRunStatus = hostRunStatus,
+            parityStatus = parityStatus,
+            tolerance = tolerance,
+            maxAbsoluteError = maxAbsoluteError,
+            expectedOutput = expectedOutput,
+            observedOutput = observedOutput,
+            remediation = remediation,
+            details = details
+        )
+    }
+
+    private fun excerpt(value: String, limit: Int = 2000): String {
+        return if (value.length <= limit) value else value.take(limit) + "...<truncated>"
     }
 }
 

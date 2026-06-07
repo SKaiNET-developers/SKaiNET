@@ -14,8 +14,7 @@ import sk.ainet.tape.Execution
  * Public Minerva export facade.
  *
  * This scaffold accepts direct [ComputeGraph] inputs and exposes the same
- * traced-forward-pass shape used by other SKaiNET export facades. Host
- * verification remains a follow-up stage after compiler packaging.
+ * traced-forward-pass shape used by other SKaiNET export facades.
  */
 public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
     public val backendName: String = MinervaExportBackend.backendName,
@@ -23,7 +22,8 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
     public val graphCanonicalizer: MinervaGraphCanonicalizer = MinervaGraphCanonicalizer(),
     public val npzWriter: MinervaNpzModelWriter = MinervaNpzModelWriter(),
     public val compilerAdapter: MinervaCompilerAdapter = MinervaPlatformExportDefaults.compilerAdapter(),
-    public val projectPackager: MinervaProjectPackager = MinervaPlatformExportDefaults.projectPackager()
+    public val projectPackager: MinervaProjectPackager = MinervaPlatformExportDefaults.projectPackager(),
+    public val hostVerifier: MinervaHostVerifier = MinervaPlatformExportDefaults.hostVerifier()
 ) {
 
     /**
@@ -155,13 +155,15 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         }
 
         if (!options.runHostVerification) {
+            val hostVerification = skippedHostVerification(options)
             context.info(
-                stage = GraphExportStage.PACKAGING,
+                stage = GraphExportStage.VERIFICATION,
                 code = "minerva.export.completed_without_verification",
                 message = "Minerva export packaged project outputs; host verification was disabled.",
                 details = mapOf(
                     "projectDir" to bundle.outputDir,
-                    "generatedFiles" to bundle.generatedFiles.size.toString()
+                    "generatedFiles" to bundle.generatedFiles.size.toString(),
+                    "verificationStatus" to hostVerification.status.name
                 )
             )
             return MinervaExportResult(
@@ -174,42 +176,46 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
                 compatibilityReport = compatibilityReport,
                 intermediate = intermediate,
                 npzModel = npzModel,
-                compilerOutput = compilerOutput
+                compilerOutput = compilerOutput,
+                hostVerification = hostVerification
             )
         }
 
-        val failure = MinervaExportFailure(
-            kind = MinervaExportFailureKind.NOT_IMPLEMENTED,
-            stage = GraphExportStage.VERIFICATION,
-            code = "minerva.export.not_implemented",
-            message = "Minerva export packaged the project; host verification and parity checks are implemented in a follow-up issue.",
-            details = mapOf(
-                "nextStep" to "Build the packaged host harness and compare Minerva output with SKaiNET output.",
-                "issue" to "#695",
-                "layers" to intermediate.layerCount.toString(),
-                "input" to intermediate.input.id,
-                "output" to intermediate.output.id,
-                "npzPath" to npzModel.logicalPath,
-                "npzBytes" to npzModel.bytes.size.toString(),
-                "projectDir" to bundle.outputDir,
-                "generatedFiles" to bundle.generatedFiles.size.toString()
+        val hostVerification = hostVerifier.verify(
+            MinervaHostVerificationRequest(
+                options = options,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                compilerOutput = compilerOutput,
+                bundle = bundle
+            ),
+            context
+        )
+        if (hostVerification.failed) {
+            return verificationFailedResult(
+                options = options,
+                context = context,
+                compatibilityReport = compatibilityReport,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                compilerOutput = compilerOutput,
+                bundle = bundle,
+                hostVerification = hostVerification
             )
-        )
-        context.error(
-            stage = failure.stage,
-            code = failure.code,
-            message = failure.message,
-            details = failure.details
-        )
-        return failedResult(
+        }
+
+        return MinervaExportResult(
             options = options,
-            context = context,
-            failure = failure,
+            status = GraphExportStatus.SUCCESS,
+            bundle = bundle,
+            diagnostics = context.diagnosticReport(),
+            artifacts = context.artifacts,
+            metadata = context.metadata,
             compatibilityReport = compatibilityReport,
             intermediate = intermediate,
             npzModel = npzModel,
             compilerOutput = compilerOutput,
-            bundle = bundle
+            hostVerification = hostVerification
         )
     }
 
@@ -430,6 +436,54 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         )
     }
 
+    private fun verificationFailedResult(
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        compatibilityReport: MinervaCompatibilityReport,
+        intermediate: MinervaIntermediate,
+        npzModel: MinervaNpzModel,
+        compilerOutput: MinervaCompilerOutput,
+        bundle: MinervaExportBundle,
+        hostVerification: MinervaHostVerification
+    ): MinervaExportResult {
+        val details = mutableMapOf(
+            "code" to hostVerification.code,
+            "issue" to "#695",
+            "status" to hostVerification.status.name,
+            "hostBuildStatus" to hostVerification.hostBuildStatus.name,
+            "hostRunStatus" to hostVerification.hostRunStatus.name,
+            "parityStatus" to hostVerification.parityStatus.name,
+            "tolerance" to hostVerification.tolerance.toString(),
+            "remediation" to hostVerification.remediation
+        )
+        hostVerification.maxAbsoluteError?.let { details["maxAbsoluteError"] = it.toString() }
+        details += hostVerification.details
+        val failure = MinervaExportFailure(
+            kind = MinervaExportFailureKind.VERIFICATION_FAILED,
+            stage = GraphExportStage.VERIFICATION,
+            code = hostVerification.code,
+            message = hostVerification.message,
+            details = details
+        )
+        context.error(
+            stage = failure.stage,
+            code = failure.code,
+            message = failure.message,
+            details = failure.details
+        )
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate,
+            npzModel = npzModel,
+            compilerOutput = compilerOutput,
+            bundle = bundle,
+            hostVerification = hostVerification
+        )
+    }
+
     private fun failedResult(
         options: MinervaExportOptions,
         context: GraphExportContext,
@@ -438,7 +492,8 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         intermediate: MinervaIntermediate? = null,
         npzModel: MinervaNpzModel? = null,
         compilerOutput: MinervaCompilerOutput? = null,
-        bundle: MinervaExportBundle? = null
+        bundle: MinervaExportBundle? = null,
+        hostVerification: MinervaHostVerification? = null
     ): MinervaExportResult {
         return MinervaExportResult(
             options = options,
@@ -451,7 +506,18 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             compatibilityReport = compatibilityReport,
             intermediate = intermediate,
             npzModel = npzModel,
-            compilerOutput = compilerOutput
+            compilerOutput = compilerOutput,
+            hostVerification = hostVerification
+        )
+    }
+
+    private fun skippedHostVerification(options: MinervaExportOptions): MinervaHostVerification {
+        return MinervaHostVerification(
+            status = MinervaHostVerificationStatus.SKIPPED,
+            code = "minerva.host_verification.disabled",
+            message = "Minerva host verification was disabled by export options.",
+            tolerance = options.hostVerificationTolerance,
+            remediation = "Set runHostVerification=true before using generated outputs as verified artifacts."
         )
     }
 

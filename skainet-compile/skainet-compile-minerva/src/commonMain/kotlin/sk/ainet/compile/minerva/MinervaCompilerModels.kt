@@ -8,6 +8,7 @@ import sk.ainet.compile.export.GraphExportContext
 public expect object MinervaPlatformExportDefaults {
     public fun compilerAdapter(): MinervaCompilerAdapter
     public fun projectPackager(): MinervaProjectPackager
+    public fun hostVerifier(): MinervaHostVerifier
 }
 
 /**
