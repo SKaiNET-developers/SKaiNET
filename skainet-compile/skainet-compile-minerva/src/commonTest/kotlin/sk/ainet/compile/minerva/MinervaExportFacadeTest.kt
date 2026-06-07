@@ -6,6 +6,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import sk.ainet.compile.export.GraphExportArtifactRole
 import sk.ainet.compile.export.GraphExportStatus
 import sk.ainet.lang.graph.DefaultComputeGraph
 
@@ -18,6 +19,7 @@ class MinervaExportFacadeTest {
 
         assertEquals(MinervaExportBackend.backendName, facade.backendName)
         assertEquals(MinervaExportBackend.backendName, facade.graphCanonicalizer.backendName)
+        assertEquals(MinervaExportBackend.backendName, facade.npzWriter.backendName)
         assertEquals(MinervaTarget.ATMEGA328P, options.target)
         assertEquals(MinervaQuantization.Q8, options.quantization)
         assertEquals("jvm-sequential-mlp-q8", options.toMetadata()["phaseOneScope"])
@@ -55,11 +57,14 @@ class MinervaExportFacadeTest {
         assertEquals(GraphExportStatus.FAILED, result.status)
         assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
         assertEquals("minerva.export.not_implemented", result.failure?.code)
-        assertEquals("#693", result.failure?.details?.get("issue"))
+        assertEquals("#694", result.failure?.details?.get("issue"))
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.graph.validation.passed" })
         assertTrue(result.diagnostics.infos.any { it.code == "minerva.lowering.completed" })
+        assertTrue(result.diagnostics.infos.any { it.code == "minerva.npz.completed" })
         assertTrue(result.compatibilityReport?.compatible == true)
         assertEquals(1, result.intermediate?.layerCount)
+        assertTrue(assertNotNull(result.npzModel).bytes.isNotEmpty())
+        assertEquals("model.npz", result.artifacts.single { it.role == GraphExportArtifactRole.INTERMEDIATE }.path)
         assertTrue(result.metadata["target"] == MinervaTarget.ATMEGA328P.compilerId)
         assertFailsWith<IllegalStateException> {
             result.requireSuccess()
@@ -74,6 +79,7 @@ class MinervaExportFacadeTest {
         assertEquals(MinervaExportFailureKind.NOT_IMPLEMENTED, result.failure?.kind)
         assertTrue(result.compatibilityReport?.compatible == true)
         assertEquals(MinervaActivation.RELU, result.intermediate?.layers?.single()?.activation)
+        assertEquals(listOf("layer_0_w", "layer_0_b", "layer_0_act"), result.npzModel?.arrayNames?.filter { it.startsWith("layer_0") }?.take(3))
     }
 
     @Test
@@ -137,5 +143,8 @@ class MinervaExportFacadeTest {
         assertEquals(MinervaTensorRole.OUTPUT, intermediate.output.role)
         assertEquals("matmul", intermediate.layers.single().id)
         assertEquals("1", result.failure?.details?.get("layers"))
+        assertEquals("#694", result.failure?.details?.get("issue"))
+        assertEquals("model.npz", result.failure?.details?.get("npzPath"))
+        assertTrue(assertNotNull(result.npzModel).bytes.isNotEmpty())
     }
 }

@@ -92,6 +92,7 @@ public enum class MinervaExportFailureKind {
     GRAPH_VALIDATION_FAILED,
     COMPATIBILITY_VALIDATION_FAILED,
     LOWERING_FAILED,
+    NPZ_SCHEMA_FAILED,
     NOT_IMPLEMENTED
 }
 
@@ -203,7 +204,8 @@ public data class MinervaExportResult(
     public val failure: MinervaExportFailure? = null,
     public val metadata: Map<String, String> = emptyMap(),
     public val compatibilityReport: MinervaCompatibilityReport? = null,
-    public val intermediate: MinervaIntermediate? = null
+    public val intermediate: MinervaIntermediate? = null,
+    public val npzModel: MinervaNpzModel? = null
 ) {
     init {
         require(status != GraphExportStatus.SUCCESS || bundle != null) {

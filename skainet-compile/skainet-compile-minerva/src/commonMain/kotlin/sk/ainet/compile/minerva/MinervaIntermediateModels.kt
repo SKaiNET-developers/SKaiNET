@@ -37,6 +37,7 @@ public data class MinervaTensorRef(
     public val dtype: String,
     public val role: MinervaTensorRole,
     public val sourceNodeId: String? = null,
+    public val values: List<Float>? = null,
     public val metadata: Map<String, String> = emptyMap()
 ) {
     init {
@@ -45,6 +46,12 @@ public data class MinervaTensorRef(
         require(shape.isNotEmpty()) { "tensor shape cannot be empty" }
         require(shape.all { it > 0 }) { "tensor shape dimensions must be positive" }
         require(dtype.isNotBlank()) { "tensor dtype cannot be blank" }
+        require(values == null || values.size == elementCount) {
+            "tensor values must match tensor element count"
+        }
+        require(values == null || values.all { it.isFinite() }) {
+            "tensor values must be finite"
+        }
     }
 
     public val elementCount: Int
@@ -99,4 +106,3 @@ public data class MinervaIntermediate(
 
     public fun requireLowered(): MinervaIntermediate = this
 }
-

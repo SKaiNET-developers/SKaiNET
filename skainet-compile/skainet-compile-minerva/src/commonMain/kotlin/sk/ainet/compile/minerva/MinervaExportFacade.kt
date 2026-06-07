@@ -21,7 +21,8 @@ import sk.ainet.tape.Execution
 public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
     public val backendName: String = MinervaExportBackend.backendName,
     public val compatibilityValidator: MinervaCompatibilityValidator = MinervaCompatibilityValidator(),
-    public val graphCanonicalizer: MinervaGraphCanonicalizer = MinervaGraphCanonicalizer()
+    public val graphCanonicalizer: MinervaGraphCanonicalizer = MinervaGraphCanonicalizer(),
+    public val npzWriter: MinervaNpzModelWriter = MinervaNpzModelWriter()
 ) {
 
     /**
@@ -98,17 +99,31 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             return loweringFailedResult(options, context, compatibilityReport, exception)
         }
 
+        val npzModel = try {
+            npzWriter.write(intermediate, context)
+        } catch (exception: MinervaNpzSchemaException) {
+            return npzSchemaFailedResult(
+                options = options,
+                context = context,
+                compatibilityReport = compatibilityReport,
+                intermediate = intermediate,
+                exception = exception
+            )
+        }
+
         val failure = MinervaExportFailure(
             kind = MinervaExportFailureKind.NOT_IMPLEMENTED,
-            stage = GraphExportStage.WRITING,
+            stage = GraphExportStage.PACKAGING,
             code = "minerva.export.not_implemented",
-            message = "Minerva export lowered the graph to phase-one IR; compiler invocation, packaging, and verification are implemented in follow-up issues.",
+            message = "Minerva export lowered the graph and emitted the NPZ compiler input; compiler invocation, packaging, and verification are implemented in follow-up issues.",
             details = mapOf(
-                "nextStep" to "Invoke the Minerva compiler and write the runtime project.",
-                "issue" to "#693",
+                "nextStep" to "Invoke libminerva compiler and package generated outputs.",
+                "issue" to "#694",
                 "layers" to intermediate.layerCount.toString(),
                 "input" to intermediate.input.id,
-                "output" to intermediate.output.id
+                "output" to intermediate.output.id,
+                "npzPath" to npzModel.logicalPath,
+                "npzBytes" to npzModel.bytes.size.toString()
             )
         )
         context.error(
@@ -122,7 +137,8 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             context = context,
             failure = failure,
             compatibilityReport = compatibilityReport,
-            intermediate = intermediate
+            intermediate = intermediate,
+            npzModel = npzModel
         )
     }
 
@@ -223,12 +239,49 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         )
     }
 
+    private fun npzSchemaFailedResult(
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        compatibilityReport: MinervaCompatibilityReport,
+        intermediate: MinervaIntermediate,
+        exception: MinervaNpzSchemaException
+    ): MinervaExportResult {
+        val details = mutableMapOf(
+            "code" to exception.code,
+            "issue" to "#693"
+        )
+        exception.layerId?.let { details["layerId"] = it }
+        exception.arrayName?.let { details["arrayName"] = it }
+        details += exception.details
+        val failure = MinervaExportFailure(
+            kind = MinervaExportFailureKind.NPZ_SCHEMA_FAILED,
+            stage = GraphExportStage.WRITING,
+            code = exception.code,
+            message = exception.message ?: "Minerva NPZ schema validation failed.",
+            details = details
+        )
+        context.error(
+            stage = failure.stage,
+            code = failure.code,
+            message = failure.message,
+            details = failure.details
+        )
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate
+        )
+    }
+
     private fun failedResult(
         options: MinervaExportOptions,
         context: GraphExportContext,
         failure: MinervaExportFailure,
         compatibilityReport: MinervaCompatibilityReport? = null,
-        intermediate: MinervaIntermediate? = null
+        intermediate: MinervaIntermediate? = null,
+        npzModel: MinervaNpzModel? = null
     ): MinervaExportResult {
         return MinervaExportResult(
             options = options,
@@ -238,7 +291,8 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             failure = failure,
             metadata = context.metadata,
             compatibilityReport = compatibilityReport,
-            intermediate = intermediate
+            intermediate = intermediate,
+            npzModel = npzModel
         )
     }
 
