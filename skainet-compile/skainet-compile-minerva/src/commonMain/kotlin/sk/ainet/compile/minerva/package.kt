@@ -3,9 +3,9 @@ package sk.ainet.compile.minerva
 /**
  * Minerva graph export support for secure MCU inference.
  *
- * The first implementation slice is intentionally JVM-first and API-only: it
- * defines the SKaiNET-facing export surface and result model before the
- * validator, lowering, compiler adapter, packager, and host verifier are added.
+ * The phase-one implementation is JVM-first and targets static sequential MLP
+ * graphs with Q8 libminerva compilation. Host verification is intentionally a
+ * separate stage so compiler packaging can be tested without MCU hardware.
  */
 public object MinervaExportBackend {
     public const val backendName: String = "minerva"
