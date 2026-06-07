@@ -33,6 +33,8 @@ class MinervaGraphCanonicalizerTest {
         assertEquals(MinervaActivation.RELU, layer.activation)
         assertEquals(listOf("matmul", "bias_add", "relu"), layer.sourceNodeIds)
         assertEquals(listOf(1, 3), layer.output.shape)
+        assertEquals(layer.weights.elementCount, layer.weights.values?.size)
+        assertEquals(layer.bias?.elementCount, layer.bias?.values?.size)
         assertTrue(layer.hasBias)
         assertTrue(context.diagnostics.any { it.code == "minerva.lowering.started" })
         assertTrue(context.diagnostics.any { it.code == "minerva.lowering.completed" })
@@ -75,4 +77,3 @@ class MinervaGraphCanonicalizerTest {
         )
     }
 }
-

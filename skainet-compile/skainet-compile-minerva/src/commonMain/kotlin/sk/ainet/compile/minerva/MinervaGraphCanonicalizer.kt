@@ -337,8 +337,85 @@ public class MinervaGraphCanonicalizer @kotlin.jvm.JvmOverloads constructor(
                 dtype = spec.dtype,
                 role = role,
                 sourceNodeId = sourceNode.id,
+                values = tensorValues(spec, shape, sourceNode, context),
                 metadata = spec.metadata.mapValues { it.value.toString() }
             )
+        }
+    }
+
+    private fun tensorValues(
+        spec: TensorSpec,
+        shape: List<Int>,
+        sourceNode: GraphNode,
+        context: GraphExportContext
+    ): List<Float>? {
+        val elementCount = shape.fold(1) { acc, dim -> acc * dim }
+        val values = when (val rawValues = spec.metadata["values"]) {
+            null -> symbolicValues(spec, elementCount)
+            is FloatArray -> rawValues.toList()
+            is IntArray -> rawValues.map { it.toFloat() }
+            is List<*> -> rawValues.map { value ->
+                when (value) {
+                    is Number -> value.toFloat()
+                    else -> fail(
+                        context = context,
+                        code = "minerva.lowering.tensor_values_invalid",
+                        message = "Tensor '${spec.name}' on node '${sourceNode.id}' has non-numeric initializer data.",
+                        node = sourceNode,
+                        details = mapOf("remediation" to "Use numeric FloatArray or IntArray initializer metadata.")
+                    )
+                }
+            }
+            else -> fail(
+                context = context,
+                code = "minerva.lowering.tensor_values_invalid",
+                message = "Tensor '${spec.name}' on node '${sourceNode.id}' has unsupported initializer metadata.",
+                node = sourceNode,
+                details = mapOf(
+                    "valuesType" to rawValues::class.simpleName.orEmpty(),
+                    "remediation" to "Use numeric FloatArray or IntArray initializer metadata."
+                )
+            )
+        } ?: return null
+        if (values.size != elementCount) {
+            fail(
+                context = context,
+                code = "minerva.lowering.tensor_values_shape_mismatch",
+                message = "Tensor '${spec.name}' on node '${sourceNode.id}' initializer has ${values.size} value(s), expected $elementCount.",
+                node = sourceNode,
+                details = mapOf(
+                    "actual" to values.size.toString(),
+                    "expected" to elementCount.toString(),
+                    "remediation" to "Match initializer data length to the tensor shape."
+                )
+            )
+        }
+        if (values.any { !it.isFinite() }) {
+            fail(
+                context = context,
+                code = "minerva.lowering.tensor_values_non_finite",
+                message = "Tensor '${spec.name}' on node '${sourceNode.id}' initializer contains non-finite values.",
+                node = sourceNode,
+                details = mapOf("remediation" to "Use finite numeric initializer values.")
+            )
+        }
+        return values
+    }
+
+    private fun symbolicValues(spec: TensorSpec, elementCount: Int): List<Float>? {
+        return when (val init = spec.metadata["init"]?.toString()) {
+            "zeros" -> List(elementCount) { 0.0f }
+            "ones" -> List(elementCount) { 1.0f }
+            null, "unspecified" -> null
+            else -> {
+                if (init.startsWith("full(") && init.endsWith(")")) {
+                    val value = spec.metadata["value"] as? Number
+                        ?: init.removePrefix("full(").removeSuffix(")").toFloatOrNull()
+                    if (value != null) List(elementCount) { value.toFloat() } else null
+                } else {
+                    null
+                }
+            }
         }
     }
 
