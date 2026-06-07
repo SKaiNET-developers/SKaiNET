@@ -31,6 +31,10 @@ import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KTensorData
+import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_1TensorData
+import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_0TensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -221,6 +225,21 @@ internal class DefaultCpuOpsJvm(
             if (data is Q6_KTensorData) {
                 val packedData = data.packedData
                 val transposed = Q6_KBlockTensorData(Shape(cols, rows), packedData)
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
+            }
+            // Q5_1 / Q5_0 packed bytes use a row-major `[out, in]` layout that the
+            // `matmulQ5_1Vec` / `matmulQ5_0Vec` kernels index by output row, so the
+            // transpose is a pure shape swap — the same bytes give the right values
+            // under the swapped shape (lets `ops.matmul(x, ops.transpose(W))` run
+            // without a dequant round-trip).
+            if (data is Q5_1TensorData) {
+                val transposed = Q5_1BlockTensorData(Shape(cols, rows), data.packedData)
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
+            }
+            if (data is Q5_0TensorData) {
+                val transposed = Q5_0BlockTensorData(Shape(cols, rows), data.packedData)
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
@@ -552,6 +571,32 @@ internal class DefaultCpuOpsJvm(
                         bData.packedData, 0,
                         inputDim, outputDim,
                         outBuffer, batch * outputDim,
+                    )
+                }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            is Q5_1TensorData -> {
+                val outBuffer = FloatArray(batchSize * outputDim)
+                for (batch in 0 until batchSize) {
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                    JvmQuantizedVectorKernels.matmulQ5_1Vec(
+                        batchInput, bData.packedData, inputDim, outputDim, outBuffer, batch * outputDim,
+                    )
+                }
+                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                @Suppress("UNCHECKED_CAST")
+                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            }
+            is Q5_0TensorData -> {
+                val outBuffer = FloatArray(batchSize * outputDim)
+                for (batch in 0 until batchSize) {
+                    val batchInput = if (batchSize == 1) inputBuffer
+                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                    JvmQuantizedVectorKernels.matmulQ5_0Vec(
+                        batchInput, bData.packedData, inputDim, outputDim, outBuffer, batch * outputDim,
                     )
                 }
                 val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)

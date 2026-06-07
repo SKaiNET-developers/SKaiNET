@@ -909,4 +909,98 @@ internal object JvmQuantizedVectorKernels {
             output[outputOffset + o] = accVec.reduceLanes(VectorOperators.ADD) + accScalar
         }
     }
+
+    /**
+     * Q5_1 matrix-vector multiply: `output = input · Wᵀ` for a packed Q5_1 weight.
+     *
+     * Packed weights are in the natural GGUF **row-major** `[outputDim, inputDim]`
+     * layout: output row `o`'s `inputDim` weights are `inputDim / 32` contiguous
+     * 24-byte blocks. Dequant matches `DequantOps.dequantQ5_1FromBytes` exactly:
+     * `w = d * (code + (highBit shl 4)) + m`. Scalar (keeps weights packed — the
+     * memory win; SIMD vectorization of the inner loop is a follow-up).
+     */
+    fun matmulQ5_1Vec(
+        input: FloatArray,
+        packedWeights: ByteArray,
+        inputDim: Int,
+        outputDim: Int,
+        output: FloatArray,
+        outputOffset: Int = 0,
+    ) {
+        val bytesPerBlock = 24
+        val blocksPerInputDim = (inputDim + 31) / 32
+        for (o in 0 until outputDim) {
+            var acc = 0f
+            val rowBase = o * blocksPerInputDim * bytesPerBlock
+            for (blk in 0 until blocksPerInputDim) {
+                val base = rowBase + blk * bytesPerBlock
+                val d = halfToFloat(((packedWeights[base + 1].toInt() and 0xFF) shl 8) or (packedWeights[base].toInt() and 0xFF))
+                val m = halfToFloat(((packedWeights[base + 3].toInt() and 0xFF) shl 8) or (packedWeights[base + 2].toInt() and 0xFF))
+                val qh = intArrayOf(
+                    packedWeights[base + 4].toInt() and 0xFF,
+                    packedWeights[base + 5].toInt() and 0xFF,
+                    packedWeights[base + 6].toInt() and 0xFF,
+                    packedWeights[base + 7].toInt() and 0xFF,
+                )
+                val qsBase = base + 8
+                val inBase = blk * 32
+                for (j in 0 until 16) {
+                    val q = packedWeights[qsBase + j].toInt() and 0xFF
+                    val lo = q and 0x0F
+                    val hi = q ushr 4
+                    val bitLo = (qh[j / 8] ushr (j % 8)) and 0x01
+                    val bitHi = (qh[(j + 16) / 8] ushr ((j + 16) % 8)) and 0x01
+                    val wLo = d * (lo + (bitLo shl 4)) + m
+                    val wHi = d * (hi + (bitHi shl 4)) + m
+                    acc += input[inBase + j] * wLo + input[inBase + 16 + j] * wHi
+                }
+            }
+            output[outputOffset + o] = acc
+        }
+    }
+
+    /**
+     * Q5_0 matrix-vector multiply: `output = input · Wᵀ` for a packed Q5_0 weight.
+     *
+     * Row-major `[outputDim, inputDim]` packing of 22-byte blocks. Dequant matches
+     * `DequantOps.dequantQ5_0FromBytes`: `w = d * (code + (highBit shl 4) - 16)`.
+     */
+    fun matmulQ5_0Vec(
+        input: FloatArray,
+        packedWeights: ByteArray,
+        inputDim: Int,
+        outputDim: Int,
+        output: FloatArray,
+        outputOffset: Int = 0,
+    ) {
+        val bytesPerBlock = 22
+        val blocksPerInputDim = (inputDim + 31) / 32
+        for (o in 0 until outputDim) {
+            var acc = 0f
+            val rowBase = o * blocksPerInputDim * bytesPerBlock
+            for (blk in 0 until blocksPerInputDim) {
+                val base = rowBase + blk * bytesPerBlock
+                val d = halfToFloat(((packedWeights[base + 1].toInt() and 0xFF) shl 8) or (packedWeights[base].toInt() and 0xFF))
+                val qh = intArrayOf(
+                    packedWeights[base + 2].toInt() and 0xFF,
+                    packedWeights[base + 3].toInt() and 0xFF,
+                    packedWeights[base + 4].toInt() and 0xFF,
+                    packedWeights[base + 5].toInt() and 0xFF,
+                )
+                val qsBase = base + 6
+                val inBase = blk * 32
+                for (j in 0 until 16) {
+                    val q = packedWeights[qsBase + j].toInt() and 0xFF
+                    val lo = q and 0x0F
+                    val hi = q ushr 4
+                    val bitLo = (qh[j / 8] ushr (j % 8)) and 0x01
+                    val bitHi = (qh[(j + 16) / 8] ushr ((j + 16) % 8)) and 0x01
+                    val wLo = d * (lo + (bitLo shl 4) - 16)
+                    val wHi = d * (hi + (bitHi shl 4) - 16)
+                    acc += input[inBase + j] * wLo + input[inBase + 16 + j] * wHi
+                }
+            }
+            output[outputOffset + o] = acc
+        }
+    }
 }
