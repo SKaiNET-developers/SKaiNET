@@ -14,15 +14,16 @@ import sk.ainet.tape.Execution
  * Public Minerva export facade.
  *
  * This scaffold accepts direct [ComputeGraph] inputs and exposes the same
- * traced-forward-pass shape used by other SKaiNET export facades. Real
- * compatibility validation and Minerva compiler invocation start in later
- * implementation issues.
+ * traced-forward-pass shape used by other SKaiNET export facades.
  */
 public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
     public val backendName: String = MinervaExportBackend.backendName,
     public val compatibilityValidator: MinervaCompatibilityValidator = MinervaCompatibilityValidator(),
     public val graphCanonicalizer: MinervaGraphCanonicalizer = MinervaGraphCanonicalizer(),
-    public val npzWriter: MinervaNpzModelWriter = MinervaNpzModelWriter()
+    public val npzWriter: MinervaNpzModelWriter = MinervaNpzModelWriter(),
+    public val compilerAdapter: MinervaCompilerAdapter = MinervaPlatformExportDefaults.compilerAdapter(),
+    public val projectPackager: MinervaProjectPackager = MinervaPlatformExportDefaults.projectPackager(),
+    public val hostVerifier: MinervaHostVerifier = MinervaPlatformExportDefaults.hostVerifier()
 ) {
 
     /**
@@ -111,34 +112,110 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
             )
         }
 
-        val failure = MinervaExportFailure(
-            kind = MinervaExportFailureKind.NOT_IMPLEMENTED,
-            stage = GraphExportStage.PACKAGING,
-            code = "minerva.export.not_implemented",
-            message = "Minerva export lowered the graph and emitted the NPZ compiler input; compiler invocation, packaging, and verification are implemented in follow-up issues.",
-            details = mapOf(
-                "nextStep" to "Invoke libminerva compiler and package generated outputs.",
-                "issue" to "#694",
-                "layers" to intermediate.layerCount.toString(),
-                "input" to intermediate.input.id,
-                "output" to intermediate.output.id,
-                "npzPath" to npzModel.logicalPath,
-                "npzBytes" to npzModel.bytes.size.toString()
+        val compilerOutput = try {
+            compilerAdapter.compile(
+                MinervaCompilerRequest(
+                    options = options,
+                    intermediate = intermediate,
+                    npzModel = npzModel
+                ),
+                context
             )
+        } catch (exception: MinervaCompilerException) {
+            return compilerFailedResult(
+                options = options,
+                context = context,
+                compatibilityReport = compatibilityReport,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                exception = exception
+            )
+        }
+
+        val bundle = try {
+            projectPackager.packageProject(
+                MinervaProjectPackageRequest(
+                    options = options,
+                    intermediate = intermediate,
+                    npzModel = npzModel,
+                    compilerOutput = compilerOutput
+                ),
+                context
+            )
+        } catch (exception: MinervaPackagingException) {
+            return packagingFailedResult(
+                options = options,
+                context = context,
+                compatibilityReport = compatibilityReport,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                compilerOutput = compilerOutput,
+                exception = exception
+            )
+        }
+
+        if (!options.runHostVerification) {
+            val hostVerification = skippedHostVerification(options)
+            context.info(
+                stage = GraphExportStage.VERIFICATION,
+                code = "minerva.export.completed_without_verification",
+                message = "Minerva export packaged project outputs; host verification was disabled.",
+                details = mapOf(
+                    "projectDir" to bundle.outputDir,
+                    "generatedFiles" to bundle.generatedFiles.size.toString(),
+                    "verificationStatus" to hostVerification.status.name
+                )
+            )
+            return MinervaExportResult(
+                options = options,
+                status = GraphExportStatus.SUCCESS,
+                bundle = bundle,
+                diagnostics = context.diagnosticReport(),
+                artifacts = context.artifacts,
+                metadata = context.metadata,
+                compatibilityReport = compatibilityReport,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                compilerOutput = compilerOutput,
+                hostVerification = hostVerification
+            )
+        }
+
+        val hostVerification = hostVerifier.verify(
+            MinervaHostVerificationRequest(
+                options = options,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                compilerOutput = compilerOutput,
+                bundle = bundle
+            ),
+            context
         )
-        context.error(
-            stage = failure.stage,
-            code = failure.code,
-            message = failure.message,
-            details = failure.details
-        )
-        return failedResult(
+        if (hostVerification.failed) {
+            return verificationFailedResult(
+                options = options,
+                context = context,
+                compatibilityReport = compatibilityReport,
+                intermediate = intermediate,
+                npzModel = npzModel,
+                compilerOutput = compilerOutput,
+                bundle = bundle,
+                hostVerification = hostVerification
+            )
+        }
+
+        return MinervaExportResult(
             options = options,
-            context = context,
-            failure = failure,
+            status = GraphExportStatus.SUCCESS,
+            bundle = bundle,
+            diagnostics = context.diagnosticReport(),
+            artifacts = context.artifacts,
+            metadata = context.metadata,
             compatibilityReport = compatibilityReport,
             intermediate = intermediate,
-            npzModel = npzModel
+            npzModel = npzModel,
+            compilerOutput = compilerOutput,
+            hostVerification = hostVerification
         )
     }
 
@@ -275,25 +352,177 @@ public class MinervaExportFacade @kotlin.jvm.JvmOverloads constructor(
         )
     }
 
+    private fun compilerFailedResult(
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        compatibilityReport: MinervaCompatibilityReport,
+        intermediate: MinervaIntermediate,
+        npzModel: MinervaNpzModel,
+        exception: MinervaCompilerException
+    ): MinervaExportResult {
+        val details = mutableMapOf(
+            "code" to exception.code,
+            "issue" to "#694",
+            "remediation" to exception.remediation
+        )
+        exception.exitCode?.let { details["exitCode"] = it.toString() }
+        exception.commandSummary?.let { details["command"] = it }
+        if (exception.stdout.isNotBlank()) details["stdout"] = diagnosticExcerpt(exception.stdout)
+        if (exception.stderr.isNotBlank()) details["stderr"] = diagnosticExcerpt(exception.stderr)
+        details += exception.details
+        val failure = MinervaExportFailure(
+            kind = if (exception.prerequisite) {
+                MinervaExportFailureKind.COMPILER_PREREQUISITE_FAILED
+            } else {
+                MinervaExportFailureKind.COMPILER_FAILED
+            },
+            stage = GraphExportStage.PACKAGING,
+            code = exception.code,
+            message = exception.message ?: "Minerva compiler invocation failed.",
+            details = details
+        )
+        context.error(
+            stage = failure.stage,
+            code = failure.code,
+            message = failure.message,
+            details = failure.details
+        )
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate,
+            npzModel = npzModel
+        )
+    }
+
+    private fun packagingFailedResult(
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        compatibilityReport: MinervaCompatibilityReport,
+        intermediate: MinervaIntermediate,
+        npzModel: MinervaNpzModel,
+        compilerOutput: MinervaCompilerOutput,
+        exception: MinervaPackagingException
+    ): MinervaExportResult {
+        val details = mutableMapOf(
+            "code" to exception.code,
+            "issue" to "#694",
+            "remediation" to exception.remediation
+        )
+        details += exception.details
+        val failure = MinervaExportFailure(
+            kind = MinervaExportFailureKind.PACKAGING_FAILED,
+            stage = GraphExportStage.PACKAGING,
+            code = exception.code,
+            message = exception.message ?: "Minerva project packaging failed.",
+            details = details
+        )
+        context.error(
+            stage = failure.stage,
+            code = failure.code,
+            message = failure.message,
+            details = failure.details
+        )
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate,
+            npzModel = npzModel,
+            compilerOutput = compilerOutput
+        )
+    }
+
+    private fun verificationFailedResult(
+        options: MinervaExportOptions,
+        context: GraphExportContext,
+        compatibilityReport: MinervaCompatibilityReport,
+        intermediate: MinervaIntermediate,
+        npzModel: MinervaNpzModel,
+        compilerOutput: MinervaCompilerOutput,
+        bundle: MinervaExportBundle,
+        hostVerification: MinervaHostVerification
+    ): MinervaExportResult {
+        val details = mutableMapOf(
+            "code" to hostVerification.code,
+            "issue" to "#695",
+            "status" to hostVerification.status.name,
+            "hostBuildStatus" to hostVerification.hostBuildStatus.name,
+            "hostRunStatus" to hostVerification.hostRunStatus.name,
+            "parityStatus" to hostVerification.parityStatus.name,
+            "tolerance" to hostVerification.tolerance.toString(),
+            "remediation" to hostVerification.remediation
+        )
+        hostVerification.maxAbsoluteError?.let { details["maxAbsoluteError"] = it.toString() }
+        details += hostVerification.details
+        val failure = MinervaExportFailure(
+            kind = MinervaExportFailureKind.VERIFICATION_FAILED,
+            stage = GraphExportStage.VERIFICATION,
+            code = hostVerification.code,
+            message = hostVerification.message,
+            details = details
+        )
+        context.error(
+            stage = failure.stage,
+            code = failure.code,
+            message = failure.message,
+            details = failure.details
+        )
+        return failedResult(
+            options = options,
+            context = context,
+            failure = failure,
+            compatibilityReport = compatibilityReport,
+            intermediate = intermediate,
+            npzModel = npzModel,
+            compilerOutput = compilerOutput,
+            bundle = bundle,
+            hostVerification = hostVerification
+        )
+    }
+
     private fun failedResult(
         options: MinervaExportOptions,
         context: GraphExportContext,
         failure: MinervaExportFailure,
         compatibilityReport: MinervaCompatibilityReport? = null,
         intermediate: MinervaIntermediate? = null,
-        npzModel: MinervaNpzModel? = null
+        npzModel: MinervaNpzModel? = null,
+        compilerOutput: MinervaCompilerOutput? = null,
+        bundle: MinervaExportBundle? = null,
+        hostVerification: MinervaHostVerification? = null
     ): MinervaExportResult {
         return MinervaExportResult(
             options = options,
             status = GraphExportStatus.FAILED,
+            bundle = bundle,
             diagnostics = context.diagnosticReport(),
             artifacts = context.artifacts,
             failure = failure,
             metadata = context.metadata,
             compatibilityReport = compatibilityReport,
             intermediate = intermediate,
-            npzModel = npzModel
+            npzModel = npzModel,
+            compilerOutput = compilerOutput,
+            hostVerification = hostVerification
         )
+    }
+
+    private fun skippedHostVerification(options: MinervaExportOptions): MinervaHostVerification {
+        return MinervaHostVerification(
+            status = MinervaHostVerificationStatus.SKIPPED,
+            code = "minerva.host_verification.disabled",
+            message = "Minerva host verification was disabled by export options.",
+            tolerance = options.hostVerificationTolerance,
+            remediation = "Set runHostVerification=true before using generated outputs as verified artifacts."
+        )
+    }
+
+    private fun diagnosticExcerpt(value: String, limit: Int = 4000): String {
+        return if (value.length <= limit) value else value.take(limit) + "...<truncated>"
     }
 
     private fun exportContext(options: MinervaExportOptions): GraphExportContext {

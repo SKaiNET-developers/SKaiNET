@@ -1,0 +1,239 @@
+= Minerva Secure MCU Export
+
+Minerva export packages a supported SKaiNET compute graph for secure MCU inference through libminerva. Phase one is JVM-first and intentionally narrow: static sequential MLP graphs, Q8 quantization, and the ATmega328P target.
+
+Use this backend when the output must be a Minerva project bundle with compiler input, generated weights, firmware and host harnesses, a manifest, and host verification metadata.
+
+== When to Use Each Export Path
+
+[cols="1,2",options="header"]
+|===
+| Export path | Use it when
+
+| StableHLO
+| You need a portable MLIR/IREE-compatible graph for native, accelerator, or ecosystem compiler flows.
+
+| Arduino / C99
+| You need standalone generated C with static memory allocation and no external secure runtime.
+
+| Minerva
+| You need a secure MCU project bundle that is compiled by libminerva and checked by host verification.
+|===
+
+== Setup
+
+Inside this repository, use the Minerva module directly:
+
+[source,kotlin]
+----
+dependencies {
+    implementation(project(":skainet-compile:skainet-compile-minerva"))
+}
+----
+
+For a published application, use the SKaiNET BOM and the Minerva artifact:
+
+[source,kotlin]
+----
+dependencies {
+    implementation(platform("sk.ainet:skainet-bom:0.28.1"))
+    implementation("sk.ainet.core:skainet-compile-minerva")
+}
+----
+
+Configure libminerva through `MinervaExportOptions` or environment variables used by the maintained JVM sample:
+
+[source,bash]
+----
+export MINERVA_COMPILER_SCRIPT=/opt/libminerva/tools/compile_model.py
+export MINERVA_RUNTIME_ROOT=/opt/libminerva
+export MINERVA_CALIBRATION_NPZ=/secure/project/calibration.npz
+export MINERVA_KEY_FILE=/secure/project/device.key
+export MINERVA_RUN_CMAKE=true
+export MINERVA_RUN_CTEST=true
+----
+
+`MINERVA_KEY_FILE` and the generated `include/secrets.example.h` are placeholders for integration. Do not commit real device keys or derived secrets.
+
+== Compatibility Matrix
+
+[cols="1,2",options="header"]
+|===
+| Area | Phase-one support
+
+| Host platform
+| JVM export path.
+
+| Target
+| `MinervaTarget.ATMEGA328P`.
+
+| Quantization
+| `MinervaQuantization.Q8`.
+
+| Graph shape
+| Static, single-path, sequential MLPs.
+
+| Tensor shapes
+| Fully known rank-2 shapes.
+
+| Layer pattern
+| `Input -> MatMul -> Add? -> activation?`, repeated in sequence.
+
+| Activations
+| `Relu`, `Sigmoid`, and `Tanh` after a dense layer.
+
+| Out of scope
+| CNNs, attention blocks, recurrent models, dynamic shapes, branching graphs, transformers, and arbitrary ONNX operators.
+|===
+
+== Export API
+
+The public entry point is `MinervaExportFacade`. The facade accepts an already-built `ComputeGraph`, or it can record a representative forward pass for compatible SKaiNET models.
+
+[source,kotlin]
+----
+import sk.ainet.compile.minerva.MinervaExportFacade
+import sk.ainet.compile.minerva.MinervaExportOptions
+
+val options = MinervaExportOptions(
+    outputDir = "build/minerva",
+    projectName = "TinySecureMlp",
+    compilerScript = "/opt/libminerva/tools/compile_model.py",
+    runtimeRoot = "/opt/libminerva",
+    calibrationNpz = "/secure/project/calibration.npz",
+    keyFile = "/secure/project/device.key"
+)
+
+val result = MinervaExportFacade().exportGraph(graph, options)
+val bundle = result.requireSuccess()
+println(bundle.outputDir)
+----
+
+If `compilerScript` is missing, export still performs compatibility checks, Minerva lowering, and NPZ schema creation before returning a typed compiler prerequisite failure. That makes local validation possible before libminerva is installed.
+
+== Generated Project Layout
+
+A successful export writes a project directory under `outputDir/projectName`:
+
+[source,text]
+----
+build/minerva/TinySecureMlp/
+  manifest.json
+  generated/
+    model.npz
+    weights.c
+  include/
+    weights.h
+    secrets.example.h
+  host/
+    CMakeLists.txt
+    main.c
+  firmware/
+    main.c
+----
+
+The manifest records the target, quantization, libminerva root, compiler command summary, NPZ schema version, layer count, and generated files. `secrets.example.h` contains placeholder values only.
+
+== Host Verification
+
+Host verification always checks the package structure, generated weight files, `model.npz` integrity, and placeholder secret hygiene. It also computes the SKaiNET reference output for a deterministic reference input.
+
+Use these metadata keys to opt into external host checks:
+
+[source,kotlin]
+----
+metadata = mapOf(
+    MinervaHostVerificationMetadata.RUN_CMAKE_BUILD to "true",
+    MinervaHostVerificationMetadata.RUN_CTEST to "true",
+    MinervaHostVerificationMetadata.HOST_OUTPUT_PATH to "host-output.txt"
+)
+----
+
+`RUN_CMAKE_BUILD` configures and builds `host/CMakeLists.txt`. `RUN_CTEST` runs the packaged CTest smoke test. `HOST_OUTPUT_PATH` lets a real host run write comma- or whitespace-separated float outputs that are compared with the SKaiNET reference output using `hostVerificationTolerance`.
+
+Local CI recipe:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:jvmTest
+./gradlew :skainet-compile:skainet-compile-minerva:minervaHostVerification \
+  -Pminerva.hostVerification.enabled=true \
+  -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT"
+cmake -S build/minerva/TinySecureMlp/host -B build/minerva/TinySecureMlp/host/build
+ctest --test-dir build/minerva/TinySecureMlp/host/build --output-on-failure
+----
+
+The Gradle `minervaHostVerification` task is gated. It only runs when the `minerva.hostVerification.enabled`, `minerva.runtimeRoot`, and `minerva.compilerScript` properties are present.
+
+== Firmware Integration
+
+The generated firmware example intentionally contains integration placeholders. Wire it to the runtime API exposed by your pinned libminerva checkout and keep the real secret configuration in a private header that is excluded from source control.
+
+Before flashing firmware:
+
+* Replace `secrets.example.h` with a private header outside the repository.
+* Confirm the libminerva inference entry point and output-authentication API names against the libminerva version used by your product build.
+* Re-run host verification after any compiler, runtime, calibration, or key change.
+* Keep `manifest.json` with release artifacts so the compiler command and schema version remain auditable.
+
+== ONNX to Minerva Workflow
+
+Use the existing ONNX loader path to inspect the model and extract a supported static MLP graph before calling Minerva export. The first phase does not include a general ONNX-to-Minerva importer; unsupported ONNX operators should be rejected before export.
+
+[source,kotlin]
+----
+import kotlinx.io.asSource
+import sk.ainet.io.onnx.OnnxLoader
+import java.io.File
+
+suspend fun loadOnnxForMinerva(path: String) {
+    val loaded = OnnxLoader.fromModelSource {
+        File(path).inputStream().asSource()
+    }.load()
+    val graph = loaded.proto.graph ?: error("ONNX model has no graph")
+
+    val ops = graph.node.map { it.opType }.toSet()
+    require(ops.all { it in setOf("MatMul", "Gemm", "Add", "Relu", "Sigmoid", "Tanh") }) {
+        "ONNX graph contains operators outside the Minerva phase-one scope: $ops"
+    }
+
+    // Convert the inspected static MLP to a SKaiNET ComputeGraph, then call MinervaExportFacade.
+}
+----
+
+== Maintained JVM Sample
+
+The maintained sample is `sk.ainet.compile.minerva.examples.MinervaTinyMlpExportSample` in the Minerva module. It builds a tiny two-layer MLP, reads Minerva paths from environment variables, invokes the export facade, and prints bundle and verification status.
+
+Run the sample after configuring libminerva:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:jvmTest
+./gradlew :skainet-compile:skainet-compile-minerva:jvmJar
+----
+
+The sample graph is covered by `MinervaTinyMlpExportSampleTest`, which validates compatibility, lowering, and NPZ generation without requiring real device keys.
+
+== Troubleshooting
+
+[cols="1,2",options="header"]
+|===
+| Symptom | Fix
+
+| `minerva.compiler.script_missing`
+| Set `MinervaExportOptions.compilerScript` or `MINERVA_COMPILER_SCRIPT`.
+
+| `minerva.compiler.runtime_root_not_found`
+| Point `runtimeRoot` or `MINERVA_RUNTIME_ROOT` at the libminerva checkout or install directory.
+
+| Compatibility fails for an unsupported operation
+| Reduce the graph to the phase-one MLP pattern, or use StableHLO for a general compiler flow.
+
+| CMake or CTest verification fails
+| Inspect `minerva-host-verification.log`, confirm CMake is installed, and confirm the generated host harness is linked against the pinned libminerva runtime.
+
+| Secret leak check fails
+| Remove real secrets from generated files and regenerate the bundle. Only placeholders belong in source control.
+|===

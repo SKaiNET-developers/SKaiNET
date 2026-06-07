@@ -28,3 +28,22 @@ kotlin {
         }
     }
 }
+
+val minervaHostVerificationEnabled = providers.gradleProperty("minerva.hostVerification.enabled")
+    .map { it.toBoolean() }
+    .orElse(false)
+val minervaRuntimeRoot = providers.gradleProperty("minerva.runtimeRoot")
+val minervaCompilerScript = providers.gradleProperty("minerva.compilerScript")
+
+tasks.register("minervaHostVerification") {
+    group = "verification"
+    description = "Gated lifecycle hook for external Minerva host verification in CI."
+    enabled = minervaHostVerificationEnabled.get() &&
+        minervaRuntimeRoot.isPresent &&
+        minervaCompilerScript.isPresent
+    if (enabled) {
+        dependsOn("jvmTest")
+    }
+    inputs.property("minerva.runtimeRoot", minervaRuntimeRoot.orElse(""))
+    inputs.property("minerva.compilerScript", minervaCompilerScript.orElse(""))
+}

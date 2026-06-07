@@ -34,15 +34,16 @@ public enum class MinervaTarget(
 /**
  * Export options for the Minerva backend.
  *
- * Path values are strings so the API stays usable from common code. The phase
- * one scaffold validates shape and intent but does not require a libminerva
- * checkout until compiler integration lands.
+ * Path values are strings so the API stays usable from common code. The JVM
+ * compiler adapter validates configured paths immediately before process
+ * execution.
  */
 public data class MinervaExportOptions(
     public val outputDir: String,
     public val projectName: String,
     public val target: MinervaTarget = MinervaTarget.ATMEGA328P,
     public val quantization: MinervaQuantization = MinervaQuantization.Q8,
+    public val pythonExecutable: String = "python3",
     public val runtimeRoot: String? = null,
     public val compilerScript: String? = null,
     public val keyFile: String? = null,
@@ -51,11 +52,13 @@ public data class MinervaExportOptions(
     public val generateHostHarness: Boolean = true,
     public val generateFirmwareExample: Boolean = true,
     public val runHostVerification: Boolean = true,
+    public val hostVerificationTolerance: Float = 1.0e-3f,
     public val metadata: Map<String, String> = emptyMap()
 ) {
     init {
         require(outputDir.isNotBlank()) { "outputDir cannot be blank" }
         require(projectName.isNotBlank()) { "projectName cannot be blank" }
+        require(pythonExecutable.isNotBlank()) { "pythonExecutable cannot be blank" }
         require(projectName.none { it == '/' || it == '\\' }) {
             "projectName must be a simple project directory name"
         }
@@ -63,6 +66,9 @@ public data class MinervaExportOptions(
         requireOptionalPath("compilerScript", compilerScript)
         requireOptionalPath("keyFile", keyFile)
         requireOptionalPath("calibrationNpz", calibrationNpz)
+        require(hostVerificationTolerance.isFinite() && hostVerificationTolerance > 0.0f) {
+            "hostVerificationTolerance must be positive and finite"
+        }
         require(metadata.keys.all { it.isNotBlank() }) { "metadata keys cannot be blank" }
     }
 
@@ -70,10 +76,12 @@ public data class MinervaExportOptions(
         return metadata + mapOf(
             "target" to target.compilerId,
             "quantization" to quantization.compilerId,
+            "pythonExecutable" to pythonExecutable,
             "phaseOneScope" to MinervaExportBackend.phaseOneScope,
             "generateHostHarness" to generateHostHarness.toString(),
             "generateFirmwareExample" to generateFirmwareExample.toString(),
             "runHostVerification" to runHostVerification.toString(),
+            "hostVerificationTolerance" to hostVerificationTolerance.toString(),
             "dumpWeights" to dumpWeights.toString()
         )
     }
@@ -93,6 +101,10 @@ public enum class MinervaExportFailureKind {
     COMPATIBILITY_VALIDATION_FAILED,
     LOWERING_FAILED,
     NPZ_SCHEMA_FAILED,
+    COMPILER_PREREQUISITE_FAILED,
+    COMPILER_FAILED,
+    PACKAGING_FAILED,
+    VERIFICATION_FAILED,
     NOT_IMPLEMENTED
 }
 
@@ -121,7 +133,8 @@ public data class MinervaExportBundle(
     public val target: MinervaTarget,
     public val quantization: MinervaQuantization,
     public val generatedFiles: List<String> = emptyList(),
-    public val manifestPath: String? = null
+    public val manifestPath: String? = null,
+    public val compilerOutput: MinervaCompilerOutput? = null
 ) {
     init {
         require(projectName.isNotBlank()) { "projectName cannot be blank" }
@@ -205,7 +218,9 @@ public data class MinervaExportResult(
     public val metadata: Map<String, String> = emptyMap(),
     public val compatibilityReport: MinervaCompatibilityReport? = null,
     public val intermediate: MinervaIntermediate? = null,
-    public val npzModel: MinervaNpzModel? = null
+    public val npzModel: MinervaNpzModel? = null,
+    public val compilerOutput: MinervaCompilerOutput? = null,
+    public val hostVerification: MinervaHostVerification? = null
 ) {
     init {
         require(status != GraphExportStatus.SUCCESS || bundle != null) {
