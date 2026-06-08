@@ -120,6 +120,8 @@ val runBenchProperty = providers.systemProperty("skainet.runBench")
 tasks.withType<Test>().configureEach {
     jvmArgs("--enable-preview", "--enable-native-access=ALL-UNNAMED", "--add-modules", "jdk.incubator.vector")
     runBenchProperty.orNull?.let { systemProperty("skainet.runBench", it) }
+    // Stable version stamp for KernelSupportMatrixTest's kernel-support.json (avoids doc churn).
+    systemProperty("skainet.version", (findProperty("VERSION_NAME") ?: "dev").toString())
 }
 
 tasks.withType<JavaExec>().configureEach {

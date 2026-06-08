@@ -89,6 +89,8 @@ those formats were JVM-only and broke on Native.
 - ❌ **Non-CPU eager backends** (IREE, Metal, GPU) — the `KernelProvider` SPI anticipates them, but none are implemented for the eager path today.
 
 > This mindmap is a hand-authored overview. Its companion
-> [kernel × platform support matrix](kernel-support-matrix.md) is **machine-generated** from
-> the registered `KernelProvider`s (`KernelSupportMatrixTest`) and CI-gated against drift in
-> the scalar floor, so the per-platform coverage stays in sync with the code.
+> [kernel × platform support matrix](modules/ROOT/pages/reference/kernel-support-matrix.adoc) is
+> **machine-generated** from the registered `KernelProvider`s (`KernelSupportMatrixTest` →
+> `kernel-support.json` → `generateKernelMatrix`, the kernel-side analogue of the
+> `operators.json` → `ops-status-matrix.adoc` pipeline) and gated against scalar-floor drift,
+> so the per-platform coverage stays in sync with the code.

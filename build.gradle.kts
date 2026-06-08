@@ -109,10 +109,19 @@ documentation {
     outputDirectory.set(file("docs/modules/ROOT/pages/reference/operators/generated"))
     includeBackendStatus.set(true)
     generateIndex.set(true)
+    // Kernel × platform matrix — registry-introspected JSON (emitted by KernelSupportMatrixTest)
+    // rendered to an Antora page, mirroring the operators.json → ops-status-matrix.adoc pipeline.
+    kernelInputFile.set(file("skainet-backends/skainet-backend-native-cpu/build/generated/kernel-support/kernel-support.json"))
+    kernelOutputFile.set(file("docs/modules/ROOT/pages/reference/kernel-support-matrix.adoc"))
 }
 
 tasks.named("generateDocs") {
     dependsOn(":skainet-lang:skainet-lang-core:kspCommonMainKotlinMetadata")
+}
+
+tasks.named("generateKernelMatrix") {
+    // The generator test introspects the registered providers + emits kernel-support.json.
+    dependsOn(":skainet-backends:skainet-backend-native-cpu:jvmTest")
 }
 
 // Dokka aggregation – unified API reference across all library modules
