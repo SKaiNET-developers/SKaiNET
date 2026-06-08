@@ -34,7 +34,7 @@ Do not commit real device keys. `include/secrets.example.h` contains placeholder
 | Shapes | Fully known rank-2 tensor shapes |
 | Pattern | `Input -> MatMul -> Add? -> activation?`, repeated in sequence |
 | Activations | `Relu`, `Sigmoid`, `Tanh` after a dense layer |
-| Out of scope | CNNs, attention, recurrent models, dynamic shapes, branching graphs, transformers, arbitrary ONNX operators |
+| Out of scope | CNNs, attention, recurrent models, dynamic shapes, branching graphs, transformers, and arbitrary imported operator sets |
 
 ## Export API
 
@@ -81,7 +81,7 @@ build/minerva/TinySecureMlp/
 
 `manifest.json` records the export target, quantization, libminerva root, compiler command summary, NPZ schema version, layer count, reference fixture paths, generated files, and a `generatedFileSha256` map. The hashes cover generated artifacts such as `generated/model.npz`, `generated/weights.c`, `include/weights.h`, host fixtures, host harness sources, and firmware examples.
 
-Use the manifest as the handoff record between Kotlin export, ONNX/import review, libminerva compilation, and host verification. It redacts compiler key-file arguments and does not copy real device key material; keep real keys outside the generated bundle.
+Use the manifest as the handoff record between the source model, Kotlin export, libminerva compilation, and host verification. It redacts compiler key-file arguments and does not copy real device key material; keep real keys outside the generated bundle.
 
 ## Host Verification and CI
 
@@ -130,9 +130,11 @@ CI recipe:
 
 `minervaHostVerification` is skipped by default. When enabled, it runs `jvmTest` and `runMinervaTinyMlpSample` with CMake and CTest host verification enabled unless `-Pminerva.hostVerification.runCmakeBuild=false` or `-Pminerva.hostVerification.runCTest=false` is set.
 
-## ONNX to Minerva
+## Model Sources
 
-Use the existing ONNX loader to inspect a model and reject unsupported operators before constructing a compatible SKaiNET `ComputeGraph`. Once the graph is exported, keep `manifest.json` with the original ONNX artifact so reviewers can compare the imported topology, generated `model.npz`, and host verification fixtures:
+Minerva export starts from a supported SKaiNET `ComputeGraph`. That graph can come from the Kotlin DSL, a traced forward pass, a hand-built graph, an imported model, or any other path that preserves the phase-one static MLP contract.
+
+For ONNX inputs, use the existing ONNX loader as an inspection step before constructing a compatible SKaiNET graph:
 
 ```kotlin
 val loaded = OnnxLoader.fromModelSource {
@@ -143,7 +145,7 @@ val ops = graph.node.map { it.opType }.toSet()
 require(ops.all { it in setOf("MatMul", "Gemm", "Add", "Relu", "Sigmoid", "Tanh") })
 ```
 
-The first phase does not include a general ONNX-to-Minerva importer.
+The first phase does not include a general ONNX-to-Minerva importer. Once any source graph is exported, keep `manifest.json` with the source-model artifact or training metadata so reviewers can compare provenance, generated `model.npz`, and host verification fixtures.
 
 ## Firmware Integration
 

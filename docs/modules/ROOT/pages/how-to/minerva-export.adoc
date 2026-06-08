@@ -87,7 +87,7 @@ export MINERVA_HOST_LIBRARIES=minerva
 | `Relu`, `Sigmoid`, and `Tanh` after a dense layer.
 
 | Out of scope
-| CNNs, attention blocks, recurrent models, dynamic shapes, branching graphs, transformers, and arbitrary ONNX operators.
+| CNNs, attention blocks, recurrent models, dynamic shapes, branching graphs, transformers, and arbitrary imported operator sets.
 |===
 
 == Export API
@@ -146,9 +146,9 @@ The manifest records the target, quantization, libminerva root, compiler command
 
 `manifest.json` is the release handoff record for Minerva export. It includes a `generatedFileSha256` object keyed by generated project path, covering artifacts such as `generated/model.npz`, `generated/weights.c`, `include/weights.h`, host fixtures, host harness sources, and firmware examples.
 
-Use those fingerprints to audit that the Kotlin export, libminerva compiler output, host verification fixtures, and firmware handoff all refer to the same generated bundle. Compiler key-file arguments are redacted from the command summary, and real device key material must stay outside the generated bundle.
+Use those fingerprints to audit that the source model, Kotlin export, libminerva compiler output, host verification fixtures, and firmware handoff all refer to the same generated bundle. Compiler key-file arguments are redacted from the command summary, and real device key material must stay outside the generated bundle.
 
-For imported models, keep the original ONNX or training artifact next to the manifest in your release evidence. The Minerva manifest fingerprints the generated Minerva bundle; it is not a replacement for source-model provenance.
+For imported or trained models, keep the original source artifact or training metadata next to the manifest in your release evidence. The Minerva manifest fingerprints the generated Minerva bundle; it is not a replacement for source-model provenance.
 
 == Host Verification
 
@@ -213,9 +213,11 @@ Before flashing firmware:
 * Re-run host verification after any compiler, runtime, calibration, or key change.
 * Keep `manifest.json` with release artifacts so the compiler command and schema version remain auditable.
 
-== ONNX to Minerva Workflow
+== Model Source Workflow
 
-Use the existing ONNX loader path to inspect the model and extract a supported static MLP graph before calling Minerva export. The first phase does not include a general ONNX-to-Minerva importer; unsupported ONNX operators should be rejected before export. After export, keep `manifest.json` with the original ONNX artifact so reviewers can compare source-model provenance with the generated Minerva bundle fingerprints.
+Minerva export starts from a supported SKaiNET `ComputeGraph`. That graph can come from the Kotlin DSL, a traced forward pass, a hand-built graph, an imported model, or any other path that preserves the phase-one static MLP contract.
+
+For ONNX inputs, use the existing ONNX loader path as an inspection step before constructing a compatible SKaiNET graph. The first phase does not include a general ONNX-to-Minerva importer; unsupported imported operators should be rejected before export. After export, keep `manifest.json` with the source-model artifact or training metadata so reviewers can compare provenance with the generated Minerva bundle fingerprints.
 
 [source,kotlin]
 ----
