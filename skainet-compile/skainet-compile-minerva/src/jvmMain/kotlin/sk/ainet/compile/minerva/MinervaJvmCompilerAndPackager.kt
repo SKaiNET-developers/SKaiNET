@@ -173,23 +173,19 @@ public class PythonMinervaCompilerAdapter @kotlin.jvm.JvmOverloads constructor(
         val command = mutableListOf(
             options.pythonExecutable,
             scriptPath.toAbsolutePath().normalize().toString(),
-            "--model",
             modelPath.toAbsolutePath().normalize().toString(),
             "--out-dir",
             generatedDir.toAbsolutePath().normalize().toString(),
             "--target",
             options.target.compilerId,
-            "--quantization",
+            "--quant",
             options.quantization.compilerId
         )
-        options.runtimeRoot?.let {
-            command += listOf("--runtime-root", Paths.get(it).toAbsolutePath().normalize().toString())
-        }
         options.keyFile?.let {
-            command += listOf("--key-file", Paths.get(it).toAbsolutePath().normalize().toString())
+            command += listOf("--key", Paths.get(it).toAbsolutePath().normalize().toString())
         }
         options.calibrationNpz?.let {
-            command += listOf("--calibration", Paths.get(it).toAbsolutePath().normalize().toString())
+            command += listOf("--calibrate", Paths.get(it).toAbsolutePath().normalize().toString())
         }
         if (options.dumpWeights) command += "--dump-weights"
         return command
@@ -311,7 +307,7 @@ public class PythonMinervaCompilerAdapter @kotlin.jvm.JvmOverloads constructor(
         return command.mapIndexed { index, value ->
             val previous = command.getOrNull(index - 1)
             when (previous) {
-                "--key-file" -> "<key-file>"
+                "--key" -> "<key-file>"
                 else -> value
             }
         }.joinToString(" ")
@@ -465,10 +461,31 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             )
         }
         Files.createDirectories(target.parent)
-        if (source.toAbsolutePath().normalize() != target.toAbsolutePath().normalize()) {
-            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+        val samePath = source.toAbsolutePath().normalize() == target.toAbsolutePath().normalize()
+        if (logicalName == "weights.c") {
+            val original = Files.readString(source)
+            val normalized = normalizeWeightsSource(original)
+            if (!samePath || normalized != original) {
+                Files.writeString(target, normalized)
+            }
+        } else {
+            if (!samePath) {
+                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+            }
         }
         return target
+    }
+
+    private fun normalizeWeightsSource(source: String): String {
+        return source
+            .lineSequence()
+            .joinToString(separator = "\n") { line ->
+                if (line.trim() == "}},") {
+                    line.replace("}},", "},")
+                } else {
+                    line
+                }
+            } + if (source.endsWith("\n")) "\n" else ""
     }
 
     private fun recordArtifacts(
@@ -569,6 +586,51 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             |set(MINERVA_HOST_LIBRARY_DIRS "$libraryDirs" CACHE STRING "Additional semicolon-separated Minerva host library directories")
             |set(MINERVA_HOST_LIBRARIES "$libraries" CACHE STRING "Additional semicolon-separated Minerva host libraries")
             |
+            |set(MINERVA_GENERATED_WEIGHTS_HEADER "${'$'}{CMAKE_CURRENT_SOURCE_DIR}/../include/weights.h")
+            |if(EXISTS "${'$'}{MINERVA_GENERATED_WEIGHTS_HEADER}")
+            |  file(READ "${'$'}{MINERVA_GENERATED_WEIGHTS_HEADER}" MINERVA_GENERATED_WEIGHTS_H)
+            |  function(minerva_define_from_weights name)
+            |    string(REGEX MATCH "#define[ \t]+${'$'}{name}[ \t]+([0-9]+)U?" _match "${'$'}{MINERVA_GENERATED_WEIGHTS_H}")
+            |    if(CMAKE_MATCH_1)
+            |      add_compile_definitions("${'$'}{name}=${'$'}{CMAKE_MATCH_1}U")
+            |    endif()
+            |  endfunction()
+            |  minerva_define_from_weights(MNV_INPUT_SIZE)
+            |  minerva_define_from_weights(MNV_NUM_LAYERS)
+            |  minerva_define_from_weights(MNV_OUTPUT_SIZE)
+            |  minerva_define_from_weights(MNV_ENCRYPTED_LEN)
+            |  foreach(MINERVA_LAYER_INDEX RANGE 0 15)
+            |    minerva_define_from_weights("MNV_LAYER_${'$'}{MINERVA_LAYER_INDEX}_SIZE")
+            |  endforeach()
+            |endif()
+            |
+            |if(MINERVA_RUNTIME_ROOT AND EXISTS "${'$'}{MINERVA_RUNTIME_ROOT}/CMakeLists.txt")
+            |  add_subdirectory("${'$'}{MINERVA_RUNTIME_ROOT}" "${'$'}{CMAKE_CURRENT_BINARY_DIR}/libminerva")
+            |endif()
+            |if(TARGET minerva AND MINERVA_RUNTIME_ROOT)
+            |  target_include_directories(minerva PUBLIC
+            |    "${'$'}{MINERVA_RUNTIME_ROOT}/src/core"
+            |    "${'$'}{MINERVA_RUNTIME_ROOT}/src/security"
+            |    "${'$'}{MINERVA_RUNTIME_ROOT}/src/arch"
+            |    "${'$'}{MINERVA_RUNTIME_ROOT}/src/hal"
+            |  )
+            |  get_target_property(MINERVA_RUNTIME_TARGET_SOURCES minerva SOURCES)
+            |  if(NOT MINERVA_RUNTIME_TARGET_SOURCES)
+            |    set(MINERVA_RUNTIME_TARGET_SOURCES "")
+            |  endif()
+            |  foreach(MINERVA_RUNTIME_EXTRA_SOURCE
+            |      src/security/mnv_lut.c
+            |      src/security/mnv_outauth.c
+            |  )
+            |    set(MINERVA_RUNTIME_EXTRA_SOURCE_ABS "${'$'}{MINERVA_RUNTIME_ROOT}/${'$'}{MINERVA_RUNTIME_EXTRA_SOURCE}")
+            |    list(FIND MINERVA_RUNTIME_TARGET_SOURCES "${'$'}{MINERVA_RUNTIME_EXTRA_SOURCE}" MINERVA_RUNTIME_EXTRA_SOURCE_REL_FOUND)
+            |    list(FIND MINERVA_RUNTIME_TARGET_SOURCES "${'$'}{MINERVA_RUNTIME_EXTRA_SOURCE_ABS}" MINERVA_RUNTIME_EXTRA_SOURCE_ABS_FOUND)
+            |    if(EXISTS "${'$'}{MINERVA_RUNTIME_EXTRA_SOURCE_ABS}" AND MINERVA_RUNTIME_EXTRA_SOURCE_REL_FOUND EQUAL -1 AND MINERVA_RUNTIME_EXTRA_SOURCE_ABS_FOUND EQUAL -1)
+            |      target_sources(minerva PRIVATE "${'$'}{MINERVA_RUNTIME_EXTRA_SOURCE_ABS}")
+            |    endif()
+            |  endforeach()
+            |endif()
+            |
             |set(MINERVA_HOST_SOURCES main.c ../generated/weights.c)
             |if(MINERVA_HOST_ADAPTER_SOURCE)
             |  list(APPEND MINERVA_HOST_SOURCES "${'$'}{MINERVA_HOST_ADAPTER_SOURCE}")
@@ -585,7 +647,9 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             |if(MINERVA_HOST_LIBRARY_DIRS)
             |  target_link_directories(${options.projectName}_host PRIVATE ${'$'}{MINERVA_HOST_LIBRARY_DIRS})
             |endif()
-            |if(MINERVA_HOST_LIBRARIES)
+            |if(TARGET minerva)
+            |  target_link_libraries(${options.projectName}_host PRIVATE minerva)
+            |elseif(MINERVA_HOST_LIBRARIES)
             |  target_link_libraries(${options.projectName}_host PRIVATE ${'$'}{MINERVA_HOST_LIBRARIES})
             |endif()
             |if(MINERVA_HOST_ADAPTER_SOURCE)
@@ -671,8 +735,9 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             | *
             | *   -DMINERVA_HOST_ADAPTER_SOURCE=/path/to/minerva_runtime_adapter.c
             | *
-            | * This adapter targets libminerva's public C API:
-            | *   mnv_init, mnv_seed_prng, mnv_run, mnv_verify_output
+            | * This adapter targets libminerva's current C runtime symbols:
+            | *   mnv_init, mnv_seed_prng, mnv_run_with_model,
+            | *   mnv_verify_output_with_key
             | *
             | * SKaiNET host fixtures use normalized float values. libminerva uses Q8
             | * activation buffers, so this sample clamps [-1, 1] floats to int8 and
@@ -684,6 +749,32 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             |
             |#ifndef MNV_HOST_PRNG_SEED
             |#define MNV_HOST_PRNG_SEED 0x534B4149UL
+            |#endif
+            |
+            |#ifndef MINERVA_HOST_VERIFY_OUTPUT_WITH_MODEL_KEY
+            |#define MINERVA_HOST_VERIFY_OUTPUT_WITH_MODEL_KEY 1
+            |#endif
+            |
+            |#ifndef MINERVA_HOST_RUN_WITH_MODEL
+            |#define MINERVA_HOST_RUN_WITH_MODEL 1
+            |#endif
+            |
+            |#if MINERVA_HOST_RUN_WITH_MODEL
+            |extern mnv_status_t mnv_run_with_model(
+            |    mnv_ctx_t *ctx,
+            |    const mnv_model_t *model,
+            |    const mnv_act_t *input,
+            |    mnv_act_t *output
+            |);
+            |#endif
+            |
+            |#if defined(MNV_ENABLE_OUTPUT_AUTH) && MINERVA_HOST_VERIFY_OUTPUT_WITH_MODEL_KEY
+            |extern mnv_status_t mnv_verify_output_with_key(
+            |    const mnv_ctx_t *ctx,
+            |    const uint8_t *device_key,
+            |    const mnv_act_t *input,
+            |    const mnv_act_t *output
+            |);
             |#endif
             |
             |static mnv_ctx_t minerva_host_ctx;
@@ -733,12 +824,20 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             |        q_output[i] = 0;
             |    }
             |
+            |#if MINERVA_HOST_RUN_WITH_MODEL
+            |    mnv_status_t status = mnv_run_with_model(&minerva_host_ctx, &mnv_model, q_input, q_output);
+            |#else
             |    mnv_status_t status = mnv_run(&minerva_host_ctx, q_input, q_output);
+            |#endif
             |    if (status != MNV_OK) {
             |        return (int)status;
             |    }
             |#ifdef MNV_ENABLE_OUTPUT_AUTH
+            |#if MINERVA_HOST_VERIFY_OUTPUT_WITH_MODEL_KEY
+            |    status = mnv_verify_output_with_key(&minerva_host_ctx, mnv_model.key, q_input, q_output);
+            |#else
             |    status = mnv_verify_output(&minerva_host_ctx, q_input, q_output);
+            |#endif
             |    if (status != MNV_OK) {
             |        return (int)status;
             |    }
@@ -848,7 +947,7 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
         context: GraphExportContext
     ): MinervaHostVerification {
         val options = request.options
-        val projectDir = Paths.get(request.bundle.outputDir).normalize()
+        val projectDir = Paths.get(request.bundle.outputDir).toAbsolutePath().normalize()
         val tolerance = options.hostVerificationTolerance
         context.info(
             stage = GraphExportStage.VERIFICATION,
@@ -1126,11 +1225,22 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
     ): MinervaHostVerification? {
         val keyPath = request.options.keyFile?.let(Paths::get) ?: return null
         if (!Files.isRegularFile(keyPath) || Files.size(keyPath) == 0L || Files.size(keyPath) > 4096L) return null
-        val keyMaterial = Files.readString(keyPath).trim()
-        if (keyMaterial.isBlank()) return null
+        val keyBytes = Files.readAllBytes(keyPath)
+        if (keyBytes.isEmpty()) return null
+        val utf8Key = String(keyBytes, Charsets.UTF_8).trim()
+        val hexKey = keyBytes.joinToString(separator = "") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
+        val keyMaterialCandidates = buildList {
+            if (utf8Key.isNotBlank()) add(utf8Key)
+            if (hexKey.isNotBlank()) {
+                add(hexKey)
+                add(hexKey.uppercase())
+            }
+        }
         val secretsExample = projectDir.resolve("include/secrets.example.h")
         val template = Files.readString(secretsExample)
-        if (!template.contains(keyMaterial)) return null
+        if (keyMaterialCandidates.none(template::contains)) return null
         return failed(
             code = "minerva.host_verification.secret_leak",
             message = "Generated Minerva secret template contains real key material.",

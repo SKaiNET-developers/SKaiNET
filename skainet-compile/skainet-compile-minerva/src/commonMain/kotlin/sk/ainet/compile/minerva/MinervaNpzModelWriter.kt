@@ -11,7 +11,8 @@ import sk.ainet.compile.export.GraphExportWriter
  */
 public enum class MinervaNpzDType(public val numpyDescriptor: String) {
     FLOAT32("<f4"),
-    INT32("<i4")
+    INT32("<i4"),
+    STRING("<U")
 }
 
 /**
@@ -22,28 +23,42 @@ public data class MinervaNpzArray(
     public val dtype: MinervaNpzDType,
     public val shape: List<Int>,
     public val floatData: List<Float> = emptyList(),
-    public val intData: List<Int> = emptyList()
+    public val intData: List<Int> = emptyList(),
+    public val stringData: List<String> = emptyList()
 ) {
     init {
         require(name.isNotBlank()) { "array name cannot be blank" }
-        require(shape.isNotEmpty()) { "array shape cannot be empty" }
+        require(shape.isNotEmpty() || dtype == MinervaNpzDType.STRING) { "array shape cannot be empty" }
         require(shape.all { it >= 0 }) { "array shape dimensions must be non-negative" }
         val elementCount = shape.fold(1) { acc, dim -> acc * dim }
         when (dtype) {
             MinervaNpzDType.FLOAT32 -> {
                 require(floatData.size == elementCount) { "floatData size must match array element count" }
                 require(intData.isEmpty()) { "intData must be empty for FLOAT32 arrays" }
+                require(stringData.isEmpty()) { "stringData must be empty for FLOAT32 arrays" }
                 require(floatData.all { it.isFinite() }) { "floatData values must be finite" }
             }
             MinervaNpzDType.INT32 -> {
                 require(intData.size == elementCount) { "intData size must match array element count" }
                 require(floatData.isEmpty()) { "floatData must be empty for INT32 arrays" }
+                require(stringData.isEmpty()) { "stringData must be empty for INT32 arrays" }
+            }
+            MinervaNpzDType.STRING -> {
+                require(stringData.size == elementCount) { "stringData size must match array element count" }
+                require(floatData.isEmpty()) { "floatData must be empty for STRING arrays" }
+                require(intData.isEmpty()) { "intData must be empty for STRING arrays" }
+                require(stringData.all { value -> value.isNotEmpty() && value.all { it.code in 1..127 } }) {
+                    "stringData values must be non-empty ASCII strings"
+                }
             }
         }
     }
 
     public val elementCount: Int
         get() = shape.fold(1) { acc, dim -> acc * dim }
+
+    public val stringElementWidth: Int
+        get() = stringData.maxOfOrNull { it.length } ?: 0
 }
 
 /**
@@ -181,10 +196,10 @@ public class MinervaNpzModelWriter @kotlin.jvm.JvmOverloads constructor(
                 shape = layer.bias?.shape ?: listOf(0),
                 values = layer.bias?.let { requiredValues(it, layer.id, "layer_${index}_b") } ?: emptyList()
             )
-            arrays += intArray(
+            arrays += stringArray(
                 name = "layer_${index}_act",
-                shape = listOf(1),
-                values = listOf(activationCode(layer.activation))
+                shape = emptyList(),
+                values = listOf(activationName(layer.activation))
             )
             arrays += intArray(
                 name = "layer_${index}_input_shape",
@@ -247,12 +262,12 @@ public class MinervaNpzModelWriter @kotlin.jvm.JvmOverloads constructor(
         }
     }
 
-    private fun activationCode(activation: MinervaActivation?): Int {
+    private fun activationName(activation: MinervaActivation?): String {
         return when (activation) {
-            null -> 0
-            MinervaActivation.RELU -> 1
-            MinervaActivation.SIGMOID -> 2
-            MinervaActivation.TANH -> 3
+            null -> "linear"
+            MinervaActivation.RELU -> "relu"
+            MinervaActivation.SIGMOID -> "sigmoid"
+            MinervaActivation.TANH -> "tanh"
         }
     }
 
@@ -262,6 +277,10 @@ public class MinervaNpzModelWriter @kotlin.jvm.JvmOverloads constructor(
 
     private fun intArray(name: String, shape: List<Int>, values: List<Int>): MinervaNpzArray {
         return MinervaNpzArray(name = name, dtype = MinervaNpzDType.INT32, shape = shape, intData = values)
+    }
+
+    private fun stringArray(name: String, shape: List<Int>, values: List<String>): MinervaNpzArray {
+        return MinervaNpzArray(name = name, dtype = MinervaNpzDType.STRING, shape = shape, stringData = values)
     }
 }
 
@@ -280,6 +299,12 @@ private object NpyWriter {
         when (array.dtype) {
             MinervaNpzDType.FLOAT32 -> array.floatData.forEach { payload.writeIntLE(it.toRawBits()) }
             MinervaNpzDType.INT32 -> array.intData.forEach { payload.writeIntLE(it) }
+            MinervaNpzDType.STRING -> array.stringData.forEach { value ->
+                value.forEach { char -> payload.writeIntLE(char.code) }
+                repeat(array.stringElementWidth - value.length) {
+                    payload.writeIntLE(0)
+                }
+            }
         }
         val header = header(array)
         val output = ByteAccumulator()
@@ -295,10 +320,15 @@ private object NpyWriter {
 
     private fun header(array: MinervaNpzArray): ByteArray {
         val shapeText = when (array.shape.size) {
+            0 -> "()"
             1 -> "(${array.shape.single()},)"
             else -> array.shape.joinToString(prefix = "(", postfix = ")")
         }
-        val raw = "{'descr': '${array.dtype.numpyDescriptor}', 'fortran_order': False, 'shape': $shapeText, }"
+        val descriptor = when (array.dtype) {
+            MinervaNpzDType.STRING -> "${array.dtype.numpyDescriptor}${array.stringElementWidth}"
+            else -> array.dtype.numpyDescriptor
+        }
+        val raw = "{'descr': '$descriptor', 'fortran_order': False, 'shape': $shapeText, }"
         val preambleSize = 10
         val padding = (16 - ((preambleSize + raw.length + 1) % 16)) % 16
         return (raw + " ".repeat(padding) + "\n").encodeToByteArray()
@@ -429,4 +459,3 @@ private class ByteAccumulator {
         return ByteArray(bytes.size) { index -> bytes[index] }
     }
 }
-

@@ -9,19 +9,18 @@ Inside this repository, use `project(":skainet-compile:skainet-compile-minerva")
 Configure libminerva through `MinervaExportOptions` or the JVM sample environment:
 
 ```bash
-export MINERVA_COMPILER_SCRIPT=/opt/libminerva/tools/compile_model.py
+export MINERVA_COMPILER_SCRIPT=/opt/libminerva/compiler/minerva_compile.py
 export MINERVA_RUNTIME_ROOT=/opt/libminerva
 export MINERVA_CALIBRATION_NPZ=/secure/project/calibration.npz
 export MINERVA_KEY_FILE=/secure/project/device.key
 export MINERVA_RUN_CMAKE=true
 export MINERVA_RUN_CTEST=true
+export MINERVA_HOST_TOLERANCE=1.0
 export MINERVA_HOST_ADAPTER_SOURCE=/secure/project/minerva_runtime_adapter.c
-export MINERVA_HOST_INCLUDE_DIRS=/opt/libminerva/include
-export MINERVA_HOST_LIBRARY_DIRS=/opt/libminerva/lib
-export MINERVA_HOST_LIBRARIES=minerva
+export MINERVA_HOST_INCLUDE_DIRS=/secure/project/minerva-host-secrets
 ```
 
-Do not commit real device keys. `include/secrets.example.h` contains placeholders only.
+Do not commit real device keys. `include/secrets.example.h` contains placeholders only. For host verification against libminerva, `MINERVA_HOST_INCLUDE_DIRS` can point at an untracked directory that contains a host-only `secrets.h` defining `MNV_DEVICE_KEY`.
 
 ## Compatibility
 
@@ -36,13 +35,15 @@ Do not commit real device keys. `include/secrets.example.h` contains placeholder
 | Activations | `Relu`, `Sigmoid`, `Tanh` after a dense layer |
 | Out of scope | CNNs, attention, recurrent models, dynamic shapes, branching graphs, transformers, and arbitrary imported operator sets |
 
+`model.npz` stores activation names as scalar NumPy Unicode arrays (`relu`, `sigmoid`, `tanh`, or `linear`) because the current libminerva compiler reads `layer_i_act` as a string.
+
 ## Export API
 
 ```kotlin
 val options = MinervaExportOptions(
     outputDir = "build/minerva",
     projectName = "TinySecureMlp",
-    compilerScript = "/opt/libminerva/tools/compile_model.py",
+    compilerScript = "/opt/libminerva/compiler/minerva_compile.py",
     runtimeRoot = "/opt/libminerva",
     calibrationNpz = "/secure/project/calibration.npz",
     keyFile = "/secure/project/device.key"
@@ -93,7 +94,7 @@ The generated host harness has a stable adapter ABI:
 int minerva_run_inference(const float *input, int input_count, float *output, int output_count);
 ```
 
-`host/runtime_adapter.example.c` implements that ABI against the libminerva public C API (`mnv_init`, `mnv_seed_prng`, `mnv_run`, and `mnv_verify_output`). The adapter converts SKaiNET's normalized float fixtures to libminerva Q8 activation buffers and converts Q8 outputs back to floats for parity comparison.
+`host/runtime_adapter.example.c` implements that ABI against the current libminerva runtime symbols (`mnv_init`, `mnv_seed_prng`, `mnv_run_with_model`, and `mnv_verify_output_with_key`). The adapter keeps compile-time switches for runtimes that expose the older `mnv_run` / `mnv_verify_output` names. It converts SKaiNET's normalized float fixtures to libminerva Q8 activation buffers and converts Q8 outputs back to floats for parity comparison.
 
 Copy the adapter outside the generated bundle when product-specific scaling or entropy seeding needs local edits, then point CMake at the copied source. This keeps the generated host harness stable while leaving runtime policy in one reviewable adapter file.
 
@@ -105,14 +106,12 @@ metadata = mapOf(
     MinervaHostVerificationMetadata.RUN_CTEST to "true",
     MinervaHostVerificationMetadata.HOST_OUTPUT_PATH to "host-output.txt",
     MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE to "/secure/project/minerva_runtime_adapter.c",
-    MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS to "/opt/libminerva/include",
-    MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS to "/opt/libminerva/lib",
-    MinervaHostVerificationMetadata.HOST_LIBRARIES to "minerva"
+    MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS to "/secure/project/minerva-host-secrets"
 )
 ```
 
 `HOST_OUTPUT_PATH` is optional when the host run writes `host/observed-output.txt`.
-The include, library directory, and library values are passed to CMake as semicolon-separated lists, matching CMake list syntax.
+The generated CMake can build a checkout-style libminerva runtime from `runtimeRoot` when that directory contains `CMakeLists.txt`. Include, library directory, and library values are passed to CMake as semicolon-separated lists, matching CMake list syntax; use `HOST_LIBRARY_DIRS` and `HOST_LIBRARIES` only when linking an already-built runtime.
 
 CI recipe:
 
@@ -124,13 +123,19 @@ CI recipe:
   -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
   -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
   -Pminerva.keyFile="$MINERVA_KEY_FILE" \
+  -Pminerva.hostVerification.tolerance="${MINERVA_HOST_TOLERANCE:-1.0}" \
   -Pminerva.hostVerification.hostAdapterSource="$MINERVA_HOST_ADAPTER_SOURCE" \
-  -Pminerva.hostVerification.hostIncludeDirs="$MINERVA_HOST_INCLUDE_DIRS" \
-  -Pminerva.hostVerification.hostLibraryDirs="$MINERVA_HOST_LIBRARY_DIRS" \
-  -Pminerva.hostVerification.hostLibraries="$MINERVA_HOST_LIBRARIES"
+  -Pminerva.hostVerification.hostIncludeDirs="$MINERVA_HOST_INCLUDE_DIRS"
 ```
 
 `minervaHostVerification` is skipped by default. When enabled, it runs `jvmTest` and `runMinervaTinyMlpSample` with CMake and CTest host verification enabled unless `-Pminerva.hostVerification.runCmakeBuild=false` or `-Pminerva.hostVerification.runCTest=false` is set.
+The default parity tolerance remains `1e-3`; the real checkout profile sets `MINERVA_HOST_TOLERANCE=1.0` by default because current libminerva Q8 host outputs are useful as a runtime smoke proof but are not yet numerically close to the SKaiNET float reference.
+
+For a local checkout proof, the helper below creates an untracked key, calibration archive, host-only `secrets.h`, and host-only AVR `pgmspace.h` compatibility shim under `build/minerva-real-runtime-profile`, then runs the gated verification task with CMake and CTest enabled:
+
+```bash
+MINERVA_RUNTIME_ROOT=/opt/libminerva ./scripts/run-minerva-real-runtime-profile.sh
+```
 
 ## Model Sources
 

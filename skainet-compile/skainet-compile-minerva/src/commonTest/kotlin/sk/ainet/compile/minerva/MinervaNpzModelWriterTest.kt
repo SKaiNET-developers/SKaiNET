@@ -48,8 +48,8 @@ class MinervaNpzModelWriterTest {
         assertEquals("1x2", first.metadata["outputShape"])
         assertEquals(listOf(4, 3), first.array("layer_0_w").shape)
         assertEquals(12, first.array("layer_0_w").floatData.size)
-        assertEquals(listOf(1), first.array("layer_0_act").intData)
-        assertEquals(listOf(2), first.array("layer_1_act").intData)
+        assertEquals(listOf("relu"), first.array("layer_0_act").stringData)
+        assertEquals(listOf("sigmoid"), first.array("layer_1_act").stringData)
         assertTrue(context.artifacts.any { it.path == "model.npz" && it.role == GraphExportArtifactRole.INTERMEDIATE })
         assertTrue(context.diagnostics.any { it.code == "minerva.npz.completed" })
     }
@@ -66,8 +66,8 @@ class MinervaNpzModelWriterTest {
         assertTrue(entries.all { it.data.startsWithNpyMagic() })
         assertTrue(entries.single { it.name == "layer_0_w.npy" }.npyHeader().contains("'descr': '<f4'"))
         assertTrue(entries.single { it.name == "layer_0_w.npy" }.npyHeader().contains("'shape': (4, 3)"))
-        assertTrue(entries.single { it.name == "layer_1_act.npy" }.npyHeader().contains("'descr': '<i4'"))
-        assertTrue(entries.single { it.name == "layer_1_act.npy" }.npyHeader().contains("'shape': (1,)"))
+        assertTrue(entries.single { it.name == "layer_1_act.npy" }.npyHeader().contains("'descr': '<U7'"))
+        assertTrue(entries.single { it.name == "layer_1_act.npy" }.npyHeader().contains("'shape': ()"))
     }
 
     @Test

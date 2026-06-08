@@ -245,7 +245,7 @@ class MinervaExportFacadeTest {
                 outputDir = generatedDir,
                 weightsCPath = "$generatedDir/weights.c",
                 weightsHPath = "$generatedDir/weights.h",
-                commandSummary = "fake-minerva-compiler --model model.npz",
+                commandSummary = "fake-minerva-compiler model.npz",
                 stdout = "ok"
             )
         }

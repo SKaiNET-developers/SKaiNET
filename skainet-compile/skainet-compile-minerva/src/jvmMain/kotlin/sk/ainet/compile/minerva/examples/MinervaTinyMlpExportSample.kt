@@ -35,6 +35,7 @@ internal object MinervaTinyMlpExportSample {
             calibrationNpz = envPath(env, "MINERVA_CALIBRATION_NPZ"),
             runCmakeBuild = envFlag(env, "MINERVA_RUN_CMAKE"),
             runCTest = envFlag(env, "MINERVA_RUN_CTEST"),
+            hostVerificationTolerance = envFloat(env, "MINERVA_HOST_TOLERANCE"),
             hostOutputPath = envPath(env, "MINERVA_HOST_OUTPUT_PATH"),
             hostAdapterSource = envPath(env, "MINERVA_HOST_ADAPTER_SOURCE"),
             hostIncludeDirs = envPath(env, "MINERVA_HOST_INCLUDE_DIRS"),
@@ -128,6 +129,7 @@ internal object MinervaTinyMlpExportSample {
         calibrationNpz: String? = null,
         runCmakeBuild: Boolean = false,
         runCTest: Boolean = false,
+        hostVerificationTolerance: Float? = null,
         hostOutputPath: String? = null,
         hostAdapterSource: String? = null,
         hostIncludeDirs: String? = null,
@@ -163,6 +165,7 @@ internal object MinervaTinyMlpExportSample {
             compilerScript = compilerScript,
             keyFile = keyFile,
             calibrationNpz = calibrationNpz,
+            hostVerificationTolerance = hostVerificationTolerance ?: 1.0e-3f,
             metadata = metadata
         )
     }
@@ -251,5 +254,9 @@ internal object MinervaTinyMlpExportSample {
 
     private fun envFlag(env: Map<String, String>, name: String): Boolean {
         return env[name]?.equals("true", ignoreCase = true) == true
+    }
+
+    private fun envFloat(env: Map<String, String>, name: String): Float? {
+        return env[name]?.trim()?.takeIf { it.isNotEmpty() }?.toFloat()
     }
 }

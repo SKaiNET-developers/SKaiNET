@@ -38,6 +38,7 @@ val minervaKeyFile = providers.gradleProperty("minerva.keyFile")
 val minervaCalibrationNpz = providers.gradleProperty("minerva.calibrationNpz")
 val minervaRunCmakeBuild = providers.gradleProperty("minerva.hostVerification.runCmakeBuild")
 val minervaRunCTest = providers.gradleProperty("minerva.hostVerification.runCTest")
+val minervaHostVerificationTolerance = providers.gradleProperty("minerva.hostVerification.tolerance")
 val minervaHostOutputPath = providers.gradleProperty("minerva.hostVerification.hostOutputPath")
 val minervaHostAdapterSource = providers.gradleProperty("minerva.hostVerification.hostAdapterSource")
 val minervaHostIncludeDirs = providers.gradleProperty("minerva.hostVerification.hostIncludeDirs")
@@ -67,6 +68,7 @@ tasks.register("minervaHostVerification") {
     inputs.property("minerva.keyFile", minervaKeyFile.orElse(""))
     inputs.property("minerva.hostVerification.runCmakeBuild", minervaRunCmakeBuildForSample)
     inputs.property("minerva.hostVerification.runCTest", minervaRunCTestForSample)
+    inputs.property("minerva.hostVerification.tolerance", minervaHostVerificationTolerance.orElse(""))
     inputs.property("minerva.hostVerification.hostOutputPath", minervaHostOutputPath.orElse(""))
     inputs.property("minerva.hostVerification.hostAdapterSource", minervaHostAdapterSource.orElse(""))
     inputs.property("minerva.hostVerification.hostIncludeDirs", minervaHostIncludeDirs.orElse(""))
@@ -105,6 +107,9 @@ tasks.register<JavaExec>("runMinervaTinyMlpSample") {
     }
     minervaRunCTestForSample.orNull?.let {
         environment("MINERVA_RUN_CTEST", it)
+    }
+    minervaHostVerificationTolerance.orElse(providers.environmentVariable("MINERVA_HOST_TOLERANCE")).orNull?.let {
+        environment("MINERVA_HOST_TOLERANCE", it)
     }
     minervaHostOutputPath.orElse(providers.environmentVariable("MINERVA_HOST_OUTPUT_PATH")).orNull?.let {
         environment("MINERVA_HOST_OUTPUT_PATH", it)
