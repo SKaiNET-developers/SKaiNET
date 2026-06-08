@@ -17,7 +17,7 @@ class MinervaTinyMlpExportSampleTest {
     fun sampleGraphIsCompatibleAndLowersToNpz() {
         val graph = MinervaTinyMlpExportSample.tinyMlpGraph()
         val options = MinervaTinyMlpExportSample.exportOptions(
-            compilerScript = "/opt/libminerva/tools/compile_model.py",
+            compilerScript = "/opt/libminerva/compiler/minerva_compile.py",
             runtimeRoot = "/opt/libminerva",
             keyFile = "/secure/project/device.key",
             calibrationNpz = "/secure/project/calibration.npz"
@@ -44,9 +44,10 @@ class MinervaTinyMlpExportSampleTest {
     @Test
     fun sampleOptionsCarryHostVerificationMetadata() {
         val options = MinervaTinyMlpExportSample.exportOptions(
-            compilerScript = "/opt/libminerva/tools/compile_model.py",
+            compilerScript = "/opt/libminerva/compiler/minerva_compile.py",
             runCmakeBuild = true,
             runCTest = true,
+            hostVerificationTolerance = 0.75f,
             hostOutputPath = "host-output.txt",
             hostAdapterSource = "/project/minerva_adapter.c",
             hostIncludeDirs = "/opt/libminerva/include",
@@ -57,6 +58,7 @@ class MinervaTinyMlpExportSampleTest {
         assertEquals("minerva-tiny-mlp", options.metadata["sample"])
         assertEquals("true", options.metadata[MinervaHostVerificationMetadata.RUN_CMAKE_BUILD])
         assertEquals("true", options.metadata[MinervaHostVerificationMetadata.RUN_CTEST])
+        assertEquals(0.75f, options.hostVerificationTolerance)
         assertEquals("host-output.txt", options.metadata[MinervaHostVerificationMetadata.HOST_OUTPUT_PATH])
         assertEquals("/project/minerva_adapter.c", options.metadata[MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE])
         assertEquals("/opt/libminerva/include", options.metadata[MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS])

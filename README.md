@@ -19,6 +19,7 @@ matches what you want to try first.
 | Run tensor operations | [Quickstart](#quickstart) (below) | 2–5 min |
 | Build and train a neural net | [Hello Neural Net](#hello-neural-net) (below) | 5 min |
 | Run a local GGUF model | [SKaiNET Transformers starter](https://github.com/SKaiNET-developers/SKaiNET-transformers#start-in-5-minutes) | 5 min after model setup |
+| Export a secure MCU bundle | [Minerva getting started](docs/modules/ROOT/pages/tutorials/minerva-getting-started.adoc) | 10 min without firmware flashing |
 
 Working in Java? SKaiNET ships first-class Java support — see the
 [Java getting-started guide](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc).
@@ -153,6 +154,26 @@ deployment, the StableHLO path for native and edge targets.
 
 ---
 
+## Important Addition: Minerva Secure MCU Export
+
+SKaiNET now includes a Minerva export backend for secure MCU deployment. It is a sibling to StableHLO and Arduino/C99 export: it starts from a supported `ComputeGraph`, lowers static MLPs to a Minerva compiler input, invokes libminerva when configured, and packages generated weights, host fixtures, firmware skeletons, and a fingerprinted `manifest.json`.
+
+Start here:
+
+- [Minerva getting started](docs/modules/ROOT/pages/tutorials/minerva-getting-started.adoc) — run the maintained tiny MLP dry sample, then the real libminerva runtime profile.
+- [Minerva export how-to](docs/modules/ROOT/pages/how-to/minerva-export.adoc) — configure compiler paths, keys, calibration, CMake/CTest host verification, and troubleshooting.
+- [How Minerva secure MCU export fits](docs/modules/ROOT/pages/explanation/minerva-secure-mcu-export.adoc) — understand why Minerva is not an Arduino replacement and when to choose StableHLO instead.
+
+Runnable examples:
+
+```bash
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.example=sensor-classifier
+```
+
+---
+
 ## Features
 
 ### Kotlin Multiplatform
@@ -190,7 +211,7 @@ deployment, the StableHLO path for native and edge targets.
 
 - Export supported static MLP graphs to Minerva project bundles for secure MCU inference
 - Emits compiler NPZ input, libminerva weights, a fingerprinted manifest, host harness, firmware example, and host verification results
-- Start with the [Minerva export guide](docs/modules/ROOT/pages/how-to/minerva-export.adoc)
+- Start with the [Minerva getting started guide](docs/modules/ROOT/pages/tutorials/minerva-getting-started.adoc)
 
 ### Compiler: MLIR / StableHLO
 

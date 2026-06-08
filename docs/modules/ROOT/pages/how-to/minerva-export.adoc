@@ -4,6 +4,8 @@ Minerva export packages a supported SKaiNET compute graph for secure MCU inferen
 
 Use this backend when the output must be a Minerva project bundle with compiler input, generated weights, firmware and host harnesses, a manifest, and host verification metadata.
 
+New to this backend? Start with xref:tutorials/minerva-getting-started.adoc[Minerva getting started] for the first dry run and real-runtime profile, then return here for the detailed option reference. For the conceptual model, see xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits].
+
 == When to Use Each Export Path
 
 [cols="1,2",options="header"]
@@ -45,19 +47,18 @@ Configure libminerva through `MinervaExportOptions` or environment variables use
 
 [source,bash]
 ----
-export MINERVA_COMPILER_SCRIPT=/opt/libminerva/tools/compile_model.py
+export MINERVA_COMPILER_SCRIPT=/opt/libminerva/compiler/minerva_compile.py
 export MINERVA_RUNTIME_ROOT=/opt/libminerva
 export MINERVA_CALIBRATION_NPZ=/secure/project/calibration.npz
 export MINERVA_KEY_FILE=/secure/project/device.key
 export MINERVA_RUN_CMAKE=true
 export MINERVA_RUN_CTEST=true
+export MINERVA_HOST_TOLERANCE=1.0
 export MINERVA_HOST_ADAPTER_SOURCE=/secure/project/minerva_runtime_adapter.c
-export MINERVA_HOST_INCLUDE_DIRS=/opt/libminerva/include
-export MINERVA_HOST_LIBRARY_DIRS=/opt/libminerva/lib
-export MINERVA_HOST_LIBRARIES=minerva
+export MINERVA_HOST_INCLUDE_DIRS=/secure/project/minerva-host-secrets
 ----
 
-`MINERVA_KEY_FILE` and the generated `include/secrets.example.h` are placeholders for integration. Do not commit real device keys or derived secrets.
+`MINERVA_KEY_FILE` and the generated `include/secrets.example.h` are placeholders for integration. Do not commit real device keys or derived secrets. For host verification against libminerva, `MINERVA_HOST_INCLUDE_DIRS` can point at an untracked directory that contains a host-only `secrets.h` defining `MNV_DEVICE_KEY`.
 
 == Compatibility Matrix
 
@@ -90,6 +91,8 @@ export MINERVA_HOST_LIBRARIES=minerva
 | CNNs, attention blocks, recurrent models, dynamic shapes, branching graphs, transformers, and arbitrary imported operator sets.
 |===
 
+`model.npz` stores activation names as scalar NumPy Unicode arrays (`relu`, `sigmoid`, `tanh`, or `linear`) because the current libminerva compiler reads `layer_i_act` as a string.
+
 == Export API
 
 The public entry point is `MinervaExportFacade`. The facade accepts an already-built `ComputeGraph`, or it can record a representative forward pass for compatible SKaiNET models.
@@ -102,7 +105,7 @@ import sk.ainet.compile.minerva.MinervaExportOptions
 val options = MinervaExportOptions(
     outputDir = "build/minerva",
     projectName = "TinySecureMlp",
-    compilerScript = "/opt/libminerva/tools/compile_model.py",
+    compilerScript = "/opt/libminerva/compiler/minerva_compile.py",
     runtimeRoot = "/opt/libminerva",
     calibrationNpz = "/secure/project/calibration.npz",
     keyFile = "/secure/project/device.key"
@@ -161,7 +164,7 @@ The generated host harness has a stable adapter ABI:
 int minerva_run_inference(const float *input, int input_count, float *output, int output_count);
 ----
 
-`host/runtime_adapter.example.c` implements that ABI against the libminerva public C API: `mnv_init`, `mnv_seed_prng`, `mnv_run`, and `mnv_verify_output`. The adapter converts SKaiNET's normalized float fixtures to libminerva Q8 activation buffers and converts Q8 outputs back to floats for parity comparison.
+`host/runtime_adapter.example.c` implements that ABI against the current libminerva runtime symbols: `mnv_init`, `mnv_seed_prng`, `mnv_run_with_model`, and `mnv_verify_output_with_key`. The adapter keeps compile-time switches for runtimes that expose the older `mnv_run` / `mnv_verify_output` names. It converts SKaiNET's normalized float fixtures to libminerva Q8 activation buffers and converts Q8 outputs back to floats for parity comparison.
 
 Copy the adapter outside the generated bundle when product-specific scaling or entropy seeding needs local edits, then point CMake at the copied source. This keeps the generated host harness stable while leaving runtime policy in one reviewable adapter file.
 
@@ -174,16 +177,14 @@ metadata = mapOf(
     MinervaHostVerificationMetadata.RUN_CTEST to "true",
     MinervaHostVerificationMetadata.HOST_OUTPUT_PATH to "host-output.txt",
     MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE to "/secure/project/minerva_runtime_adapter.c",
-    MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS to "/opt/libminerva/include",
-    MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS to "/opt/libminerva/lib",
-    MinervaHostVerificationMetadata.HOST_LIBRARIES to "minerva"
+    MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS to "/secure/project/minerva-host-secrets"
 )
 ----
 
 `RUN_CMAKE_BUILD` configures and builds `host/CMakeLists.txt`. `RUN_CTEST` runs the packaged CTest smoke test. `HOST_OUTPUT_PATH` lets a real host run write comma- or whitespace-separated float outputs that are compared with the SKaiNET reference output using `hostVerificationTolerance`.
 
 `HOST_OUTPUT_PATH` is optional when the host run writes the default `host/observed-output.txt` file.
-The include, library directory, and library values are passed to CMake as semicolon-separated lists, matching CMake list syntax.
+The generated CMake can build a checkout-style libminerva runtime from `runtimeRoot` when that directory contains `CMakeLists.txt`. Include, library directory, and library values are passed to CMake as semicolon-separated lists, matching CMake list syntax; use `HOST_LIBRARY_DIRS` and `HOST_LIBRARIES` only when linking an already-built runtime.
 
 Local CI recipe:
 
@@ -196,13 +197,20 @@ Local CI recipe:
   -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
   -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
   -Pminerva.keyFile="$MINERVA_KEY_FILE" \
+  -Pminerva.hostVerification.tolerance="${MINERVA_HOST_TOLERANCE:-1.0}" \
   -Pminerva.hostVerification.hostAdapterSource="$MINERVA_HOST_ADAPTER_SOURCE" \
-  -Pminerva.hostVerification.hostIncludeDirs="$MINERVA_HOST_INCLUDE_DIRS" \
-  -Pminerva.hostVerification.hostLibraryDirs="$MINERVA_HOST_LIBRARY_DIRS" \
-  -Pminerva.hostVerification.hostLibraries="$MINERVA_HOST_LIBRARIES"
+  -Pminerva.hostVerification.hostIncludeDirs="$MINERVA_HOST_INCLUDE_DIRS"
 ----
 
 The Gradle `minervaHostVerification` task is gated. It only runs when `minerva.hostVerification.enabled=true`, `minerva.runtimeRoot`, and `minerva.compilerScript` are present. When enabled, it runs `jvmTest` and `runMinervaTinyMlpSample` with `MINERVA_RUN_CMAKE=true` and `MINERVA_RUN_CTEST=true` by default. Override `-Pminerva.hostVerification.runCmakeBuild=false` or `-Pminerva.hostVerification.runCTest=false` only for runtime bring-up.
+The default parity tolerance remains `1e-3`; the real checkout profile sets `MINERVA_HOST_TOLERANCE=1.0` by default because current libminerva Q8 host outputs are useful as a runtime smoke proof but are not yet numerically close to the SKaiNET float reference.
+
+For a local checkout proof, the helper below creates an untracked key, calibration archive, host-only `secrets.h`, and host-only AVR `pgmspace.h` compatibility shim under `build/minerva-real-runtime-profile`, then runs the gated verification task with CMake and CTest enabled:
+
+[source,bash]
+----
+MINERVA_RUNTIME_ROOT=/opt/libminerva ./scripts/run-minerva-real-runtime-profile.sh
+----
 
 == Firmware Integration
 
@@ -254,6 +262,17 @@ Run the sample after configuring libminerva:
 ./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample
 ----
 
+Run the richer secure MCU examples:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.example=safety-guard
+----
+
+`sensor-classifier` mirrors libminerva's ATmega sensor-classification shape with eight input features and four output classes. `safety-guard` shows a smaller health-decision classifier with three output classes. Both examples are dry-run friendly and switch to real compiler execution when the normal `MINERVA_*` runtime settings are present.
+
 Without `MINERVA_COMPILER_SCRIPT`, the sample task runs a dry validation through compatibility, lowering, and in-memory NPZ generation. Configure the runtime with Gradle properties or matching environment variables to run the real compiler and host verification:
 
 [source,bash]
@@ -263,6 +282,7 @@ Without `MINERVA_COMPILER_SCRIPT`, the sample task runs a dry validation through
   -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
   -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
   -Pminerva.keyFile="$MINERVA_KEY_FILE" \
+  -Pminerva.hostVerification.tolerance="${MINERVA_HOST_TOLERANCE:-1.0}" \
   -Pminerva.hostVerification.runCmakeBuild=true \
   -Pminerva.hostVerification.runCTest=true
 ----
@@ -295,7 +315,7 @@ The sample graph is covered by `MinervaTinyMlpExportSampleTest`, which validates
 | Reduce the graph to the phase-one MLP pattern, or use StableHLO for a general compiler flow.
 
 | CMake or CTest verification fails
-| Inspect `minerva-host-verification.log`, confirm CMake is installed, and confirm the generated host harness is linked against the pinned libminerva runtime.
+| Inspect `host/build/cmake-configure.log`, `host/build/cmake-build.log`, or `host/build/ctest.log`; confirm CMake is installed, `secrets.h` is available from `MINERVA_HOST_INCLUDE_DIRS`, and the generated host harness is linked against the pinned libminerva runtime.
 
 | Secret leak check fails
 | Remove real secrets from generated files and regenerate the bundle. Only placeholders belong in source control.
