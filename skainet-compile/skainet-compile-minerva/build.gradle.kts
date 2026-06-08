@@ -34,6 +34,13 @@ val minervaHostVerificationEnabled = providers.gradleProperty("minerva.hostVerif
     .orElse(false)
 val minervaRuntimeRoot = providers.gradleProperty("minerva.runtimeRoot")
 val minervaCompilerScript = providers.gradleProperty("minerva.compilerScript")
+val minervaKeyFile = providers.gradleProperty("minerva.keyFile")
+val minervaCalibrationNpz = providers.gradleProperty("minerva.calibrationNpz")
+val minervaRunCmakeBuild = providers.gradleProperty("minerva.hostVerification.runCmakeBuild")
+val minervaRunCTest = providers.gradleProperty("minerva.hostVerification.runCTest")
+val minervaHostOutputPath = providers.gradleProperty("minerva.hostVerification.hostOutputPath")
+
+val jvmMainCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
 
 tasks.register("minervaHostVerification") {
     group = "verification"
@@ -46,4 +53,40 @@ tasks.register("minervaHostVerification") {
     }
     inputs.property("minerva.runtimeRoot", minervaRuntimeRoot.orElse(""))
     inputs.property("minerva.compilerScript", minervaCompilerScript.orElse(""))
+}
+
+tasks.register<JavaExec>("runMinervaTinyMlpSample") {
+    group = "application"
+    description = "Runs the maintained Minerva tiny MLP export sample."
+
+    dependsOn(tasks.named("jvmJar"))
+
+    mainClass.set("sk.ainet.compile.minerva.examples.MinervaTinyMlpExportSample")
+
+    classpath = files(
+        jvmMainCompilation.runtimeDependencyFiles,
+        tasks.named("jvmJar").get().outputs.files
+    )
+
+    minervaCompilerScript.orElse(providers.environmentVariable("MINERVA_COMPILER_SCRIPT")).orNull?.let {
+        environment("MINERVA_COMPILER_SCRIPT", it)
+    }
+    minervaRuntimeRoot.orElse(providers.environmentVariable("MINERVA_RUNTIME_ROOT")).orNull?.let {
+        environment("MINERVA_RUNTIME_ROOT", it)
+    }
+    minervaKeyFile.orElse(providers.environmentVariable("MINERVA_KEY_FILE")).orNull?.let {
+        environment("MINERVA_KEY_FILE", it)
+    }
+    minervaCalibrationNpz.orElse(providers.environmentVariable("MINERVA_CALIBRATION_NPZ")).orNull?.let {
+        environment("MINERVA_CALIBRATION_NPZ", it)
+    }
+    minervaRunCmakeBuild.orElse(providers.environmentVariable("MINERVA_RUN_CMAKE")).orNull?.let {
+        environment("MINERVA_RUN_CMAKE", it)
+    }
+    minervaRunCTest.orElse(providers.environmentVariable("MINERVA_RUN_CTEST")).orNull?.let {
+        environment("MINERVA_RUN_CTEST", it)
+    }
+    minervaHostOutputPath.orElse(providers.environmentVariable("MINERVA_HOST_OUTPUT_PATH")).orNull?.let {
+        environment("MINERVA_HOST_OUTPUT_PATH", it)
+    }
 }

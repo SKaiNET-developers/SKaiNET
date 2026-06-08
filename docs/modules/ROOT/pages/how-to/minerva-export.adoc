@@ -211,7 +211,20 @@ Run the sample after configuring libminerva:
 [source,bash]
 ----
 ./gradlew :skainet-compile:skainet-compile-minerva:jvmTest
-./gradlew :skainet-compile:skainet-compile-minerva:jvmJar
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample
+----
+
+Without `MINERVA_COMPILER_SCRIPT`, the sample task runs a dry validation through compatibility, lowering, and in-memory NPZ generation. Configure the runtime with Gradle properties or matching environment variables to run the real compiler and host verification:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample \
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
+  -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
+  -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
+  -Pminerva.keyFile="$MINERVA_KEY_FILE" \
+  -Pminerva.hostVerification.runCmakeBuild=true \
+  -Pminerva.hostVerification.runCTest=true
 ----
 
 The sample graph is covered by `MinervaTinyMlpExportSampleTest`, which validates compatibility, lowering, and NPZ generation without requiring real device keys.

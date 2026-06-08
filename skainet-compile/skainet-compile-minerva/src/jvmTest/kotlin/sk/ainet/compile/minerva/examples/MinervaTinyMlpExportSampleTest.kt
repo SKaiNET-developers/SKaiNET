@@ -27,7 +27,8 @@ class MinervaTinyMlpExportSampleTest {
         assertTrue(report.compatible, report.issues.joinToString { it.message })
         assertEquals(2, report.layerCount)
 
-        val result = MinervaExportFacade().exportGraph(graph, options.copy(compilerScript = null))
+        val dryRunOptions = MinervaTinyMlpExportSample.exportOptions()
+        val result = MinervaExportFacade().exportGraph(graph, dryRunOptions)
 
         assertEquals(GraphExportStatus.FAILED, result.status)
         assertEquals(MinervaExportFailureKind.COMPILER_PREREQUISITE_FAILED, result.failure?.kind)

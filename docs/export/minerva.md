@@ -114,7 +114,13 @@ The generated firmware example intentionally contains placeholders. Confirm the 
 
 ## Maintained JVM Sample
 
-`sk.ainet.compile.minerva.examples.MinervaTinyMlpExportSample` builds a tiny two-layer MLP, reads Minerva paths from environment variables, invokes the export facade, and prints bundle and verification status. `MinervaTinyMlpExportSampleTest` validates the sample graph and NPZ generation without real device keys.
+`sk.ainet.compile.minerva.examples.MinervaTinyMlpExportSample` builds a tiny two-layer MLP, reads Minerva paths from environment variables or Gradle properties, invokes the export facade, and prints bundle and verification status.
+
+```bash
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample
+```
+
+Without `MINERVA_COMPILER_SCRIPT`, the task runs a dry validation through compatibility, lowering, and in-memory NPZ generation. Add `-Pminerva.compilerScript`, `-Pminerva.runtimeRoot`, `-Pminerva.calibrationNpz`, and `-Pminerva.keyFile` to run the real compiler path. `MinervaTinyMlpExportSampleTest` validates the sample graph and NPZ generation without real device keys.
 
 ## Export Path Choice
 
