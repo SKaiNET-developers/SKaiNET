@@ -122,38 +122,41 @@ Introduced in 0.21.0 (PRs #554, #559, #562). The static structure:
                                 │
    ┌────────────────────────────┼────────────────────────────────┐
    │ jvmMain (cpu)                                               │
-   │  PanamaVectorMatmulKernel (priority 50, FP32)               │
-   │  PanamaVectorQ4KMatmulKernel (priority 50, Q4_K)            │
-   │  PanamaVectorKernelProvider                                 │
+   │  PanamaVectorKernelProvider (priority 50)                   │
+   │   FP32 BF16 Q8_0 Q4_0 Q4_K Q6_K Q5_1 Q5_0 (SIMD)            │
    │  Scalar/PanamaVectorKernelProviderFactory (no-arg wrappers) │
    │  META-INF/services/...KernelProvider                        │
    └─────────────────────────────────────────────────────────────┘
+                                │
+   ┌────────────────────────────┼────────────────────────────────┐
+   │ jvmMain (skainet-backend-native-cpu)                        │
+   │  NativeKernelProvider (priority 100, FFM/C)                 │
+   │   FP32 BF16 Q8_0 Q4_0 Q4_K (+ Q4_K MemSeg zero-copy)        │
+   └─────────────────────────────────────────────────────────────┘
 ----
 
-Three live providers ship; a fourth (priority 100, native FFM) is
-designed but not yet built. For *how* the kernels are implemented, see
-xref:explanation/perf/simd-kernels.adoc[] (FP32) and
-xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized).
+Four live providers ship. The exact, machine-generated coverage of every
+weight format on every KMP target is at
+xref:reference/kernel-support-matrix.adoc[]; for *how* the kernels are
+implemented see xref:explanation/perf/simd-kernels.adoc[] (FP32) and
+xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized). Packed-quant
+matmul (Q4_K/Q6_K/Q5_1/Q5_0) also has a commonMain *scalar* kernel, so it runs
+on Kotlin/Native, JS and WASM — not only the JVM.
 
 [NOTE]
-.Native (FFM) provider — design summary
+.Native (FFM) provider
 ====
-The planned `NativeKernelProvider` registers at priority 100 so that on
-JDK 21+ it wins `KernelRegistry.bestAvailable()` over the Panama Vector
-provider whenever the native library loads, and transparently falls back
-to Panama (priority 50) or scalar (priority 0) when it doesn't — no code
-change above the registry. The first kernel target is a native Q4_K
-matmul taking `MemorySegment` input and packed weights (canonical ggml
-layout), numerically equivalent to `PanamaVectorQ4KMatmulKernel` within
-`1e-4`, clearing the M5 metric of `≥2.5×` over the scalar dequant
-baseline. It uses FFM, not JNI (near-zero call overhead, no global lock),
-ships in a new `skainet-backend-native-cpu` module, and the first PR
-covers a single host architecture (local build only) — cross-arch builds
-and Maven classifier JARs are deliberately out of scope. The kernel SPI
-this builds on shipped across the 0.21.0 release (PRs #554–#565); the
-in-process native-FFM groundwork landed in 0.22.0 (PR #571). The full
-design draft was kept out of the published docs as it read as a PRD; this
-summary supersedes it.
+`NativeKernelProvider` registers at priority 100 so that on JDK 21+ it wins
+`KernelRegistry.bestAvailable()` over the Panama Vector provider whenever the
+native library loads, and transparently falls back to Panama (priority 50) or
+scalar (priority 0) when it doesn't — no code change above the registry. It
+uses FFM, not JNI (near-zero call overhead, no global lock), ships in the
+`skainet-backend-native-cpu` module with C kernels for FP32/BF16/Q8_0/Q4_0/Q4_K
+(plus a zero-copy `MemorySegment` Q4_K path), and currently builds for the host
+architecture only (cross-arch builds and Maven classifier JARs are out of
+scope). Native FFM kernels for Q5_1/Q5_0/Q6_K are a tracked follow-up
+(SKaiNET#708). The kernel SPI this builds on shipped across 0.21.0
+(PRs #554–#565); the in-process native-FFM groundwork landed in 0.22.0 (PR #571).
 ====
 
 == 6. Runtime view — eager execution
