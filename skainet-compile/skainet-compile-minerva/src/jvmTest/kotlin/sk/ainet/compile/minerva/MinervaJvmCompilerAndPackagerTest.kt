@@ -120,19 +120,29 @@ class MinervaJvmCompilerAndPackagerTest {
         assertTrue(Files.isRegularFile(projectDir.resolve("generated/weights.c")))
         assertTrue(Files.isRegularFile(projectDir.resolve("generated/weights_debug.npz")))
         assertTrue(Files.isRegularFile(projectDir.resolve("include/weights.h")))
+        assertTrue(Files.isRegularFile(projectDir.resolve("host/reference-input.txt")))
+        assertTrue(Files.isRegularFile(projectDir.resolve("host/reference-output.txt")))
         assertTrue(Files.isRegularFile(projectDir.resolve("host/main.c")))
         assertTrue(Files.isRegularFile(projectDir.resolve("firmware/main.c")))
         assertTrue(Files.readString(projectDir.resolve("host/CMakeLists.txt")).contains("add_test"))
+        val hostMain = Files.readString(projectDir.resolve("host/main.c"))
+        assertTrue(hostMain.contains("0.25f, 0.5f, 0.75f, 1.0f"))
+        assertTrue(hostMain.contains("observed-output.txt"))
         val secretsExample = Files.readString(projectDir.resolve("include/secrets.example.h"))
         assertTrue(secretsExample.contains("replace-with-device-key"))
         assertFalse(secretsExample.contains("REAL_SECRET_KEY_MATERIAL"))
         val manifest = Files.readString(projectDir.resolve("manifest.json"))
         assertTrue(manifest.contains("\"target\": \"atmega328p\""))
         assertTrue(manifest.contains("\"compilerCommand\": \"fake-minerva --key-file <key-file>\""))
+        assertTrue(manifest.contains("\"referenceInputPath\": \"host/reference-input.txt\""))
+        assertTrue(manifest.contains("\"referenceOutputPath\": \"host/reference-output.txt\""))
         assertEquals("manifest.json", bundle.manifestPath)
         assertTrue(bundle.generatedFiles.contains("generated/weights_debug.npz"))
         assertTrue(bundle.generatedFiles.contains("include/secrets.example.h"))
+        assertTrue(bundle.generatedFiles.contains("host/reference-input.txt"))
+        assertTrue(bundle.generatedFiles.contains("host/reference-output.txt"))
         assertTrue(context.artifacts.any { it.role == GraphExportArtifactRole.PROJECT_DIRECTORY })
+        assertTrue(context.artifacts.any { it.role == GraphExportArtifactRole.TEST_REPORT })
         assertTrue(context.diagnostics.any { it.code == "minerva.packaging.completed" })
     }
 
@@ -173,6 +183,23 @@ class MinervaJvmCompilerAndPackagerTest {
     }
 
     @Test
+    fun hostVerifierUsesDefaultObservedOutputPath() {
+        val fixture = packagedProject(tempDir("host-verify-default-output"), "DefaultOutputVerify")
+        val baseline = JvmMinervaHostVerifier().verify(fixture.request, fixture.context)
+        Files.writeString(
+            fixture.projectDir.resolve("host/observed-output.txt"),
+            baseline.expectedOutput.joinToString(separator = "\n")
+        )
+
+        val verification = JvmMinervaHostVerifier().verify(fixture.request, fixture.context)
+
+        assertEquals(MinervaHostVerificationStatus.PASSED, verification.status)
+        assertEquals(MinervaHostVerificationStatus.PASSED, verification.hostRunStatus)
+        assertEquals(MinervaHostVerificationStatus.PASSED, verification.parityStatus)
+        assertEquals(baseline.expectedOutput, verification.observedOutput)
+    }
+
+    @Test
     fun hostVerifierFailsWhenHostOutputExceedsTolerance() {
         val fixture = packagedProject(tempDir("host-verify-mismatch"), "MismatchVerify")
         Files.writeString(fixture.projectDir.resolve("host-output.txt"), "999 999 999")
@@ -187,6 +214,19 @@ class MinervaJvmCompilerAndPackagerTest {
 
         assertEquals(MinervaHostVerificationStatus.FAILED, verification.status)
         assertEquals("minerva.host_verification.parity_failed", verification.code)
+        assertEquals(MinervaHostVerificationStatus.FAILED, verification.parityStatus)
+        assertTrue((verification.maxAbsoluteError ?: 0.0f) > verification.tolerance)
+    }
+
+    @Test
+    fun hostVerifierFailsWhenReferenceOutputFixtureDrifts() {
+        val fixture = packagedProject(tempDir("host-verify-reference-drift"), "ReferenceDriftVerify")
+        Files.writeString(fixture.projectDir.resolve("host/reference-output.txt"), "999 999 999")
+
+        val verification = JvmMinervaHostVerifier().verify(fixture.request, fixture.context)
+
+        assertEquals(MinervaHostVerificationStatus.FAILED, verification.status)
+        assertEquals("minerva.host_verification.reference_output_mismatch", verification.code)
         assertEquals(MinervaHostVerificationStatus.FAILED, verification.parityStatus)
         assertTrue((verification.maxAbsoluteError ?: 0.0f) > verification.tolerance)
     }

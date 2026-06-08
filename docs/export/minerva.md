@@ -65,13 +65,18 @@ build/minerva/TinySecureMlp/
   host/
     CMakeLists.txt
     main.c
+    reference-input.txt
+    reference-output.txt
+    observed-output.txt   # optional output from a real host run
   firmware/
     main.c
 ```
 
 ## Host Verification and CI
 
-Host verification checks package structure, generated weight files, `model.npz` integrity, placeholder secret hygiene, and SKaiNET reference output generation. Add these metadata keys to opt into CMake, CTest, and parity comparison with a host output file:
+Host verification checks package structure, generated weight files, `model.npz` integrity, placeholder secret hygiene, and SKaiNET reference fixture generation. The packager writes deterministic `host/reference-input.txt` and `host/reference-output.txt` files and records them in `manifest.json`. A real host run can write comma- or whitespace-separated float outputs to `host/observed-output.txt` for zero-config parity comparison.
+
+Add these metadata keys to opt into CMake, CTest, and parity comparison with a custom host output file:
 
 ```kotlin
 metadata = mapOf(
@@ -80,6 +85,8 @@ metadata = mapOf(
     MinervaHostVerificationMetadata.HOST_OUTPUT_PATH to "host-output.txt"
 )
 ```
+
+`HOST_OUTPUT_PATH` is optional when the host run writes `host/observed-output.txt`.
 
 CI recipe:
 

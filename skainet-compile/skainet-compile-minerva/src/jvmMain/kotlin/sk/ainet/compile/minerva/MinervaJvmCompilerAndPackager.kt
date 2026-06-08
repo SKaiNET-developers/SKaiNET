@@ -12,6 +12,10 @@ import sk.ainet.compile.export.GraphExportArtifactRole
 import sk.ainet.compile.export.GraphExportContext
 import sk.ainet.compile.export.GraphExportStage
 
+private const val HOST_REFERENCE_INPUT_FILE = "reference-input.txt"
+private const val HOST_REFERENCE_OUTPUT_FILE = "reference-output.txt"
+private const val HOST_OBSERVED_OUTPUT_FILE = "observed-output.txt"
+
 public actual object MinervaPlatformExportDefaults {
     public actual fun compilerAdapter(): MinervaCompilerAdapter = PythonMinervaCompilerAdapter()
 
@@ -362,7 +366,29 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             }
             val secretsExample = includeDir.resolve("secrets.example.h")
             Files.writeString(secretsExample, secretsExampleHeader(options))
-            val generatedPaths = mutableListOf(modelPath, weightsC, weightsH, secretsExample)
+            val referenceInput = MinervaReferenceEvaluator.referenceInput(request.intermediate.input)
+            val referenceOutput = try {
+                MinervaReferenceEvaluator.evaluate(request.intermediate, referenceInput)
+            } catch (exception: RuntimeException) {
+                throw MinervaPackagingException(
+                    message = "Failed to create Minerva reference output fixture: ${exception.message ?: exception.toString()}",
+                    code = "minerva.packaging.reference_fixture_failed",
+                    remediation = "Ensure lowered Minerva weights and biases contain numeric initializer values.",
+                    details = mapOf("projectName" to options.projectName)
+                )
+            }
+            val referenceInputPath = hostDir.resolve(HOST_REFERENCE_INPUT_FILE)
+            val referenceOutputPath = hostDir.resolve(HOST_REFERENCE_OUTPUT_FILE)
+            Files.writeString(referenceInputPath, floatValuesText(referenceInput))
+            Files.writeString(referenceOutputPath, floatValuesText(referenceOutput))
+            val generatedPaths = mutableListOf(
+                modelPath,
+                weightsC,
+                weightsH,
+                secretsExample,
+                referenceInputPath,
+                referenceOutputPath
+            )
             debugWeights?.let(generatedPaths::add)
             if (options.generateHostHarness) {
                 val hostCmake = hostDir.resolve("CMakeLists.txt")
@@ -461,6 +487,7 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             val role = when {
                 path.fileName.toString().endsWith(".h") -> GraphExportArtifactRole.HEADER
                 path.fileName.toString().endsWith(".npz") -> GraphExportArtifactRole.INTERMEDIATE
+                path.fileName.toString().startsWith("reference-") -> GraphExportArtifactRole.TEST_REPORT
                 else -> GraphExportArtifactRole.SOURCE
             }
             context.addArtifact(
@@ -492,6 +519,8 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             "layers" to request.intermediate.layerCount.toString(),
             "hostHarness" to options.generateHostHarness.toString(),
             "firmwareExample" to options.generateFirmwareExample.toString(),
+            "referenceInputPath" to jsonString("host/$HOST_REFERENCE_INPUT_FILE"),
+            "referenceOutputPath" to jsonString("host/$HOST_REFERENCE_OUTPUT_FILE"),
             "manifestPath" to jsonString(manifestPath),
             "generatedFiles" to generatedFiles.joinToString(prefix = "[", postfix = "]") { jsonString(it) }
         )
@@ -533,19 +562,22 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
     private fun hostMain(request: MinervaProjectPackageRequest): String {
         val inputCount = request.intermediate.input.elementCount
         val outputCount = request.intermediate.output.elementCount
+        val referenceInput = MinervaReferenceEvaluator.referenceInput(request.intermediate.input)
         return """
             |#include <stdint.h>
             |#include <stdio.h>
             |#include "weights.h"
             |
             |int main(void) {
-            |    float input[$inputCount] = {0};
+            |    float input[$inputCount] = {${cFloatInitializer(referenceInput)}};
             |    float output[$outputCount] = {0};
             |
             |    /* Link this harness with libminerva and call the runtime inference entry point here. */
             |    (void)input;
             |    (void)output;
             |    puts("Minerva host harness packaged successfully.");
+            |    puts("Reference input: $HOST_REFERENCE_INPUT_FILE");
+            |    puts("Write observed output to: $HOST_OBSERVED_OUTPUT_FILE");
             |    return 0;
             |}
             |
@@ -581,6 +613,14 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             .relativize(path.toAbsolutePath().normalize())
             .toString()
             .replace('\\', '/')
+    }
+
+    private fun floatValuesText(values: List<Float>): String {
+        return values.joinToString(separator = "\n", postfix = "\n") { it.toString() }
+    }
+
+    private fun cFloatInitializer(values: List<Float>): String {
+        return values.joinToString(separator = ", ") { "${it}f" }
     }
 
     private fun jsonString(value: String): String {
@@ -635,8 +675,32 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
                 details = mapOf("reason" to (exception.message ?: exception.toString()))
             )
         }
+        val referenceInput = try {
+            readFloatOutput(projectDir.resolve("host/$HOST_REFERENCE_INPUT_FILE"))
+        } catch (exception: IllegalArgumentException) {
+            return failed(
+                code = "minerva.host_verification.reference_input_invalid",
+                message = "Packaged Minerva reference input fixture could not be parsed.",
+                tolerance = tolerance,
+                remediation = "Regenerate the Minerva package so host/reference-input.txt contains finite float values.",
+                details = mapOf("reason" to (exception.message ?: exception.toString()))
+            )
+        }
+        if (referenceInput.size != request.intermediate.input.elementCount) {
+            return failed(
+                code = "minerva.host_verification.reference_input_shape_mismatch",
+                message = "Packaged Minerva reference input length does not match the lowered model input tensor.",
+                tolerance = tolerance,
+                remediation = "Regenerate the Minerva package from the current lowered graph.",
+                details = mapOf(
+                    "expected" to request.intermediate.input.elementCount.toString(),
+                    "observed" to referenceInput.size.toString()
+                )
+            )
+        }
+
         val expectedOutput = try {
-            MinervaReferenceEvaluator.evaluate(request.intermediate)
+            MinervaReferenceEvaluator.evaluate(request.intermediate, referenceInput)
         } catch (exception: RuntimeException) {
             return failed(
                 code = "minerva.host_verification.reference_unavailable",
@@ -646,6 +710,7 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
                 details = mapOf("reason" to (exception.message ?: exception.toString()))
             )
         }
+        validateReferenceOutputFixture(projectDir, expectedOutput, tolerance)?.let { return it }
 
         var hostBuildStatus = MinervaHostVerificationStatus.SKIPPED
         var hostRunStatus = MinervaHostVerificationStatus.SKIPPED
@@ -661,6 +726,7 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
         }
 
         val hostOutputPath = options.metadata[MinervaHostVerificationMetadata.HOST_OUTPUT_PATH]
+            ?: "host/$HOST_OBSERVED_OUTPUT_FILE".takeIf { Files.isRegularFile(projectDir.resolve(it)) }
         val observedOutput = if (hostOutputPath != null) {
             val outputPath = resolveProjectPath(projectDir, hostOutputPath)
             try {
@@ -732,6 +798,8 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
             observedOutput = observedOutput,
             details = mapOf(
                 "projectDir" to projectDir.toString(),
+                "referenceInputPath" to "host/$HOST_REFERENCE_INPUT_FILE",
+                "referenceOutputPath" to "host/$HOST_REFERENCE_OUTPUT_FILE",
                 "referenceOutputValues" to expectedOutput.size.toString()
             )
         )
@@ -749,6 +817,57 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
         return verification
     }
 
+    private fun validateReferenceOutputFixture(
+        projectDir: Path,
+        expectedOutput: List<Float>,
+        tolerance: Float
+    ): MinervaHostVerification? {
+        val outputPath = projectDir.resolve("host/$HOST_REFERENCE_OUTPUT_FILE")
+        val fixtureOutput = try {
+            readFloatOutput(outputPath)
+        } catch (exception: IllegalArgumentException) {
+            return failed(
+                code = "minerva.host_verification.reference_output_invalid",
+                message = "Packaged Minerva reference output fixture could not be parsed.",
+                tolerance = tolerance,
+                expectedOutput = expectedOutput,
+                remediation = "Regenerate the Minerva package so host/reference-output.txt contains finite float values.",
+                details = mapOf(
+                    "referenceOutputPath" to outputPath.toString(),
+                    "reason" to (exception.message ?: exception.toString())
+                )
+            )
+        }
+        if (fixtureOutput.size != expectedOutput.size) {
+            return failed(
+                code = "minerva.host_verification.reference_output_shape_mismatch",
+                message = "Packaged Minerva reference output length does not match the SKaiNET reference output length.",
+                tolerance = tolerance,
+                expectedOutput = expectedOutput,
+                observedOutput = fixtureOutput,
+                remediation = "Regenerate the Minerva package from the current lowered graph.",
+                details = mapOf(
+                    "expected" to expectedOutput.size.toString(),
+                    "observed" to fixtureOutput.size.toString()
+                )
+            )
+        }
+        val maxAbsoluteError = MinervaReferenceEvaluator.maxAbsoluteError(expectedOutput, fixtureOutput)
+        if (maxAbsoluteError > tolerance) {
+            return failed(
+                code = "minerva.host_verification.reference_output_mismatch",
+                message = "Packaged Minerva reference output differs from the SKaiNET reference evaluator.",
+                tolerance = tolerance,
+                maxAbsoluteError = maxAbsoluteError,
+                expectedOutput = expectedOutput,
+                observedOutput = fixtureOutput,
+                remediation = "Regenerate the Minerva package and inspect lowered layer metadata for stale fixture files.",
+                details = mapOf("maxAbsoluteError" to maxAbsoluteError.toString())
+            )
+        }
+        return null
+    }
+
     private fun structuralFailure(
         request: MinervaHostVerificationRequest,
         projectDir: Path
@@ -760,6 +879,8 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
             add(projectDir.resolve("generated/weights.c"))
             add(projectDir.resolve("include/weights.h"))
             add(projectDir.resolve("include/secrets.example.h"))
+            add(projectDir.resolve("host/$HOST_REFERENCE_INPUT_FILE"))
+            add(projectDir.resolve("host/$HOST_REFERENCE_OUTPUT_FILE"))
             if (request.options.generateHostHarness) {
                 add(projectDir.resolve("host/CMakeLists.txt"))
                 add(projectDir.resolve("host/main.c"))
