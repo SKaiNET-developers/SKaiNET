@@ -88,10 +88,12 @@ CI recipe:
 ./gradlew :skainet-compile:skainet-compile-minerva:minervaHostVerification \
   -Pminerva.hostVerification.enabled=true \
   -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
-  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT"
-cmake -S build/minerva/TinySecureMlp/host -B build/minerva/TinySecureMlp/host/build
-ctest --test-dir build/minerva/TinySecureMlp/host/build --output-on-failure
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
+  -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
+  -Pminerva.keyFile="$MINERVA_KEY_FILE"
 ```
+
+`minervaHostVerification` is skipped by default. When enabled, it runs `jvmTest` and `runMinervaTinyMlpSample` with CMake and CTest host verification enabled unless `-Pminerva.hostVerification.runCmakeBuild=false` or `-Pminerva.hostVerification.runCTest=false` is set.
 
 ## ONNX to Minerva
 

@@ -159,12 +159,12 @@ Local CI recipe:
 ./gradlew :skainet-compile:skainet-compile-minerva:minervaHostVerification \
   -Pminerva.hostVerification.enabled=true \
   -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
-  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT"
-cmake -S build/minerva/TinySecureMlp/host -B build/minerva/TinySecureMlp/host/build
-ctest --test-dir build/minerva/TinySecureMlp/host/build --output-on-failure
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
+  -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
+  -Pminerva.keyFile="$MINERVA_KEY_FILE"
 ----
 
-The Gradle `minervaHostVerification` task is gated. It only runs when the `minerva.hostVerification.enabled`, `minerva.runtimeRoot`, and `minerva.compilerScript` properties are present.
+The Gradle `minervaHostVerification` task is gated. It only runs when `minerva.hostVerification.enabled=true`, `minerva.runtimeRoot`, and `minerva.compilerScript` are present. When enabled, it runs `jvmTest` and `runMinervaTinyMlpSample` with `MINERVA_RUN_CMAKE=true` and `MINERVA_RUN_CTEST=true` by default. Override `-Pminerva.hostVerification.runCmakeBuild=false` or `-Pminerva.hostVerification.runCTest=false` only for runtime bring-up.
 
 == Firmware Integration
 
@@ -225,6 +225,16 @@ Without `MINERVA_COMPILER_SCRIPT`, the sample task runs a dry validation through
   -Pminerva.keyFile="$MINERVA_KEY_FILE" \
   -Pminerva.hostVerification.runCmakeBuild=true \
   -Pminerva.hostVerification.runCTest=true
+----
+
+For CI, prefer the gated verification profile:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:minervaHostVerification \
+  -Pminerva.hostVerification.enabled=true \
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
+  -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT"
 ----
 
 The sample graph is covered by `MinervaTinyMlpExportSampleTest`, which validates compatibility, lowering, and NPZ generation without requiring real device keys.

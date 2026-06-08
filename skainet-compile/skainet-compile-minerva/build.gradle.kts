@@ -39,20 +39,31 @@ val minervaCalibrationNpz = providers.gradleProperty("minerva.calibrationNpz")
 val minervaRunCmakeBuild = providers.gradleProperty("minerva.hostVerification.runCmakeBuild")
 val minervaRunCTest = providers.gradleProperty("minerva.hostVerification.runCTest")
 val minervaHostOutputPath = providers.gradleProperty("minerva.hostVerification.hostOutputPath")
+val minervaRunCmakeBuildForSample = minervaRunCmakeBuild
+    .orElse(providers.environmentVariable("MINERVA_RUN_CMAKE"))
+    .orElse(minervaHostVerificationEnabled.map { it.toString() })
+val minervaRunCTestForSample = minervaRunCTest
+    .orElse(providers.environmentVariable("MINERVA_RUN_CTEST"))
+    .orElse(minervaHostVerificationEnabled.map { it.toString() })
 
 val jvmMainCompilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
 
 tasks.register("minervaHostVerification") {
     group = "verification"
-    description = "Gated lifecycle hook for external Minerva host verification in CI."
+    description = "Runs external Minerva compiler and host verification when explicitly configured."
     enabled = minervaHostVerificationEnabled.get() &&
         minervaRuntimeRoot.isPresent &&
         minervaCompilerScript.isPresent
     if (enabled) {
-        dependsOn("jvmTest")
+        dependsOn("jvmTest", "runMinervaTinyMlpSample")
     }
     inputs.property("minerva.runtimeRoot", minervaRuntimeRoot.orElse(""))
     inputs.property("minerva.compilerScript", minervaCompilerScript.orElse(""))
+    inputs.property("minerva.calibrationNpz", minervaCalibrationNpz.orElse(""))
+    inputs.property("minerva.keyFile", minervaKeyFile.orElse(""))
+    inputs.property("minerva.hostVerification.runCmakeBuild", minervaRunCmakeBuildForSample)
+    inputs.property("minerva.hostVerification.runCTest", minervaRunCTestForSample)
+    inputs.property("minerva.hostVerification.hostOutputPath", minervaHostOutputPath.orElse(""))
 }
 
 tasks.register<JavaExec>("runMinervaTinyMlpSample") {
@@ -62,6 +73,7 @@ tasks.register<JavaExec>("runMinervaTinyMlpSample") {
     dependsOn(tasks.named("jvmJar"))
 
     mainClass.set("sk.ainet.compile.minerva.examples.MinervaTinyMlpExportSample")
+    workingDir = rootProject.projectDir
 
     classpath = files(
         jvmMainCompilation.runtimeDependencyFiles,
@@ -80,10 +92,10 @@ tasks.register<JavaExec>("runMinervaTinyMlpSample") {
     minervaCalibrationNpz.orElse(providers.environmentVariable("MINERVA_CALIBRATION_NPZ")).orNull?.let {
         environment("MINERVA_CALIBRATION_NPZ", it)
     }
-    minervaRunCmakeBuild.orElse(providers.environmentVariable("MINERVA_RUN_CMAKE")).orNull?.let {
+    minervaRunCmakeBuildForSample.orNull?.let {
         environment("MINERVA_RUN_CMAKE", it)
     }
-    minervaRunCTest.orElse(providers.environmentVariable("MINERVA_RUN_CTEST")).orNull?.let {
+    minervaRunCTestForSample.orNull?.let {
         environment("MINERVA_RUN_CTEST", it)
     }
     minervaHostOutputPath.orElse(providers.environmentVariable("MINERVA_HOST_OUTPUT_PATH")).orNull?.let {
