@@ -46,6 +46,18 @@ internal class DefaultCpuOpsJvm(
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 
     /**
+     * On the JVM, auto-install ServiceLoader-discovered providers (Panama Vector,
+     * native FFM) so the base class's platform-neutral packed-quant dispatch
+     * (`chooseQuantizedMatmulHeap`, used for Q5_1/Q5_0 and the non-JVM path) resolves
+     * the SIMD/FFM kernels rather than only the scalar floor.
+     */
+    override fun ensureKernelProviders() {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+    }
+
+    /**
      * FP32 matmul kernel resolved via [KernelRegistry]. First access on a
      * given instance auto-installs providers via [KernelServiceLoader]
      * if the registry is empty; subsequent calls reuse the cached

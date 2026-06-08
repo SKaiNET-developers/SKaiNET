@@ -180,6 +180,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun addScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public fun avgPool2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Z)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun broadcastShapes (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Shape;
+	protected final fun chooseQuantizedMatmulHeap (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun clamp (Lsk/ainet/lang/tensor/Tensor;FF)Lsk/ainet/lang/tensor/Tensor;
 	public fun concat (Ljava/util/List;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun conv1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
@@ -192,6 +193,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun divide (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun elementwise (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/jvm/functions/Function3;)Lsk/ainet/lang/tensor/Tensor;
 	public fun elu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
+	protected fun ensureKernelProviders ()V
 	public fun exp (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun expm1 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;

@@ -8,8 +8,20 @@ import sk.ainet.lang.types.DType
 import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.TensorOp
 import sk.ainet.lang.ops.InProgress
+import sk.ainet.backend.api.kernel.KernelProvider
+import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
+import sk.ainet.lang.tensor.data.Q4_0TensorData
+import sk.ainet.lang.tensor.data.Q8_0TensorData
+import sk.ainet.lang.tensor.data.Q4_KTensorData
+import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q6_KTensorData
+import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q5_1TensorData
+import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_0TensorData
+import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.UpsampleMode
@@ -304,12 +316,73 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
+    /**
+     * Hook to populate [KernelRegistry] before the platform-neutral packed-quant
+     * dispatch resolves kernels. No-op in the base (callers register providers
+     * directly, e.g. the non-JVM platform factories register [ScalarKernelProvider]);
+     * the JVM ops override this to auto-install ServiceLoader-discovered providers.
+     */
+    protected open fun ensureKernelProviders() {}
+
+    private fun resolveProvider(test: (KernelProvider) -> Boolean): KernelProvider? {
+        ensureKernelProviders()
+        return KernelRegistry.providers().firstOrNull { it.isAvailable() && test(it) }
+    }
+
+    private val q8_0Kernel by lazy { resolveProvider { it.matmulQ8_0() != null }?.matmulQ8_0() }
+    private val q4_0Kernel by lazy { resolveProvider { it.matmulQ4_0() != null }?.matmulQ4_0() }
+    private val q4kKernel by lazy { resolveProvider { it.matmulQ4K() != null }?.matmulQ4K() }
+    private val q6kKernel by lazy { resolveProvider { it.matmulQ6K() != null }?.matmulQ6K() }
+    private val q5_1Kernel by lazy { resolveProvider { it.matmulQ5_1() != null }?.matmulQ5_1() }
+    private val q5_0Kernel by lazy { resolveProvider { it.matmulQ5_0() != null }?.matmulQ5_0() }
+
+    /**
+     * Platform-neutral packed-quant matmul: `FP32 input × packed-quant weight`,
+     * resolving the kernel via [KernelRegistry] (scalar on Native/JS/WASM, Panama/
+     * native-FFM on JVM). Returns `null` when the weight isn't a heap-packed quant
+     * type or no provider carries a kernel, so callers fall through. The JVM ops
+     * intercept Q4_K/Q6_K/Q8_0/Q4_0 (+ MemSeg) before this runs; Q5_1/Q5_0 (and the
+     * whole set on non-JVM) resolve here.
+     */
+    protected fun <T : DType, V> chooseQuantizedMatmulHeap(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
+        if (a.dtype != FP32::class || a.shape.rank != 2 || b.shape.rank != 2) return null
+        if (a.shape[1] != b.shape[0]) return null
+        val inputBuffer = (a.data as? FloatArrayTensorData<*>)?.buffer ?: return null
+        val batchSize = a.shape[0]
+        val inputDim = a.shape[1]
+        val outputDim = b.shape[1]
+
+        fun run(packed: ByteArray, kernel: (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit): Tensor<T, V> {
+            val out = FloatArray(batchSize * outputDim)
+            for (batch in 0 until batchSize) {
+                val bi = if (batchSize == 1) inputBuffer else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
+                kernel(bi, 0, packed, 0, inputDim, outputDim, out, batch * outputDim)
+            }
+            @Suppress("UNCHECKED_CAST")
+            val outData = dataFactory.fromFloatArray<T, Float>(Shape(batchSize, outputDim), a.dtype, out) as TensorData<T, V>
+            return newTensor(outData, a.dtype, a, b)
+        }
+
+        return when (val bd = b.data) {
+            is Q5_1TensorData -> q5_1Kernel?.let { k -> run(bd.packedData, k::matmul) }
+            is Q5_0TensorData -> q5_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
+            is Q4_KTensorData -> q4kKernel?.let { k -> run(bd.packedData, k::matmul) }
+            is Q6_KTensorData -> q6kKernel?.let { k -> run(bd.packedData, k::matmul) }
+            is Q8_0TensorData -> q8_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
+            is Q4_0TensorData -> q4_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
+            else -> null
+        }
+    }
+
     override fun <T : DType, V> matmul(
         a: Tensor<T, V>,
         b: Tensor<T, V>
     ): Tensor<T, V> {
         require(a.rank >= 1 && b.rank >= 1) { "Matrix multiplication requires tensors with at least 1 dimension per operand" }
         require(a.dtype == b.dtype) { "DType mismatch: ${a.dtype} vs ${b.dtype}" }
+
+        // Packed-quant fast path (FP32 input × packed weight), resolved via KernelRegistry.
+        chooseQuantizedMatmulHeap(a, b)?.let { return it }
 
         // Fast path: 2D × 2D with FloatArray backing — direct buffer access, no per-element allocation
         if (a.rank == 2 && b.rank == 2
@@ -515,6 +588,22 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(rank >= 2) { "Transpose requires at least 2 dimensions" }
         val rows = tensor.shape[rank - 2]
         val cols = tensor.shape[rank - 1]
+
+        // Lazy transpose for heap-packed quant weights (Q4_K/Q6_K/Q5_1/Q5_0): the
+        // matmul kernels index the packed bytes input-block-major from the post-swap
+        // (inputDim, outputDim), so transpose is a pure shape swap — same bytes, no copy.
+        // Lets `ops.matmul(x, ops.transpose(W))` run on every platform without a dequant
+        // round-trip. (The JVM ops intercept Q4_K/Q6_K + MemSeg before reaching here.)
+        if (rank == 2) {
+            @Suppress("UNCHECKED_CAST")
+            when (val d = tensor.data) {
+                is Q4_KTensorData -> return newTensor(Q4_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                is Q6_KTensorData -> return newTensor(Q6_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                is Q5_1TensorData -> return newTensor(Q5_1BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                is Q5_0TensorData -> return newTensor(Q5_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                else -> {}
+            }
+        }
 
         // Fast path: 2D float tensor — direct buffer swap
         if (rank == 2 && tensor.data is FloatArrayTensorData<*>) {
