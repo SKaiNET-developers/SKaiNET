@@ -88,5 +88,7 @@ those formats were JVM-only and broke on Native.
 - ❌ **Other GGML quant formats** (Q5_K, Q2_K, Q3_K, Q8_K, IQ4_NL/XS) — loadable via dequant-to-FP32, but no packed matmul kernel.
 - ❌ **Non-CPU eager backends** (IREE, Metal, GPU) — the `KernelProvider` SPI anticipates them, but none are implemented for the eager path today.
 
-> Generated as a hand-authored overview. A machine-generated kernel × platform matrix
-> (derived from the registered `KernelProvider`s) is a planned follow-up so this stays in sync.
+> This mindmap is a hand-authored overview. Its companion
+> [kernel × platform support matrix](kernel-support-matrix.md) is **machine-generated** from
+> the registered `KernelProvider`s (`KernelSupportMatrixTest`) and CI-gated against drift in
+> the scalar floor, so the per-platform coverage stays in sync with the code.
