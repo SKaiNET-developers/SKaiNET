@@ -65,13 +65,18 @@ build/minerva/TinySecureMlp/
   host/
     CMakeLists.txt
     main.c
+    reference-input.txt
+    reference-output.txt
+    observed-output.txt   # optional output from a real host run
   firmware/
     main.c
 ```
 
 ## Host Verification and CI
 
-Host verification checks package structure, generated weight files, `model.npz` integrity, placeholder secret hygiene, and SKaiNET reference output generation. Add these metadata keys to opt into CMake, CTest, and parity comparison with a host output file:
+Host verification checks package structure, generated weight files, `model.npz` integrity, placeholder secret hygiene, and SKaiNET reference fixture generation. The packager writes deterministic `host/reference-input.txt` and `host/reference-output.txt` files and records them in `manifest.json`. A real host run can write comma- or whitespace-separated float outputs to `host/observed-output.txt` for zero-config parity comparison.
+
+Add these metadata keys to opt into CMake, CTest, and parity comparison with a custom host output file:
 
 ```kotlin
 metadata = mapOf(
@@ -81,6 +86,8 @@ metadata = mapOf(
 )
 ```
 
+`HOST_OUTPUT_PATH` is optional when the host run writes `host/observed-output.txt`.
+
 CI recipe:
 
 ```bash
@@ -88,10 +95,12 @@ CI recipe:
 ./gradlew :skainet-compile:skainet-compile-minerva:minervaHostVerification \
   -Pminerva.hostVerification.enabled=true \
   -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
-  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT"
-cmake -S build/minerva/TinySecureMlp/host -B build/minerva/TinySecureMlp/host/build
-ctest --test-dir build/minerva/TinySecureMlp/host/build --output-on-failure
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
+  -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
+  -Pminerva.keyFile="$MINERVA_KEY_FILE"
 ```
+
+`minervaHostVerification` is skipped by default. When enabled, it runs `jvmTest` and `runMinervaTinyMlpSample` with CMake and CTest host verification enabled unless `-Pminerva.hostVerification.runCmakeBuild=false` or `-Pminerva.hostVerification.runCTest=false` is set.
 
 ## ONNX to Minerva
 
