@@ -1,6 +1,7 @@
 package sk.ainet.compile.minerva.examples
 
 import sk.ainet.compile.minerva.MinervaExportFacade
+import sk.ainet.compile.minerva.MinervaExportFailureKind
 import sk.ainet.compile.minerva.MinervaExportOptions
 import sk.ainet.compile.minerva.MinervaHostVerificationMetadata
 import sk.ainet.lang.graph.DefaultComputeGraph
@@ -20,12 +21,11 @@ import sk.ainet.lang.types.DType
 internal object MinervaTinyMlpExportSample {
 
     @JvmStatic
-    internal fun main(args: Array<String>): Unit {
+    public fun main(args: Array<String>): Unit {
         val env = System.getenv()
         val compilerScript = envPath(env, "MINERVA_COMPILER_SCRIPT")
         if (compilerScript == null) {
-            println("Set MINERVA_COMPILER_SCRIPT to run the Minerva tiny MLP export sample.")
-            return
+            println("MINERVA_COMPILER_SCRIPT is not set; running dry validation through NPZ generation.")
         }
 
         val options = exportOptions(
@@ -46,6 +46,10 @@ internal object MinervaTinyMlpExportSample {
         }
         result.hostVerification?.let { verification ->
             println("Host verification: ${verification.status}")
+        }
+        if (compilerScript == null && result.failure?.kind == MinervaExportFailureKind.COMPILER_PREREQUISITE_FAILED) {
+            println("Dry validation completed: graph is compatible and model.npz was generated in memory.")
+            return
         }
         if (result.failed) {
             error(result.failure?.message ?: "Minerva export failed.")
@@ -114,7 +118,7 @@ internal object MinervaTinyMlpExportSample {
     internal fun exportOptions(
         outputDir: String = "build/minerva",
         projectName: String = "TinySecureMlp",
-        compilerScript: String,
+        compilerScript: String? = null,
         runtimeRoot: String? = null,
         keyFile: String? = null,
         calibrationNpz: String? = null,
