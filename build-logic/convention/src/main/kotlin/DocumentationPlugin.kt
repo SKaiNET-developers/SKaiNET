@@ -20,6 +20,17 @@ class DocumentationPlugin : Plugin<Project> {
             }
         })
 
+        // Kernel × platform matrix — kernel-side analogue of generateDocs. Renders the
+        // registry-introspected kernel-support.json into an Antora .adoc.
+        project.tasks.register("generateKernelMatrix", GenerateKernelMatrixTask::class.java, object : Action<GenerateKernelMatrixTask> {
+            override fun execute(task: GenerateKernelMatrixTask) {
+                task.group = "documentation"
+                task.description = "Render the kernel × platform support matrix from kernel-support.json"
+                task.inputFile.set(extension.kernelInputFile)
+                task.outputFile.set(extension.kernelOutputFile)
+            }
+        })
+
         // Register schema validation task in plugin (migrated from skainet-lang-export-ops)
         val validateTaskProvider = project.tasks.register("validateOperatorSchema", SchemaValidationTask::class.java, object : Action<SchemaValidationTask> {
             override fun execute(task: SchemaValidationTask) {

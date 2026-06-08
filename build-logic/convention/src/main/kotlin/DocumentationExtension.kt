@@ -14,4 +14,10 @@ open class DocumentationExtension(project: Project) {
         .convention(true)
     val generateIndex: Property<Boolean> = project.objects.property(Boolean::class.java)
         .convention(true)
+
+    /** kernel-support.json emitted by KernelSupportMatrixTest (registry introspection). */
+    val kernelInputFile: RegularFileProperty = project.objects.fileProperty()
+
+    /** Rendered kernel × platform matrix Antora page. */
+    val kernelOutputFile: RegularFileProperty = project.objects.fileProperty()
 }

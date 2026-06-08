@@ -18,6 +18,7 @@
 ** xref:reference/graph-export-architecture.adoc[Graph export architecture]
 ** xref:reference/operators/generated/index.adoc[Operator reference]
 ** xref:reference/ops-status-matrix.adoc[Operator coverage matrix]
+** xref:reference/kernel-support-matrix.adoc[Kernel × platform support]
 ** xref:reference/api.adoc[API reference (Dokka)]
 * Explanation
 ** xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
