@@ -123,11 +123,19 @@ class MinervaJvmCompilerAndPackagerTest {
         assertTrue(Files.isRegularFile(projectDir.resolve("host/reference-input.txt")))
         assertTrue(Files.isRegularFile(projectDir.resolve("host/reference-output.txt")))
         assertTrue(Files.isRegularFile(projectDir.resolve("host/main.c")))
+        assertTrue(Files.isRegularFile(projectDir.resolve("host/runtime_adapter.example.c")))
         assertTrue(Files.isRegularFile(projectDir.resolve("firmware/main.c")))
-        assertTrue(Files.readString(projectDir.resolve("host/CMakeLists.txt")).contains("add_test"))
+        val hostCmake = Files.readString(projectDir.resolve("host/CMakeLists.txt"))
+        assertTrue(hostCmake.contains("MINERVA_HOST_ADAPTER_SOURCE"))
+        assertTrue(hostCmake.contains("target_link_libraries"))
+        assertTrue(hostCmake.contains("set_tests_properties"))
         val hostMain = Files.readString(projectDir.resolve("host/main.c"))
         assertTrue(hostMain.contains("0.25f, 0.5f, 0.75f, 1.0f"))
+        assertTrue(hostMain.contains("minerva_run_inference"))
         assertTrue(hostMain.contains("observed-output.txt"))
+        val adapterExample = Files.readString(projectDir.resolve("host/runtime_adapter.example.c"))
+        assertTrue(adapterExample.contains("minerva_run_inference"))
+        assertTrue(adapterExample.contains("return 1"))
         val secretsExample = Files.readString(projectDir.resolve("include/secrets.example.h"))
         assertTrue(secretsExample.contains("replace-with-device-key"))
         assertFalse(secretsExample.contains("REAL_SECRET_KEY_MATERIAL"))
@@ -141,6 +149,7 @@ class MinervaJvmCompilerAndPackagerTest {
         assertTrue(bundle.generatedFiles.contains("include/secrets.example.h"))
         assertTrue(bundle.generatedFiles.contains("host/reference-input.txt"))
         assertTrue(bundle.generatedFiles.contains("host/reference-output.txt"))
+        assertTrue(bundle.generatedFiles.contains("host/runtime_adapter.example.c"))
         assertTrue(context.artifacts.any { it.role == GraphExportArtifactRole.PROJECT_DIRECTORY })
         assertTrue(context.artifacts.any { it.role == GraphExportArtifactRole.TEST_REPORT })
         assertTrue(context.diagnostics.any { it.code == "minerva.packaging.completed" })
@@ -158,6 +167,50 @@ class MinervaJvmCompilerAndPackagerTest {
         assertEquals(MinervaHostVerificationStatus.SKIPPED, verification.parityStatus)
         assertTrue(verification.expectedOutput.isNotEmpty())
         assertTrue(fixture.context.diagnostics.any { it.code == "minerva.host_verification.passed" })
+    }
+
+    @Test
+    fun hostVerifierPassesAdapterConfigurationToCMake() {
+        val fixture = packagedProject(tempDir("host-verify-cmake-adapter"), "AdapterCmakeVerify")
+        val toolDir = tempDir("fake-cmake")
+        val fakeCmake = toolDir.resolve("cmake")
+        Files.writeString(
+            fakeCmake,
+            """
+                |#!/bin/sh
+                |exit 0
+                |
+            """.trimMargin()
+        )
+        assertTrue(fakeCmake.toFile().setExecutable(true))
+        val runtimeRoot = toolDir.resolve("runtime")
+        val adapterSource = toolDir.resolve("minerva_adapter.c")
+        Files.createDirectories(runtimeRoot)
+        Files.writeString(adapterSource, "int minerva_run_inference(void) { return 0; }\n")
+        val request = fixture.request.copy(
+            options = fixture.request.options.copy(
+                runtimeRoot = runtimeRoot.toString(),
+                metadata = fixture.request.options.metadata + mapOf(
+                    MinervaHostVerificationMetadata.RUN_CMAKE_BUILD to "true",
+                    MinervaHostVerificationMetadata.CMAKE_EXECUTABLE to fakeCmake.toString(),
+                    MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE to adapterSource.toString(),
+                    MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS to "/opt/libminerva/include;/project/include",
+                    MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS to "/opt/libminerva/lib",
+                    MinervaHostVerificationMetadata.HOST_LIBRARIES to "minerva;crypto"
+                )
+            )
+        )
+
+        val verification = JvmMinervaHostVerifier().verify(request, fixture.context)
+
+        assertEquals(MinervaHostVerificationStatus.PASSED, verification.status)
+        assertEquals(MinervaHostVerificationStatus.PASSED, verification.hostBuildStatus)
+        val log = Files.readString(fixture.projectDir.resolve("host/build/cmake-configure.log"))
+        assertTrue(log.contains("-DMINERVA_RUNTIME_ROOT=${runtimeRoot.toAbsolutePath().normalize()}"))
+        assertTrue(log.contains("-DMINERVA_HOST_ADAPTER_SOURCE=${adapterSource.toAbsolutePath().normalize()}"))
+        assertTrue(log.contains("-DMINERVA_HOST_INCLUDE_DIRS=/opt/libminerva/include;/project/include"))
+        assertTrue(log.contains("-DMINERVA_HOST_LIBRARY_DIRS=/opt/libminerva/lib"))
+        assertTrue(log.contains("-DMINERVA_HOST_LIBRARIES=minerva;crypto"))
     }
 
     @Test

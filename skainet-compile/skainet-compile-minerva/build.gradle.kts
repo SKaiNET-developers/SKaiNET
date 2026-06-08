@@ -39,6 +39,10 @@ val minervaCalibrationNpz = providers.gradleProperty("minerva.calibrationNpz")
 val minervaRunCmakeBuild = providers.gradleProperty("minerva.hostVerification.runCmakeBuild")
 val minervaRunCTest = providers.gradleProperty("minerva.hostVerification.runCTest")
 val minervaHostOutputPath = providers.gradleProperty("minerva.hostVerification.hostOutputPath")
+val minervaHostAdapterSource = providers.gradleProperty("minerva.hostVerification.hostAdapterSource")
+val minervaHostIncludeDirs = providers.gradleProperty("minerva.hostVerification.hostIncludeDirs")
+val minervaHostLibraryDirs = providers.gradleProperty("minerva.hostVerification.hostLibraryDirs")
+val minervaHostLibraries = providers.gradleProperty("minerva.hostVerification.hostLibraries")
 val minervaRunCmakeBuildForSample = minervaRunCmakeBuild
     .orElse(providers.environmentVariable("MINERVA_RUN_CMAKE"))
     .orElse(minervaHostVerificationEnabled.map { it.toString() })
@@ -64,6 +68,10 @@ tasks.register("minervaHostVerification") {
     inputs.property("minerva.hostVerification.runCmakeBuild", minervaRunCmakeBuildForSample)
     inputs.property("minerva.hostVerification.runCTest", minervaRunCTestForSample)
     inputs.property("minerva.hostVerification.hostOutputPath", minervaHostOutputPath.orElse(""))
+    inputs.property("minerva.hostVerification.hostAdapterSource", minervaHostAdapterSource.orElse(""))
+    inputs.property("minerva.hostVerification.hostIncludeDirs", minervaHostIncludeDirs.orElse(""))
+    inputs.property("minerva.hostVerification.hostLibraryDirs", minervaHostLibraryDirs.orElse(""))
+    inputs.property("minerva.hostVerification.hostLibraries", minervaHostLibraries.orElse(""))
 }
 
 tasks.register<JavaExec>("runMinervaTinyMlpSample") {
@@ -100,5 +108,17 @@ tasks.register<JavaExec>("runMinervaTinyMlpSample") {
     }
     minervaHostOutputPath.orElse(providers.environmentVariable("MINERVA_HOST_OUTPUT_PATH")).orNull?.let {
         environment("MINERVA_HOST_OUTPUT_PATH", it)
+    }
+    minervaHostAdapterSource.orElse(providers.environmentVariable("MINERVA_HOST_ADAPTER_SOURCE")).orNull?.let {
+        environment("MINERVA_HOST_ADAPTER_SOURCE", it)
+    }
+    minervaHostIncludeDirs.orElse(providers.environmentVariable("MINERVA_HOST_INCLUDE_DIRS")).orNull?.let {
+        environment("MINERVA_HOST_INCLUDE_DIRS", it)
+    }
+    minervaHostLibraryDirs.orElse(providers.environmentVariable("MINERVA_HOST_LIBRARY_DIRS")).orNull?.let {
+        environment("MINERVA_HOST_LIBRARY_DIRS", it)
+    }
+    minervaHostLibraries.orElse(providers.environmentVariable("MINERVA_HOST_LIBRARIES")).orNull?.let {
+        environment("MINERVA_HOST_LIBRARIES", it)
     }
 }

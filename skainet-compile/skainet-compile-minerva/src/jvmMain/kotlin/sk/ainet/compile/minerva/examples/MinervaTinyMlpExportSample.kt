@@ -35,7 +35,11 @@ internal object MinervaTinyMlpExportSample {
             calibrationNpz = envPath(env, "MINERVA_CALIBRATION_NPZ"),
             runCmakeBuild = envFlag(env, "MINERVA_RUN_CMAKE"),
             runCTest = envFlag(env, "MINERVA_RUN_CTEST"),
-            hostOutputPath = envPath(env, "MINERVA_HOST_OUTPUT_PATH")
+            hostOutputPath = envPath(env, "MINERVA_HOST_OUTPUT_PATH"),
+            hostAdapterSource = envPath(env, "MINERVA_HOST_ADAPTER_SOURCE"),
+            hostIncludeDirs = envPath(env, "MINERVA_HOST_INCLUDE_DIRS"),
+            hostLibraryDirs = envPath(env, "MINERVA_HOST_LIBRARY_DIRS"),
+            hostLibraries = envPath(env, "MINERVA_HOST_LIBRARIES")
         )
         val result = MinervaExportFacade().exportGraph(tinyMlpGraph(), options)
 
@@ -124,7 +128,11 @@ internal object MinervaTinyMlpExportSample {
         calibrationNpz: String? = null,
         runCmakeBuild: Boolean = false,
         runCTest: Boolean = false,
-        hostOutputPath: String? = null
+        hostOutputPath: String? = null,
+        hostAdapterSource: String? = null,
+        hostIncludeDirs: String? = null,
+        hostLibraryDirs: String? = null,
+        hostLibraries: String? = null
     ): MinervaExportOptions {
         val metadata = mutableMapOf("sample" to "minerva-tiny-mlp")
         if (runCmakeBuild) {
@@ -135,6 +143,18 @@ internal object MinervaTinyMlpExportSample {
         }
         hostOutputPath?.let {
             metadata[MinervaHostVerificationMetadata.HOST_OUTPUT_PATH] = it
+        }
+        hostAdapterSource?.let {
+            metadata[MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE] = it
+        }
+        hostIncludeDirs?.let {
+            metadata[MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS] = it
+        }
+        hostLibraryDirs?.let {
+            metadata[MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS] = it
+        }
+        hostLibraries?.let {
+            metadata[MinervaHostVerificationMetadata.HOST_LIBRARIES] = it
         }
         return MinervaExportOptions(
             outputDir = outputDir,

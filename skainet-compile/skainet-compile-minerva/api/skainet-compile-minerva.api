@@ -388,6 +388,10 @@ public final class sk/ainet/compile/minerva/MinervaHostVerification {
 public final class sk/ainet/compile/minerva/MinervaHostVerificationMetadata {
 	public static final field CMAKE_EXECUTABLE Ljava/lang/String;
 	public static final field CTEST_EXECUTABLE Ljava/lang/String;
+	public static final field HOST_ADAPTER_SOURCE Ljava/lang/String;
+	public static final field HOST_INCLUDE_DIRS Ljava/lang/String;
+	public static final field HOST_LIBRARIES Ljava/lang/String;
+	public static final field HOST_LIBRARY_DIRS Ljava/lang/String;
 	public static final field HOST_OUTPUT_PATH Ljava/lang/String;
 	public static final field INSTANCE Lsk/ainet/compile/minerva/MinervaHostVerificationMetadata;
 	public static final field RUN_CMAKE_BUILD Ljava/lang/String;
