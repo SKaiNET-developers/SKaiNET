@@ -1,6 +1,12 @@
 # Minerva Secure MCU Export
 
-Minerva export packages a supported SKaiNET compute graph for secure MCU inference through libminerva. The maintained docs-site version is [`docs/modules/ROOT/pages/how-to/minerva-export.adoc`](../modules/ROOT/pages/how-to/minerva-export.adoc); this Markdown entrypoint keeps the repository path requested by the planning issue and is friendly to GitHub browsing.
+Minerva export packages a supported SKaiNET compute graph for secure MCU inference through libminerva. The maintained docs-site pages are:
+
+- [Minerva getting started](../modules/ROOT/pages/tutorials/minerva-getting-started.adoc)
+- [Minerva export how-to](../modules/ROOT/pages/how-to/minerva-export.adoc)
+- [How Minerva secure MCU export fits](../modules/ROOT/pages/explanation/minerva-secure-mcu-export.adoc)
+
+This Markdown entrypoint keeps the repository path requested by the planning issue and is friendly to GitHub browsing.
 
 ## Setup
 

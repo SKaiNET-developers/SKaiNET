@@ -1,0 +1,125 @@
+= Minerva Getting Started
+:description: First run for exporting a tiny SKaiNET graph to a Minerva secure MCU bundle.
+
+This tutorial walks through the smallest useful Minerva export path: run the maintained tiny MLP sample, inspect the generated bundle, and then connect the same export facade to your own compatible graph.
+
+Minerva export is for secure MCU deployment. It does not replace the general StableHLO path or the standalone Arduino/C99 code generator. It packages a narrow, supported SKaiNET graph into the files libminerva expects: `model.npz`, generated weights, host and firmware harnesses, a manifest, and host verification evidence.
+
+== Before You Start
+
+You need:
+
+* A JDK supported by the repository build.
+* A local SKaiNET checkout.
+* Optional for the first dry run: no libminerva checkout is required.
+* Required for the real runtime proof: a libminerva checkout or install directory with `compiler/minerva_compile.py`, plus CMake when host verification should build and run.
+
+The phase-one Minerva backend supports static sequential MLP graphs with known shapes, Q8 quantization, and the ATmega328P target.
+
+== 1. Run the Dry Sample
+
+From the repository root:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample
+----
+
+When `MINERVA_COMPILER_SCRIPT` is not set, the sample still validates the graph, lowers it to the Minerva intermediate model, and writes the in-memory NPZ compiler input. This is the fastest way to check that the Minerva module is usable without installing libminerva first.
+
+Expected result:
+
+[source,text]
+----
+MINERVA_COMPILER_SCRIPT is not set; running dry validation through NPZ generation.
+Minerva export status: FAILED
+Dry validation completed: graph is compatible and model.npz was generated in memory.
+----
+
+The status is `FAILED` because the real compiler prerequisite is intentionally missing. The dry run is still useful because compatibility and NPZ generation have already executed.
+
+== 2. Run Against libminerva
+
+Point SKaiNET at a libminerva checkout:
+
+[source,bash]
+----
+export MINERVA_RUNTIME_ROOT=/opt/libminerva
+export MINERVA_COMPILER_SCRIPT="$MINERVA_RUNTIME_ROOT/compiler/minerva_compile.py"
+----
+
+Then run the local proof helper:
+
+[source,bash]
+----
+MINERVA_RUNTIME_ROOT="$MINERVA_RUNTIME_ROOT" ./scripts/run-minerva-real-runtime-profile.sh
+----
+
+The helper creates local, untracked profile inputs under `build/minerva-real-runtime-profile`:
+
+* a generated device key,
+* a small calibration archive,
+* a host-only `secrets.h`,
+* a host-only AVR `pgmspace.h` compatibility shim.
+
+It then runs the gated `minervaHostVerification` Gradle task with CMake and CTest enabled. The default tolerance is deliberately loose for this profile because current libminerva Q8 host output is treated as a runtime smoke proof, not a strict floating-point parity test.
+
+== 3. Inspect the Bundle
+
+A successful run writes:
+
+[source,text]
+----
+build/minerva/TinySecureMlp/
+  manifest.json
+  generated/
+    model.npz
+    weights.c
+  include/
+    weights.h
+    secrets.example.h
+  host/
+    CMakeLists.txt
+    main.c
+    runtime_adapter.example.c
+    reference-input.txt
+    reference-output.txt
+    observed-output.txt
+  firmware/
+    main.c
+----
+
+Start with `manifest.json`. It records the target, quantization, compiler command summary, generated file hashes, host verification status, and fixture paths. The manifest is the handoff record between the source model, SKaiNET export, libminerva compiler output, and firmware integration.
+
+Do not copy real device keys into the bundle. `include/secrets.example.h` is intentionally a placeholder file.
+
+== 4. Export Your Own Compatible Graph
+
+The public entry point is `MinervaExportFacade`:
+
+[source,kotlin]
+----
+import sk.ainet.compile.minerva.MinervaExportFacade
+import sk.ainet.compile.minerva.MinervaExportOptions
+
+val options = MinervaExportOptions(
+    outputDir = "build/minerva",
+    projectName = "MySecureMlp",
+    compilerScript = "/opt/libminerva/compiler/minerva_compile.py",
+    runtimeRoot = "/opt/libminerva",
+    calibrationNpz = "/secure/project/calibration.npz",
+    keyFile = "/secure/project/device.key"
+)
+
+val result = MinervaExportFacade().exportGraph(graph, options)
+val bundle = result.requireSuccess()
+println(bundle.manifestPath)
+----
+
+The `graph` can come from the Kotlin DSL, a traced forward pass, a hand-built `ComputeGraph`, or an import pipeline that you reduce to the supported static MLP contract before export. Minerva is not an ONNX-only path; ONNX is just one possible source if you convert or validate it before calling the facade.
+
+== 5. Continue
+
+* xref:how-to/minerva-export.adoc[Minerva export how-to] covers every option, metadata key, and troubleshooting case.
+* xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits] explains why Minerva is a sibling backend beside StableHLO and Arduino/C99 export.
+* xref:reference/graph-export-architecture.adoc[Graph export architecture] describes the shared export contracts used by StableHLO and Minerva.

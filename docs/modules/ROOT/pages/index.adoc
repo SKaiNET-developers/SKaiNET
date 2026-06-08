@@ -1,12 +1,13 @@
 = SKaiNET
-:description: Kotlin Multiplatform tensor engine with a graph IR, pluggable backends, and StableHLO export.
+:description: Kotlin Multiplatform tensor engine with a graph IR, pluggable backends, StableHLO export, and Minerva secure MCU export.
 
 SKaiNET is a Kotlin Multiplatform tensor / compile / graph engine.
 It provides a tensor DSL, execution contexts, a graph IR, model
 loaders (GGUF, SafeTensors, ONNX), quantization primitives
 (Q4_K, Q8_0, ternary, TurboQuant), a StableHLO emitter for cross-
-platform compile targets, and a pluggable backend API that CPU,
-GPU, and NPU backends can implement independently.
+platform compile targets, Minerva secure MCU export for supported
+static MLPs, and a pluggable backend API that CPU, GPU, and NPU
+backends can implement independently.
 
 This site is split by what you're here to do:
 
@@ -19,6 +20,11 @@ training a small network. Inside, content follows the
 https://diataxis.fr/[Diátaxis] framework: Tutorials (learning-oriented),
 How-to guides (task-oriented), Reference (lookup), Explanation
 (background). Java consumers — see the "From Java" callout on that page.
+* xref:tutorials/minerva-getting-started.adoc[*Minerva secure MCU export*]
++
+You need to package a supported static MLP for libminerva: start with
+the tiny dry-run sample, then run the real-runtime profile, inspect
+`manifest.json`, and hand off the generated host and firmware bundle.
 * xref:contributing/index.adoc[*Contributing to SKaiNET*]
 +
 You're modifying SKaiNET itself — building from source, adding

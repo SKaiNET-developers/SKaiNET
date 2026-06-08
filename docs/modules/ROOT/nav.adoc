@@ -5,6 +5,7 @@
 * Tutorials
 ** xref:tutorials/java-getting-started.adoc[Java getting started]
 ** xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
+** xref:tutorials/minerva-getting-started.adoc[Minerva getting started]
 ** xref:tutorials/graph-dsl.adoc[Graph DSL]
 ** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
 * How-to guides
@@ -22,6 +23,7 @@
 ** xref:reference/api.adoc[API reference (Dokka)]
 * Explanation
 ** xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
+** xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits]
 ** xref:explanation/operator-design.adoc[Operator documentation system]
 ** xref:explanation/theory/index.adoc[Mathematical theory]
 *** xref:explanation/theory/matmul.adoc[Matrix multiplication]

@@ -1,0 +1,81 @@
+= How Minerva Secure MCU Export Fits
+:description: Conceptual overview of SKaiNET's Minerva export backend and how it relates to StableHLO and Arduino/C99 export.
+
+Minerva export is SKaiNET's secure MCU packaging backend. It takes a supported `ComputeGraph`, lowers it to a compact Minerva layer model, writes a NumPy `.npz` compiler input for libminerva, invokes the Minerva compiler when configured, and packages the generated C artifacts into a reviewable project bundle.
+
+The important distinction is scope. StableHLO is a portable compiler IR path for broad native and accelerator deployment. Arduino/C99 export is standalone generated C for small devices without an external secure runtime. Minerva export is for the cases where the deployment artifact must be a libminerva project with secure runtime integration, generated weights, host verification, and manifest provenance.
+
+== Same Export Level, Different Target
+
+StableHLO and Minerva sit at the same architectural level in SKaiNET: both are graph export backends. They share the source boundary, diagnostics model, and export result style, but they produce different artifacts.
+
+[cols="1,2,2",options="header"]
+|===
+| Backend | Output | Primary target
+
+| StableHLO
+| MLIR module text in the StableHLO dialect.
+| Portable compiler flows such as IREE, native code, accelerators, and ecosystem tooling.
+
+| Arduino / C99
+| Standalone C99 and Arduino library structure.
+| Simple MCU deployment with static memory allocation and no secure runtime dependency.
+
+| Minerva
+| Minerva compiler input, generated libminerva weights, host and firmware harnesses, manifest, and verification evidence.
+| Secure MCU deployment through libminerva.
+|===
+
+Minerva is therefore not a mode of the Arduino exporter. It is a smaller, stricter sibling backend with a security-oriented package shape.
+
+== Source Models
+
+Minerva export starts from a SKaiNET `ComputeGraph`. That graph can be produced in several ways:
+
+* a model written in the Kotlin neural-network DSL,
+* a traced representative forward pass,
+* a hand-built graph,
+* a model-import workflow that validates and converts into the supported graph shape.
+
+ONNX is not special in the Minerva pipeline. It can be useful as an input format for inspection or conversion, but the first Minerva implementation does not include a general ONNX-to-Minerva importer. The contract is the SKaiNET graph handed to `MinervaExportFacade`.
+
+== Why the Scope Is Narrow
+
+The phase-one backend intentionally supports static sequential MLPs only:
+
+* known rank-2 tensor shapes,
+* dense `MatMul` layers with optional bias `Add`,
+* `Relu`, `Sigmoid`, or `Tanh` activations,
+* Q8 quantization,
+* ATmega328P target metadata.
+
+This keeps failures early and understandable. If a graph contains attention, convolution, branching, dynamic shapes, or an unsupported imported operator, Minerva rejects it before invoking libminerva. For general compiler coverage, use StableHLO.
+
+== What the Bundle Proves
+
+The generated bundle is meant to be auditable:
+
+* `generated/model.npz` is the compiler input SKaiNET produced.
+* `generated/weights.c` and `include/weights.h` are generated compiler artifacts.
+* `host/` contains reference fixtures, a host harness, and CMake integration.
+* `firmware/` contains a starting point for target integration.
+* `manifest.json` fingerprints generated files and records export metadata.
+
+Host verification checks the generated structure, validates NPZ contents, guards against accidental secret leakage, and can build and run the generated C harness when libminerva and CMake are available.
+
+== Secret Handling
+
+The repository-generated files must stay free of real device secrets. `secrets.example.h` is a placeholder. Real keys belong in private provisioning systems or local, untracked include directories used only for host verification and firmware integration.
+
+The compiler command summary recorded in `manifest.json` redacts key-file arguments. The manifest should prove which artifacts were generated together, but it should not contain material that can provision or emulate a real device.
+
+== When to Choose Minerva
+
+Choose Minerva when all of these are true:
+
+* the graph fits the supported static MLP contract,
+* the target is a secure MCU flow managed by libminerva,
+* release evidence needs a manifest and generated-file fingerprints,
+* host verification matters before firmware handoff.
+
+Choose StableHLO when you need broad operator coverage or a general compiler ecosystem. Choose Arduino/C99 when the deployment should be plain generated C without libminerva.

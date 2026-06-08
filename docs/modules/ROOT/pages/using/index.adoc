@@ -18,6 +18,7 @@ The Using SKaiNET section is for the engineer who:
 - Builds tensors, runs forward passes, trains small models.
 - Loads pre-trained weights (GGUF, SafeTensors, ONNX).
 - Targets StableHLO / IREE for cross-platform deployment.
+- Exports supported static MLPs to Minerva secure MCU bundles.
 - Reads the operator catalog to discover what's supported on which
   backend.
 
@@ -45,6 +46,12 @@ specifically:
 
 The rest of this section is written in Kotlin. The concepts transfer
 directly; only the syntax differs.
+
+== Export and deployment paths
+
+- xref:tutorials/hlo-getting-started.adoc[StableHLO getting started] — lower graphs to portable MLIR for IREE-compatible compiler flows.
+- xref:tutorials/minerva-getting-started.adoc[Minerva getting started] — export a tiny static MLP to a secure MCU bundle.
+- xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino] — generate standalone C99 for small-device deployment without libminerva.
 
 [NOTE]
 ====

@@ -4,6 +4,8 @@ Minerva export packages a supported SKaiNET compute graph for secure MCU inferen
 
 Use this backend when the output must be a Minerva project bundle with compiler input, generated weights, firmware and host harnesses, a manifest, and host verification metadata.
 
+New to this backend? Start with xref:tutorials/minerva-getting-started.adoc[Minerva getting started] for the first dry run and real-runtime profile, then return here for the detailed option reference. For the conceptual model, see xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits].
+
 == When to Use Each Export Path
 
 [cols="1,2",options="header"]
