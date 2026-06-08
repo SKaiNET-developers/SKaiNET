@@ -3144,6 +3144,88 @@ public final class sk/ainet/lang/tensor/data/Q4_KTensorDataKt {
 	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Q4_KTensorData;)[F
 }
 
+public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData : sk/ainet/lang/tensor/data/Q5_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_0BlockTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Byte;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockSize ()I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IB)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData$Companion {
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Q5_0BlockTensorData;
+}
+
+public abstract interface class sk/ainet/lang/tensor/data/Q5_0TensorData : sk/ainet/lang/tensor/data/TensorData {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_0TensorData$Companion;
+	public abstract fun getBlockCount ()I
+	public abstract fun getPackedData ()[B
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_0TensorData$Companion {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_0TensorData$DefaultImpls {
+	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q5_0TensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData : sk/ainet/lang/tensor/data/Q5_1TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_1BlockTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Byte;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockSize ()I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPhysicalBytes ()J
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IB)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData$Companion {
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Q5_1BlockTensorData;
+}
+
+public abstract interface class sk/ainet/lang/tensor/data/Q5_1TensorData : sk/ainet/lang/tensor/data/TensorData {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_1TensorData$Companion;
+	public abstract fun getBlockCount ()I
+	public abstract fun getPackedData ()[B
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_1TensorData$Companion {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+}
+
+public final class sk/ainet/lang/tensor/data/Q5_1TensorData$DefaultImpls {
+	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q5_1TensorData;)[F
+}
+
 public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData : sk/ainet/lang/tensor/data/Q6_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q6_KBlockTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
@@ -5213,6 +5295,28 @@ public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q4_K : sk/ainet/l
 	public static final field BLOCK_SIZE I
 	public static final field BYTES_PER_BLOCK I
 	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q4_K;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q5_0 : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q5_0;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$Q5_1 : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field BLOCK_SIZE I
+	public static final field BYTES_PER_BLOCK I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$Q5_1;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getName ()Ljava/lang/String;
 	public fun hashCode ()I
