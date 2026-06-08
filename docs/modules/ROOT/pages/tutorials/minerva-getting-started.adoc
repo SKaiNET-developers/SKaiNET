@@ -38,7 +38,31 @@ Dry validation completed: graph is compatible and model.npz was generated in mem
 
 The status is `FAILED` because the real compiler prerequisite is intentionally missing. The dry run is still useful because compatibility and NPZ generation have already executed.
 
-== 2. Run Against libminerva
+== 2. Try the Secure MCU Examples
+
+The Minerva module also ships two SKaiNET examples inspired by libminerva's secure MCU flow:
+
+* `sensor-classifier`: an 8-feature, 4-class ATmega-style sensor classifier that maps naturally to ADC inputs and class LEDs.
+* `safety-guard`: a 6-feature health classifier for `protect`, `warn`, and `allow` decisions.
+
+Run both examples in dry mode:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples
+----
+
+Run only one:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.example=sensor-classifier
+----
+
+Both examples use `MinervaExportFacade` and produce the same Minerva intermediate and `model.npz` path as the tiny sample. Without `MINERVA_COMPILER_SCRIPT`, they stop after dry validation with a compiler prerequisite failure.
+
+== 3. Run Against libminerva
 
 Point SKaiNET at a libminerva checkout:
 
@@ -64,7 +88,19 @@ The helper creates local, untracked profile inputs under `build/minerva-real-run
 
 It then runs the gated `minervaHostVerification` Gradle task with CMake and CTest enabled. The default tolerance is deliberately loose for this profile because current libminerva Q8 host output is treated as a runtime smoke proof, not a strict floating-point parity test.
 
-== 3. Inspect the Bundle
+You can also run the secure MCU examples against the same configured runtime:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.compilerScript="$MINERVA_COMPILER_SCRIPT" \
+  -Pminerva.runtimeRoot="$MINERVA_RUNTIME_ROOT" \
+  -Pminerva.calibrationNpz="$MINERVA_CALIBRATION_NPZ" \
+  -Pminerva.keyFile="$MINERVA_KEY_FILE" \
+  -Pminerva.hostVerification.tolerance="${MINERVA_HOST_TOLERANCE:-1.0}"
+----
+
+== 4. Inspect the Bundle
 
 A successful run writes:
 
@@ -93,7 +129,7 @@ Start with `manifest.json`. It records the target, quantization, compiler comman
 
 Do not copy real device keys into the bundle. `include/secrets.example.h` is intentionally a placeholder file.
 
-== 4. Export Your Own Compatible Graph
+== 5. Export Your Own Compatible Graph
 
 The public entry point is `MinervaExportFacade`:
 
@@ -118,7 +154,7 @@ println(bundle.manifestPath)
 
 The `graph` can come from the Kotlin DSL, a traced forward pass, a hand-built `ComputeGraph`, or an import pipeline that you reduce to the supported static MLP contract before export. Minerva is not an ONNX-only path; ONNX is just one possible source if you convert or validate it before calling the facade.
 
-== 5. Continue
+== 6. Continue
 
 * xref:how-to/minerva-export.adoc[Minerva export how-to] covers every option, metadata key, and troubleshooting case.
 * xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits] explains why Minerva is a sibling backend beside StableHLO and Arduino/C99 export.

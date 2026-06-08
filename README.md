@@ -164,6 +164,14 @@ Start here:
 - [Minerva export how-to](docs/modules/ROOT/pages/how-to/minerva-export.adoc) — configure compiler paths, keys, calibration, CMake/CTest host verification, and troubleshooting.
 - [How Minerva secure MCU export fits](docs/modules/ROOT/pages/explanation/minerva-secure-mcu-export.adoc) — understand why Minerva is not an Arduino replacement and when to choose StableHLO instead.
 
+Runnable examples:
+
+```bash
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.example=sensor-classifier
+```
+
 ---
 
 ## Features

@@ -172,6 +172,14 @@ The generated firmware example intentionally contains integration placeholders. 
 ./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample
 ```
 
+Additional secure MCU examples live in `MinervaSecureMcuExportSamples`:
+
+```bash
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.example=sensor-classifier
+```
+
 Without `MINERVA_COMPILER_SCRIPT`, the task runs a dry validation through compatibility, lowering, and in-memory NPZ generation. Add `-Pminerva.compilerScript`, `-Pminerva.runtimeRoot`, `-Pminerva.calibrationNpz`, and `-Pminerva.keyFile` to run the real compiler path. `MinervaTinyMlpExportSampleTest` validates the sample graph and NPZ generation without real device keys.
 
 ## Export Path Choice

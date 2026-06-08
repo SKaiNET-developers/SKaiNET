@@ -262,6 +262,17 @@ Run the sample after configuring libminerva:
 ./gradlew :skainet-compile:skainet-compile-minerva:runMinervaTinyMlpSample
 ----
 
+Run the richer secure MCU examples:
+
+[source,bash]
+----
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples
+./gradlew :skainet-compile:skainet-compile-minerva:runMinervaSecureMcuExamples \
+  -Pminerva.example=safety-guard
+----
+
+`sensor-classifier` mirrors libminerva's ATmega sensor-classification shape with eight input features and four output classes. `safety-guard` shows a smaller health-decision classifier with three output classes. Both examples are dry-run friendly and switch to real compiler execution when the normal `MINERVA_*` runtime settings are present.
+
 Without `MINERVA_COMPILER_SCRIPT`, the sample task runs a dry validation through compatibility, lowering, and in-memory NPZ generation. Configure the runtime with Gradle properties or matching environment variables to run the real compiler and host verification:
 
 [source,bash]

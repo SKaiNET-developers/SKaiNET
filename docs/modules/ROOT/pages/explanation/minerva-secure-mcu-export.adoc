@@ -39,6 +39,15 @@ Minerva export starts from a SKaiNET `ComputeGraph`. That graph can be produced 
 
 ONNX is not special in the Minerva pipeline. It can be useful as an input format for inspection or conversion, but the first Minerva implementation does not include a general ONNX-to-Minerva importer. The contract is the SKaiNET graph handed to `MinervaExportFacade`.
 
+== Example Patterns
+
+The maintained examples intentionally stay close to libminerva's own MCU story:
+
+* `sensor-classifier` uses an 8->16->8->4 static MLP. Four slots can be direct ADC inputs, and the remaining slots can hold rolling features or zero padding. Firmware can map the four outputs to class LEDs or action states.
+* `safety-guard` uses a 6->10->4->3 static MLP for protect / warn / allow decisions. It demonstrates the same Minerva export path with a different input contract and class vocabulary.
+
+Both examples are source-side SKaiNET graphs. libminerva still owns the encrypted weight packaging, runtime initialization, integrity checks, and secure MCU execution.
+
 == Why the Scope Is Narrow
 
 The phase-one backend intentionally supports static sequential MLPs only:
