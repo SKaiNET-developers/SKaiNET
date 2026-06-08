@@ -135,7 +135,13 @@ class MinervaJvmCompilerAndPackagerTest {
         assertTrue(hostMain.contains("observed-output.txt"))
         val adapterExample = Files.readString(projectDir.resolve("host/runtime_adapter.example.c"))
         assertTrue(adapterExample.contains("minerva_run_inference"))
-        assertTrue(adapterExample.contains("return 1"))
+        assertTrue(adapterExample.contains("mnv_init"))
+        assertTrue(adapterExample.contains("mnv_seed_prng"))
+        assertTrue(adapterExample.contains("mnv_run"))
+        assertTrue(adapterExample.contains("mnv_verify_output"))
+        assertTrue(adapterExample.contains("MNV_INPUT_SIZE"))
+        assertTrue(adapterExample.contains("MNV_OUTPUT_SIZE"))
+        assertFalse(adapterExample.contains("return 1;"))
         val secretsExample = Files.readString(projectDir.resolve("include/secrets.example.h"))
         assertTrue(secretsExample.contains("replace-with-device-key"))
         assertFalse(secretsExample.contains("REAL_SECRET_KEY_MATERIAL"))
@@ -158,6 +164,62 @@ class MinervaJvmCompilerAndPackagerTest {
         assertTrue(context.artifacts.any { it.role == GraphExportArtifactRole.PROJECT_DIRECTORY })
         assertTrue(context.artifacts.any { it.role == GraphExportArtifactRole.TEST_REPORT })
         assertTrue(context.diagnostics.any { it.code == "minerva.packaging.completed" })
+    }
+
+    @Test
+    fun hostRuntimeAdapterExampleCompilesAgainstPublicMinervaApiShim() {
+        val root = tempDir("adapter-compile")
+        val fixture = packagedProject(root, "AdapterCompile")
+        val includeDir = fixture.projectDir.resolve("include")
+        val runtimeIncludeDir = root.resolve("runtime/include")
+        Files.createDirectories(runtimeIncludeDir)
+        Files.writeString(
+            includeDir.resolve("weights.h"),
+            """
+                |#pragma once
+                |#include "minerva.h"
+                |#define MNV_INPUT_SIZE 4U
+                |#define MNV_OUTPUT_SIZE 3U
+                |extern const mnv_model_t mnv_model;
+                |
+            """.trimMargin()
+        )
+        Files.writeString(
+            runtimeIncludeDir.resolve("minerva.h"),
+            """
+                |#pragma once
+                |#include <stdint.h>
+                |#define MNV_OK 0
+                |#define MNV_ENABLE_OUTPUT_AUTH 1
+                |typedef int mnv_status_t;
+                |typedef int8_t mnv_act_t;
+                |typedef struct mnv_ctx_t { int verified; } mnv_ctx_t;
+                |typedef struct mnv_model_t { int version; } mnv_model_t;
+                |mnv_status_t mnv_init(mnv_ctx_t *ctx, const mnv_model_t *model);
+                |void mnv_seed_prng(mnv_ctx_t *ctx, uint32_t seed);
+                |mnv_status_t mnv_run(mnv_ctx_t *ctx, const mnv_act_t *input, mnv_act_t *output);
+                |mnv_status_t mnv_verify_output(const mnv_ctx_t *ctx, const mnv_act_t *input, const mnv_act_t *output);
+                |
+            """.trimMargin()
+        )
+
+        val process = ProcessBuilder(
+            "cc",
+            "-std=c11",
+            "-Wall",
+            "-Werror",
+            "-I${runtimeIncludeDir}",
+            "-I${includeDir}",
+            "-c",
+            fixture.projectDir.resolve("host/runtime_adapter.example.c").toString(),
+            "-o",
+            root.resolve("runtime_adapter.example.o").toString()
+        ).start()
+        val stdout = process.inputStream.bufferedReader().readText()
+        val stderr = process.errorStream.bufferedReader().readText()
+
+        assertEquals(0, process.waitFor(), stdout + stderr)
+        assertTrue(Files.isRegularFile(root.resolve("runtime_adapter.example.o")))
     }
 
     @Test

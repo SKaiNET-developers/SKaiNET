@@ -666,22 +666,88 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
     private fun hostRuntimeAdapterExample(): String {
         return """
             |/*
-            | * Copy this file outside the generated bundle and wire it to your pinned
-            | * libminerva runtime. Then configure CMake with:
+            | * Copy this file outside the generated bundle when you need local edits,
+            | * then configure CMake with:
             | *
             | *   -DMINERVA_HOST_ADAPTER_SOURCE=/path/to/minerva_runtime_adapter.c
             | *
-            | * The generated host harness calls this stable shim so SKaiNET does not
-            | * need to hard-code libminerva runtime entry point names.
+            | * This adapter targets libminerva's public C API:
+            | *   mnv_init, mnv_seed_prng, mnv_run, mnv_verify_output
+            | *
+            | * SKaiNET host fixtures use normalized float values. libminerva uses Q8
+            | * activation buffers, so this sample clamps [-1, 1] floats to int8 and
+            | * converts Q8 outputs back to floats for parity comparison.
             | */
+            |#include <stdint.h>
+            |#include "minerva.h"
             |#include "weights.h"
             |
+            |#ifndef MNV_HOST_PRNG_SEED
+            |#define MNV_HOST_PRNG_SEED 0x534B4149UL
+            |#endif
+            |
+            |static mnv_ctx_t minerva_host_ctx;
+            |static int minerva_host_initialized = 0;
+            |
+            |static mnv_act_t minerva_float_to_q8(float value) {
+            |    if (value >= 1.0f) {
+            |        return (mnv_act_t)127;
+            |    }
+            |    if (value <= -1.0f) {
+            |        return (mnv_act_t)-128;
+            |    }
+            |
+            |    if (value >= 0.0f) {
+            |        return (mnv_act_t)((value * 127.0f) + 0.5f);
+            |    }
+            |    return (mnv_act_t)((value * 128.0f) - 0.5f);
+            |}
+            |
+            |static float minerva_q8_to_float(mnv_act_t value) {
+            |    return value < 0 ? ((float)value / 128.0f) : ((float)value / 127.0f);
+            |}
+            |
             |int minerva_run_inference(const float *input, int input_count, float *output, int output_count) {
-            |    (void)input;
-            |    (void)input_count;
-            |    (void)output;
-            |    (void)output_count;
-            |    return 1;
+            |    if (input == 0 || output == 0) {
+            |        return -1;
+            |    }
+            |    if (input_count != (int)MNV_INPUT_SIZE || output_count != (int)MNV_OUTPUT_SIZE) {
+            |        return -2;
+            |    }
+            |
+            |    if (!minerva_host_initialized) {
+            |        mnv_status_t status = mnv_init(&minerva_host_ctx, &mnv_model);
+            |        if (status != MNV_OK) {
+            |            return (int)status;
+            |        }
+            |        mnv_seed_prng(&minerva_host_ctx, (uint32_t)MNV_HOST_PRNG_SEED);
+            |        minerva_host_initialized = 1;
+            |    }
+            |
+            |    mnv_act_t q_input[MNV_INPUT_SIZE];
+            |    mnv_act_t q_output[MNV_OUTPUT_SIZE];
+            |    for (int i = 0; i < input_count; ++i) {
+            |        q_input[i] = minerva_float_to_q8(input[i]);
+            |    }
+            |    for (int i = 0; i < output_count; ++i) {
+            |        q_output[i] = 0;
+            |    }
+            |
+            |    mnv_status_t status = mnv_run(&minerva_host_ctx, q_input, q_output);
+            |    if (status != MNV_OK) {
+            |        return (int)status;
+            |    }
+            |#ifdef MNV_ENABLE_OUTPUT_AUTH
+            |    status = mnv_verify_output(&minerva_host_ctx, q_input, q_output);
+            |    if (status != MNV_OK) {
+            |        return (int)status;
+            |    }
+            |#endif
+            |
+            |    for (int i = 0; i < output_count; ++i) {
+            |        output[i] = minerva_q8_to_float(q_output[i]);
+            |    }
+            |    return 0;
             |}
             |
         """.trimMargin()

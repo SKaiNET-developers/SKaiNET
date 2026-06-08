@@ -93,7 +93,9 @@ The generated host harness has a stable adapter ABI:
 int minerva_run_inference(const float *input, int input_count, float *output, int output_count);
 ```
 
-Copy `host/runtime_adapter.example.c` outside the generated bundle, wire that function to the pinned libminerva runtime, then point CMake at the adapter source. This keeps SKaiNET from hard-coding unverified libminerva runtime entry point names.
+`host/runtime_adapter.example.c` implements that ABI against the libminerva public C API (`mnv_init`, `mnv_seed_prng`, `mnv_run`, and `mnv_verify_output`). The adapter converts SKaiNET's normalized float fixtures to libminerva Q8 activation buffers and converts Q8 outputs back to floats for parity comparison.
+
+Copy the adapter outside the generated bundle when product-specific scaling or entropy seeding needs local edits, then point CMake at the copied source. This keeps the generated host harness stable while leaving runtime policy in one reviewable adapter file.
 
 Add these metadata keys to opt into CMake, CTest, and parity comparison with a custom host output file:
 
@@ -149,7 +151,7 @@ The first phase does not include a general ONNX-to-Minerva importer. Once any so
 
 ## Firmware Integration
 
-The generated firmware example intentionally contains placeholders. Confirm the libminerva inference entry point and output-authentication API names against the pinned libminerva version used by your product build before flashing firmware.
+The generated firmware example intentionally contains integration placeholders. Use the host adapter as the reference for the pinned libminerva public API, then move product-specific entropy seeding, input scaling, and secret provisioning into private firmware code before flashing.
 
 ## Maintained JVM Sample
 

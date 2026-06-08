@@ -161,7 +161,9 @@ The generated host harness has a stable adapter ABI:
 int minerva_run_inference(const float *input, int input_count, float *output, int output_count);
 ----
 
-Copy `host/runtime_adapter.example.c` outside the generated bundle, wire that function to the pinned libminerva runtime, then point CMake at the adapter source. This keeps SKaiNET from hard-coding unverified libminerva runtime entry point names.
+`host/runtime_adapter.example.c` implements that ABI against the libminerva public C API: `mnv_init`, `mnv_seed_prng`, `mnv_run`, and `mnv_verify_output`. The adapter converts SKaiNET's normalized float fixtures to libminerva Q8 activation buffers and converts Q8 outputs back to floats for parity comparison.
+
+Copy the adapter outside the generated bundle when product-specific scaling or entropy seeding needs local edits, then point CMake at the copied source. This keeps the generated host harness stable while leaving runtime policy in one reviewable adapter file.
 
 Use these metadata keys to opt into external host checks:
 
@@ -204,12 +206,12 @@ The Gradle `minervaHostVerification` task is gated. It only runs when `minerva.h
 
 == Firmware Integration
 
-The generated firmware example intentionally contains integration placeholders. Wire it to the runtime API exposed by your pinned libminerva checkout and keep the real secret configuration in a private header that is excluded from source control.
+The generated firmware example intentionally contains integration placeholders. Use the host adapter as the reference for the pinned libminerva public API, then move product-specific entropy seeding, input scaling, and secret provisioning into private firmware code before flashing.
 
 Before flashing firmware:
 
 * Replace `secrets.example.h` with a private header outside the repository.
-* Confirm the libminerva inference entry point and output-authentication API names against the libminerva version used by your product build.
+* Confirm the pinned libminerva checkout still exposes the public API used by `host/runtime_adapter.example.c`.
 * Re-run host verification after any compiler, runtime, calibration, or key change.
 * Keep `manifest.json` with release artifacts so the compiler command and schema version remain auditable.
 
