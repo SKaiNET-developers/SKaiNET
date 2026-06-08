@@ -14,6 +14,10 @@ public object MinervaHostVerificationMetadata {
     public const val CMAKE_EXECUTABLE: String = "minerva.hostVerification.cmakeExecutable"
     public const val CTEST_EXECUTABLE: String = "minerva.hostVerification.ctestExecutable"
     public const val HOST_OUTPUT_PATH: String = "minerva.hostVerification.hostOutputPath"
+    public const val HOST_ADAPTER_SOURCE: String = "minerva.hostVerification.hostAdapterSource"
+    public const val HOST_INCLUDE_DIRS: String = "minerva.hostVerification.hostIncludeDirs"
+    public const val HOST_LIBRARY_DIRS: String = "minerva.hostVerification.hostLibraryDirs"
+    public const val HOST_LIBRARIES: String = "minerva.hostVerification.hostLibraries"
 }
 
 /**

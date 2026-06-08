@@ -47,12 +47,20 @@ class MinervaTinyMlpExportSampleTest {
             compilerScript = "/opt/libminerva/tools/compile_model.py",
             runCmakeBuild = true,
             runCTest = true,
-            hostOutputPath = "host-output.txt"
+            hostOutputPath = "host-output.txt",
+            hostAdapterSource = "/project/minerva_adapter.c",
+            hostIncludeDirs = "/opt/libminerva/include",
+            hostLibraryDirs = "/opt/libminerva/lib",
+            hostLibraries = "minerva"
         )
 
         assertEquals("minerva-tiny-mlp", options.metadata["sample"])
         assertEquals("true", options.metadata[MinervaHostVerificationMetadata.RUN_CMAKE_BUILD])
         assertEquals("true", options.metadata[MinervaHostVerificationMetadata.RUN_CTEST])
         assertEquals("host-output.txt", options.metadata[MinervaHostVerificationMetadata.HOST_OUTPUT_PATH])
+        assertEquals("/project/minerva_adapter.c", options.metadata[MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE])
+        assertEquals("/opt/libminerva/include", options.metadata[MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS])
+        assertEquals("/opt/libminerva/lib", options.metadata[MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS])
+        assertEquals("minerva", options.metadata[MinervaHostVerificationMetadata.HOST_LIBRARIES])
     }
 }

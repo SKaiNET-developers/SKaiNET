@@ -393,10 +393,13 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             if (options.generateHostHarness) {
                 val hostCmake = hostDir.resolve("CMakeLists.txt")
                 val hostMain = hostDir.resolve("main.c")
+                val hostAdapterExample = hostDir.resolve("runtime_adapter.example.c")
                 Files.writeString(hostCmake, hostCmake(options))
                 Files.writeString(hostMain, hostMain(request))
+                Files.writeString(hostAdapterExample, hostRuntimeAdapterExample())
                 generatedPaths.add(hostCmake)
                 generatedPaths.add(hostMain)
+                generatedPaths.add(hostAdapterExample)
             }
             if (options.generateFirmwareExample) {
                 val firmwareMain = firmwareDir.resolve("main.c")
@@ -544,16 +547,48 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
     }
 
     private fun hostCmake(options: MinervaExportOptions): String {
+        val runtimeRoot = cmakeString(options.runtimeRoot ?: "")
+        val adapterSource = cmakeString(options.metadata[MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE] ?: "")
+        val includeDirs = cmakeString(options.metadata[MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS] ?: "")
+        val libraryDirs = cmakeString(options.metadata[MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS] ?: "")
+        val libraries = cmakeString(options.metadata[MinervaHostVerificationMetadata.HOST_LIBRARIES] ?: "")
         return """
             |cmake_minimum_required(VERSION 3.20)
             |project(${options.projectName}_host C)
             |
-            |add_executable(${options.projectName}_host main.c ../generated/weights.c)
+            |set(MINERVA_RUNTIME_ROOT "$runtimeRoot" CACHE PATH "libminerva checkout or install root")
+            |set(MINERVA_HOST_ADAPTER_SOURCE "$adapterSource" CACHE FILEPATH "C source file implementing minerva_run_inference")
+            |set(MINERVA_HOST_INCLUDE_DIRS "$includeDirs" CACHE STRING "Additional semicolon-separated Minerva host include directories")
+            |set(MINERVA_HOST_LIBRARY_DIRS "$libraryDirs" CACHE STRING "Additional semicolon-separated Minerva host library directories")
+            |set(MINERVA_HOST_LIBRARIES "$libraries" CACHE STRING "Additional semicolon-separated Minerva host libraries")
+            |
+            |set(MINERVA_HOST_SOURCES main.c ../generated/weights.c)
+            |if(MINERVA_HOST_ADAPTER_SOURCE)
+            |  list(APPEND MINERVA_HOST_SOURCES "${'$'}{MINERVA_HOST_ADAPTER_SOURCE}")
+            |endif()
+            |
+            |add_executable(${options.projectName}_host ${'$'}{MINERVA_HOST_SOURCES})
             |target_include_directories(${options.projectName}_host PRIVATE ../include)
+            |if(MINERVA_RUNTIME_ROOT)
+            |  target_include_directories(${options.projectName}_host PRIVATE "${'$'}{MINERVA_RUNTIME_ROOT}/include")
+            |endif()
+            |if(MINERVA_HOST_INCLUDE_DIRS)
+            |  target_include_directories(${options.projectName}_host PRIVATE ${'$'}{MINERVA_HOST_INCLUDE_DIRS})
+            |endif()
+            |if(MINERVA_HOST_LIBRARY_DIRS)
+            |  target_link_directories(${options.projectName}_host PRIVATE ${'$'}{MINERVA_HOST_LIBRARY_DIRS})
+            |endif()
+            |if(MINERVA_HOST_LIBRARIES)
+            |  target_link_libraries(${options.projectName}_host PRIVATE ${'$'}{MINERVA_HOST_LIBRARIES})
+            |endif()
+            |if(MINERVA_HOST_ADAPTER_SOURCE)
+            |  target_compile_definitions(${options.projectName}_host PRIVATE MINERVA_HOST_RUNTIME_ENABLED=1)
+            |endif()
             |
             |include(CTest)
             |if(BUILD_TESTING)
             |  add_test(NAME minerva_host_smoke COMMAND ${options.projectName}_host)
+            |  set_tests_properties(minerva_host_smoke PROPERTIES WORKING_DIRECTORY "${'$'}{CMAKE_CURRENT_SOURCE_DIR}")
             |endif()
             |
         """.trimMargin()
@@ -568,17 +603,78 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             |#include <stdio.h>
             |#include "weights.h"
             |
+            |#define MINERVA_OBSERVED_OUTPUT_PATH "$HOST_OBSERVED_OUTPUT_FILE"
+            |
+            |#ifdef MINERVA_HOST_RUNTIME_ENABLED
+            |extern int minerva_run_inference(const float *input, int input_count, float *output, int output_count);
+            |
+            |static int write_observed_output(const float *output, int output_count) {
+            |    FILE *file = fopen(MINERVA_OBSERVED_OUTPUT_PATH, "w");
+            |    if (file == NULL) {
+            |        perror("failed to open " MINERVA_OBSERVED_OUTPUT_PATH);
+            |        return 1;
+            |    }
+            |    for (int i = 0; i < output_count; ++i) {
+            |        if (fprintf(file, "%s%.9g", i == 0 ? "" : "\n", (double)output[i]) < 0) {
+            |            fclose(file);
+            |            return 1;
+            |        }
+            |    }
+            |    if (fprintf(file, "\n") < 0) {
+            |        fclose(file);
+            |        return 1;
+            |    }
+            |    return fclose(file) == 0 ? 0 : 1;
+            |}
+            |#endif
+            |
             |int main(void) {
             |    float input[$inputCount] = {${cFloatInitializer(referenceInput)}};
             |    float output[$outputCount] = {0};
             |
-            |    /* Link this harness with libminerva and call the runtime inference entry point here. */
+            |#ifdef MINERVA_HOST_RUNTIME_ENABLED
+            |    int status = minerva_run_inference(input, $inputCount, output, $outputCount);
+            |    if (status != 0) {
+            |        fprintf(stderr, "minerva_run_inference failed with status %d\n", status);
+            |        return status;
+            |    }
+            |    if (write_observed_output(output, $outputCount) != 0) {
+            |        fprintf(stderr, "failed to write " MINERVA_OBSERVED_OUTPUT_PATH "\n");
+            |        return 2;
+            |    }
+            |    puts("Minerva host harness wrote " MINERVA_OBSERVED_OUTPUT_PATH ".");
+            |#else
             |    (void)input;
             |    (void)output;
             |    puts("Minerva host harness packaged successfully.");
             |    puts("Reference input: $HOST_REFERENCE_INPUT_FILE");
             |    puts("Write observed output to: $HOST_OBSERVED_OUTPUT_FILE");
+            |#endif
             |    return 0;
+            |}
+            |
+        """.trimMargin()
+    }
+
+    private fun hostRuntimeAdapterExample(): String {
+        return """
+            |/*
+            | * Copy this file outside the generated bundle and wire it to your pinned
+            | * libminerva runtime. Then configure CMake with:
+            | *
+            | *   -DMINERVA_HOST_ADAPTER_SOURCE=/path/to/minerva_runtime_adapter.c
+            | *
+            | * The generated host harness calls this stable shim so SKaiNET does not
+            | * need to hard-code libminerva runtime entry point names.
+            | */
+            |#include "weights.h"
+            |
+            |int minerva_run_inference(const float *input, int input_count, float *output, int output_count) {
+            |    (void)input;
+            |    (void)input_count;
+            |    (void)output;
+            |    (void)output_count;
+            |    return 1;
             |}
             |
         """.trimMargin()
@@ -621,6 +717,12 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
 
     private fun cFloatInitializer(values: List<Float>): String {
         return values.joinToString(separator = ", ") { "${it}f" }
+    }
+
+    private fun cmakeString(value: String): String {
+        return value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
     }
 
     private fun jsonString(value: String): String {
@@ -884,6 +986,7 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
             if (request.options.generateHostHarness) {
                 add(projectDir.resolve("host/CMakeLists.txt"))
                 add(projectDir.resolve("host/main.c"))
+                add(projectDir.resolve("host/runtime_adapter.example.c"))
             }
             if (request.options.generateFirmwareExample) {
                 add(projectDir.resolve("firmware/main.c"))
@@ -955,7 +1058,7 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
         Files.createDirectories(buildDir)
         val cmake = options.metadata[MinervaHostVerificationMetadata.CMAKE_EXECUTABLE] ?: "cmake"
         val configure = runExternalCommand(
-            command = listOf(cmake, "-S", hostDir.toString(), "-B", buildDir.toString(), "-DBUILD_TESTING=ON"),
+            command = cmakeConfigureCommand(cmake, hostDir, buildDir, options),
             workingDir = projectDir,
             logPath = buildDir.resolve("cmake-configure.log"),
             context = context
@@ -987,6 +1090,36 @@ public class JvmMinervaHostVerifier @kotlin.jvm.JvmOverloads constructor(
             )
         }
         return null
+    }
+
+    private fun cmakeConfigureCommand(
+        cmake: String,
+        hostDir: Path,
+        buildDir: Path,
+        options: MinervaExportOptions
+    ): List<String> {
+        val command = mutableListOf(
+            cmake,
+            "-S",
+            hostDir.toString(),
+            "-B",
+            buildDir.toString(),
+            "-DBUILD_TESTING=ON"
+        )
+        options.runtimeRoot?.let { command += "-DMINERVA_RUNTIME_ROOT=${Paths.get(it).toAbsolutePath().normalize()}" }
+        options.metadata[MinervaHostVerificationMetadata.HOST_ADAPTER_SOURCE]?.let {
+            command += "-DMINERVA_HOST_ADAPTER_SOURCE=${Paths.get(it).toAbsolutePath().normalize()}"
+        }
+        options.metadata[MinervaHostVerificationMetadata.HOST_INCLUDE_DIRS]?.let {
+            command += "-DMINERVA_HOST_INCLUDE_DIRS=$it"
+        }
+        options.metadata[MinervaHostVerificationMetadata.HOST_LIBRARY_DIRS]?.let {
+            command += "-DMINERVA_HOST_LIBRARY_DIRS=$it"
+        }
+        options.metadata[MinervaHostVerificationMetadata.HOST_LIBRARIES]?.let {
+            command += "-DMINERVA_HOST_LIBRARIES=$it"
+        }
+        return command
     }
 
     private fun runCTest(
