@@ -372,7 +372,7 @@ internal object JvmQuantizedVectorKernels {
      * stores per chunk. Scalar tail fires only when `floatStep` doesn't
      * divide 16 (rare).
      */
-    private fun dequantQ6_KBlock(
+    internal fun dequantQ6_KBlock(
         packedWeights: ByteArray,
         blockByteOffset: Int,
         scratch: FloatArray,

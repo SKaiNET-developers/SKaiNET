@@ -8,6 +8,7 @@ import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
+import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.FP32
 
@@ -74,13 +75,46 @@ class PackedMatmulDispatchTest {
         return bytes to wf
     }
 
+    /** Random block-major Q6_K bytes for [out,in] + the FP32 weight. */
+    private fun q6_k(inDim: Int, outDim: Int, rng: Random): Pair<ByteArray, FloatArray> {
+        val blocks = inDim / 256; val bytes = ByteArray(outDim * blocks * 210); val wf = FloatArray(outDim * inDim)
+        for (o in 0 until outDim) for (bI in 0 until blocks) {
+            val off = (bI * outDim + o) * 210; val dst = o * inDim + bI * 256
+            for (k in 0 until 208) bytes[off + k] = rng.nextInt(256).toByte()
+            val d = rng.nextFloat() * 0.01f + 0.002f; le16(bytes, off + 208, half(d))
+            for (h in 0..1) {
+                val qlB = off + h * 64; val qhB = off + 128 + h * 32; val scB = off + 192 + h * 8; val ob = h * 128
+                for (isIdx in 0..1) {
+                    val sc1 = d * bytes[scB + isIdx].toInt(); val sc2 = d * bytes[scB + isIdx + 2].toInt()
+                    val sc3 = d * bytes[scB + isIdx + 4].toInt(); val sc4 = d * bytes[scB + isIdx + 6].toInt()
+                    for (l in isIdx * 16 until isIdx * 16 + 16) {
+                        val ql0 = bytes[qlB + l].toInt() and 0xFF; val ql32 = bytes[qlB + l + 32].toInt() and 0xFF
+                        val qhL = bytes[qhB + l].toInt() and 0xFF
+                        wf[dst + ob + l + 0] = sc1 * (((ql0 and 0xF) or ((qhL and 3) shl 4)) - 32)
+                        wf[dst + ob + l + 32] = sc2 * (((ql32 and 0xF) or (((qhL ushr 2) and 3) shl 4)) - 32)
+                        wf[dst + ob + l + 64] = sc3 * (((ql0 ushr 4) or (((qhL ushr 4) and 3) shl 4)) - 32)
+                        wf[dst + ob + l + 96] = sc4 * (((ql32 ushr 4) or (((qhL ushr 6) and 3) shl 4)) - 32)
+                    }
+                }
+            }
+        }
+        return bytes to wf
+    }
+
     private fun run(fmt: String, inDim: Int, outDim: Int, seed: Int) {
         val rng = Random(seed)
-        val (bytes, wf) = if (fmt == "Q5_1") q5_1(inDim, outDim, rng) else q4_k(inDim, outDim, rng)
+        val (bytes, wf) = when (fmt) {
+            "Q5_1" -> q5_1(inDim, outDim, rng)
+            "Q6_K" -> q6_k(inDim, outDim, rng)
+            else -> q4_k(inDim, outDim, rng)
+        }
         @Suppress("UNCHECKED_CAST")
         val w = ctx.fromData(
-            (if (fmt == "Q5_1") Q5_1BlockTensorData(Shape(outDim, inDim), bytes)
-            else Q4_KBlockTensorData(Shape(outDim, inDim), bytes)) as TensorData<FP32, Float>,
+            (when (fmt) {
+                "Q5_1" -> Q5_1BlockTensorData(Shape(outDim, inDim), bytes)
+                "Q6_K" -> Q6_KBlockTensorData(Shape(outDim, inDim), bytes)
+                else -> Q4_KBlockTensorData(Shape(outDim, inDim), bytes)
+            }) as TensorData<FP32, Float>,
             FP32::class,
         )
         val xf = FloatArray(inDim) { rng.nextFloat() - 0.5f }
@@ -94,4 +128,5 @@ class PackedMatmulDispatchTest {
 
     @Test fun q5_1_through_ops_matmul_transpose() = run("Q5_1", inDim = 128, outDim = 16, seed = 7)
     @Test fun q4_k_through_ops_matmul_transpose() = run("Q4_K", inDim = 256, outDim = 12, seed = 8)
+    @Test fun q6_k_through_ops_matmul_transpose() = run("Q6_K", inDim = 512, outDim = 8, seed = 9)
 }
