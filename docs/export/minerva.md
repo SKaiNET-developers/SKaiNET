@@ -77,6 +77,12 @@ build/minerva/TinySecureMlp/
     main.c
 ```
 
+## Manifest Provenance
+
+`manifest.json` records the export target, quantization, libminerva root, compiler command summary, NPZ schema version, layer count, reference fixture paths, generated files, and a `generatedFileSha256` map. The hashes cover generated artifacts such as `generated/model.npz`, `generated/weights.c`, `include/weights.h`, host fixtures, host harness sources, and firmware examples.
+
+Use the manifest as the handoff record between Kotlin export, ONNX/import review, libminerva compilation, and host verification. It redacts compiler key-file arguments and does not copy real device key material; keep real keys outside the generated bundle.
+
 ## Host Verification and CI
 
 Host verification checks package structure, generated weight files, `model.npz` integrity, placeholder secret hygiene, and SKaiNET reference fixture generation. The packager writes deterministic `host/reference-input.txt` and `host/reference-output.txt` files and records them in `manifest.json`. A real host run can write comma- or whitespace-separated float outputs to `host/observed-output.txt` for zero-config parity comparison.
@@ -126,7 +132,7 @@ CI recipe:
 
 ## ONNX to Minerva
 
-Use the existing ONNX loader to inspect a model and reject unsupported operators before constructing a compatible SKaiNET `ComputeGraph`:
+Use the existing ONNX loader to inspect a model and reject unsupported operators before constructing a compatible SKaiNET `ComputeGraph`. Once the graph is exported, keep `manifest.json` with the original ONNX artifact so reviewers can compare the imported topology, generated `model.npz`, and host verification fixtures:
 
 ```kotlin
 val loaded = OnnxLoader.fromModelSource {
