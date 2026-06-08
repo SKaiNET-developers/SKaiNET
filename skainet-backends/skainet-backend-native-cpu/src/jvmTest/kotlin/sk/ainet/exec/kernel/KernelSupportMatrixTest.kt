@@ -32,7 +32,7 @@ class KernelSupportMatrixTest {
     private fun tiers(): List<Tier> = listOf(
         Tier("scalar", 0, allTargets, scalarFormats()),
         Tier("panama-vector", 50, setOf("jvm", "android"),
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_1", "Q5_0")),
+            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_1", "Q5_0")),
         Tier("native-ffm", 100, setOf("jvm"),
             setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K")),
     )

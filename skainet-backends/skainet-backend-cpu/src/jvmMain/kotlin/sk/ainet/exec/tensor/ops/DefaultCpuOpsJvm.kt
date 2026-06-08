@@ -29,8 +29,6 @@ import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
-import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
-import sk.ainet.lang.tensor.data.Q6_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -224,20 +222,8 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
-            // Q6_K packed bytes mirror the Q4_K lazy-transpose pattern: the
-            // `matmulQ6_KVec` kernel reads the packed bytes in
-            // input-block-major order, so the shape swap is purely a metadata
-            // change. Unlocks running Gemma 4 E2B Q4_K_M (which uses Q6_K for
-            // FFN + embedding + lm_head) without the 12 GB FP32 dequant
-            // bloat the converter used to produce.
-            if (data is Q6_KTensorData) {
-                val packedData = data.packedData
-                val transposed = Q6_KBlockTensorData(Shape(cols, rows), packedData)
-                @Suppress("UNCHECKED_CAST")
-                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
-            }
-            // Q5_1 / Q5_0 lazy transpose is handled in DefaultCpuOpsBase (block-major,
-            // shared with Native); the JVM ops don't intercept Q5 here.
+            // Q6_K / Q5_1 / Q5_0 lazy transpose is handled in DefaultCpuOpsBase
+            // (block-major, shared with Native); the JVM ops don't intercept them here.
             // MemorySegment FP32 fast path: physical transpose via SIMD.
             // Uses Arena.ofAuto() so the result segment is reclaimed by GC
             // when the wrapping Tensor is no longer reachable. Earlier
@@ -617,24 +603,8 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 CpuTensor(outData as TensorData<T, V>, this, a.dtype)
             }
-            is Q6_KTensorData -> {
-                val outBuffer = FloatArray(batchSize * outputDim)
-                for (batch in 0 until batchSize) {
-                    val batchInput = if (batchSize == 1) inputBuffer
-                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    JvmQuantizedVectorKernels.matmulQ6_KVec(
-                        batchInput,
-                        bData.packedData,
-                        inputDim,
-                        outputDim,
-                        outBuffer,
-                        batch * outputDim,
-                    )
-                }
-                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
-            }
+            // Q6_K / Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
+            // registry (block-major, shared with Native); not intercepted here.
             // MemorySegment-backed quantized weights (Q4/Q8) — dispatch to MemorySegment kernels
             is MemorySegmentBackedData -> {
                 chooseQuantizedMatmulMemSeg(inputBuffer, bData, batchSize, inputDim, outputDim, a)

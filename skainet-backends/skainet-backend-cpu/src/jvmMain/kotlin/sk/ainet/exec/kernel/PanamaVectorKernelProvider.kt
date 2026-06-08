@@ -7,6 +7,7 @@ import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q5_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q5_1MatmulKernel
+import sk.ainet.backend.api.kernel.Q6KMatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.exec.tensor.ops.JvmCpuBackendConfig
 
@@ -60,6 +61,9 @@ public object PanamaVectorKernelProvider : KernelProvider {
 
     override fun matmulQ5_0(): Q5_0MatmulKernel? =
         if (isAvailable()) PanamaVectorQ5_0MatmulKernel else null
+
+    override fun matmulQ6K(): Q6KMatmulKernel? =
+        if (isAvailable()) PanamaVectorQ6_KMatmulKernel else null
 
     private fun isVectorApiClassLoaded(): Boolean = runCatching {
         Class.forName("jdk.incubator.vector.FloatVector")

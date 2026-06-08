@@ -11,7 +11,7 @@
 | `Q8_0` | native-ffm | panama-vector | scalar | scalar | scalar |
 | `Q4_0` | native-ffm | panama-vector | scalar | scalar | scalar |
 | `Q4_K` | native-ffm | panama-vector | scalar | scalar | scalar |
-| `Q6_K` | scalar | scalar | scalar | scalar | scalar |
+| `Q6_K` | panama-vector | panama-vector | scalar | scalar | scalar |
 | `Q5_1` | panama-vector | panama-vector | scalar | scalar | scalar |
 | `Q5_0` | panama-vector | panama-vector | scalar | scalar | scalar |
 
