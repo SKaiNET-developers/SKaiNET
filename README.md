@@ -189,7 +189,7 @@ deployment, the StableHLO path for native and edge targets.
 ### Edge AI: Minerva Secure MCU Export
 
 - Export supported static MLP graphs to Minerva project bundles for secure MCU inference
-- Emits compiler NPZ input, libminerva weights, a manifest, host harness, firmware example, and host verification results
+- Emits compiler NPZ input, libminerva weights, a fingerprinted manifest, host harness, firmware example, and host verification results
 - Start with the [Minerva export guide](docs/modules/ROOT/pages/how-to/minerva-export.adoc)
 
 ### Compiler: MLIR / StableHLO

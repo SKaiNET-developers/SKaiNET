@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import sk.ainet.compile.export.GraphExportArtifact
 import sk.ainet.compile.export.GraphExportArtifactRole
 import sk.ainet.compile.export.GraphExportContext
@@ -409,11 +410,15 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
 
             val manifestPath = projectDir.resolve("manifest.json")
             val generatedRelative = generatedPaths.map { relativePath(projectDir, it) }
+            val generatedFileSha256 = generatedPaths.map { path ->
+                relativePath(projectDir, path) to fileSha256(path)
+            }
             Files.writeString(
                 manifestPath,
                 manifestJson(
                     request = request,
                     generatedFiles = generatedRelative,
+                    generatedFileSha256 = generatedFileSha256,
                     manifestPath = relativePath(projectDir, manifestPath)
                 )
             )
@@ -507,6 +512,7 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
     private fun manifestJson(
         request: MinervaProjectPackageRequest,
         generatedFiles: List<String>,
+        generatedFileSha256: List<Pair<String, String>>,
         manifestPath: String
     ): String {
         val options = request.options
@@ -525,7 +531,8 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
             "referenceInputPath" to jsonString("host/$HOST_REFERENCE_INPUT_FILE"),
             "referenceOutputPath" to jsonString("host/$HOST_REFERENCE_OUTPUT_FILE"),
             "manifestPath" to jsonString(manifestPath),
-            "generatedFiles" to generatedFiles.joinToString(prefix = "[", postfix = "]") { jsonString(it) }
+            "generatedFiles" to generatedFiles.joinToString(prefix = "[", postfix = "]") { jsonString(it) },
+            "generatedFileSha256" to jsonObject(generatedFileSha256)
         )
         return values.entries.joinToString(prefix = "{\n", postfix = "\n}\n", separator = ",\n") { (key, value) ->
             "  ${jsonString(key)}: $value"
@@ -723,6 +730,27 @@ public class JvmMinervaProjectPackager @kotlin.jvm.JvmOverloads constructor(
         return value
             .replace("\\", "\\\\")
             .replace("\"", "\\\"")
+    }
+
+    private fun fileSha256(path: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString(separator = "") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
+    }
+
+    private fun jsonObject(values: List<Pair<String, String>>): String {
+        return values.joinToString(prefix = "{", postfix = "}") { (key, value) ->
+            "${jsonString(key)}: ${jsonString(value)}"
+        }
     }
 
     private fun jsonString(value: String): String {
