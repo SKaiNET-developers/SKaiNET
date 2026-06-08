@@ -185,11 +185,23 @@ deployment, the StableHLO path for native and edge targets.
 - Export trained models to standalone, optimized C99 with static memory allocation
 - Ready-to-use Arduino library output
 
+### Edge AI: Minerva Secure MCU Export
+
+- Export supported static MLP graphs to Minerva project bundles for secure MCU inference
+- Emits compiler NPZ input, libminerva weights, a manifest, host harness, firmware example, and host verification results
+- Start with the [Minerva export guide](docs/modules/ROOT/pages/how-to/minerva-export.adoc)
+
 ### Compiler: MLIR / StableHLO
 
 - Lower Kotlin DSL to MLIR StableHLO dialect
 - Optimization passes: constant folding, operation fusion, dead code elimination
 - Valid IREE-compilable output with streaming API and public `HloGenerator`
+
+### Choosing an Export Path
+
+- Use **StableHLO** when you want portable MLIR/IREE-compatible graphs for native, accelerator, or ecosystem compiler flows.
+- Use **Arduino / C99 export** when you want standalone generated C with static memory allocation and no external secure runtime.
+- Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
 
 ---
 

@@ -909,4 +909,5 @@ internal object JvmQuantizedVectorKernels {
             output[outputOffset + o] = accVec.reduceLanes(VectorOperators.ADD) + accScalar
         }
     }
+
 }

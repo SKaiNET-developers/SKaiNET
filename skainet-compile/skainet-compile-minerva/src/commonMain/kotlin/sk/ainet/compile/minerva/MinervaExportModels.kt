@@ -34,15 +34,16 @@ public enum class MinervaTarget(
 /**
  * Export options for the Minerva backend.
  *
- * Path values are strings so the API stays usable from common code. The phase
- * one scaffold validates shape and intent but does not require a libminerva
- * checkout until compiler integration lands.
+ * Path values are strings so the API stays usable from common code. The JVM
+ * compiler adapter validates configured paths immediately before process
+ * execution.
  */
 public data class MinervaExportOptions(
     public val outputDir: String,
     public val projectName: String,
     public val target: MinervaTarget = MinervaTarget.ATMEGA328P,
     public val quantization: MinervaQuantization = MinervaQuantization.Q8,
+    public val pythonExecutable: String = "python3",
     public val runtimeRoot: String? = null,
     public val compilerScript: String? = null,
     public val keyFile: String? = null,
@@ -51,11 +52,13 @@ public data class MinervaExportOptions(
     public val generateHostHarness: Boolean = true,
     public val generateFirmwareExample: Boolean = true,
     public val runHostVerification: Boolean = true,
+    public val hostVerificationTolerance: Float = 1.0e-3f,
     public val metadata: Map<String, String> = emptyMap()
 ) {
     init {
         require(outputDir.isNotBlank()) { "outputDir cannot be blank" }
         require(projectName.isNotBlank()) { "projectName cannot be blank" }
+        require(pythonExecutable.isNotBlank()) { "pythonExecutable cannot be blank" }
         require(projectName.none { it == '/' || it == '\\' }) {
             "projectName must be a simple project directory name"
         }
@@ -63,6 +66,9 @@ public data class MinervaExportOptions(
         requireOptionalPath("compilerScript", compilerScript)
         requireOptionalPath("keyFile", keyFile)
         requireOptionalPath("calibrationNpz", calibrationNpz)
+        require(hostVerificationTolerance.isFinite() && hostVerificationTolerance > 0.0f) {
+            "hostVerificationTolerance must be positive and finite"
+        }
         require(metadata.keys.all { it.isNotBlank() }) { "metadata keys cannot be blank" }
     }
 
@@ -70,10 +76,12 @@ public data class MinervaExportOptions(
         return metadata + mapOf(
             "target" to target.compilerId,
             "quantization" to quantization.compilerId,
+            "pythonExecutable" to pythonExecutable,
             "phaseOneScope" to MinervaExportBackend.phaseOneScope,
             "generateHostHarness" to generateHostHarness.toString(),
             "generateFirmwareExample" to generateFirmwareExample.toString(),
             "runHostVerification" to runHostVerification.toString(),
+            "hostVerificationTolerance" to hostVerificationTolerance.toString(),
             "dumpWeights" to dumpWeights.toString()
         )
     }
@@ -90,6 +98,13 @@ public enum class MinervaExportFailureKind {
     UNSUPPORTED_MODEL_TYPE,
     RECORDING_FAILED,
     GRAPH_VALIDATION_FAILED,
+    COMPATIBILITY_VALIDATION_FAILED,
+    LOWERING_FAILED,
+    NPZ_SCHEMA_FAILED,
+    COMPILER_PREREQUISITE_FAILED,
+    COMPILER_FAILED,
+    PACKAGING_FAILED,
+    VERIFICATION_FAILED,
     NOT_IMPLEMENTED
 }
 
@@ -118,7 +133,8 @@ public data class MinervaExportBundle(
     public val target: MinervaTarget,
     public val quantization: MinervaQuantization,
     public val generatedFiles: List<String> = emptyList(),
-    public val manifestPath: String? = null
+    public val manifestPath: String? = null,
+    public val compilerOutput: MinervaCompilerOutput? = null
 ) {
     init {
         require(projectName.isNotBlank()) { "projectName cannot be blank" }
@@ -127,6 +143,65 @@ public data class MinervaExportBundle(
         require(manifestPath == null || manifestPath.isNotBlank()) {
             "manifestPath cannot be blank when provided"
         }
+    }
+}
+
+/**
+ * Stable categories for Minerva compatibility findings.
+ */
+public enum class MinervaCompatibilityIssueKind {
+    GRAPH_VALIDATION,
+    UNSUPPORTED_OPERATION,
+    UNSUPPORTED_TOPOLOGY,
+    MISSING_SHAPE,
+    INVALID_SHAPE,
+    INCOMPATIBLE_ACTIVATION_PLACEMENT,
+    MEMORY_BUDGET_EXCEEDED,
+    UNSUPPORTED_QUANTIZATION
+}
+
+/**
+ * Backend-specific compatibility issue that also appears as a graph-export diagnostic.
+ */
+public data class MinervaCompatibilityIssue(
+    public val kind: MinervaCompatibilityIssueKind,
+    public val code: String,
+    public val message: String,
+    public val nodeId: String? = null,
+    public val operationName: String? = null,
+    public val remediation: String,
+    public val details: Map<String, String> = emptyMap()
+) {
+    init {
+        require(code.isNotBlank()) { "compatibility issue code cannot be blank" }
+        require(message.isNotBlank()) { "compatibility issue message cannot be blank" }
+        require(remediation.isNotBlank()) { "compatibility issue remediation cannot be blank" }
+    }
+}
+
+/**
+ * Phase-one Minerva compatibility report.
+ */
+public data class MinervaCompatibilityReport(
+    public val compatible: Boolean,
+    public val diagnostics: GraphExportDiagnosticReport,
+    public val issues: List<MinervaCompatibilityIssue>,
+    public val target: MinervaTarget,
+    public val quantization: MinervaQuantization,
+    public val layerCount: Int,
+    public val estimatedSramBytes: Int,
+    public val estimatedFlashBytes: Int,
+    public val metadata: Map<String, String> = emptyMap()
+) {
+    public val failed: Boolean
+        get() = !compatible
+
+    public fun requireCompatible(): MinervaCompatibilityReport {
+        if (!compatible) {
+            val summary = issues.joinToString("; ") { "${it.code}: ${it.message}" }
+            error("Minerva compatibility validation failed: $summary")
+        }
+        return this
     }
 }
 
@@ -140,7 +215,12 @@ public data class MinervaExportResult(
     public val diagnostics: GraphExportDiagnosticReport = GraphExportDiagnosticReport.empty(),
     public val artifacts: List<GraphExportArtifact> = emptyList(),
     public val failure: MinervaExportFailure? = null,
-    public val metadata: Map<String, String> = emptyMap()
+    public val metadata: Map<String, String> = emptyMap(),
+    public val compatibilityReport: MinervaCompatibilityReport? = null,
+    public val intermediate: MinervaIntermediate? = null,
+    public val npzModel: MinervaNpzModel? = null,
+    public val compilerOutput: MinervaCompilerOutput? = null,
+    public val hostVerification: MinervaHostVerification? = null
 ) {
     init {
         require(status != GraphExportStatus.SUCCESS || bundle != null) {

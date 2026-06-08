@@ -236,6 +236,8 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
+            // Q5_1 / Q5_0 lazy transpose is handled in DefaultCpuOpsBase (block-major,
+            // shared with Native); the JVM ops don't intercept Q5 here.
             // MemorySegment FP32 fast path: physical transpose via SIMD.
             // Uses Arena.ofAuto() so the result segment is reclaimed by GC
             // when the wrapping Tensor is no longer reachable. Earlier
@@ -570,6 +572,8 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 CpuTensor(outData as TensorData<T, V>, this, a.dtype)
             }
+            // Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
+            // registry (block-major, shared with Native); not intercepted here.
             is Q4_KTensorData -> {
                 val outBuffer = FloatArray(batchSize * outputDim)
                 val spiKernel = q4kMatmulKernel
