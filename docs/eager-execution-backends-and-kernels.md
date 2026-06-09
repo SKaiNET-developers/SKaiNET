@@ -26,7 +26,7 @@ mindmap
         FP32 BF16 Q8_0 Q4_0 ✅
         Q4_K ✅
         Q5_1 Q5_0 ✅ new
-        Q6_K 🚧 legacy SIMD path
+        Q6_K ✅ new
       Native FFM ✅
         JVM only — C kernels via CMake
         FP32 BF16 Q8_0 Q4_0 Q4_K ✅
@@ -44,8 +44,7 @@ mindmap
       JS and WASM ✅ scalar only
     Gaps and roadmap
       Native FFM Q5 and Q6_K ❌ issue 708
-      Native SIMD on linux ❌
-      Panama SPI Q6_K kernel 🚧
+      Native SIMD on linux ❌ issue 722
       Q5_K Q2_K Q3_K IQ4 packed ❌ dequant only
       GPU backends IREE Metal ❌ future
 ```
@@ -59,7 +58,7 @@ mindmap
 | Q8_0 | ✅ | ✅ | ✅ |
 | Q4_0 | ✅ | ✅ | ✅ |
 | Q4_K | ✅ | ✅ | ✅ |
-| Q6_K | ✅ | 🚧 legacy `JvmQuantizedVectorKernels` (no SPI kernel) | ❌ |
+| Q6_K | ✅ | ✅ | ❌ |
 | Q5_1 | ✅ | ✅ | ❌ |
 | Q5_0 | ✅ | ✅ | ❌ |
 | Q5_K / Q2_K / Q3_K / Q8_K / IQ4 | ❌ (dequant-to-FP32 only) | ❌ | ❌ |
@@ -82,9 +81,8 @@ those formats were JVM-only and broke on Native.
 
 ## In progress / missing (with trackers)
 
-- 🚧 **Q6_K Panama SPI kernel** — Q6_K is SIMD on JVM via the legacy `JvmQuantizedVectorKernels.matmulQ6_KVec`, but has no `PanamaVectorQ6KMatmulKernel`/`KernelProvider.matmulQ6K()` SPI entry yet.
 - ❌ **Native FFM Q5_1/Q5_0/Q6_K** — the C kernel set covers FP32/BF16/Q8_0/Q4_0/Q4_K only. Tracked by **SKaiNET#708** (core kernel) and **SKaiNET-transformers#170** (converter wiring).
-- ❌ **Native SIMD on linux** — Kotlin/Native linux targets run the scalar floor; no cinterop/OpenBLAS or SIMD path. (Apple has Accelerate for dense ops.)
+- ❌ **Native SIMD on linux** — Kotlin/Native linux targets run the scalar floor; no cinterop/OpenBLAS or SIMD path (Apple has Accelerate for dense ops). Tracked by **SKaiNET#722**.
 - ❌ **Other GGML quant formats** (Q5_K, Q2_K, Q3_K, Q8_K, IQ4_NL/XS) — loadable via dequant-to-FP32, but no packed matmul kernel.
 - ❌ **Non-CPU eager backends** (IREE, Metal, GPU) — the `KernelProvider` SPI anticipates them, but none are implemented for the eager path today.
 
