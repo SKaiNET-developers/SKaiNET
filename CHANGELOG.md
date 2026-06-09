@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-06-09
+
+### Fixed
+
+- **`sk.ainet.core:skainet-compile-minerva` is now published to Maven Central.** The new Minerva export module (shipped in 0.29.0) applies the publish plugin and was auto-included in the BOM, but it lacked the per-module `gradle.properties` (`POM_ARTIFACT_ID` / `POM_NAME`) that every other published module carries, so its publication had no POM name and never made it to Maven Central. Added the module's `gradle.properties`; the artifact now publishes alongside the rest of the engine.
+
 ## [0.29.0] - 2026-06-09
 
 ### Added
