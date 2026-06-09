@@ -38,7 +38,7 @@ For a published application, use the SKaiNET BOM and the Minerva artifact:
 [source,kotlin]
 ----
 dependencies {
-    implementation(platform("sk.ainet:skainet-bom:0.28.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.29.0"))
     implementation("sk.ainet.core:skainet-compile-minerva")
 }
 ----
