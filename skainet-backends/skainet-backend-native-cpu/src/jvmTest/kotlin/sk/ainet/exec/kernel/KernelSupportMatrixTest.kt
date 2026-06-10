@@ -21,7 +21,7 @@ import sk.ainet.backend.api.kernel.KernelProvider
  */
 class KernelSupportMatrixTest {
 
-    private val formats = listOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_1", "Q5_0")
+    private val formats = listOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")
 
     // platform key (display) -> the set of providers (by source-set) reaching it.
     private val platforms = listOf("JVM", "Android", "Native·linux", "Native·apple", "JS/WASM")
@@ -36,9 +36,9 @@ class KernelSupportMatrixTest {
     private fun tiers(): List<Tier> = listOf(
         Tier("scalar", 0, platforms.toSet(), scalarFormats()),
         Tier("panama-vector", 50, setOf("JVM", "Android"),
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_1", "Q5_0")),
+            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")),
         Tier("native-ffm", 100, setOf("JVM"),
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K")),
+            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_K")),
     )
 
     private fun best(fmt: String, platform: String, tiers: List<Tier>): String? =
@@ -71,7 +71,7 @@ class KernelSupportMatrixTest {
         // Drift gate on the scalar floor (the all-platform baseline): the documented set
         // below must equal what the scalar provider actually carries. Update both together.
         assertEquals(
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_1", "Q5_0"),
+            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0"),
             scalarFormats(),
             "ScalarKernelProvider coverage changed — update the declared sets + run ./gradlew generateKernelMatrix",
         )

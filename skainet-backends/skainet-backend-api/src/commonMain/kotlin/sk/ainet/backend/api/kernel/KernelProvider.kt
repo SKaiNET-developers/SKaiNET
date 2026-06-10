@@ -80,6 +80,12 @@ public interface KernelProvider {
     public fun matmulQ6K(): Q6KMatmulKernel? = null
 
     /**
+     * F32 × Q5_K matmul kernel exposed by this provider, or `null` if
+     * this provider does not specialize Q5_K. Same fall-through pattern.
+     */
+    public fun matmulQ5K(): Q5KMatmulKernel? = null
+
+    /**
      * F32 × Q5_1 matmul kernel exposed by this provider, or `null` if
      * this provider does not specialize Q5_1. Same fall-through pattern.
      */
@@ -126,6 +132,7 @@ public interface KernelProvider {
             "Q8_0" -> matmulQ8_0() != null
             "Q4_0" -> matmulQ4_0() != null
             "Q6_K" -> matmulQ6K() != null
+            "Q5_K" -> matmulQ5K() != null
             "Q5_1" -> matmulQ5_1() != null
             "Q5_0" -> matmulQ5_0() != null
             else -> false

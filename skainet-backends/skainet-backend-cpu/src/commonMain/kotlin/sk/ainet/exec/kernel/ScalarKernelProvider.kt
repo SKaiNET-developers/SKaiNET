@@ -6,6 +6,7 @@ import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q5_0MatmulKernel
+import sk.ainet.backend.api.kernel.Q5KMatmulKernel
 import sk.ainet.backend.api.kernel.Q5_1MatmulKernel
 import sk.ainet.backend.api.kernel.Q6KMatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
@@ -33,6 +34,7 @@ public object ScalarKernelProvider : KernelProvider {
     override fun matmulQ4_0(): Q4_0MatmulKernel = ScalarQ4_0MatmulKernel
     override fun matmulQ4K(): Q4KMatmulKernel = ScalarQ4_KMatmulKernel
     override fun matmulQ6K(): Q6KMatmulKernel = ScalarQ6_KMatmulKernel
+    override fun matmulQ5K(): Q5KMatmulKernel = ScalarQ5_KMatmulKernel
     override fun matmulQ5_1(): Q5_1MatmulKernel = ScalarQ5_1MatmulKernel
     override fun matmulQ5_0(): Q5_0MatmulKernel = ScalarQ5_0MatmulKernel
 }

@@ -18,6 +18,8 @@ import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q5_KTensorData
+import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q5_1TensorData
 import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
 import sk.ainet.lang.tensor.data.Q5_0TensorData
@@ -333,6 +335,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     private val q4_0Kernel by lazy { resolveProvider { it.matmulQ4_0() != null }?.matmulQ4_0() }
     private val q4kKernel by lazy { resolveProvider { it.matmulQ4K() != null }?.matmulQ4K() }
     private val q6kKernel by lazy { resolveProvider { it.matmulQ6K() != null }?.matmulQ6K() }
+    private val q5kKernel by lazy { resolveProvider { it.matmulQ5K() != null }?.matmulQ5K() }
     private val q5_1Kernel by lazy { resolveProvider { it.matmulQ5_1() != null }?.matmulQ5_1() }
     private val q5_0Kernel by lazy { resolveProvider { it.matmulQ5_0() != null }?.matmulQ5_0() }
 
@@ -367,6 +370,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             is Q5_1TensorData -> q5_1Kernel?.let { k -> run(bd.packedData, k::matmul) }
             is Q5_0TensorData -> q5_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
             is Q4_KTensorData -> q4kKernel?.let { k -> run(bd.packedData, k::matmul) }
+            is Q5_KTensorData -> q5kKernel?.let { k -> run(bd.packedData, k::matmul) }
             is Q6_KTensorData -> q6kKernel?.let { k -> run(bd.packedData, k::matmul) }
             is Q8_0TensorData -> q8_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
             is Q4_0TensorData -> q4_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
@@ -598,6 +602,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             @Suppress("UNCHECKED_CAST")
             when (val d = tensor.data) {
                 is Q4_KTensorData -> return newTensor(Q4_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                is Q5_KTensorData -> return newTensor(Q5_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 is Q6_KTensorData -> return newTensor(Q6_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 is Q5_1TensorData -> return newTensor(Q5_1BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 is Q5_0TensorData -> return newTensor(Q5_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)

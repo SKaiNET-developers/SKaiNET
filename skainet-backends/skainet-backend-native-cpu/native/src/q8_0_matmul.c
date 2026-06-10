@@ -1,4 +1,5 @@
 #include "skainet_kernels.h"
+#include "skainet_simd.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -83,9 +84,29 @@ SKAINET_API void skainet_q8_0_matmul(
             const float* SKAINET_RESTRICT input_block =
                 input + input_offset + (size_t) block_idx * BLOCK_SIZE;
             float block_sum = 0.0f;
+#ifdef SKAINET_HAVE_NEON
+            /* Activations are FP32, so widen int8 codes to float and FMA
+             * (int8 dotprod would need int8 activations — see plan note). */
+            float32x4_t accv = vdupq_n_f32(0.0f);
+            for (int32_t k = 0; k < BLOCK_SIZE; k += 16) {
+                const int8x16_t c8 = vld1q_s8(codes + k);
+                const int16x8_t lo16 = vmovl_s8(vget_low_s8(c8));
+                const int16x8_t hi16 = vmovl_s8(vget_high_s8(c8));
+                const float32x4_t cf0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(lo16)));
+                const float32x4_t cf1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(lo16)));
+                const float32x4_t cf2 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(hi16)));
+                const float32x4_t cf3 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi16)));
+                accv = vfmaq_f32(accv, vld1q_f32(input_block + k),      cf0);
+                accv = vfmaq_f32(accv, vld1q_f32(input_block + k + 4),  cf1);
+                accv = vfmaq_f32(accv, vld1q_f32(input_block + k + 8),  cf2);
+                accv = vfmaq_f32(accv, vld1q_f32(input_block + k + 12), cf3);
+            }
+            block_sum = skainet_neon_hadd_f32(accv);
+#else
             for (int32_t k = 0; k < BLOCK_SIZE; ++k) {
                 block_sum += input_block[k] * (float) codes[k];
             }
+#endif
             acc += block_sum * d;
         }
         output[output_offset + o] = acc;

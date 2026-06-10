@@ -105,12 +105,72 @@ val packageNativeKernels by tasks.registering(Copy::class) {
     into(nativeResourceTargetDir)
 }
 
+// --- Cross-compile to aarch64 (opt-in) -------------------------------------
+//
+// Produces native/linux-arm64/libskainet_kernels.so with the NEON paths
+// (CMAKE_SYSTEM_PROCESSOR=aarch64 -> -march=armv8.2-a+fp16+dotprod). Gated on
+// `-PcrossArm64=true` so the default host build is unaffected on machines
+// without the `gcc-aarch64-linux-gnu` cross toolchain. The board build / CI
+// host opts in. NativeLibraryLoader resolves native/linux-arm64/ from os.arch
+// at runtime, so the consuming side needs no change once this .so is bundled.
+//
+// BOARD-VERIFY-PENDING: the NEON code is syntax-validated for aarch64 but has
+// not been executed; run the parity tests under QEMU or on the SL2610.
+val crossArm64Enabled: Boolean = (findProperty("crossArm64") as String?)?.toBoolean() == true
+val aarch64Cc: String = (findProperty("skainetAarch64Cc") as String?) ?: "aarch64-linux-gnu-gcc"
+val cmakeBuildArm64Path: String = layout.buildDirectory.dir("native/cmake-build-arm64").get().asFile.absolutePath
+val nativeResourceArm64Dir = nativeResourcesRoot.map { it.dir("native/linux-arm64") }
+val toolchainFilePath = "$nativeSourcePath/toolchain-aarch64.cmake"
+
+val configureNativeKernelsArm64 by tasks.registering(Exec::class) {
+    group = "build"
+    description = "CMake configure for the aarch64 (NEON) native kernels (cross-compile)."
+    onlyIf { crossArm64Enabled }
+    inputs.file("$nativeSourcePath/CMakeLists.txt")
+    inputs.dir("$nativeSourcePath/src")
+    inputs.dir("$nativeSourcePath/include")
+    outputs.dir(cmakeBuildArm64Path)
+    commandLine = listOf(
+        "cmake",
+        "-S", nativeSourcePath,
+        "-B", cmakeBuildArm64Path,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_TOOLCHAIN_FILE=$toolchainFilePath",
+        "-DSKAINET_AARCH64_CC=$aarch64Cc",
+    )
+}
+
+val buildNativeKernelsArm64 by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Cross-build the aarch64 (NEON) native kernels shared library."
+    onlyIf { crossArm64Enabled }
+    dependsOn(configureNativeKernelsArm64)
+    inputs.file("$nativeSourcePath/CMakeLists.txt")
+    inputs.dir("$nativeSourcePath/src")
+    inputs.dir("$nativeSourcePath/include")
+    outputs.dir(cmakeBuildArm64Path)
+    commandLine = listOf("cmake", "--build", cmakeBuildArm64Path, "--config", "Release")
+}
+
+val packageNativeKernelsArm64 by tasks.registering(Copy::class) {
+    group = "build"
+    description = "Stage the cross-built aarch64 native kernels into JVM resources."
+    onlyIf { crossArm64Enabled }
+    dependsOn(buildNativeKernelsArm64)
+    from(cmakeBuildArm64Path) {
+        include("libskainet_kernels.so")
+        eachFile { path = name }
+    }
+    into(nativeResourceArm64Dir)
+}
+
 kotlin.sourceSets.named("jvmMain") {
     resources.srcDir(nativeResourcesRoot)
 }
 
 tasks.named("jvmProcessResources") {
     dependsOn(packageNativeKernels)
+    if (crossArm64Enabled) dependsOn(packageNativeKernelsArm64)
 }
 
 // Forward `-Dskainet.runBench=true` from Gradle CLI to the forked test

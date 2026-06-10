@@ -6,6 +6,8 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
@@ -85,6 +87,18 @@ public class StreamingGgufParametersLoader(
                     GGMLQuantizationType.Q4_K -> {
                         @Suppress("UNCHECKED_CAST")
                         val packed = Q4_KBlockTensorData.fromRawBytes(shape, rawBytes)
+                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                    }
+
+                    GGMLQuantizationType.Q5_K -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val packed = Q5_KBlockTensorData.fromRawBytes(shape, rawBytes)
+                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                    }
+
+                    GGMLQuantizationType.Q6_K -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val packed = Q6_KBlockTensorData.fromRawBytes(shape, rawBytes)
                         ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                     }
 
