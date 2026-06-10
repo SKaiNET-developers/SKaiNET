@@ -471,13 +471,23 @@ public final class sk/ainet/compile/hlo/generate/HloGenerator {
 	public static final field INSTANCE Lsk/ainet/compile/hlo/generate/HloGenerator;
 	public final fun generate (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun generate$default (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
-	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/compile/hlo/StableHloModule;
-	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
-	public static synthetic fun generateBlocking$default (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+}
+
+public final class sk/ainet/compile/hlo/generate/HloGeneratorJvmKt {
+	public static final fun generateBlocking (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static final fun generateBlocking (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun generateBlocking$default (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 }
 
 public final class sk/ainet/compile/hlo/generate/HloGeneratorMainKt {
 	public static final fun main ([Ljava/lang/String;)V
+}
+
+public final class sk/ainet/compile/hlo/generate/JvmHloGenerator {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/generate/JvmHloGenerator;
+	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun generateBlocking$default (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 }
 
 public final class sk/ainet/compile/hlo/validation/BenchmarkResults {

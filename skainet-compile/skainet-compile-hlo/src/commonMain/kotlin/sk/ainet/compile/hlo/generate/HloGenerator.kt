@@ -1,6 +1,5 @@
 package sk.ainet.compile.hlo.generate
 
-import kotlinx.coroutines.runBlocking
 import sk.ainet.compile.hlo.StableHloConverterFactory
 import sk.ainet.compile.hlo.StableHloModule
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
@@ -23,8 +22,8 @@ public object HloGenerator {
     /**
      * Generate StableHLO from any [Model] and a sample input tensor.
      *
-     * @param model       The model whose forward pass will be traced.
-     * @param sampleInput A tensor with the desired input shape/dtype (values don't matter).
+     * @param model The model whose forward pass will be traced.
+     * @param sampleInput A tensor with the desired input shape/dtype (values do not matter).
      * @param functionName The MLIR function name in the emitted module.
      */
     public suspend fun <D : DType, V> generate(
@@ -37,7 +36,7 @@ public object HloGenerator {
 
         // Capture the rebound sample input's tensor ref ID so we can mark it as a function argument.
         @Suppress("UNCHECKED_CAST")
-        val inputRefId = ctx.session.refOf(traceInput as sk.ainet.lang.tensor.Tensor<*, *>).id
+        val inputRefId = ctx.session.refOf(traceInput as Tensor<*, *>).id
 
         val (tape, _) = ctx.record {
             @Suppress("UNCHECKED_CAST")
@@ -55,45 +54,6 @@ public object HloGenerator {
 
         val converter = StableHloConverterFactory.createExtended()
         return converter.convert(computeGraph, functionName)
-    }
-
-    internal suspend fun generate(descriptor: ModelDescriptor, height: Int, width: Int, batch: Int): StableHloModule {
-        val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
-
-        var sampleInputRefId: String? = null
-        val (tape, _) = ctx.record {
-            val (model, sampleInput) = descriptor.createModelAndInput(ctx, height, width, batch)
-            @Suppress("UNCHECKED_CAST")
-            sampleInputRefId = ctx.session.refOf(sampleInput as sk.ainet.lang.tensor.Tensor<*, *>).id
-            @Suppress("UNCHECKED_CAST")
-            traceForwardPass(
-                model as Model<DType, Any?, Tensor<DType, Any?>, Tensor<DType, Any?>>,
-                sampleInput as Tensor<DType, Any?>,
-                ctx
-            )
-        }
-
-        val inputIds = sampleInputRefId?.let { setOf(it) } ?: emptySet()
-        val computeGraph = tape?.toComputeGraph(
-            synthesizeExternalInputs = true,
-            inputTensorIds = inputIds
-        ) ?: error("Failed to create compute graph: no execution tape was recorded")
-
-        val converter = StableHloConverterFactory.createExtended()
-        return converter.convert(computeGraph, descriptor.functionName)
-    }
-
-    /**
-     * Blocking variant of [generate] for Java callers who cannot use `suspend`.
-     */
-    @JvmStatic
-    @JvmOverloads
-    public fun <D : DType, V> generateBlocking(
-        model: Model<D, V, Tensor<D, V>, Tensor<D, V>>,
-        sampleInput: Tensor<D, V>,
-        functionName: String = "main"
-    ): StableHloModule = runBlocking {
-        generate(model, sampleInput, functionName)
     }
 
     private suspend fun traceForwardPass(
