@@ -1,0 +1,45 @@
+package sk.ainet.docs.samples
+
+import sk.ainet.context.DirectCpuExecutionContext
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * Executes every documentation sample so the snippets included into the Antora
+ * pages are guaranteed to compile and run.
+ */
+class SamplesTest {
+
+    @Test
+    fun tensorBasics_constructs_and_computes() {
+        val ctx = DirectCpuExecutionContext.create()
+
+        val one = TensorBasics.oneTensor(ctx)
+        assertEquals(listOf(2, 2), one.shape.dimensions.toList())
+
+        assertEquals(5, TensorBasics.initStrategies(ctx).size)
+
+        val ops = TensorBasics.ops(ctx)
+        assertEquals(listOf(4), ops.shape.dimensions.toList())
+
+        val broadcast = TensorBasics.broadcast(ctx)
+        assertEquals(listOf(2, 3), broadcast.shape.dimensions.toList())
+        // first element: 1 + 10 + 100
+        assertEquals(111f, broadcast.data.get(0, 0), 1e-4f)
+    }
+
+    @Test
+    fun quickstart_forward_produces_class_scores() {
+        val pixels = FloatArray(784) { 0f }
+        val scores = Quickstart.classify(pixels)
+        assertEquals(listOf(1, 10), scores.shape.dimensions.toList())
+    }
+
+    @Test
+    fun training_demo_learns_and_classifies() {
+        val r = TrainingDemo.run()
+        assertTrue(r.lastLoss < r.firstLoss, "loss should decrease: ${r.firstLoss} -> ${r.lastLoss}")
+        assertTrue(r.accuracy >= 0.75f, "accuracy should be high on separable data, got ${r.accuracy}")
+    }
+}

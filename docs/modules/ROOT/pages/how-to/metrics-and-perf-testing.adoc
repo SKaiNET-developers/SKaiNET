@@ -1,0 +1,61 @@
+= Metrics and performance testing
+:description: How to measure a model's quality (accuracy and other metrics) and how to benchmark the engine's performance — two different questions with two different toolchains.
+
+There are two distinct "how good is it?" questions in SKaiNET:
+
+* *Model quality* — does the network make correct predictions? Measured with
+  **metrics** (accuracy, error) computed from a forward pass.
+* *Engine performance* — how fast does the math run? Measured with the
+  **benchmark suite**.
+
+This page covers both and points at the deeper references for each.
+
+== Measuring model quality
+
+A metric is computed from a forward pass over held-out data. The training example
+classifies two clusters and then measures **classification accuracy** — the fraction
+of samples whose predicted label matches the truth:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TrainingDemo.kt[tag=accuracy]
+----
+
+The same shape applies to any metric: run `model.forward(x, ctx)` on an evaluation
+context, then reduce predictions against targets. The snippet is compiled and run in
+CI from `skainet-docs-samples` (`TrainingDemo.kt`); the full training loop that
+produces `model` is in xref:tutorials/kotlin-getting-started.adoc#train[Kotlin getting started].
+
+[TIP]
+====
+Always evaluate on a *fresh inference context* (`DirectCpuExecutionContext()`),
+separate from the autograd/training context, so metric computation does not record
+gradients.
+====
+
+== Benchmarking engine performance
+
+Engine performance is a separate concern with its own reproducible harness. Rather
+than ad-hoc timing in user code, SKaiNET ships an official benchmark suite:
+
+* xref:contributing/benchmarks.adoc[Engine benchmark program] — what the suite
+  measures, headline vs. secondary metrics, lanes, the result-record schema, and how
+  to reproduce a public run locally.
+* xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] — interpreting
+  the numbers for the kernel that dominates inference cost.
+* xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner] —
+  running the suite on your own hardware.
+
+=== Performance-testing practices
+
+* Pin methodology — fixed warmup/iteration counts and a stable machine; see the
+  *Methodology pinning* section of xref:contributing/benchmarks.adoc[the benchmark guide].
+* Compare against a baseline run rather than absolute numbers; hardware varies.
+* For backend-level context on where the time goes, see
+  xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance] and
+  xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built].
+
+== Related
+
+* xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started] — defines and trains the model measured here.
+* xref:reference/kernel-support-matrix.adoc[Kernel × platform support] — which kernels back each op per platform.

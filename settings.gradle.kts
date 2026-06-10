@@ -80,3 +80,6 @@ include("skainet-apps:skainet-grayscale-cli")
 include("skainet-apps:skainet-tensor-tools")
 include("skainet-io:skainet-io-safetensors")
 include("skainet-io:skainet-io-iree-params")
+
+// ====== DOCS
+include("skainet-docs-samples")
