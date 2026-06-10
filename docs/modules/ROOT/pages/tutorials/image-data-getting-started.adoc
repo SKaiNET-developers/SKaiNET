@@ -1,0 +1,216 @@
+== Image and Data API Getting Started
+
+[NOTE]
+====
+**Audience: Kotlin consumers.** This page uses Kotlin syntax and the
+Kotlin-first image/data DSL surface. JVM users can run the snippets as-is.
+If you are still setting up a JVM project, start with
+xref:tutorials/java-getting-started.adoc[Java getting started] for BOM
+setup and JVM flags, then come back here.
+====
+
+This guide shows how the three image-oriented modules fit together:
+
+[cols="1,3",options="header"]
+|===
+| Module | Responsibility
+| `skainet-io-image` | Convert between a platform image type and a tensor.
+| `skainet-data-transform` | Build resize / crop / pad / normalize preprocessing pipelines.
+| `skainet-data-media` | Attach image metadata such as layout and color space to an existing tensor.
+|===
+
+By the end you will:
+
+. Load an image from disk on the JVM.
+. Letterbox it into a YOLO-style `(1, 3, H, W)` tensor.
+. Wrap that tensor in the `Image` metadata API.
+
+=== Add the modules
+
+For a JVM project, add the image/data modules alongside the CPU backend:
+
+[source,kotlin]
+----
+dependencies {
+    implementation(platform("sk.ainet:skainet-bom:0.29.0"))
+
+    implementation("sk.ainet:skainet-backend-cpu-jvm")
+    implementation("sk.ainet:skainet-io-image-jvm")
+    implementation("sk.ainet:skainet-data-transform-jvm")
+    implementation("sk.ainet:skainet-data-media-jvm")
+}
+----
+
+If you only need tensor metadata and do not load or transform platform
+images, `skainet-data-media-jvm` is enough.
+
+=== Step 1: Load a platform image
+
+On the JVM, `PlatformBitmapImage` is backed by `BufferedImage`, so you
+can use `ImageIO` and immediately hand the result to SKaiNET:
+
+[source,kotlin]
+----
+import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.io.image.PlatformBitmapImage
+import sk.ainet.io.image.platformImageSize
+import java.io.File
+import javax.imageio.ImageIO
+
+val ctx = DirectCpuExecutionContext.create()
+
+val input: PlatformBitmapImage =
+    ImageIO.read(File("input.jpg"))
+        ?: error("Could not decode input.jpg")
+
+val (width, height) = platformImageSize(input)
+println("Loaded image: ${width}x${height}")
+----
+
+`platformImageSize(...)` is the portable way to inspect dimensions.
+
+=== Step 2: Letterbox an image for YOLO
+
+Object detectors such as YOLO commonly keep aspect ratio, resize the
+image to fit inside a square canvas, and pad the remaining area with a
+constant color. This is usually called *letterboxing*.
+
+The image transform DSL makes that flow explicit. `toTensor(ctx)`
+converts the letterboxed platform image to an RGB tensor with shape
+`(1, 3, H, W)`, and `rescale(ctx, 255f)` moves pixel values into the
+`[0, 1]` range expected by most YOLOv8-style exports.
+
+[source,kotlin]
+----
+import sk.ainet.data.transform.pad
+import sk.ainet.data.transform.pipeline
+import sk.ainet.data.transform.rescale
+import sk.ainet.data.transform.resize
+import sk.ainet.data.transform.toTensor
+import sk.ainet.io.image.PlatformBitmapImage
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+val targetSize = 640
+val scale = min(
+    targetSize.toFloat() / width,
+    targetSize.toFloat() / height
+)
+
+val resizedWidth = (width * scale).roundToInt().coerceAtLeast(1)
+val resizedHeight = (height * scale).roundToInt().coerceAtLeast(1)
+
+val padX = targetSize - resizedWidth
+val padY = targetSize - resizedHeight
+val left = padX / 2
+val right = padX - left
+val top = padY / 2
+val bottom = padY - top
+
+val yoloInput = pipeline<PlatformBitmapImage>()
+    .resize(resizedWidth, resizedHeight)
+    .pad(
+        top = top,
+        bottom = bottom,
+        left = left,
+        right = right,
+        red = 114,
+        green = 114,
+        blue = 114
+    )
+    .toTensor(ctx)
+    .rescale(ctx, 255f)
+    .apply(input)
+
+println("Tensor shape: ${yoloInput.shape}")
+println("Letterbox scale: $scale")
+println("Top/left padding: $top / $left")
+----
+
+Success looks like a tensor shape of `[1, 3, 640, 640]`.
+
+Keep `scale`, `left`, and `top` around. `left` and `top` are the
+letterbox offsets from the top-left corner, and together with `scale`
+they are the values you need later when mapping predicted boxes back to
+the original image space.
+
+=== Step 3: Add image metadata to an existing tensor
+
+The `Image` API does not load files and it does not transform pixels.
+Its job is to tell SKaiNET how to interpret a tensor that already
+represents image data.
+
+[source,kotlin]
+----
+import sk.ainet.data.media.ColorSpace
+import sk.ainet.data.media.Image
+import sk.ainet.data.media.ImageLayout
+
+val image = Image.fromTensor(
+    tensor = yoloInput,
+    layout = ImageLayout.NCHW,
+    colorSpace = ColorSpace.RGB
+)
+
+println(image.width)       // 640
+println(image.height)      // 640
+println(image.channels)    // 3
+println(image.batchSize)   // 1
+println(image.isConsistent) // true
+----
+
+That wrapper is useful when you need layout-aware code without manually
+tracking which axis is width, height, or channels.
+
+[NOTE]
+====
+If you use `skainet-model-yolo`, the same `scale`, `left`, and `top`
+values from the letterbox step are the metadata needed to remap decoded
+detections back to the original image coordinates.
+====
+
+=== Step 4: Start from a tensor you already have
+
+If your image data already exists as a tensor, you can use
+`skainet-data-media` on its own:
+
+[source,kotlin]
+----
+import sk.ainet.context.data
+import sk.ainet.data.media.ColorSpace
+import sk.ainet.data.media.Image
+import sk.ainet.data.media.ImageLayout
+import sk.ainet.lang.tensor.dsl.tensor
+import sk.ainet.lang.types.FP32
+
+val chw = data<FP32, Float>(ctx) {
+    tensor {
+        shape(3, 32, 32) { zeros() }
+    }
+}
+
+val sample = Image.fromTensor(chw, ImageLayout.CHW, ColorSpace.RGB)
+
+println(sample.pixelCount) // 1024
+println(sample.shape)      // [3, 32, 32]
+----
+
+This path is a good fit for model outputs, synthetic fixtures, dataset
+adapters, or tensors loaded from another source.
+
+[IMPORTANT]
+====
+`Image.withLayout(...)` and `Image.withColorSpace(...)` only change
+metadata. They do not transpose tensor memory or convert channel order.
+Use them when you are relabeling already-correct data, not when you are
+converting HWC to CHW or RGB to BGR.
+====
+
+=== Where to go next
+
+- xref:how-to/build-tensors.adoc[Build tensors with the data DSL] for
+  lower-level tensor construction patterns.
+- xref:reference/api.adoc[API reference (Dokka)] for the full image/data
+  surface.
+- xref:tutorials/graph-dsl.adoc[Graph DSL] if the next step is feeding
+  these tensors into a compiled compute graph.

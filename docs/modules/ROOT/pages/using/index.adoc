@@ -53,6 +53,13 @@ directly; only the syntax differs.
 - xref:tutorials/minerva-getting-started.adoc[Minerva getting started] — export a tiny static MLP to a secure MCU bundle.
 - xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino] — generate standalone C99 for small-device deployment without libminerva.
 
+== Working with images and image-shaped tensors
+
+If you are working with preprocessing pipelines or image-shaped tensors,
+start with xref:tutorials/image-data-getting-started.adoc[Image and data API]
+for the `skainet-io-image`, `skainet-data-transform`, and
+`skainet-data-media` layers.
+
 [NOTE]
 ====
 LLM-specific Java runtimes (Llama, Gemma, Qwen, BERT) moved to the
