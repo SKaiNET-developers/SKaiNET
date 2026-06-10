@@ -1,0 +1,59 @@
+= Kotlin getting started
+:description: Define a neural network with the SKaiNET `sequential { }` DSL and run a forward pass — the shortest path from zero to a prediction in Kotlin.
+
+SKaiNET is, at heart, a set of *DSLs for tensors, networks, and models*. This
+tutorial takes the shortest path through them: build a small classifier in code
+and run one forward pass. Every snippet below is compiled and executed in CI from `skainet-docs-samples` — see
+the `skainet-docs-samples` module (`Quickstart.kt`).
+
+== Define a model
+
+A network *is* a Kotlin block. The `sequential { }` DSL stacks layers in order;
+`input(n)` declares the feature count, `dense(n)` adds a fully-connected layer, and
+each layer's `activation` is just a lambda over a `Tensor`:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/Quickstart.kt[tag=model]
+----
+
+This is a `784 -> 128 (ReLU) -> 10 (Softmax)` MNIST-shaped classifier. No builder
+objects, no config files — the architecture reads top-to-bottom as code.
+
+== Run a forward pass
+
+Create a CPU execution context, build the model against it, wrap your input as a
+`Tensor`, and call `forward`:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/Quickstart.kt[tag=infer]
+----
+
+The result is a `[1, 10]` tensor of class scores. For an untrained model the scores
+are meaningless — see xref:tutorials/kotlin-getting-started.adoc#train[training] below
+to make them learn.
+
+[#train]
+== Train it
+
+Training is the same spirit: a `training { }` block wires a model, a loss, and an
+optimizer, and `step` runs one forward/backward/update. This example learns to
+separate two clusters and then measures accuracy — see
+xref:how-to/metrics-and-perf-testing.adoc[Metrics and performance testing] for the
+full walkthrough, and the runnable
+`TrainingDemo.kt` in `skainet-docs-samples`.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TrainingDemo.kt[tag=setup]
+
+include::example$kotlin/sk/ainet/docs/samples/TrainingDemo.kt[tag=loop]
+----
+
+== Next steps
+
+* xref:how-to/build-tensors.adoc[Build tensors with the data DSL] — every way to construct a `Tensor`.
+* xref:how-to/tensor-ops.adoc[Apply tensor operations] — matmul, reshape, broadcasting, activations.
+* xref:tutorials/graph-dsl.adoc[Graph DSL] — branching/multi-output models with `dag { }`.
+* xref:reference/operators/generated/index.adoc[Operator reference] — the full op surface.

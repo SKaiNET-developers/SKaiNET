@@ -3,6 +3,7 @@
 .Using SKaiNET
 * xref:using/index.adoc[About this section]
 * Tutorials
+** xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started]
 ** xref:tutorials/java-getting-started.adoc[Java getting started]
 ** xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
 ** xref:tutorials/minerva-getting-started.adoc[Minerva getting started]
@@ -10,8 +11,10 @@
 ** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
 * How-to guides
 ** xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
+** xref:how-to/tensor-ops.adoc[Apply tensor operations]
 ** xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
 ** xref:how-to/java-model-training.adoc[Train a model from Java]
+** xref:how-to/metrics-and-perf-testing.adoc[Metrics and performance testing]
 ** xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino]
 ** xref:how-to/minerva-export.adoc[Export secure MCU bundles with Minerva]
 * Reference

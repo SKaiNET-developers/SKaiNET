@@ -1,0 +1,59 @@
+= Apply tensor operations
+:description: The everyday eager tensor operations in SKaiNET — matmul, transpose, reshape, activations, and broadcasting — as extension functions you call directly on a `Tensor`.
+
+This page covers *using* tensors once you have them. To build them in the first
+place, see xref:how-to/build-tensors.adoc[Build tensors with the data DSL]; for the
+exhaustive op list, see xref:reference/operators/generated/index.adoc[Operator reference].
+
+Every snippet is compiled and executed in CI from `skainet-docs-samples`
+(`TensorBasics.kt`).
+
+== Operations are extensions on `Tensor`
+
+SKaiNET's eager ops are extension functions on `Tensor<T, V>`. There is no execution
+context to thread through each call — the tensor carries its own backend `ops`, so an
+op reads exactly like the math:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=ops]
+----
+
+`matmul` does the `[2,3] x [3,2] -> [2,2]` product, `t()` transposes, `reshape`
+changes the view to `[4]`, and `relu()` is an elementwise activation. Binary
+operators (`+`, `-`, `*`, `/`) are overloaded for both tensor-tensor and
+tensor-scalar forms.
+
+== Broadcasting
+
+Elementwise binary ops broadcast operands with compatible shapes, following the usual
+right-aligned rules. A per-column bias of shape `[1, 3]` adds across every row of a
+`[2, 3]` matrix; a scalar broadcasts to every element:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=broadcast]
+----
+
+== Constructing the inputs
+
+For completeness, the tensors above are built with the data DSL — one tensor, or
+several captured into `lateinit var`s:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=create-one]
+----
+
+The initialization strategies available inside `shape(...) { ... }`:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=init]
+----
+
+== Related
+
+* xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
+* xref:reference/operators/generated/index.adoc[Operator reference] — the full, KSP-generated op surface.
+* xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started] — use these ops inside a model.

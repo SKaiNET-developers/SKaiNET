@@ -1,6 +1,11 @@
 = Usage Examples
 
-This section contains practical examples and usage patterns for SKaiNET operators.
+This section collects practical, runnable examples of SKaiNET in use. Every snippet
+is real code from the `skainet-docs-samples` module — compiled and executed in CI, so
+nothing here can drift from the API.
+
+For task-focused guides see the how-to section; for the shortest end-to-end path see
+xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started].
 
 [#basic-examples]
 == Basic Operations
@@ -9,49 +14,71 @@ This section contains practical examples and usage patterns for SKaiNET operator
 
 include::matmul.adoc[leveloffset=+2]
 
-=== Tensor Creation and Manipulation
+=== Tensor Creation
 
-// TODO: Add tensor creation examples
-// include::tensor-creation-examples.adoc[leveloffset=+2]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=create-one]
+----
+
+See xref:how-to/build-tensors.adoc[Build tensors with the data DSL] for every
+construction form and initialization strategy.
+
+=== Tensor Operations
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=ops]
+----
 
 === Broadcasting Operations
 
-// TODO: Add broadcasting examples
-// include::broadcasting-examples.adoc[leveloffset=+2]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TensorBasics.kt[tag=broadcast]
+----
+
+See xref:how-to/tensor-ops.adoc[Apply tensor operations] for the full discussion.
 
 [#neural-network-examples]
 == Neural Network Examples
 
-=== Layer Implementations
+=== Defining a model
 
-// TODO: Add layer implementation examples
-// include::layer-examples.adoc[leveloffset=+2]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/Quickstart.kt[tag=model]
+----
 
-=== Training Loops
+=== Running inference
 
-// TODO: Add training loop examples
-// include::training-examples.adoc[leveloffset=+2]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/Quickstart.kt[tag=infer]
+----
 
-=== Model Architectures
+=== Training loops
 
-// TODO: Add model architecture examples
-// include::model-examples.adoc[leveloffset=+2]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TrainingDemo.kt[tag=setup]
 
-[#performance-examples]
-== Performance Optimization
+include::example$kotlin/sk/ainet/docs/samples/TrainingDemo.kt[tag=loop]
+----
 
-=== Memory Management
+=== Measuring accuracy
 
-// TODO: Add memory management examples
-// include::memory-examples.adoc[leveloffset=+2]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TrainingDemo.kt[tag=accuracy]
+----
 
-=== Backend-Specific Optimizations
-
-// TODO: Add backend optimization examples
-// include::backend-optimization-examples.adoc[leveloffset=+2]
+See xref:how-to/metrics-and-perf-testing.adoc[Metrics and performance testing].
 
 [#cross-references]
 == Cross-References
 
+* xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started]
+* xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
+* xref:how-to/tensor-ops.adoc[Apply tensor operations]
 * xref:explanation/theory/index.adoc[Mathematical Theory]
-// Operator reference lands in a later commit of the Antora migration.
