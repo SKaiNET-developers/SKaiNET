@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-06-09
+
+### Added
+
+- **Minerva secure-MCU export module.** A new export pipeline that takes a SKaiNET model all the way to a secure microcontroller project bundle, built up in phases:
+  - **Shared graph-export contracts.** A backend-agnostic export contract layer (`feat(export)`), with a StableHLO graph-export adapter that exposes the existing HLO path through those contracts. (#697, #698, #702)
+  - **Module API scaffold.** The Minerva export module's public API surface. (#700)
+  - **Phase-one graph-compatibility validation.** Validates that a graph is exportable before any lowering work begins. (#701)
+  - **IR lowering + npz compiler input.** Compatible graphs lower to Minerva IR (#704) and emit an `.npz` compiler input (#706).
+  - **Compiler packager + host verification.** A packager flow that drives libminerva packaging, plus a host-verification flow and runtime-verification profile that prove the exported bundle on the host before it ships. (#706, #712, #714, #716, #717, #721, #725)
+  - **Manifest fingerprinting.** Generated manifest artifacts are fingerprinted so bundle contents are tamper-evident. (#724)
+  - **Runnable sample + examples + docs.** A runnable sample task and runner, secure MCU export examples, an ONNX export workflow, getting-started / explanation pages, and model-source guidance. (#707, #712, #719, #725)
+- **Packed-quant matmul kernels with Kotlin/Native parity.** Q5_0, Q5_1, Q4_K, and Q6_K gain matmul support across the provider stack:
+  - **commonMain scalar kernels + SPI** for Q5_1/Q5_0/Q4_K/Q6_K, giving Kotlin/Native parity with the JVM path. (#710, #711)
+  - **Packed-quant matmul dispatch in `DefaultCpuOpsBase`** so the packed-quant path is selected on Native, not just JVM. (#709, #711)
+  - **Panama Vector (JVM SIMD) kernels** for Q5_1/Q5_0 (#709) and Q6_K, with Q6_K routed via the `KernelRegistry`. (#715, #720)
+  - **Packed Q5_1/Q5_0 matmul kernels + lazy transpose** on the CPU backend. (#709)
+
+### Changed
+
+- **Kernel × platform support matrix is auto-generated and CI-gated.** The kernel/platform support matrix is now rendered through the build-logic → Antora pipeline (the same pipeline as the ops docs) from a CI-gated source, so it can't drift from the code. (#716, #724)
+
+### Docs
+
+- Refreshed the architecture kernel-provider section (native FFM ships; link matrix). (#726)
+- Eager-execution backends & kernels mindmap, refreshed after Panama Q6_K. (#720, #723)
+
+### Tests
+
+- Hardened CI browser tests against launch flakiness under `allTests` (Karma) and raised the Mocha timeout 10s → 60s for the micrograd demo. (#703, #705)
+
+### Dependencies
+
+- Bumped `io.github.optimumcode:json-schema-validator` to 0.5.5. (#713)
+
 ## [0.28.1] - 2026-06-06
 
 ### Fixed
