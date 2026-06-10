@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.29.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.29.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -227,14 +227,13 @@ Runnable examples:
 
 ---
 
-## What's New in 0.29.0
+## What's New in 0.29.1
 
-- **Minerva secure-MCU export module.** A new end-to-end pipeline that lowers a SKaiNET model through shared graph-export contracts → Minerva IR → an `.npz` compiler input → a libminerva-packaged secure MCU project bundle, with host-side runtime verification and fingerprinted manifest artifacts. Ships with a runnable sample, secure-MCU export examples, an ONNX export workflow, and getting-started docs. (PRs #697–#726)
-- **Packed-quant matmul kernels with Kotlin/Native parity.** Q5_0, Q5_1, Q4_K, and Q6_K gain matmul across the full provider stack: commonMain scalar kernels + SPI (Native parity), packed-quant dispatch in `DefaultCpuOpsBase`, and Panama Vector (JVM SIMD) kernels for Q5_1/Q5_0 and Q6_K routed via the `KernelRegistry`. (PRs #709–#720)
-- **Auto-generated, CI-gated kernel × platform support matrix** rendered through the build-logic → Antora pipeline, so the docs can't drift from the code. (PRs #716, #724)
+- **`sk.ainet.core:skainet-compile-minerva` now publishes to Maven Central.** A packaging fix for the Minerva export module that shipped in 0.29.0 — it was missing the per-module POM metadata, so the artifact never made it to Maven Central. See the 0.29.0 highlights below for the module itself.
 
 ### Recent releases
 
+- **0.29.0** — **Minerva secure-MCU export module**: an end-to-end pipeline that lowers a SKaiNET model through shared graph-export contracts → Minerva IR → an `.npz` compiler input → a libminerva-packaged secure MCU project bundle, with host-side runtime verification and fingerprinted manifest artifacts (runnable sample, examples, ONNX workflow, getting-started docs). Plus **packed-quant matmul kernels with Kotlin/Native parity** (Q5_0/Q5_1/Q4_K/Q6_K — commonMain scalar + SPI, packed-quant dispatch in `DefaultCpuOpsBase`, Panama Vector for Q5_1/Q5_0 and Q6_K via the `KernelRegistry`), and an **auto-generated, CI-gated kernel × platform support matrix**. (PRs #697–#726)
 - **0.28.1** — Kotlin DSL → StableHLO → IREE is green end-to-end for the whole conformance suite (7/7 models, 27/27 ops compile to a `vmfb`): `inferDagOutputSpecs` now infers correct output shapes for shape-changing ops, and `reduce_window` (pooling) emits IREE's generic region form. (PRs #674, #676)
 - **0.28.0** — Four StableHLO export bugs fixed (reshape #666, concatenate #667, constants/reductions #663, `HloGenerator` tracing #668) plus non-JVM image runtime support (#671). (PRs #664, #670, #671)
 - **0.27.0** — A full gemma3 network lowers to StableHLO and compiles to an IREE `vmfb` (zero op gaps, verified by `GemmaTraceTest`): new `scaledDotProductAttention` (with causal + explicit additive mask), `permute`, `narrow`, and multi-output `split` converters, plus boxing-free `FloatArray` weight externalization for `.irpa` baking. (PRs #661 et al.)
