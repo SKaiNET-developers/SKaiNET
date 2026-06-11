@@ -3,9 +3,33 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
+// Paths shared by the K/N cinterop (kotlin block) and the CMake tasks below.
+val nativeIncludeDir: String = layout.projectDirectory.dir("native/include").asFile.absolutePath
+val staticArchivePath: String =
+    layout.buildDirectory.file("native/cmake-build/libskainet_kernels.a").get().asFile.absolutePath
+// aarch64 cross-built static archive (produced by buildNativeKernelsArm64 with
+// -PcrossArm64; carries the NEON paths). Linked into linuxArm64 binaries.
+val staticArchiveArm64Path: String =
+    layout.buildDirectory.file("native/cmake-build-arm64/libskainet_kernels.a").get().asFile.absolutePath
+
 kotlin {
     explicitApi()
     jvm()
+
+    // Kotlin/Native consumption of the hand-written C/NEON kernels via cinterop
+    // to the static archive libskainet_kernels.a (CMake `skainet_kernels_static`).
+    // linuxX64 = host (POC / CI-runnable); linuxArm64 = the SL2610 board target
+    // (its archive is the aarch64 cross-build with NEON). The JVM consumes the
+    // same kernels via FFM instead. Shared K/N code lives in `nativeMain`.
+    fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.wireSkainetKernels(archive: String) {
+        compilations.getByName("main").cinterops.create("skainetKernels") {
+            defFile(project.file("src/nativeInterop/cinterop/skainet_kernels.def"))
+            includeDirs(nativeIncludeDir)
+        }
+        binaries.all { linkerOpts(archive) }
+    }
+    linuxX64 { wireSkainetKernels(staticArchivePath) }
+    linuxArm64 { wireSkainetKernels(staticArchiveArm64Path) }
 
     sourceSets {
         val jvmMain by getting {
@@ -22,6 +46,24 @@ kotlin {
                 // requires kotlinx-coroutines.
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
                 implementation(libs.kotlinx.coroutines)
+            }
+        }
+        // Shared K/N kernels (NativeKn*MatmulKernel + provider), consumed by both
+        // linuxX64 and linuxArm64. The cinterop bindings are commonized across the
+        // two targets so this source set can reference sk.ainet.kernels.cinterop.
+        val nativeMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(project(":skainet-backends:skainet-backend-api"))
+            }
+        }
+        val linuxX64Main by getting { dependsOn(nativeMain) }
+        val linuxArm64Main by getting { dependsOn(nativeMain) }
+        val linuxX64Test by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                // ScalarQ5_KMatmulKernel reference for the cinterop parity test.
+                implementation(project(":skainet-backends:skainet-backend-cpu"))
             }
         }
     }
@@ -89,6 +131,12 @@ val buildNativeKernels by tasks.registering(Exec::class) {
     )
 }
 
+// The linuxX64 (K/N) binaries link libskainet_kernels.a (built by CMake into
+// cmakeBuildPath), so the host static archive must exist before the K/N link.
+tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxX64") }.configureEach {
+    dependsOn(buildNativeKernels)
+}
+
 val packageNativeKernels by tasks.registering(Copy::class) {
     group = "build"
     description = "Stage the built native kernels library into JVM resources."
@@ -105,12 +153,82 @@ val packageNativeKernels by tasks.registering(Copy::class) {
     into(nativeResourceTargetDir)
 }
 
+// --- Cross-compile to aarch64 (opt-in) -------------------------------------
+//
+// Produces native/linux-arm64/libskainet_kernels.so with the NEON paths
+// (CMAKE_SYSTEM_PROCESSOR=aarch64 -> -march=armv8.2-a+fp16+dotprod). Gated on
+// `-PcrossArm64=true` so the default host build is unaffected on machines
+// without the `gcc-aarch64-linux-gnu` cross toolchain. The board build / CI
+// host opts in. NativeLibraryLoader resolves native/linux-arm64/ from os.arch
+// at runtime, so the consuming side needs no change once this .so is bundled.
+//
+// BOARD-VERIFY-PENDING: the NEON code is syntax-validated for aarch64 but has
+// not been executed; run the parity tests under QEMU or on the SL2610.
+val crossArm64Enabled: Boolean = (findProperty("crossArm64") as String?)?.toBoolean() == true
+val aarch64Cc: String = (findProperty("skainetAarch64Cc") as String?) ?: "aarch64-linux-gnu-gcc"
+val cmakeBuildArm64Path: String = layout.buildDirectory.dir("native/cmake-build-arm64").get().asFile.absolutePath
+val nativeResourceArm64Dir = nativeResourcesRoot.map { it.dir("native/linux-arm64") }
+val toolchainFilePath = "$nativeSourcePath/toolchain-aarch64.cmake"
+
+val configureNativeKernelsArm64 by tasks.registering(Exec::class) {
+    group = "build"
+    description = "CMake configure for the aarch64 (NEON) native kernels (cross-compile)."
+    onlyIf { crossArm64Enabled }
+    inputs.file("$nativeSourcePath/CMakeLists.txt")
+    inputs.dir("$nativeSourcePath/src")
+    inputs.dir("$nativeSourcePath/include")
+    outputs.dir(cmakeBuildArm64Path)
+    commandLine = listOf(
+        "cmake",
+        "-S", nativeSourcePath,
+        "-B", cmakeBuildArm64Path,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_TOOLCHAIN_FILE=$toolchainFilePath",
+        "-DSKAINET_AARCH64_CC=$aarch64Cc",
+    )
+}
+
+val buildNativeKernelsArm64 by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Cross-build the aarch64 (NEON) native kernels shared library."
+    onlyIf { crossArm64Enabled }
+    dependsOn(configureNativeKernelsArm64)
+    inputs.file("$nativeSourcePath/CMakeLists.txt")
+    inputs.dir("$nativeSourcePath/src")
+    inputs.dir("$nativeSourcePath/include")
+    outputs.dir(cmakeBuildArm64Path)
+    commandLine = listOf("cmake", "--build", cmakeBuildArm64Path, "--config", "Release")
+}
+
+val packageNativeKernelsArm64 by tasks.registering(Copy::class) {
+    group = "build"
+    description = "Stage the cross-built aarch64 native kernels into JVM resources."
+    onlyIf { crossArm64Enabled }
+    dependsOn(buildNativeKernelsArm64)
+    from(cmakeBuildArm64Path) {
+        include("libskainet_kernels.so")
+        eachFile { path = name }
+    }
+    into(nativeResourceArm64Dir)
+}
+
 kotlin.sourceSets.named("jvmMain") {
     resources.srcDir(nativeResourcesRoot)
 }
 
 tasks.named("jvmProcessResources") {
     dependsOn(packageNativeKernels)
+    if (crossArm64Enabled) dependsOn(packageNativeKernelsArm64)
+}
+
+// linuxArm64 binaries link the aarch64 cross-built archive. Only wired with
+// -PcrossArm64 (cross toolchain present): a plain host build still compiles
+// linuxArm64 to a klib (no archive needed) — only a final binary/test link
+// needs it, which is a board/CI concern.
+if (crossArm64Enabled) {
+    tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxArm64") }.configureEach {
+        dependsOn(buildNativeKernelsArm64)
+    }
 }
 
 // Forward `-Dskainet.runBench=true` from Gradle CLI to the forked test

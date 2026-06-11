@@ -61,6 +61,31 @@ SKAINET_API void skainet_q4k_matmul(
 );
 
 /*
+ * Q5_K matrix-vector multiply.
+ *
+ *   output[output_offset + o] = sum_j input[input_offset + j] *
+ *                                dequant(weight[block, o, j])
+ *
+ * Block layout: canonical ggml Q5_K, 256 elements per super-block, 176
+ * bytes per block (2 B d + 2 B dMin + 12 B packed scales + 32 B `qh`
+ * high-bit plane + 128 B `qs` low nibbles). Each 5-bit code is
+ * `lowNibble | (fifthBit << 4)`. Packed weights laid out as
+ *   weight + weight_byte_offset + (block_idx * output_dim + o) * 176
+ *
+ * input_dim must be a multiple of 256.
+ */
+SKAINET_API void skainet_q5k_matmul(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
  * Row-major FP32 SGEMM:  C(m, n) = A(m, k) * B(k, n).
  *
  * Strides are in floats (not bytes). For a contiguous parent matrix

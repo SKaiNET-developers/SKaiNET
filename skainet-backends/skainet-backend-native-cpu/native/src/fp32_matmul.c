@@ -1,4 +1,5 @@
 #include "skainet_kernels.h"
+#include "skainet_simd.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -53,9 +54,22 @@ SKAINET_API void skainet_fp32_matmul(
         for (int32_t p = 0; p < k; ++p) {
             const float a_ip = a_row[p];
             const float* SKAINET_RESTRICT b_row = b + b_offset + (size_t) p * b_stride;
+#ifdef SKAINET_HAVE_NEON
+            const float32x4_t va = vdupq_n_f32(a_ip);
+            int32_t j = 0;
+            for (; j + 4 <= n; j += 4) {
+                float32x4_t cv = vld1q_f32(c_row + j);
+                cv = vfmaq_f32(cv, va, vld1q_f32(b_row + j));
+                vst1q_f32(c_row + j, cv);
+            }
+            for (; j < n; ++j) {
+                c_row[j] += a_ip * b_row[j];
+            }
+#else
             for (int32_t j = 0; j < n; ++j) {
                 c_row[j] += a_ip * b_row[j];
             }
+#endif
         }
     }
 }

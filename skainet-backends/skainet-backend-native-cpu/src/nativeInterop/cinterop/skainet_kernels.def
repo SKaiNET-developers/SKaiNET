@@ -1,0 +1,8 @@
+# Kotlin/Native cinterop binding for the hand-written C matmul kernels
+# (skainet_kernels.h). Generates Kotlin bindings for skainet_q5k_matmul etc.;
+# the static archive libskainet_kernels.a (built by CMake) is linked into the
+# consuming K/N binary via linkerOpts (see build.gradle.kts). includeDirs for
+# the header are supplied from the Gradle cinterop block.
+headers = skainet_kernels.h
+headerFilter = skainet_kernels.h
+package = sk.ainet.kernels.cinterop
