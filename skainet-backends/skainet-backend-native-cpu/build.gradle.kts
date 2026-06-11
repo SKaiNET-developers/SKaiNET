@@ -3,9 +3,29 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
+// Paths shared by the K/N cinterop (kotlin block) and the CMake tasks below.
+val nativeIncludeDir: String = layout.projectDirectory.dir("native/include").asFile.absolutePath
+val staticArchivePath: String =
+    layout.buildDirectory.file("native/cmake-build/libskainet_kernels.a").get().asFile.absolutePath
+
 kotlin {
     explicitApi()
     jvm()
+
+    // Kotlin/Native: POC on the host (linuxX64); linuxArm64 is the board target.
+    // Exposes the hand-written C/NEON kernels to K/N via cinterop to the static
+    // archive libskainet_kernels.a (CMake `skainet_kernels_static`). This is the
+    // board-consumption path — the JVM consumes the same kernels via FFM instead.
+    linuxX64 {
+        compilations.getByName("main").cinterops.create("skainetKernels") {
+            defFile(project.file("src/nativeInterop/cinterop/skainet_kernels.def"))
+            includeDirs(nativeIncludeDir)
+        }
+        binaries.all {
+            // Link the static C archive into every linuxX64 binary (incl. tests).
+            linkerOpts(staticArchivePath)
+        }
+    }
 
     sourceSets {
         val jvmMain by getting {
@@ -22,6 +42,18 @@ kotlin {
                 // requires kotlinx-coroutines.
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
                 implementation(libs.kotlinx.coroutines)
+            }
+        }
+        val linuxX64Main by getting {
+            dependencies {
+                implementation(project(":skainet-backends:skainet-backend-api"))
+            }
+        }
+        val linuxX64Test by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                // ScalarQ5_KMatmulKernel reference for the cinterop parity test.
+                implementation(project(":skainet-backends:skainet-backend-cpu"))
             }
         }
     }
@@ -87,6 +119,12 @@ val buildNativeKernels by tasks.registering(Exec::class) {
         "--build", cmakeBuildPath,
         "--config", "Release",
     )
+}
+
+// The linuxX64 (K/N) binaries link libskainet_kernels.a (built by CMake into
+// cmakeBuildPath), so the static archive must exist before the K/N link step.
+tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxX64") }.configureEach {
+    dependsOn(buildNativeKernels)
 }
 
 val packageNativeKernels by tasks.registering(Copy::class) {
