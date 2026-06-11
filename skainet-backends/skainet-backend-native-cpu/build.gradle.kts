@@ -7,25 +7,29 @@ plugins {
 val nativeIncludeDir: String = layout.projectDirectory.dir("native/include").asFile.absolutePath
 val staticArchivePath: String =
     layout.buildDirectory.file("native/cmake-build/libskainet_kernels.a").get().asFile.absolutePath
+// aarch64 cross-built static archive (produced by buildNativeKernelsArm64 with
+// -PcrossArm64; carries the NEON paths). Linked into linuxArm64 binaries.
+val staticArchiveArm64Path: String =
+    layout.buildDirectory.file("native/cmake-build-arm64/libskainet_kernels.a").get().asFile.absolutePath
 
 kotlin {
     explicitApi()
     jvm()
 
-    // Kotlin/Native: POC on the host (linuxX64); linuxArm64 is the board target.
-    // Exposes the hand-written C/NEON kernels to K/N via cinterop to the static
-    // archive libskainet_kernels.a (CMake `skainet_kernels_static`). This is the
-    // board-consumption path — the JVM consumes the same kernels via FFM instead.
-    linuxX64 {
+    // Kotlin/Native consumption of the hand-written C/NEON kernels via cinterop
+    // to the static archive libskainet_kernels.a (CMake `skainet_kernels_static`).
+    // linuxX64 = host (POC / CI-runnable); linuxArm64 = the SL2610 board target
+    // (its archive is the aarch64 cross-build with NEON). The JVM consumes the
+    // same kernels via FFM instead. Shared K/N code lives in `nativeMain`.
+    fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.wireSkainetKernels(archive: String) {
         compilations.getByName("main").cinterops.create("skainetKernels") {
             defFile(project.file("src/nativeInterop/cinterop/skainet_kernels.def"))
             includeDirs(nativeIncludeDir)
         }
-        binaries.all {
-            // Link the static C archive into every linuxX64 binary (incl. tests).
-            linkerOpts(staticArchivePath)
-        }
+        binaries.all { linkerOpts(archive) }
     }
+    linuxX64 { wireSkainetKernels(staticArchivePath) }
+    linuxArm64 { wireSkainetKernels(staticArchiveArm64Path) }
 
     sourceSets {
         val jvmMain by getting {
@@ -44,11 +48,17 @@ kotlin {
                 implementation(libs.kotlinx.coroutines)
             }
         }
-        val linuxX64Main by getting {
+        // Shared K/N kernels (NativeKn*MatmulKernel + provider), consumed by both
+        // linuxX64 and linuxArm64. The cinterop bindings are commonized across the
+        // two targets so this source set can reference sk.ainet.kernels.cinterop.
+        val nativeMain by creating {
+            dependsOn(commonMain.get())
             dependencies {
                 implementation(project(":skainet-backends:skainet-backend-api"))
             }
         }
+        val linuxX64Main by getting { dependsOn(nativeMain) }
+        val linuxArm64Main by getting { dependsOn(nativeMain) }
         val linuxX64Test by getting {
             dependencies {
                 implementation(libs.kotlin.test)
@@ -122,7 +132,7 @@ val buildNativeKernels by tasks.registering(Exec::class) {
 }
 
 // The linuxX64 (K/N) binaries link libskainet_kernels.a (built by CMake into
-// cmakeBuildPath), so the static archive must exist before the K/N link step.
+// cmakeBuildPath), so the host static archive must exist before the K/N link.
 tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxX64") }.configureEach {
     dependsOn(buildNativeKernels)
 }
@@ -209,6 +219,16 @@ kotlin.sourceSets.named("jvmMain") {
 tasks.named("jvmProcessResources") {
     dependsOn(packageNativeKernels)
     if (crossArm64Enabled) dependsOn(packageNativeKernelsArm64)
+}
+
+// linuxArm64 binaries link the aarch64 cross-built archive. Only wired with
+// -PcrossArm64 (cross toolchain present): a plain host build still compiles
+// linuxArm64 to a klib (no archive needed) — only a final binary/test link
+// needs it, which is a board/CI concern.
+if (crossArm64Enabled) {
+    tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxArm64") }.configureEach {
+        dependsOn(buildNativeKernelsArm64)
+    }
 }
 
 // Forward `-Dskainet.runBench=true` from Gradle CLI to the forked test
