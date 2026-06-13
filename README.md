@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.29.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.30.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -227,12 +227,15 @@ Runnable examples:
 
 ---
 
-## What's New in 0.29.1
+## What's New in 0.30.0
 
-- **`sk.ainet.core:skainet-compile-minerva` now publishes to Maven Central.** A packaging fix for the Minerva export module that shipped in 0.29.0 — it was missing the per-module POM metadata, so the artifact never made it to Maven Central. See the 0.29.0 highlights below for the module itself.
+- **First-class Q5_K packed in-kernel dequant-matmul** across the CPU backends — a `Q5_KBlockTensorData` packed type and a `Q5KMatmulKernel` SPI with scalar (commonMain / Kotlin-Native), JVM Panama Vector, and native-C implementations, wired into `DefaultCpuOps` matmul dispatch + lazy transpose and the GGUF streaming loader. Q5_K weights now stay packed (no FP32 inflation) and dequantize inside the matmul, like Q4_K/Q6_K.
+- **Hand-written ARM NEON kernels** for the native CPU backend (fp32, q8_0, q4k, q5k), guarded by `__ARM_NEON` so x86 keeps its scalar / auto-vectorized path. The native CMake build gains an aarch64 branch (`-march=armv8.2-a+fp16+dotprod`, dotprod for Cortex-A55) plus an opt-in cross-compile.
+- **Kotlin/Native consumption of the C kernels via cinterop** — `skainet-backend-native-cpu` now also builds a static archive and exposes the kernels to Kotlin/Native (`linuxX64` + `linuxArm64`) through a `KernelProvider`, so on-device (non-JVM) binaries get the same hand-tuned kernels the JVM reaches via FFM. (PR #734)
 
 ### Recent releases
 
+- **0.29.1** — `sk.ainet.core:skainet-compile-minerva` now publishes to Maven Central (packaging fix for the Minerva export module shipped in 0.29.0).
 - **0.29.0** — **Minerva secure-MCU export module**: an end-to-end pipeline that lowers a SKaiNET model through shared graph-export contracts → Minerva IR → an `.npz` compiler input → a libminerva-packaged secure MCU project bundle, with host-side runtime verification and fingerprinted manifest artifacts (runnable sample, examples, ONNX workflow, getting-started docs). Plus **packed-quant matmul kernels with Kotlin/Native parity** (Q5_0/Q5_1/Q4_K/Q6_K — commonMain scalar + SPI, packed-quant dispatch in `DefaultCpuOpsBase`, Panama Vector for Q5_1/Q5_0 and Q6_K via the `KernelRegistry`), and an **auto-generated, CI-gated kernel × platform support matrix**. (PRs #697–#726)
 - **0.28.1** — Kotlin DSL → StableHLO → IREE is green end-to-end for the whole conformance suite (7/7 models, 27/27 ops compile to a `vmfb`): `inferDagOutputSpecs` now infers correct output shapes for shape-changing ops, and `reduce_window` (pooling) emits IREE's generic region form. (PRs #674, #676)
 - **0.28.0** — Four StableHLO export bugs fixed (reshape #666, concatenate #667, constants/reductions #663, `HloGenerator` tracing #668) plus non-JVM image runtime support (#671). (PRs #664, #670, #671)

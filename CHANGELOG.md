@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-06-13
+
+### Added
+
+- **First-class Q5_K packed matmul.** New `TensorEncoding.Q5_K`, `Q5_KTensorData` / `Q5_KBlockTensorData` (256-element / 176-byte super-blocks with the `qh` 5th-bit plane), and a `Q5KMatmulKernel` SPI. Implementations: scalar reference (commonMain → Kotlin/Native, JS, Wasm), JVM Panama Vector, and native-C (FFM). Wired into `DefaultCpuOps` packed-quant matmul dispatch + lazy transpose, registered via `KernelRegistry`, and added to the GGUF `StreamingGgufParametersLoader` (Q5_K + Q6_K packed branches). Q5_K weights stay packed and dequantize inside the matmul, matching the existing Q4_K/Q6_K path. (PR #734)
+- **ARM NEON kernels for the native CPU backend.** Hand-written NEON paths for `fp32`, `q8_0`, `q4k`, and `q5k` matmul (shared `skainet_simd.h`), behind `#if __ARM_NEON` so x86 keeps its `-O3 -ffast-math` auto-vectorized scalar path. The native CMake build adds an aarch64 branch (`-march=armv8.2-a+fp16+dotprod`; no `+i8mm` — Cortex-A55 lacks it) and an opt-in `-PcrossArm64` cross-compile with a toolchain file. (PR #734)
+- **Kotlin/Native consumption of the C kernels via cinterop.** `skainet-backend-native-cpu` now builds a static archive (`libskainet_kernels.a`) alongside the shared lib and adds `linuxX64` + `linuxArm64` targets with a cinterop `.def`, shared `nativeMain` `NativeKn*MatmulKernel` wrappers, and a `NativeKnKernelProvider` (+ `installNativeKernels()`). On-device Kotlin/Native binaries can now reach the same hand-tuned C/NEON kernels the JVM uses via FFM. (PR #734)
+
 ## [0.29.1] - 2026-06-09
 
 ### Fixed
