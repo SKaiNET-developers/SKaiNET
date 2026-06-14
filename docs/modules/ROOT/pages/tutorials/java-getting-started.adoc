@@ -144,7 +144,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.29.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.30.0"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")
