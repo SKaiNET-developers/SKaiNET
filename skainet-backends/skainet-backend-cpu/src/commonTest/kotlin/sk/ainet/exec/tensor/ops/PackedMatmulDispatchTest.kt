@@ -3,12 +3,17 @@ package sk.ainet.exec.tensor.ops
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.FP32
 
@@ -129,4 +134,40 @@ class PackedMatmulDispatchTest {
     @Test fun q5_1_through_ops_matmul_transpose() = run("Q5_1", inDim = 128, outDim = 16, seed = 7)
     @Test fun q4_k_through_ops_matmul_transpose() = run("Q4_K", inDim = 256, outDim = 12, seed = 8)
     @Test fun q6_k_through_ops_matmul_transpose() = run("Q6_K", inDim = 512, outDim = 8, seed = 9)
+
+    /**
+     * `ops.transpose` must lazily rewrap EVERY packed quant type that can be a
+     * matmul weight (the full `chooseQuantizedMatmulHeap` set) — flipping the
+     * shape while keeping the same packed bytes — instead of falling into the
+     * generic FP32 path, which casts the Byte-backed buffer to Float and throws
+     * `ClassCastException`. Regression guard for transformers #178 (Q8_0/Q4_0
+     * were the gaps). Content-agnostic: zero bytes, sized per block geometry.
+     */
+    @Test
+    fun transpose_preserves_every_packed_quant_type() {
+        val outDim = 8
+        // name -> (blockElems, bytesPerBlock, builder)
+        val cases: List<Triple<String, Pair<Int, Int>, (Shape, ByteArray) -> TensorData<FP32, Float>>> = listOf(
+            Triple("Q4_K", 256 to 144) { s, b -> Q4_KBlockTensorData(s, b) as TensorData<FP32, Float> },
+            Triple("Q5_K", 256 to 176) { s, b -> Q5_KBlockTensorData(s, b) as TensorData<FP32, Float> },
+            Triple("Q6_K", 256 to 210) { s, b -> Q6_KBlockTensorData(s, b) as TensorData<FP32, Float> },
+            Triple("Q8_0", 32 to 34) { s, b -> Q8_0BlockTensorData(s, b) as TensorData<FP32, Float> },
+            Triple("Q4_0", 32 to 18) { s, b -> Q4_0BlockTensorData(s, b) as TensorData<FP32, Float> },
+            Triple("Q5_0", 32 to 22) { s, b -> Q5_0BlockTensorData(s, b) as TensorData<FP32, Float> },
+            Triple("Q5_1", 32 to 24) { s, b -> Q5_1BlockTensorData(s, b) as TensorData<FP32, Float> },
+        )
+        for ((name, geom, build) in cases) {
+            val (blockElems, bpb) = geom
+            val inDim = blockElems // one block per row
+            val bytes = ByteArray(outDim * (inDim / blockElems) * bpb)
+            val w = ctx.fromData(build(Shape(outDim, inDim), bytes), FP32::class)
+            // The bug threw here for unhandled packed types.
+            val t = ctx.ops.transpose(w)
+            assertEquals(Shape(inDim, outDim), t.shape, "$name: transpose did not flip shape")
+            assertTrue(
+                t.data::class.simpleName?.contains("Block") == true,
+                "$name: transpose dropped the packed encoding (got ${t.data::class.simpleName})",
+            )
+        }
+    }
 }

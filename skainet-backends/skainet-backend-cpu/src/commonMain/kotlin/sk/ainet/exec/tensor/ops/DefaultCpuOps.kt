@@ -24,6 +24,7 @@ import sk.ainet.lang.tensor.data.Q5_1TensorData
 import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
 import sk.ainet.lang.tensor.data.Q5_0TensorData
 import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
@@ -607,12 +608,15 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 is Q6_KTensorData -> return newTensor(Q6_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 is Q5_1TensorData -> return newTensor(Q5_1BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 is Q5_0TensorData -> return newTensor(Q5_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                // Q8_0 lazy transpose: rewrap the same input-block-major bytes with
-                // flipped shape (bytes are layout-agnostic to the [out,in] kernel
-                // convention) so a packed Q8_0 weight (e.g. gemma's tied lm_head)
+                // Q8_0 / Q4_0 lazy transpose: rewrap the same input-block-major bytes
+                // with flipped shape (bytes are layout-agnostic to the [out,in] kernel
+                // convention) so a packed weight (e.g. gemma's tied Q8_0 lm_head)
                 // survives linearProject's transpose instead of hitting the generic
-                // FP32 path (Byte→Float ClassCastException). See transformers #178.
+                // FP32 path (Byte→Float ClassCastException). This `when` now covers
+                // every quant type chooseQuantizedMatmulHeap dispatches — i.e. every
+                // packed type that can be a matmul weight. See transformers #178.
                 is Q8_0TensorData -> return newTensor(Q8_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                is Q4_0TensorData -> return newTensor(Q4_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 else -> {}
             }
         }
