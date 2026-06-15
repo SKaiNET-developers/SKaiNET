@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-06-15
+
+### Fixed
+
+- **`ops.transpose` now lazily handles every packed matmul dtype.** The CPU backend's 2-D transpose rewraps the packed bytes with a flipped shape (a metadata-only "lazy transpose") for the K-series (Q4_K/Q5_K/Q6_K) and Q5_0/Q5_1, but **Q8_0 and Q4_0 fell through to the generic FP32 path**, which cast the Byte-backed buffer to Float and threw `ClassCastException`. Added the `Q8_0TensorData` and `Q4_0TensorData` cases so a packed Q8_0/Q4_0 matmul weight (e.g. a model's tied Q8_0 `lm_head`) survives `linearProject`'s `matmul(x, ops.transpose(W))` and dispatches to its packed kernel instead of crashing — `ops.transpose` now covers the full `chooseQuantizedMatmulHeap` dispatch set (Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0). Adds `transpose_preserves_every_packed_quant_type` (commonTest, jvm + linuxX64) as a regression guard. (PR #736, #737)
+
+### Changed
+
+- **Bumped `com.networknt:json-schema-validator` to 3.0.4.** (PR #733)
+
 ## [0.30.0] - 2026-06-13
 
 ### Added
