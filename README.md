@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.30.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.31.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -227,13 +227,14 @@ Runnable examples:
 
 ---
 
-## What's New in 0.30.0
+## What's New in 0.31.0
 
-- **First-class Q5_K packed in-kernel dequant-matmul** across the CPU backends — a `Q5_KBlockTensorData` packed type and a `Q5KMatmulKernel` SPI with scalar (commonMain / Kotlin-Native), JVM Panama Vector, and native-C implementations, wired into `DefaultCpuOps` matmul dispatch + lazy transpose and the GGUF streaming loader. Q5_K weights now stay packed (no FP32 inflation) and dequantize inside the matmul, like Q4_K/Q6_K.
-- **Hand-written ARM NEON kernels** for the native CPU backend (fp32, q8_0, q4k, q5k), guarded by `__ARM_NEON` so x86 keeps its scalar / auto-vectorized path. The native CMake build gains an aarch64 branch (`-march=armv8.2-a+fp16+dotprod`, dotprod for Cortex-A55) plus an opt-in cross-compile.
-- **Kotlin/Native consumption of the C kernels via cinterop** — `skainet-backend-native-cpu` now also builds a static archive and exposes the kernels to Kotlin/Native (`linuxX64` + `linuxArm64`) through a `KernelProvider`, so on-device (non-JVM) binaries get the same hand-tuned kernels the JVM reaches via FFM. (PR #734)
+- **`ops.transpose` lazily handles every packed matmul dtype.** The CPU backend rewraps packed bytes with a flipped shape (metadata-only "lazy transpose") so a packed weight survives `linearProject`'s `matmul(x, transpose(W))` instead of inflating to FP32 — but **Q8_0 and Q4_0** were missing and threw `Byte → Float ClassCastException`. Now the full dispatch set (Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0) transposes lazily, so a packed Q8_0/Q4_0 matmul weight (e.g. a tied Q8_0 `lm_head`) stays packed end-to-end on its NEON/SIMD kernel. Regression-tested across all seven packed types. (PRs #736, #737)
+- **Dependency:** `com.networknt:json-schema-validator` → 3.0.4. (PR #733)
 
 ### Recent releases
+
+- **0.30.0** — First-class **Q5_K packed in-kernel dequant-matmul** across the CPU backends (`Q5_KBlockTensorData` + `Q5KMatmulKernel` SPI: scalar / Panama Vector / native-C), **hand-written ARM NEON kernels** (fp32/q8_0/q4k/q5k, `-march=armv8.2-a+fp16+dotprod`), and **Kotlin/Native consumption of the C kernels via cinterop** (`skainet-backend-native-cpu` static archive + `linuxX64`/`linuxArm64` `KernelProvider`). (PR #734)
 
 - **0.29.1** — `sk.ainet.core:skainet-compile-minerva` now publishes to Maven Central (packaging fix for the Minerva export module shipped in 0.29.0).
 - **0.29.0** — **Minerva secure-MCU export module**: an end-to-end pipeline that lowers a SKaiNET model through shared graph-export contracts → Minerva IR → an `.npz` compiler input → a libminerva-packaged secure MCU project bundle, with host-side runtime verification and fingerprinted manifest artifacts (runnable sample, examples, ONNX workflow, getting-started docs). Plus **packed-quant matmul kernels with Kotlin/Native parity** (Q5_0/Q5_1/Q4_K/Q6_K — commonMain scalar + SPI, packed-quant dispatch in `DefaultCpuOpsBase`, Panama Vector for Q5_1/Q5_0 and Q6_K via the `KernelRegistry`), and an **auto-generated, CI-gated kernel × platform support matrix**. (PRs #697–#726)
