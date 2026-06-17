@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.31.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -226,6 +226,15 @@ Runnable examples:
 - Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
 
 ---
+
+## What's New in 0.31.2
+
+- **`RowDequantSource` + `ops.gather` row-dequant.** A `TensorData` can now mark itself `RowDequantSource`
+  (`dequantRow(rowIdx): FloatArray`); `ops.gather` then dequantises only the rows it touches instead of
+  materialising the whole table (and instead of the `get()` path, which such tensors don't support). The
+  table presents as logical FP32, so a packed/oversized embedding (a Q-quantised `token_embd`) can stay
+  packed and be looked up via `ops.gather` directly — moving the per-row-dequant trick out of model code
+  into the engine. (PR #741)
 
 ## What's New in 0.31.0
 
