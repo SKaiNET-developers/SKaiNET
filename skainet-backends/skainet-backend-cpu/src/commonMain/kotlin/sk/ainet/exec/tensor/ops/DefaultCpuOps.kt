@@ -10,6 +10,7 @@ import sk.ainet.lang.ops.TensorOp
 import sk.ainet.lang.ops.InProgress
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.KernelRegistry
+import sk.ainet.lang.tensor.data.RowDequantSource
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
 import sk.ainet.lang.tensor.data.Q4_0TensorData
@@ -2633,8 +2634,8 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 // Preserve index shape + embedding dim
                 Shape(IntArray(indices.rank) { indices.shape[it] } + intArrayOf(embDim))
             }
-            val outData = dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
-                // Map multi-dim output index to flat index and embedding position
+            fun rowOf(outIdx: IntArray): Int {
+                // Map multi-dim output index to the flat index into the index list.
                 val flatIdx = if (outIdx.size == 2) outIdx[0] else {
                     var flat = 0
                     for (d in 0 until outIdx.size - 1) {
@@ -2642,9 +2643,24 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     }
                     flat
                 }
-                val row = indexList[flatIdx]
-                val col = outIdx[outIdx.size - 1]
-                input.data[row, col]
+                return indexList[flatIdx]
+            }
+            val src = input.data
+            val outData = if (src is RowDequantSource) {
+                // Packed / oversized table (e.g. a Q-quantised embedding): dequantise only the rows
+                // actually touched — never materialise the whole table, never call get() (unsupported on
+                // such tensors). Each unique row is dequantised once; logical dtype is FP32.
+                val rowCache = HashMap<Int, FloatArray>()
+                dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+                    val row = rowOf(outIdx)
+                    val col = outIdx[outIdx.size - 1]
+                    @Suppress("UNCHECKED_CAST")
+                    (rowCache.getOrPut(row) { src.dequantRow(row) }[col] as V)
+                }
+            } else {
+                dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+                    input.data[rowOf(outIdx), outIdx[outIdx.size - 1]]
+                }
             }
             return newTensor(outData, input.dtype, input)
         }
