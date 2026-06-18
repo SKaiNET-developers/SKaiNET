@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-06-18
+
+### Added
+
+- **`RowDequantSource` + `ops.gather` row-dequant path.** Adds `RowDequantSource` (a `TensorData` marker,
+  `dequantRow(rowIdx): FloatArray`) to `skainet-lang-core`, and teaches `DefaultCpuOps.gather` to use it:
+  when the gathered table implements `RowDequantSource`, only the rows actually touched are dequantised
+  (each unique row once, cached) instead of the generic element path — which calls `get()` (unsupported on
+  such tensors) and would otherwise force a full FP32 materialise of the table. The table declares logical
+  dtype `FP32`, so `gather` returns FP32 with no typing change. This lets a packed/oversized embedding (a
+  Q-quantised `token_embd`) stay packed and be looked up via `ops.gather` directly — generalising the
+  per-row-dequant trick out of the model layer. Adds `GatherRowDequantTest` (commonTest). (PR #741)
+
 ## [0.31.0] - 2026-06-15
 
 ### Fixed
