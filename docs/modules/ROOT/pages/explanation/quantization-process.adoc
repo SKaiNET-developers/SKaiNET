@@ -1,0 +1,183 @@
+= The Quantization Process: Weights, Activations, and Calibration
+:description: How SKaiNET quantizes — weight-only block quant vs activation post-training quantization (PTQ), and how calibration captures the activation ranges an int8 accelerator needs.
+
+Quantization in {framework_name} comes in two flavours that are easy to conflate. This page draws
+the line between them, then walks the **activation post-training quantization (PTQ)** pipeline —
+calibration, scales, and the int8 matmul shape — that an int8 NPU or accelerator target needs.
+
+For the *weight* side, this article is an overview; the depth lives in
+xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built] and
+xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compression].
+
+== Two regimes, one word
+
+[cols="1,3,3",options="header"]
+|===
+| | *Weight-only quantization* | *Activation PTQ*
+
+| What is quantized
+| The *weights* only. Activations stay fp32.
+| *Both* operands of a matmul — activations and weights — are int8.
+
+| Where it runs
+| Eager CPU/JVM kernels (`Q8_0`, `Q4_K`, `Q6_K`…), TurboQuant for the KV cache.
+| Integer accelerators (NPUs) that do `i8 × i8 → i32` MACs.
+
+| The matmul
+| `out[fp32] = Σ act[fp32] · dequant(w_block)` — dequant fused into the inner loop.
+| `out = requantize( Σ q_act[i8] · q_w[i8] )` with an i32 accumulator.
+
+| Needs calibration?
+| No. Block scales are derived from the weights at quantize time.
+| *Yes.* Activation ranges are data-dependent and must be measured.
+
+| In the codebase
+| `QuantizedMatmul`, the quantized SIMD kernels, TurboQuant.
+| Calibration in the framework; int8 emission in the target backend codegen.
+|===
+
+The rest of this page is about the second column.
+
+== The int8 matmul shape
+
+An integer accelerator computes a matmul as `i8 × i8 → i32`, so a single fp32 projection
+`y = x · Wᵀ` becomes a three-part pattern:
+
+[source,text]
+----
+q_x  = clamp(round(x / Sa), -127, 127)        # quantize activation  (fp32 -> i8)
+acc  = matmul_i8(q_x, q_w)                     # i8 x i8 -> i32 accumulator
+y    = acc * (Sa * Sw)                         # requantize           (i32 -> fp32)
+----
+
+with *symmetric per-tensor* scales
+
+* `Sa = max|x| / 127` — the **activation** scale (data-dependent → calibrated),
+* `Sw = max|W| / 127` — the **weight** scale (static → computed from the weights directly),
+* `So = max|y| / 127` — the **output** scale, used when the result feeds another int8 matmul.
+
+Zero-point is `0` under symmetric quantization, which keeps the requantize a single multiply.
+Softmax, LayerNorm and GELU stay in fp32 — only the matmuls are quantized.
+
+`Sw` is free: the weights are known ahead of time. `Sa` and `So` are the problem — they depend on
+the *activations*, which depend on the input. That is what calibration measures.
+
+== Calibration: measuring activation ranges
+
+Calibration runs the model **eagerly in fp32** over a handful of representative inputs and records,
+per matmul, the absolute-max of each operand and of the result. The per-tensor scale is then
+`S = max|x| / 127`, accumulated (by max) across all calibration inputs.
+
+The clean way to tap the activation stream is a `TensorOps` decorator that intercepts `matmul` and
+delegates everything else, using Kotlin interface delegation:
+
+[source,kotlin]
+----
+class ObservingTensorOps(
+    private val base: TensorOps,
+    private val onMatmul: (a: Tensor<*, *>, b: Tensor<*, *>, out: Tensor<*, *>) -> Unit,
+) : TensorOps by base {                              // <1>
+    override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        val out = base.matmul(a, b)
+        onMatmul(a, b, out)                          // <2>
+        return out
+    }
+}
+----
+<1> Every op except `matmul` flows straight through to the real backend.
+<2> `a` is the activation, `b` the weight (or, for attention score matmuls, a second activation);
+    `out` is the result. Read their values with `tensor.data.copyToFloatArray()` and fold into a
+    running `max|·|`.
+
+Wrap a context so the model's `ctx.ops.matmul(...)` calls route through the tap — the model itself
+is unchanged:
+
+[source,kotlin]
+----
+class ObservingExecutionContext(base: ExecutionContext, onMatmul: MatmulTap)
+    : ExecutionContext by base {
+    override val ops: TensorOps = ObservingTensorOps(base.ops, onMatmul)
+}
+
+// drive it:
+val ranges = CalibrationRanges()
+val ctx = ObservingExecutionContext(DirectCpuExecutionContext.create(), ranges::observe)
+for (input in representativeInputs) model.forward(input, ctx)   // fp32 eager, taps every matmul
+val scales = ranges.symmetricInt8Scales()                       // S = max|x| / 127 per tensor
+----
+
+[NOTE]
+====
+{framework_name} also exposes the `ExecutionObserver` hooks (`onOpStart` / `onOpEnd`) on an
+`ExecutionContext`. Those are the natural home for this logic, but on the plain eager contexts the
+per-op `notifyOp` dispatch is not wired, so a `TensorOps` decorator is the reliable tap today. An
+observer implementation can share the same range-accumulation code.
+====
+
+The output is one scale triple per matmul — keyed by deterministic op-invocation order so the
+emitter can line them up with the graph:
+
+[source,text]
+----
+# op_index   Sa            Sb            So            absmax_act  absmax_rhs  absmax_out
+op0          0.124454215   0.003971611   0.053741008   15.805685   0.504395    6.825108
+op1          0.124454215   0.004852055   0.063222170   15.805685   0.616211    8.029216
+...
+----
+
+`Sb` is the second-operand scale. For the q/k/v/out/MLP projections it simply matches the static
+`Sw`; for the **attention score matmuls** (`Q·Kᵀ`, `attn·V`) the second operand is *also an
+activation*, so `Sb` is a genuine calibrated scale — which is why the calibrator records it for
+every matmul rather than assuming operand two is a weight.
+
+== Why `QuantizedMatmul` is not the activation-int8 op
+
+A natural question: can the existing `QuantizedMatmul` carry this? No — and the reason is worth
+stating, because it shapes where the int8 emission has to live.
+
+* **It is weight-only and eager.** `QuantizedMatmul` dequant-fuses `Q8_0`/`Q4_K` *weight* blocks
+  against **fp32 activations** and returns a materialised fp32 tensor. It never records into the
+  tape, so it produces no int8 graph for a backend to lower.
+* **The tape can't express the pattern either.** `TensorOps.matmul` is *dtype-homogeneous* —
+  `matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>`. There is no `i8 × i8 → i32`
+  accumulation form, and there is no `round` primitive (only `clamp` / `convert` / `sign`). So the
+  `quantize → i8 matmul → requantize` pattern cannot be written at the op level today.
+
+The consequence is a clean split of responsibilities:
+
+* **The framework calibrates** — a pure read-side tap over the existing fp32 eager run, fully
+  expressible with today's API (above).
+* **The target backend emits int8** — the `quantize / i8-matmul / requantize` lowering belongs in
+  the accelerator's codegen, parameterised by the `Sa` / `Sb` / `So` the calibrator produced.
+
+== The pipeline end to end
+
+[source,text]
+----
+  representative inputs
+          │
+          ▼
+  fp32 eager run  ──tap every matmul──▶  per-tensor max|·|
+  (ObservingExecutionContext)                    │
+                                                 ▼
+                                   symmetric scales  Sa, Sb, So  (= max|x| / 127)
+                                                 │
+        static weights ──▶ Sw, int8 weight constants
+                                                 │
+                                                 ▼
+                       backend codegen:  quantize → i8 matmul (i32) → requantize
+                                                 │
+                                                 ▼
+                                     int8 model on the accelerator
+----
+
+Calibration is the SKaiNET-side half and is target-agnostic: the same scales drive any int8 backend.
+
+== Follow-ups
+
+* A **tape-level int8 matmul** op (`i8 × i8 → i32`) plus a `round` primitive would let the int8
+  pattern be expressed in the graph itself, rather than only in backend codegen.
+* **Per-channel weight scales** (a `Sw` per output column) and **percentile / KL calibration**
+  (instead of plain `max|·|`) are the usual accuracy levers once the per-tensor path works.
+* Wiring the `ExecutionObserver` `notifyOp` dispatch on the eager contexts would let calibration use
+  the observer hooks directly instead of a `TensorOps` decorator.
