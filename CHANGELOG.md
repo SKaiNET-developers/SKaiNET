@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-06-22
+
+### Added
+
+- **GroupNorm StableHLO converter.** `NeuralNetOperationsConverter` now lowers `groupNorm`
+  (and the `groupNormalization` / `GroupNormalization` / `group_norm` aliases) to real
+  `stablehlo.*` ops instead of falling through to the "operation not supported" path. The
+  lowering mirrors the existing LayerNorm/RMSNorm decomposition: reshape `(N, C, *spatial)`
+  to `(N, G, M)` so each group's channels and spatial positions collapse into one trailing
+  axis, take per-group `mean` / `variance` over that axis (reusing the `@reduce_mean` /
+  `@reduce_variance` custom_calls), normalize `(x - mean) / sqrt(var + eps)`, reshape back,
+  and apply the optional per-channel `scale` / `offset` (shape `C`, broadcast over the channel
+  dim). Adds `GroupNormConverterTest` (commonTest). (PR #752)
+- **SKEEP proposals docs module.** (PR #750)
+- **Quantization-process explanation doc** (weights, activations, calibration). (PR #747)
+
+### Changed
+
+- **Dependency bumps:** `com.vanniktech.maven.publish` → 0.37.0 (PR #748),
+  `com.networknt:json-schema-validator` → 3.0.5 (PR #749), kotest → 6.2.1 (PR #744),
+  Gradle wrapper → 9.6.0 (PR #745), `actions/checkout` → 7 (PR #743).
+
 ## [0.31.2] - 2026-06-18
 
 ### Added

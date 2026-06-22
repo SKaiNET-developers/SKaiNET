@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -241,6 +241,20 @@ Runnable examples:
 
 ---
 
+## What's New in 0.32.0
+
+- **GroupNorm StableHLO converter.** `groupNorm` now lowers to real `stablehlo.*` ops —
+  reshape `(N, C, *spatial)` into `(N, G, M)` groups → per-group `mean`/`variance` via the
+  `@reduce_mean` / `@reduce_variance` custom_calls → normalize → reshape back → optional
+  per-channel `scale`/`offset` — mirroring the LayerNorm/RMSNorm decomposition. Previously a
+  `groupNorm` node fell through to the "operation not supported" path. Adds
+  `GroupNormConverterTest`. (PR #752)
+- **Docs:** a SKEEP proposals module (PR #750) and a quantization-process explanation —
+  weights, activations, calibration (PR #747).
+- **Dependencies:** `com.vanniktech.maven.publish` → 0.37.0 (#748),
+  `com.networknt:json-schema-validator` → 3.0.5 (#749), kotest → 6.2.1 (#744),
+  Gradle wrapper → 9.6.0 (#745), `actions/checkout` → 7 (#743).
+
 ## What's New in 0.31.2
 
 - **`RowDequantSource` + `ops.gather` row-dequant.** A `TensorData` can now mark itself `RowDequantSource`
@@ -250,12 +264,9 @@ Runnable examples:
   packed and be looked up via `ops.gather` directly — moving the per-row-dequant trick out of model code
   into the engine. (PR #741)
 
-## What's New in 0.31.0
-
-- **`ops.transpose` lazily handles every packed matmul dtype.** The CPU backend rewraps packed bytes with a flipped shape (metadata-only "lazy transpose") so a packed weight survives `linearProject`'s `matmul(x, transpose(W))` instead of inflating to FP32 — but **Q8_0 and Q4_0** were missing and threw `Byte → Float ClassCastException`. Now the full dispatch set (Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0) transposes lazily, so a packed Q8_0/Q4_0 matmul weight (e.g. a tied Q8_0 `lm_head`) stays packed end-to-end on its NEON/SIMD kernel. Regression-tested across all seven packed types. (PRs #736, #737)
-- **Dependency:** `com.networknt:json-schema-validator` → 3.0.4. (PR #733)
-
 ### Recent releases
+
+- **0.31.0** — `ops.transpose` lazily handles every packed matmul dtype: **Q8_0 and Q4_0** added (they threw `Byte → Float ClassCastException`), completing the Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0 set so packed weights stay packed end-to-end on their NEON/SIMD kernel; plus `com.networknt:json-schema-validator` → 3.0.4. (PRs #736, #737, #733)
 
 - **0.30.0** — First-class **Q5_K packed in-kernel dequant-matmul** across the CPU backends (`Q5_KBlockTensorData` + `Q5KMatmulKernel` SPI: scalar / Panama Vector / native-C), **hand-written ARM NEON kernels** (fp32/q8_0/q4k/q5k, `-march=armv8.2-a+fp16+dotprod`), and **Kotlin/Native consumption of the C kernels via cinterop** (`skainet-backend-native-cpu` static archive + `linuxX64`/`linuxArm64` `KernelProvider`). (PR #734)
 
