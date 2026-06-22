@@ -1,0 +1,4 @@
+.SKEEP
+* xref:skeep:index.adoc[About SKEEP]
+* Proposals
+** xref:skeep:001-tensor-collection-literals.adoc[SKEEP-001: Tensor collection literals]

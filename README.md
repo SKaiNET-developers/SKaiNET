@@ -75,10 +75,10 @@ val d = c.relu()
 val source = JvmRandomAccessSource.open("model.gguf")
 StreamingGGUFReader.open(source).use { reader ->
     println("Tensors: ${reader.tensorCount}")
-    
+
     // Load specific tensor on demand (no whole-file loading)
     val bytes = reader.loadTensor("token_embd.weight")
-    
+
     // Or get a TensorStorage descriptor with encoding/placement metadata
     val storage = reader.loadTensorStorage("token_embd.weight")
 }
@@ -106,6 +106,20 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
 | Eager backends & kernels (what runs where) | [Backends & kernels mindmap](docs/eager-execution-backends-and-kernels.md) |
+| Design proposals and long-lived API decisions | [SKEEP proposals](docs/modules/skeep/pages/index.adoc) |
+
+---
+
+## Contributing and Design Proposals
+
+Small fixes can go straight through the normal contribution flow described in
+[CONTRIBUTING.md](CONTRIBUTING.md) and [GITFLOW.adoc](GITFLOW.adoc).
+
+Use a SKEEP when a change affects public APIs, DSL syntax, tensor semantics,
+compiler/runtime integration, storage behavior, compatibility policy, or other
+decisions that need a durable design record. SKEEP files live under
+`docs/modules/skeep/pages/` and use three-digit numbering, starting with
+`001`.
 
 ---
 

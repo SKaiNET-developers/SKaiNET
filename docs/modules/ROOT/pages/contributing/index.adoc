@@ -22,6 +22,8 @@ The Contributing section is for the engineer who:
 - Adds or replaces kernels in the CPU backend (scalar, Panama Vector,
   the planned native FFM provider).
 - Operates the self-hosted runner that publishes benchmark results.
+- Drafts or reviews durable API and architecture proposals in the
+  xref:skeep:index.adoc[SKEEP proposal track].
 
 Concretely:
 
@@ -32,6 +34,7 @@ Concretely:
 | xref:contributing/benchmarks.adoc[Engine benchmark program] | The Phoronix Test Suite / OpenBenchmarking publication path: methodology, manifest, lanes, CI workflow, replay.
 | xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] | What the published numbers mean — scalar vs. Panama vs. quantized regimes, roofline reasoning, and a checklist for interpreting any new measurement.
 | xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner] | The one-time operator setup that lights up the full-publish CI lane on a Linux x86 box.
+| xref:skeep:index.adoc[SKEEP proposal track] | How SKaiNET records long-lived API, DSL, runtime, compiler, storage, and compatibility proposals.
 |===
 
 == What this section deliberately does *not* cover
@@ -42,8 +45,9 @@ Concretely:
 - **What an operator does or how the public DSL works.** See
   xref:reference/operators/generated/index.adoc[Operator reference] and
   the Explanation pages.
-- **Issue reports, branch policy, or commit conventions.** Those live
-  in repo-root files: `CONTRIBUTING.md`, `GITFLOW.adoc`,
+- **Issue reports, branch policy, commit conventions, or the detailed
+  SKEEP authoring procedure.** Those live in repo-root files:
+  `CONTRIBUTING.md`, `GITFLOW.adoc`,
   `CHANGELOG.md`, `FAQ.md`. The published docs site intentionally
   does not duplicate them; they belong with the code.
 
