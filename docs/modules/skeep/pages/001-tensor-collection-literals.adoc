@@ -1,0 +1,390 @@
+= SKEEP-001: Tensor collection literals
+:description: SKaiNET proposal for using Kotlin collection literals and explicit context arguments to construct tensors.
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors +
+Created: 2026-06-22
+
+== Summary
+
+Kotlin 2.4.0 introduces experimental collection literals using square brackets and allows custom types to participate through `operator fun of`. Kotlin 2.4.0 also introduces experimental explicit context arguments for context parameters.
+
+SKaiNET should use these features to provide concise tensor literals for examples, tests, teaching material, and small parameter fixtures while preserving SKaiNET's current execution model: tensors still materialize through an `ExecutionContext`, a `TensorDataFactory`, and an explicit dtype.
+
+The proposed design is intentionally two-step:
+
+1. Collection literals create lightweight literal values such as `VectorLiteral<Float>`, `MatrixLiteral<Float>`, or `TensorLiteral<Float>`.
+2. SKaiNET materializes those literal values into `Tensor<T, V>` through a function that receives an explicit or implicit tensor build context.
+
+[source,kotlin]
+----
+val cpuFp32 = TensorBuildContext(
+    executionContext = DirectCpuExecutionContext.create(),
+    dtype = FP32::class,
+)
+
+val weights = matrixOf<FP32, Float>(
+    tensorBuild = cpuFp32,
+    values = [
+        [1f, 2f, 3f],
+        [4f, 5f, 6f],
+    ],
+)
+----
+
+This avoids a direct `val weights: Tensor<FP32, Float> = [[...]]` design. Direct tensor literals look attractive, but they cannot cleanly bind SKaiNET's required execution context and dtype inside the collection-literal `of` operator.
+
+== Motivation
+
+SKaiNET's current tensor construction DSL is explicit and type-aware, but it is verbose for small dense tensors:
+
+[source,kotlin]
+----
+val t = data<FP32, Float>(ctx) {
+    tensor { shape(2, 2) { from(1f, 2f, 3f, 4f) } }
+}
+----
+
+This is acceptable for production tensor creation, but it creates friction in:
+
+* documentation snippets;
+* unit tests and golden fixtures;
+* tutorials for users coming from Python, Swift, JavaScript, or mathematical notation;
+* model examples that need readable small matrices;
+* code review, where shape and data are split across `shape(...)` and flattened `from(...)`.
+
+The main product issue is readability, not raw capability. SKaiNET can already build the tensors; it does not yet let users read small tensor fixtures in the same shape they represent.
+
+== Kotlin Feature Analysis
+
+=== Collection literals
+
+Collection literals are experimental in Kotlin 2.4.0 and require `-Xcollection-literals`. The compiler can translate bracket syntax to a type's static `operator fun of` when the expected type is known. Nested literals are resolved recursively, so matrix-like APIs can be modeled with row literal types.
+
+Relevant constraints for SKaiNET:
+
+* A custom literal target needs an `operator fun of` in the static scope of the expected type.
+* The main `of` overload must expose a single `vararg` element path that the compiler can use for overload resolution.
+* The `of` overloads cannot use extension receivers, context parameters, or context receivers.
+* If no expected custom type is available, a literal falls back to Kotlin collection types, not SKaiNET tensors.
+
+These rules make `Tensor.Companion.of(...)` a poor materialization point. A real tensor needs context, dtype, storage strategy, and backend operations; collection-literal `of` cannot accept those as context parameters.
+
+=== Explicit context arguments
+
+Explicit context arguments are experimental in Kotlin 2.4.0 and require `-Xexplicit-context-arguments`. They let callers bind a named context parameter directly at the call site, and those explicit arguments participate in overload resolution.
+
+For SKaiNET, this is useful because tensor creation has two modes:
+
+* scoped use, where one tensor build context should be reused across several literals;
+* one-off use, where a call site should state the context without opening a nested `data { ... }` block.
+
+[source,kotlin]
+----
+context(tensorBuild: TensorBuildContext<T, V>)
+fun <T : DType, V> matrixOf(values: MatrixLiteral<V>): Tensor<T, V>
+
+val oneOff = matrixOf<FP32, Float>(
+    tensorBuild = cpuFp32,
+    values = [[1f, 2f], [3f, 4f]],
+)
+
+context(cpuFp32) {
+    val a = matrixOf<FP32, Float>([[1f, 2f], [3f, 4f]])
+    val b = vectorOf<FP32, Float>([1f, 1f])
+}
+----
+
+This addresses the current standalone DSL awkwardness documented in xref:ROOT:how-to/build-tensors.adoc[Build tensors with the data DSL], where the standalone path requires `tensor(ctx, dtype) { tensor { shape(...) { ... } } }`.
+
+== Goals
+
+* Allow small vectors and matrices to be expressed with Kotlin bracket literals.
+* Preserve explicit SKaiNET context and dtype semantics.
+* Keep the feature Kotlin Multiplatform-compatible in `commonMain`.
+* Provide a migration path from today's `data { tensor { shape(...) { from(...) } } }` form.
+* Make shape validation immediate and clear, especially for ragged matrix literals.
+* Keep large tensors, model weights, and file-backed data on existing array, loader, and I/O APIs.
+
+== Non-Goals
+
+* Do not introduce Python, NumPy, PyTorch, or notebook-oriented workflows.
+* Do not add a compiler plugin.
+* Do not make `Tensor<T, V>` materialize directly from `[[...]]` without an execution context.
+* Do not infer dtype from numeric literals when it would hide SKaiNET's `DType` model.
+* Do not optimize this path for large model weights.
+* Do not replace the current `data { ... }` DSL.
+
+== Proposed Design
+
+=== Literal model
+
+Add lightweight literal carrier types in `sk.ainet.lang.tensor.dsl` or a new `sk.ainet.lang.tensor.literal` package.
+
+[source,kotlin]
+----
+public sealed interface TensorLiteral<out V> {
+    public val shape: Shape
+    public val values: List<V>
+}
+
+public class VectorLiteral<V> private constructor(
+    override val values: List<V>,
+) : TensorLiteral<V> {
+    override val shape: Shape = Shape(values.size)
+
+    public companion object {
+        public operator fun <V> of(vararg values: V): VectorLiteral<V>
+    }
+}
+
+public class TensorRow<V> private constructor(
+    public val values: List<V>,
+) {
+    public companion object {
+        public operator fun <V> of(vararg values: V): TensorRow<V>
+    }
+}
+
+public class MatrixLiteral<V> private constructor(
+    public val rows: List<TensorRow<V>>,
+) : TensorLiteral<V> {
+    override val shape: Shape = Shape(rows.size, rows.firstOrNull()?.values?.size ?: 0)
+    override val values: List<V> = rows.flatMap { it.values }
+
+    public companion object {
+        public operator fun <V> of(vararg rows: TensorRow<V>): MatrixLiteral<V>
+    }
+}
+----
+
+The exact implementation can use immutable arrays or internal primitive arrays later, but the public behavior should stay value-like: a literal has a shape and a row-major value sequence.
+
+=== Tensor build context
+
+Add a named context value that carries the pieces needed to materialize a SKaiNET tensor.
+
+[source,kotlin]
+----
+public data class TensorBuildContext<T : DType, V>(
+    public val executionContext: ExecutionContext,
+    public val dtype: KClass<T>,
+)
+----
+
+The context parameter name must be stable and public because explicit context arguments use the parameter name. Use `tensorBuild` consistently.
+
+=== Materialization functions
+
+Add materialization functions with context parameters.
+
+[source,kotlin]
+----
+context(tensorBuild: TensorBuildContext<T, V>)
+public fun <T : DType, V> vectorOf(values: VectorLiteral<V>): Tensor<T, V>
+
+context(tensorBuild: TensorBuildContext<T, V>)
+public fun <T : DType, V> matrixOf(values: MatrixLiteral<V>): Tensor<T, V>
+
+context(tensorBuild: TensorBuildContext<T, V>)
+public fun <T : DType, V> tensorOf(values: TensorLiteral<V>): Tensor<T, V>
+----
+
+Materialization should call the existing `ExecutionContext` methods:
+
+* rank 1 `VectorLiteral<Float>` -> `fromFloatArray(shape, dtype, data)`
+* rank 1 `VectorLiteral<Int>` -> `fromIntArray(shape, dtype, data)`
+* rank 2 `MatrixLiteral<Float>` -> `fromFloatArray(shape, dtype, rowMajorData)`
+* rank 2 `MatrixLiteral<Int>` -> `fromIntArray(shape, dtype, rowMajorData)`
+* unsupported value storage -> `tensorDataFactory.init(shape, dtype) { ... }`
+
+The API should prefer typed failures over coercion. For example, `matrixOf<FP32, Float>([[1.0, 2.0]])` should not silently coerce `Double` to `Float`.
+
+=== Existing DSL interop
+
+Add convenience helpers from existing data scopes so users can write literals inside today's `data` blocks without manually creating `TensorBuildContext`.
+
+[source,kotlin]
+----
+public fun <T : DType, V> TypedDataContextDsl<T, V>.matrixOf(
+    values: MatrixLiteral<V>,
+): Tensor<T, V>
+
+public inline fun <reified T : DType, V> DataContextDsl.matrixOf(
+    values: MatrixLiteral<V>,
+): Tensor<T, V>
+----
+
+Example:
+
+[source,kotlin]
+----
+val t = data<FP32, Float>(ctx) {
+    matrixOf([
+        [1f, 2f],
+        [3f, 4f],
+    ])
+}
+----
+
+== Requirements
+
+=== Functional
+
+F1. Users can construct rank-1 tensors from bracket literals.
+
+[source,kotlin]
+----
+val v = vectorOf<FP32, Float>(
+    tensorBuild = cpuFp32,
+    values = [1f, 2f, 3f],
+)
+----
+
+F2. Users can construct rank-2 tensors from nested bracket literals.
+
+[source,kotlin]
+----
+val m = matrixOf<FP32, Float>(
+    tensorBuild = cpuFp32,
+    values = [[1f, 2f], [3f, 4f]],
+)
+----
+
+F3. Matrix literals reject ragged rows with a message that includes row index, expected width, and actual width.
+
+F4. Literal materialization preserves row-major ordering used by the existing `shape(...) { from(...) }` DSL.
+
+F5. Literal materialization uses the provided `ExecutionContext`, not a hidden global default.
+
+F6. Literal APIs are available from `commonMain`.
+
+F7. The old DSL remains source-compatible.
+
+F8. The experimental APIs are opt-in annotated until Kotlin collection literals and explicit context arguments are stable.
+
+=== Non-Functional
+
+N1. The feature must not add dependencies.
+
+N2. Common tests must cover JVM, JS, and native-compatible code paths where the module already supports them.
+
+N3. Literal materialization should avoid extra copies when the compiler and value type make that practical, but correctness and clarity are more important for the MVP.
+
+N4. Error messages must be deterministic and independent of platform.
+
+N5. Documentation must make clear that literals are for small tensors and fixtures, not large weights.
+
+== Compatibility and Migration
+
+This proposal is additive.
+
+Existing `data { ... }`, `createDataMap { ... }`, `tensor { shape(...) { ... } }`, and `ExecutionContext.from*Array(...)` APIs remain valid. The literal API should be documented as a compact fixture and tutorial path, not as the replacement for production tensor construction.
+
+The feature should be guarded by a SKaiNET experimental annotation until the Kotlin features are stable. Users who do not enable Kotlin 2.4 collection-literal flags can still use explicit carrier calls such as `MatrixLiteral.of(TensorRow.of(1f, 2f), TensorRow.of(3f, 4f))`.
+
+== Rollout Plan
+
+=== Phase 0: Design spike
+
+* Upgrade a local branch or sample module to Kotlin 2.4.0.
+* Enable `-Xcollection-literals` and `-Xexplicit-context-arguments` only for the spike.
+* Verify expected-type behavior for nested `MatrixLiteral` and `TensorRow`.
+* Verify explicit context argument syntax with named `tensorBuild`.
+
+Exit criteria:
+
+* A common test compiles for vector and matrix literals.
+* A one-off explicit context call and a scoped `context(cpuFp32) { ... }` call both compile.
+
+=== Phase 1: Literal carrier types
+
+* Add `VectorLiteral`, `TensorRow`, and `MatrixLiteral`.
+* Add tests using explicit `VectorLiteral.of(...)` and `MatrixLiteral.of(...)` calls so most behavior is testable before the project-wide Kotlin upgrade.
+* Add ragged-row validation.
+
+Exit criteria:
+
+* Shape and row-major flattening are covered by common tests.
+* No Kotlin 2.4-only syntax is required for the core value model.
+
+=== Phase 2: Experimental materialization API
+
+* Add `TensorBuildContext`.
+* Add `vectorOf`, `matrixOf`, and `tensorOf` materializers.
+* Add `DataContextDsl` and `TypedDataContextDsl` convenience extensions.
+* Gate APIs with a SKaiNET experimental annotation.
+
+Exit criteria:
+
+* `FP32/Float` and integer tensor tests pass.
+* Existing tensor DSL tests remain unchanged.
+* The new APIs do not alter `Tensor`, `TensorData`, or `TensorOps` contracts.
+
+=== Phase 3: Kotlin 2.4 bracket literal samples
+
+* Raise Kotlin from `2.3.21` to a compatible `2.4.x` version in a branch.
+* Enable the experimental compiler flags in a sample or test source set first.
+* Add docs examples using bracket syntax.
+
+Exit criteria:
+
+* Samples compile with Kotlin 2.4 experimental flags.
+* Documentation includes the feature flags and the fallback syntax for users not enabling them.
+
+=== Phase 4: Promote or hold
+
+Promote after:
+
+* Kotlin feature stability and IDE support are acceptable for SKaiNET's release policy.
+* The API has survived at least one release cycle as experimental.
+* The implementation does not create surprising ambiguity with existing `vector`, `matrix`, or `tensor` DSL functions.
+
+Hold if:
+
+* Kotlin changes the `operator fun of` restrictions.
+* IDE support makes the syntax hard to use in practice.
+* Multiplatform compilation diverges across targets.
+
+== Acceptance Criteria
+
+* A user can create a `Tensor<FP32, Float>` from `[1f, 2f, 3f]` with one materialization call.
+* A user can create a `Tensor<FP32, Float>` from `[[1f, 2f], [3f, 4f]]` with one materialization call.
+* A ragged literal such as `[[1f], [2f, 3f]]` fails before tensor data is allocated.
+* Examples show both explicit one-off context binding and scoped context binding.
+* The feature works without changing existing `data { ... }` users.
+* Docs state that Kotlin 2.4 experimental flags are required for bracket syntax.
+* Tests prove equivalence with `shape(...) { from(...) }` for shape, dtype, rank, volume, and values.
+
+== Risks
+
+Direct `Tensor` literals are misleading::
+`Tensor` materialization depends on context, dtype, storage, and ops. Hiding those behind `Tensor.Companion.of` would make examples pretty but semantically weak.
+
+Expected-type inference is fragile::
+Bracket literals need an expected type. APIs should put literals in regular parameter positions like `values: MatrixLiteral<V>` instead of requiring users to annotate local variables.
+
+Overload ambiguity can leak into user code::
+Avoid overloading `matrixOf` across too many literal carrier types. Prefer distinct names for vector, matrix, and rank-N tensor paths.
+
+Performance may disappoint for large tensors::
+Collection literals use varargs and small-object construction. This is fine for fixtures and tutorials, not large data.
+
+Kotlin feature instability::
+Both collection literals and explicit context arguments are experimental. SKaiNET should ship this behind its own experimental annotation and avoid promising source stability until Kotlin does.
+
+== Open Questions
+
+* Should rank-N support be included in the MVP, or should MVP stop at vector and matrix?
+* Should literal carrier types expose `List<V>`, primitive arrays, or only read-only indexed access?
+* Should integer literals support `Int8`/`Int32` dtype aliases directly or require separate value type APIs?
+* Should `TensorBuildContext` include memory placement or storage encoding when the backend grows beyond dense CPU defaults?
+* Should docs prefer `matrixOf(values = [[...]])` or positional `matrixOf([[...]])` once IDE support is mature?
+
+== References
+
+* Kotlin KEEP-0416: Collection Literals, https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-0416-collection-literals.md
+* Kotlin KEEP-0448: Explicit context arguments, https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-0448-explicit-context-arguments.md
+* Kotlin 2.4.0 release notes, https://kotlinlang.org/docs/whatsnew24.html
+* Existing SKaiNET tensor construction guide, xref:ROOT:how-to/build-tensors.adoc[Build tensors with the data DSL]
+* Existing SKaiNET dtype guide, xref:ROOT:contributing/dtype-model.adoc[The SKaiNET dtype model]
