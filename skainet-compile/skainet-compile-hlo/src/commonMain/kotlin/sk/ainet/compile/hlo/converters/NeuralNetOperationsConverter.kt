@@ -509,9 +509,16 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val offsetOperand: String? = if (operands.size > 2) operands[2] else null
 
         val grouped = context.nextTempValue()
+        val zeroInit = context.nextTempValue()
+        val countConst = context.nextTempValue()
+        val sumX = context.nextTempValue()
         val meanValue = context.nextTempValue()
         val meanBroadcast = context.nextTempValue()
         val centered = context.nextTempValue()
+        val squared = context.nextTempValue()
+        val sumSq = context.nextTempValue()
+        val meanSq = context.nextTempValue()
+        val meanSquared = context.nextTempValue()
         val varValue = context.nextTempValue()
         val epsConst = context.nextTempValue()
         val epsBroadcast = context.nextTempValue()
@@ -527,16 +534,25 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         // spatial into one trailing axis so a single-axis reduction is per-group.
         operations += "$grouped = stablehlo.reshape $xInput : ($outputType) -> $groupedType"
 
-        // mean(xg) over the trailing axis, broadcast back, mean-center.
-        operations += "$meanValue = stablehlo.custom_call @reduce_mean($grouped) " +
-            "{dimensions = [2], keepdim = false} : $reducedType"
+        // Reductions use real `stablehlo.reduce` (not @reduce_* custom_calls) so the module
+        // compiles on stock IREE. mean(xg) = sum(xg) / M over the trailing axis; broadcast
+        // back and mean-center.
+        operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$elementType>"
+        operations += "$countConst = stablehlo.constant dense<${perGroup}.0> : $reducedType"
+        operations += "$sumX = stablehlo.reduce($grouped init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [2] : ($groupedType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanValue = stablehlo.divide $sumX, $countConst : $reducedType"
         operations += "$meanBroadcast = stablehlo.broadcast_in_dim $meanValue, " +
             "dims = [0, 1] : ($reducedType) -> $groupedType"
         operations += "$centered = stablehlo.subtract $grouped, $meanBroadcast : $groupedType"
 
-        // var(xg) over the trailing axis; std = sqrt(var + eps).
-        operations += "$varValue = stablehlo.custom_call @reduce_variance($grouped) " +
-            "{dimensions = [2], keepdim = false} : $reducedType"
+        // var(xg) = E[xg^2] - E[xg]^2 (population, ddof=0); std = sqrt(var + eps).
+        operations += "$squared = stablehlo.multiply $grouped, $grouped : $groupedType"
+        operations += "$sumSq = stablehlo.reduce($squared init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [2] : ($groupedType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanSq = stablehlo.divide $sumSq, $countConst : $reducedType"
+        operations += "$meanSquared = stablehlo.multiply $meanValue, $meanValue : $reducedType"
+        operations += "$varValue = stablehlo.subtract $meanSq, $meanSquared : $reducedType"
         operations += "$epsConst = stablehlo.constant dense<$epsilon> : tensor<$elementType>"
         operations += "$epsBroadcast = stablehlo.broadcast_in_dim $epsConst, " +
             "dims = [] : (tensor<$elementType>) -> $reducedType"
