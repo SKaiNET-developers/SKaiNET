@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -241,21 +241,30 @@ Runnable examples:
 
 ---
 
-## What's New in 0.31.2
+## What's New in 0.32.1
 
-- **`RowDequantSource` + `ops.gather` row-dequant.** A `TensorData` can now mark itself `RowDequantSource`
-  (`dequantRow(rowIdx): FloatArray`); `ops.gather` then dequantises only the rows it touches instead of
-  materialising the whole table (and instead of the `get()` path, which such tensors don't support). The
-  table presents as logical FP32, so a packed/oversized embedding (a Q-quantised `token_embd`) can stay
-  packed and be looked up via `ops.gather` directly — moving the per-row-dequant trick out of model code
-  into the engine. (PR #741)
+- **GroupNorm compiles on stock IREE.** The 0.32.0 GroupNorm converter emitted `@reduce_mean` /
+  `@reduce_variance` custom_calls that `iree-compile` can't lower; it now emits real `stablehlo.reduce`
+  (variance as `E[x²] − E[x]²`, ddof=0), like `sum` / `mean` / `variance`. Verified end-to-end through
+  the [`skainet-iree-conformance`](https://github.com/SKaiNET-developers/skainet-iree-conformance) harness
+  (`iree-compile` + `iree-run-module` + numpy validate → PASS, `max_abs_err = 1.2e-7`). (PR #754)
 
-## What's New in 0.31.0
+## What's New in 0.32.0
 
-- **`ops.transpose` lazily handles every packed matmul dtype.** The CPU backend rewraps packed bytes with a flipped shape (metadata-only "lazy transpose") so a packed weight survives `linearProject`'s `matmul(x, transpose(W))` instead of inflating to FP32 — but **Q8_0 and Q4_0** were missing and threw `Byte → Float ClassCastException`. Now the full dispatch set (Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0) transposes lazily, so a packed Q8_0/Q4_0 matmul weight (e.g. a tied Q8_0 `lm_head`) stays packed end-to-end on its NEON/SIMD kernel. Regression-tested across all seven packed types. (PRs #736, #737)
-- **Dependency:** `com.networknt:json-schema-validator` → 3.0.4. (PR #733)
+- **GroupNorm StableHLO converter.** `groupNorm` now lowers to real `stablehlo.*` ops — reshape
+  `(N, C, *spatial)` into `(N, G, M)` groups → per-group `mean`/`variance` → normalize → reshape back →
+  optional per-channel `scale`/`offset`. Previously a `groupNorm` node fell through to the "operation
+  not supported" path. (PR #752)
+- **Docs:** a SKEEP proposals module (PR #750) and a quantization-process explanation —
+  weights, activations, calibration (PR #747).
+- **Dependencies:** `com.vanniktech.maven.publish` → 0.37.0 (#748),
+  `com.networknt:json-schema-validator` → 3.0.5 (#749), kotest → 6.2.1 (#744),
+  Gradle wrapper → 9.6.0 (#745), `actions/checkout` → 7 (#743).
 
 ### Recent releases
+
+- **0.31.2** — `RowDequantSource` + `ops.gather` row-dequant: a packed/oversized embedding (a Q-quantised `token_embd`) stays packed and is looked up via `ops.gather`, dequantising only the touched rows. (PR #741)
+- **0.31.0** — `ops.transpose` lazily handles every packed matmul dtype (Q8_0/Q4_0 added, completing the Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0 set); `json-schema-validator` → 3.0.4. (PRs #736, #737, #733)
 
 - **0.30.0** — First-class **Q5_K packed in-kernel dequant-matmul** across the CPU backends (`Q5_KBlockTensorData` + `Q5KMatmulKernel` SPI: scalar / Panama Vector / native-C), **hand-written ARM NEON kernels** (fp32/q8_0/q4k/q5k, `-march=armv8.2-a+fp16+dotprod`), and **Kotlin/Native consumption of the C kernels via cinterop** (`skainet-backend-native-cpu` static archive + `linuxX64`/`linuxArm64` `KernelProvider`). (PR #734)
 

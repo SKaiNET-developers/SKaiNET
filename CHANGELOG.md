@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-06-23
+
+### Fixed
+
+- **GroupNorm now compiles on stock IREE.** The 0.32.0 GroupNorm converter lowered mean/variance
+  with `stablehlo.custom_call @reduce_mean` / `@reduce_variance` (mirroring LayerNorm), which
+  `iree-compile` cannot lower — so a `groupNorm` module exported but failed to compile. It now emits
+  real `stablehlo.reduce` (add region) + `divide`, computing variance as `E[x²] − E[x]²` (population,
+  ddof=0), exactly like the `sum` / `mean` / `variance` converters. Verified end-to-end through the
+  `skainet-iree-conformance` harness: `iree-compile` + `iree-run-module` + numpy validate → PASS
+  (`max_abs_err = 1.2e-7`). `GroupNormConverterTest` asserts real reductions and no `custom_call`.
+  (PR #754)
+
+## [0.32.0] - 2026-06-22
+
+### Added
+
+- **GroupNorm StableHLO converter.** `NeuralNetOperationsConverter` now lowers `groupNorm`
+  (and the `groupNormalization` / `GroupNormalization` / `group_norm` aliases) to real
+  `stablehlo.*` ops instead of falling through to the "operation not supported" path. The
+  lowering mirrors the LayerNorm/RMSNorm decomposition: reshape `(N, C, *spatial)` to
+  `(N, G, M)`, per-group `mean` / `variance`, normalize, reshape back, and apply the optional
+  per-channel `scale` / `offset`. Adds `GroupNormConverterTest` (commonTest). (PR #752)
+- **SKEEP proposals docs module.** (PR #750)
+- **Quantization-process explanation doc** (weights, activations, calibration). (PR #747)
+
+### Changed
+
+- **Dependency bumps:** `com.vanniktech.maven.publish` → 0.37.0 (PR #748),
+  `com.networknt:json-schema-validator` → 3.0.5 (PR #749), kotest → 6.2.1 (PR #744),
+  Gradle wrapper → 9.6.0 (PR #745), `actions/checkout` → 7 (PR #743).
+
 ## [0.31.2] - 2026-06-18
 
 ### Added
