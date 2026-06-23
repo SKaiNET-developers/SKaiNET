@@ -51,9 +51,12 @@ class GroupNormConverterTest {
         val mlir = module.content
 
         assertTrue(mlir.contains("stablehlo.reshape"), "groupNorm must reshape to group the channels and back")
-        assertTrue(mlir.contains("@reduce_mean"), "groupNorm must lower mean(x) to a real reduction")
-        assertTrue(mlir.contains("@reduce_variance"), "groupNorm must lower var(x) to a real reduction")
-        assertTrue(mlir.contains("stablehlo.subtract"), "groupNorm must mean-center")
+        assertTrue(mlir.contains("stablehlo.reduce("), "groupNorm must lower mean/var to real stablehlo.reduce")
+        assertFalse(
+            mlir.contains("custom_call"),
+            "groupNorm must use real stablehlo.reduce, not @reduce_* custom_calls (those don't compile on IREE)"
+        )
+        assertTrue(mlir.contains("stablehlo.subtract"), "groupNorm must mean-center and form E[x^2]-E[x]^2")
         assertTrue(mlir.contains("stablehlo.sqrt"), "groupNorm must take sqrt(var + eps)")
         assertTrue(mlir.contains("stablehlo.divide"), "groupNorm must divide by the std")
         assertTrue(mlir.contains("stablehlo.broadcast_in_dim"), "groupNorm must broadcast reduced stats back")
@@ -68,9 +71,9 @@ class GroupNormConverterTest {
         val mlir = module.content
 
         assertFalse(mlir.contains("@group_norm"))
+        assertFalse(mlir.contains("custom_call"))
         assertTrue(mlir.contains("stablehlo.reshape"))
-        assertTrue(mlir.contains("@reduce_mean"))
-        assertTrue(mlir.contains("@reduce_variance"))
+        assertTrue(mlir.contains("stablehlo.reduce("))
         assertTrue(mlir.contains("stablehlo.sqrt"))
         assertTrue(mlir.contains("stablehlo.divide"))
     }
