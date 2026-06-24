@@ -3,6 +3,7 @@ title: SKaiNET
 version: ~
 nav:
   - modules/ROOT/nav.adoc
+  - modules/skeep/nav.adoc
 
 # Component-level attributes flow to every page. Defined here so the
 # operator-design article (and any future page) can reference them

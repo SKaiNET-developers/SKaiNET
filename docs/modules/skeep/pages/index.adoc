@@ -1,0 +1,64 @@
+= SKEEP: SKaiNET Enhancement and Evolution Proposals
+:description: SKaiNET's KEEP-style proposal track for language-facing APIs, public architecture decisions, and long-lived design records.
+
+SKEEP is SKaiNET's proposal track for design changes that need more durability than an issue or pull request description.
+
+It is inspired by Kotlin KEEP, but scoped to SKaiNET. A SKEEP can describe public APIs, DSL changes, compiler or runtime integration points, storage semantics, documentation strategy, or migration policy.
+
+== Numbering
+
+SKEEP files use three-digit stable numbering:
+
+[source,text]
+----
+001-tensor-collection-literals.adoc
+002-future-topic.adoc
+003-future-topic.adoc
+----
+
+Numbers are assigned when a proposal is accepted into the docs tree, not when the underlying feature ships.
+
+== Status Values
+
+Draft::
+The proposal is being shaped and may still change substantially.
+
+Accepted::
+The design direction is approved, but implementation may still be pending.
+
+Implemented::
+The feature is available in released or releasable SKaiNET code.
+
+Superseded::
+A newer SKEEP replaced the design.
+
+Rejected::
+The proposal was considered and intentionally not pursued.
+
+== Proposal Template
+
+Every proposal should include:
+
+* title and SKEEP number;
+* status;
+* audience;
+* summary;
+* motivation;
+* proposed design;
+* compatibility and migration notes;
+* rollout plan;
+* acceptance criteria;
+* risks;
+* open questions;
+* references.
+
+== Current Proposals
+
+[cols="1,1,3",options="header"]
+|===
+| Number | Status | Title
+
+| xref:skeep:001-tensor-collection-literals.adoc[SKEEP-001]
+| Draft
+| Tensor collection literals
+|===

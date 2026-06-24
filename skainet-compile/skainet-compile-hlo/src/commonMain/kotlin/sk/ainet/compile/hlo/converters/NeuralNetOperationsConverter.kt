@@ -29,6 +29,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         "batchNorm", "batchNormalization", "BatchNormalization",
         "layerNorm", "layerNormalization", "LayerNormalization",
         "rmsNorm", "rms_norm", "RMSNorm", "RmsNorm",
+        "groupNorm", "groupNormalization", "GroupNormalization", "group_norm",
         // Attention
         "scaledDotProductAttention"
     )
@@ -46,6 +47,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             "batchnorm", "batchnormalization" -> convertBatchNorm(node, operands, context)
             "layernorm", "layernormalization" -> convertLayerNorm(node, operands, context)
             "rmsnorm", "rms_norm" -> convertRmsNorm(node, operands, context)
+            "groupnorm", "groupnormalization", "group_norm" -> convertGroupNorm(node, operands, context)
             "scaleddotproductattention" -> convertSdpa(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
@@ -433,6 +435,164 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         )
     }
     
+    /**
+     * Lower GroupNorm to real StableHLO elementwise ops, in the same
+     * decomposition style as LayerNorm / RMSNorm (no `@group_norm`
+     * custom_call stub). GroupNorm splits the `C` channels of an
+     * `(N, C, *spatial)` input into `num_groups` groups and normalizes each
+     * group over its channels and spatial positions, then applies an
+     * optional per-channel affine:
+     *
+     *     xg   = reshape(x, [N, G, M])              // M = (C/G) * prod(spatial)
+     *     out  = (xg - mean(xg)) / sqrt(var(xg) + eps)   // reduce over M
+     *     out  = reshape(out, [N, C, *spatial])
+     *     out  = out * scale + offset               // scale/offset shape (C,), optional
+     *
+     * The per-group reduction reuses the single-axis `@reduce_mean` /
+     * `@reduce_variance` custom_calls (exactly as LayerNorm does) by collapsing
+     * each group's channels + spatial into one trailing axis. Scale and offset
+     * broadcast over the channel dimension only.
+     */
+    private fun convertGroupNorm(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.isEmpty()) {
+            return ConversionResult.Failure(
+                "GroupNorm operation requires at least 1 operand (input), got ${operands.size}",
+                "Unsupported groupNorm arity for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?x?x?xf32>"
+        val elementType = outputSpec?.let { context.getTypeMapper().mapDType(it.dtype) }
+            ?: "f32"
+
+        val inputShape = node.inputs.firstOrNull()?.shape ?: outputSpec?.shape ?: emptyList()
+        if (inputShape.size < 2) {
+            return ConversionResult.Failure(
+                "GroupNorm requires an (N, C, ...) input of rank >= 2, got rank ${inputShape.size}",
+                "Unsupported groupNorm input rank for node ${node.id}"
+            )
+        }
+
+        val n = inputShape[0]
+        val c = inputShape[1]
+        val spatialCount = inputShape.drop(2).fold(1) { acc, d -> acc * d }
+
+        val params = node.operation.parameters
+        val numGroups = (params["num_groups"] as? Int)
+            ?: (params["groups"] as? Int)
+            ?: (params["numGroups"] as? Int)
+            ?: 1
+        val groups = numGroups.coerceIn(1, if (c > 0) c else 1)
+        if (c % groups != 0) {
+            return ConversionResult.Failure(
+                "GroupNorm channels ($c) must be divisible by num_groups ($groups)",
+                "Unsupported groupNorm grouping for node ${node.id}"
+            )
+        }
+        val perGroup = (c / groups) * spatialCount  // M
+
+        val epsilon = (params["eps"] as? Double)
+            ?: (params["epsilon"] as? Double)
+            ?: 1e-5
+
+        val groupedType = "tensor<${n}x${groups}x${perGroup}x$elementType>"
+        val reducedType = "tensor<${n}x${groups}x$elementType>"
+
+        val xInput = operands[0]
+        val scaleOperand: String? = if (operands.size > 1) operands[1] else null
+        val offsetOperand: String? = if (operands.size > 2) operands[2] else null
+
+        val grouped = context.nextTempValue()
+        val zeroInit = context.nextTempValue()
+        val countConst = context.nextTempValue()
+        val sumX = context.nextTempValue()
+        val meanValue = context.nextTempValue()
+        val meanBroadcast = context.nextTempValue()
+        val centered = context.nextTempValue()
+        val squared = context.nextTempValue()
+        val sumSq = context.nextTempValue()
+        val meanSq = context.nextTempValue()
+        val meanSquared = context.nextTempValue()
+        val varValue = context.nextTempValue()
+        val epsConst = context.nextTempValue()
+        val epsBroadcast = context.nextTempValue()
+        val varPlusEps = context.nextTempValue()
+        val stdValue = context.nextTempValue()
+        val stdBroadcast = context.nextTempValue()
+        val normalized = context.nextTempValue()
+        val reshapedBack = context.nextTempValue()
+
+        val operations = mutableListOf<String>()
+
+        // Reshape (N, C, *spatial) -> (N, G, M): collapse each group's channels +
+        // spatial into one trailing axis so a single-axis reduction is per-group.
+        operations += "$grouped = stablehlo.reshape $xInput : ($outputType) -> $groupedType"
+
+        // Reductions use real `stablehlo.reduce` (not @reduce_* custom_calls) so the module
+        // compiles on stock IREE. mean(xg) = sum(xg) / M over the trailing axis; broadcast
+        // back and mean-center.
+        operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$elementType>"
+        operations += "$countConst = stablehlo.constant dense<${perGroup}.0> : $reducedType"
+        operations += "$sumX = stablehlo.reduce($grouped init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [2] : ($groupedType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanValue = stablehlo.divide $sumX, $countConst : $reducedType"
+        operations += "$meanBroadcast = stablehlo.broadcast_in_dim $meanValue, " +
+            "dims = [0, 1] : ($reducedType) -> $groupedType"
+        operations += "$centered = stablehlo.subtract $grouped, $meanBroadcast : $groupedType"
+
+        // var(xg) = E[xg^2] - E[xg]^2 (population, ddof=0); std = sqrt(var + eps).
+        operations += "$squared = stablehlo.multiply $grouped, $grouped : $groupedType"
+        operations += "$sumSq = stablehlo.reduce($squared init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [2] : ($groupedType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanSq = stablehlo.divide $sumSq, $countConst : $reducedType"
+        operations += "$meanSquared = stablehlo.multiply $meanValue, $meanValue : $reducedType"
+        operations += "$varValue = stablehlo.subtract $meanSq, $meanSquared : $reducedType"
+        operations += "$epsConst = stablehlo.constant dense<$epsilon> : tensor<$elementType>"
+        operations += "$epsBroadcast = stablehlo.broadcast_in_dim $epsConst, " +
+            "dims = [] : (tensor<$elementType>) -> $reducedType"
+        operations += "$varPlusEps = stablehlo.add $varValue, $epsBroadcast : $reducedType"
+        operations += "$stdValue = stablehlo.sqrt $varPlusEps : $reducedType"
+        operations += "$stdBroadcast = stablehlo.broadcast_in_dim $stdValue, " +
+            "dims = [0, 1] : ($reducedType) -> $groupedType"
+        operations += "$normalized = stablehlo.divide $centered, $stdBroadcast : $groupedType"
+
+        // Reshape back to (N, C, *spatial).
+        operations += "$reshapedBack = stablehlo.reshape $normalized : ($groupedType) -> $outputType"
+
+        // Optional per-channel affine: scale/offset have shape (C,), broadcast over
+        // the channel dimension (index 1).
+        var current = reshapedBack
+        if (scaleOperand != null) {
+            val scaleBroadcast = context.nextTempValue()
+            val scaled = context.nextTempValue()
+            operations += "$scaleBroadcast = stablehlo.broadcast_in_dim $scaleOperand, " +
+                "dims = [1] : (tensor<${c}x$elementType>) -> $outputType"
+            operations += "$scaled = stablehlo.multiply $current, $scaleBroadcast : $outputType"
+            current = scaled
+        }
+        if (offsetOperand != null) {
+            val offsetBroadcast = context.nextTempValue()
+            val offsetted = context.nextTempValue()
+            operations += "$offsetBroadcast = stablehlo.broadcast_in_dim $offsetOperand, " +
+                "dims = [1] : (tensor<${c}x$elementType>) -> $outputType"
+            operations += "$offsetted = stablehlo.add $current, $offsetBroadcast : $outputType"
+            current = offsetted
+        }
+
+        operations.forEach { context.emitOperation(it) }
+
+        return ConversionResult.Success(
+            outputValueName = current,
+            emittedOperations = operations
+        )
+    }
+
     /**
      * Lower RMSNorm to real StableHLO elementwise ops. This is the
      * normalization every Llama / Mistral / Qwen / Gemma family

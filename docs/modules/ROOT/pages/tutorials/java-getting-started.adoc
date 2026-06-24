@@ -46,7 +46,7 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
 ----
 <project>
     <properties>
-        <skainet.version>0.27.0</skainet.version>
+        <skainet.version>0.32.2</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -144,7 +144,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.2"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")
@@ -325,5 +325,5 @@ var usq  = TensorJavaOps.unsqueeze(a, 0);
 
 === Next Steps
 
-* link:java-llm-inference.md[LLM Inference Guide] -- load GGUF/SafeTensors models, generate text, run BERT embeddings, and build tool-calling agents.
-* link:java-model-training.md[Model Training Guide] -- build sequential models, train on MNIST, and run async training loops.
+* xref:how-to/java-llm-inference.adoc[LLM Inference Guide] -- load GGUF/SafeTensors models, generate text, run BERT embeddings, and build tool-calling agents.
+* xref:how-to/java-model-training.adoc[Model Training Guide] -- build sequential models, train on MNIST, and run async training loops.

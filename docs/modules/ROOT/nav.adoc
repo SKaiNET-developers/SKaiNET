@@ -29,6 +29,7 @@
 ** xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
 ** xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits]
 ** xref:explanation/operator-design.adoc[Operator documentation system]
+** xref:explanation/quantization-process.adoc[The quantization process]
 ** xref:explanation/theory/index.adoc[Mathematical theory]
 *** xref:explanation/theory/matmul.adoc[Matrix multiplication]
 ** xref:explanation/examples/index.adoc[Worked examples]

@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.2"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -75,10 +75,10 @@ val d = c.relu()
 val source = JvmRandomAccessSource.open("model.gguf")
 StreamingGGUFReader.open(source).use { reader ->
     println("Tensors: ${reader.tensorCount}")
-    
+
     // Load specific tensor on demand (no whole-file loading)
     val bytes = reader.loadTensor("token_embd.weight")
-    
+
     // Or get a TensorStorage descriptor with encoding/placement metadata
     val storage = reader.loadTensorStorage("token_embd.weight")
 }
@@ -106,6 +106,20 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
 | Eager backends & kernels (what runs where) | [Backends & kernels mindmap](docs/eager-execution-backends-and-kernels.md) |
+| Design proposals and long-lived API decisions | [SKEEP proposals](docs/modules/skeep/pages/index.adoc) |
+
+---
+
+## Contributing and Design Proposals
+
+Small fixes can go straight through the normal contribution flow described in
+[CONTRIBUTING.md](CONTRIBUTING.md) and [GITFLOW.adoc](GITFLOW.adoc).
+
+Use a SKEEP when a change affects public APIs, DSL syntax, tensor semantics,
+compiler/runtime integration, storage behavior, compatibility policy, or other
+decisions that need a durable design record. SKEEP files live under
+`docs/modules/skeep/pages/` and use three-digit numbering, starting with
+`001`.
 
 ---
 
@@ -227,21 +241,29 @@ Runnable examples:
 
 ---
 
-## What's New in 0.31.2
+## What's New in 0.32.2
 
-- **`RowDequantSource` + `ops.gather` row-dequant.** A `TensorData` can now mark itself `RowDequantSource`
-  (`dequantRow(rowIdx): FloatArray`); `ops.gather` then dequantises only the rows it touches instead of
-  materialising the whole table (and instead of the `get()` path, which such tensors don't support). The
-  table presents as logical FP32, so a packed/oversized embedding (a Q-quantised `token_embd`) can stay
-  packed and be looked up via `ops.gather` directly — moving the per-row-dequant trick out of model code
-  into the engine. (PR #741)
+- **`ExecutionContext.isRecording`.** A default-`false` flag (overridden by the graph/tape context)
+  so a module with an eager fast-path that bypasses `ops.*` — e.g. RoPE's raw-array INTERLEAVED
+  rotation — can detect tracing and emit a graph-traceable `ctx.ops.*` path instead, exporting to
+  StableHLO while keeping the eager fast path. Backward-compatible. (PR #757)
+- **Docs:** Antora version-currency + broken-link fixes across all pages (PR #758).
+- **Dependency:** `ch.qos.logback:logback-classic` → 1.5.35 (#756).
 
-## What's New in 0.31.0
+## What's New in 0.32.1
 
-- **`ops.transpose` lazily handles every packed matmul dtype.** The CPU backend rewraps packed bytes with a flipped shape (metadata-only "lazy transpose") so a packed weight survives `linearProject`'s `matmul(x, transpose(W))` instead of inflating to FP32 — but **Q8_0 and Q4_0** were missing and threw `Byte → Float ClassCastException`. Now the full dispatch set (Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0) transposes lazily, so a packed Q8_0/Q4_0 matmul weight (e.g. a tied Q8_0 `lm_head`) stays packed end-to-end on its NEON/SIMD kernel. Regression-tested across all seven packed types. (PRs #736, #737)
-- **Dependency:** `com.networknt:json-schema-validator` → 3.0.4. (PR #733)
+- **GroupNorm compiles on stock IREE.** The 0.32.0 GroupNorm converter emitted `@reduce_mean` /
+  `@reduce_variance` custom_calls that `iree-compile` can't lower; it now emits real `stablehlo.reduce`
+  (variance as `E[x²] − E[x]²`, ddof=0), like `sum` / `mean` / `variance`. Verified end-to-end through
+  the [`skainet-iree-conformance`](https://github.com/SKaiNET-developers/skainet-iree-conformance) harness
+  (`iree-compile` + `iree-run-module` + numpy validate → PASS, `max_abs_err = 1.2e-7`). (PR #754)
 
 ### Recent releases
+
+- **0.32.0** — **GroupNorm StableHLO converter** (#752): `groupNorm` lowers to real `stablehlo.*` ops; plus a SKEEP proposals docs module (#750), a quantization-process explanation (#747), and dependency bumps.
+
+- **0.31.2** — `RowDequantSource` + `ops.gather` row-dequant: a packed/oversized embedding (a Q-quantised `token_embd`) stays packed and is looked up via `ops.gather`, dequantising only the touched rows. (PR #741)
+- **0.31.0** — `ops.transpose` lazily handles every packed matmul dtype (Q8_0/Q4_0 added, completing the Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0 set); `json-schema-validator` → 3.0.4. (PRs #736, #737, #733)
 
 - **0.30.0** — First-class **Q5_K packed in-kernel dequant-matmul** across the CPU backends (`Q5_KBlockTensorData` + `Q5KMatmulKernel` SPI: scalar / Panama Vector / native-C), **hand-written ARM NEON kernels** (fp32/q8_0/q4k/q5k, `-march=armv8.2-a+fp16+dotprod`), and **Kotlin/Native consumption of the C kernels via cinterop** (`skainet-backend-native-cpu` static archive + `linuxX64`/`linuxArm64` `KernelProvider`). (PR #734)
 
