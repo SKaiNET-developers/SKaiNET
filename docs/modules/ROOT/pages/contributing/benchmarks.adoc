@@ -1,5 +1,4 @@
 = Official Engine Benchmarks
-:url-prd: https://github.com/ainet-sk/SKaiNET/blob/main/bench-prd.md
 :url-pts: https://www.phoronix-test-suite.com/
 :url-obo: https://openbenchmarking.org/
 
@@ -72,8 +71,7 @@ records should be excluded from public leaderboards.
 
 The full lane currently runs on a Linux x86 host with an
 AVX2-capable CPU. macOS Arm64 and Linux Arm64 lanes are tracked as
-follow-ups in the
-{url-prd}[engine benchmark PRD].
+follow-ups.
 
 == Reproducing a public run locally
 
@@ -110,7 +108,7 @@ To register this machine as the official self-hosted runner:
 [source,bash]
 ----
 GH_RUNNER_TOKEN=<token from repo Settings -> Actions -> Runners> \
-  REPO=ainet-sk/SKaiNET \
+  REPO=SKaiNET-developers/SKaiNET \
   ./scripts/register_bench_runner.sh
 ----
 
@@ -136,7 +134,6 @@ comparisons don't silently break.
 
 == Related
 
-* {url-prd}[Engine + Transformers benchmark PRD]
 * {url-pts}[Phoronix Test Suite]
 * {url-obo}[OpenBenchmarking.org]
 * xref:explanation/perf/jvm-cpu.adoc[JVM CPU backend notes]
