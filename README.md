@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.32.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.2"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -241,6 +241,15 @@ Runnable examples:
 
 ---
 
+## What's New in 0.32.2
+
+- **`ExecutionContext.isRecording`.** A default-`false` flag (overridden by the graph/tape context)
+  so a module with an eager fast-path that bypasses `ops.*` — e.g. RoPE's raw-array INTERLEAVED
+  rotation — can detect tracing and emit a graph-traceable `ctx.ops.*` path instead, exporting to
+  StableHLO while keeping the eager fast path. Backward-compatible. (PR #757)
+- **Docs:** Antora version-currency + broken-link fixes across all pages (PR #758).
+- **Dependency:** `ch.qos.logback:logback-classic` → 1.5.35 (#756).
+
 ## What's New in 0.32.1
 
 - **GroupNorm compiles on stock IREE.** The 0.32.0 GroupNorm converter emitted `@reduce_mean` /
@@ -249,19 +258,9 @@ Runnable examples:
   the [`skainet-iree-conformance`](https://github.com/SKaiNET-developers/skainet-iree-conformance) harness
   (`iree-compile` + `iree-run-module` + numpy validate → PASS, `max_abs_err = 1.2e-7`). (PR #754)
 
-## What's New in 0.32.0
-
-- **GroupNorm StableHLO converter.** `groupNorm` now lowers to real `stablehlo.*` ops — reshape
-  `(N, C, *spatial)` into `(N, G, M)` groups → per-group `mean`/`variance` → normalize → reshape back →
-  optional per-channel `scale`/`offset`. Previously a `groupNorm` node fell through to the "operation
-  not supported" path. (PR #752)
-- **Docs:** a SKEEP proposals module (PR #750) and a quantization-process explanation —
-  weights, activations, calibration (PR #747).
-- **Dependencies:** `com.vanniktech.maven.publish` → 0.37.0 (#748),
-  `com.networknt:json-schema-validator` → 3.0.5 (#749), kotest → 6.2.1 (#744),
-  Gradle wrapper → 9.6.0 (#745), `actions/checkout` → 7 (#743).
-
 ### Recent releases
+
+- **0.32.0** — **GroupNorm StableHLO converter** (#752): `groupNorm` lowers to real `stablehlo.*` ops; plus a SKEEP proposals docs module (#750), a quantization-process explanation (#747), and dependency bumps.
 
 - **0.31.2** — `RowDequantSource` + `ops.gather` row-dequant: a packed/oversized embedding (a Q-quantised `token_embd`) stays packed and is looked up via `ops.gather`, dequantising only the touched rows. (PR #741)
 - **0.31.0** — `ops.transpose` lazily handles every packed matmul dtype (Q8_0/Q4_0 added, completing the Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0 set); `json-schema-validator` → 3.0.4. (PRs #736, #737, #733)
