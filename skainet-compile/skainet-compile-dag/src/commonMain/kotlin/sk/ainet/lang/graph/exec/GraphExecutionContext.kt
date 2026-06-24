@@ -28,9 +28,10 @@ public interface GraphExecutionContext : ExecutionContext, TrainingExecutionCont
     public val tapeStack: TapeStack
 
     /**
-     * Whether operations should be recorded
+     * Whether operations should be recorded. Overrides [ExecutionContext.isRecording] so modules
+     * can route eager-vs-trace without depending on the graph module.
      */
-    public val isRecording: Boolean get() = currentTape?.isRecording == true
+    override val isRecording: Boolean get() = currentTape?.isRecording == true
 
 
     /**

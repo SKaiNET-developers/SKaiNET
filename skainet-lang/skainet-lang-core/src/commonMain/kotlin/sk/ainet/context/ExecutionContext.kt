@@ -23,6 +23,15 @@ public interface ExecutionContext {
     public val phase: Phase
     public val inTraining: Boolean get() = phase == Phase.TRAIN
 
+    /**
+     * Whether this context is currently *recording* a trace/graph (vs. plain eager execution).
+     * Defaults to `false` (eager); the graph/tape context overrides it. Modules with an eager
+     * fast-path that bypasses `ops.*` (e.g. RoPE's raw-array interleaved rotation) can check this
+     * to emit a graph-traceable `ctx.ops.*` path instead when recording, so they export to
+     * StableHLO while keeping the fast path for eager inference.
+     */
+    public val isRecording: Boolean get() = false
+
     public val tensorDataFactory: TensorDataFactory
 
     /**
