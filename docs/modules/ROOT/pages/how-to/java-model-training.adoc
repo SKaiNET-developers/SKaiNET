@@ -12,7 +12,7 @@ This guide covers building neural networks, defining loss functions and optimize
 === Prerequisites
 
 * JDK 21{plus} (CI builds on JDK 25); Gradle passes `--enable-preview --add-modules jdk.incubator.vector` automatically
-* See link:java-getting-started.md[Java Getting Started] for project setup
+* See xref:tutorials/java-getting-started.adoc[Java Getting Started] for project setup
 
 ==== Maven Dependencies
 
@@ -23,7 +23,7 @@ This guide covers building neural networks, defining loss functions and optimize
         <dependency>
             <groupId>sk.ainet</groupId>
             <artifactId>skainet-bom</artifactId>
-            <version>0.27.0</version>
+            <version>0.32.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -454,5 +454,5 @@ future.thenAccept(result -> {
 
 === Next Steps
 
-* link:java-getting-started.md[Java Getting Started] -- tensor operations, project setup, and dependency management.
-* link:java-llm-inference.md[LLM Inference Guide] -- load GGUF/SafeTensors models, generate text, and build agents.
+* xref:tutorials/java-getting-started.adoc[Java Getting Started] -- tensor operations, project setup, and dependency management.
+* xref:how-to/java-llm-inference.adoc[LLM Inference Guide] -- load GGUF/SafeTensors models, generate text, and build agents.
