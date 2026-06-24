@@ -46,7 +46,7 @@ The `skainet-bom` manages all SKaiNET module versions so you never have to keep 
 ----
 <project>
     <properties>
-        <skainet.version>0.32.1</skainet.version>
+        <skainet.version>0.32.2</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -144,7 +144,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.32.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.2"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")

@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-06-24
+
+### Added
+
+- **`ExecutionContext.isRecording`.** A default-`false` `isRecording` on the lang-core
+  `ExecutionContext` interface, overridden by `GraphExecutionContext` (`currentTape?.isRecording`).
+  Lets modules with an eager fast-path that bypasses `ops.*` (e.g. RoPE's raw-array INTERLEAVED
+  rotation) detect tracing and emit a graph-traceable `ctx.ops.*` path — so they export to StableHLO
+  while keeping the fast path for eager inference — without depending on the compile-dag module.
+  Backward-compatible (existing `ExecutionContext` implementations inherit the default). (PR #757)
+
+### Changed
+
+- **Docs:** Antora docs version-currency (dependency snippets → current release) and broken-link
+  fixes across all pages (`.md` `link:` → `xref:`, dead `tensorflow.org/xla` → `openxla.org`, dead
+  `rfc.md`/`bench-prd.md` references, `ainet-sk` → `SKaiNET-developers`). (PR #758)
+- **Dependency:** `ch.qos.logback:logback-classic` 1.5.34 → 1.5.35. (PR #756)
+
 ## [0.32.1] - 2026-06-23
 
 ### Fixed
