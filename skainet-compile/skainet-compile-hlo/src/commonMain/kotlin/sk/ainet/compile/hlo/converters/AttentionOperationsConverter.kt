@@ -134,7 +134,10 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
             ops += "$iotaK = stablehlo.iota dim = $sdAxis : $scoresI32Type"
             ops += "$keep = stablehlo.compare GE, $iotaQ, $iotaK : ($scoresI32Type, $scoresI32Type) -> $scoresI1Type"
             ops += "$zeros = stablehlo.constant dense<0.0> : $scoresType"
-            ops += "$ninf = stablehlo.constant dense<0xFF800000> : $scoresType"
+            // Masked-fill with a large finite negative (not -inf): matches
+            // MultiHeadAttention.buildSlidingCausalMask (-1e30) and avoids a -inf splat in the
+            // masked-fill select, which can trip downstream greedy constant-folding.
+            ops += "$ninf = stablehlo.constant dense<-1.000000e+30> : $scoresType"
             ops += "$maskAdd = stablehlo.select $keep, $zeros, $ninf : $scoresI1Type, $scoresType"
             ops += "$masked = stablehlo.add $scaled, $maskAdd : $scoresType"
             softmaxIn = masked

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Graph-output pruning for export (`ComputeGraph.prunedToOutputs`).** A traced decoder surfaces
+  every leaf tensor (e.g. per-layer intermediates) as a graph output, so a StableHLO/IREE export
+  returns the logits plus dozens of dangling tensors — extra `func` returns and dead op subgraphs.
+  Adds `OutputDesignatedGraph` (skainet-compile-dag) to override the output set by node id, and
+  `ComputeGraph.prunedToOutputs(outputNodeIds)` (skainet-compile-opt) which designates those outputs
+  and runs `DeadCodeEliminationPass` so only the nodes feeding them survive. Exporters can now keep
+  just the logits. Adds `GraphPruningTest` (commonTest).
+
+### Changed
+
+- **SDPA causal mask uses a large finite fill (`-1e30`) instead of `-inf`.** The attention HLO
+  converter's causal path emitted `dense<0xFF800000>` (`-inf`) for the masked-fill select; it now
+  emits `-1.000000e+30`, matching `MultiHeadAttention.buildSlidingCausalMask` and avoiding a `-inf`
+  splat in the IR (numerically equivalent after softmax). (`AttentionOperationsConverter`)
+
 ## [0.32.2] - 2026-06-24
 
 ### Added
