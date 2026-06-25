@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.32.3] - 2026-06-25
+
 ### Added
 
 - **Graph-output pruning for export (`ComputeGraph.prunedToOutputs`).** A traced decoder surfaces
