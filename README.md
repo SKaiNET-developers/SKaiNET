@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.32.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.3"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -240,6 +240,17 @@ Runnable examples:
 - Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
 
 ---
+
+## What's New in 0.32.3
+
+- **Graph-output pruning for export (`ComputeGraph.prunedToOutputs`).** Trims a traced decoder's
+  StableHLO/IREE export to just the designated outputs (e.g. the logits), eliminating the dozens of
+  dangling per-layer tensors and dead op subgraphs a full trace otherwise emits as `func` returns —
+  via new `OutputDesignatedGraph` (compile-dag) + `prunedToOutputs` (compile-opt) running
+  `DeadCodeEliminationPass`. (PR #760)
+- **SDPA causal mask** now emits a large finite fill (`-1e30`) instead of `-inf`, matching
+  `buildSlidingCausalMask` and avoiding a `-inf` splat in the exported IR (numerically equivalent
+  after softmax). (`AttentionOperationsConverter`)
 
 ## What's New in 0.32.2
 
