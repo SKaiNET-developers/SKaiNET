@@ -86,7 +86,22 @@ public class SentencePieceTokenizer(
         return IntArray(out.size) { out[it] }
     }
 
-    override fun decode(ids: IntArray): String {
+    override fun decode(ids: IntArray): String = decode(ids, stripLeadingSpace = addSpacePrefix)
+
+    /**
+     * Decode a single token to its surface piece without stripping the leading
+     * word-boundary space — see [Tokenizer.decodeToken]. Required for correct
+     * spacing when a caller decodes generated tokens one at a time.
+     */
+    override fun decodeToken(id: Int): String = decode(intArrayOf(id), stripLeadingSpace = false)
+
+    /**
+     * Decode [ids] to text. When [stripLeadingSpace] is true a single leading
+     * space (the artefact of SentencePiece's `addSpacePrefix` at encode time) is
+     * removed — correct for a whole sequence, but NOT for an individual streaming
+     * token, which must keep its leading space.
+     */
+    public fun decode(ids: IntArray, stripLeadingSpace: Boolean): String {
         val sb = StringBuilder()
         val byteBuf = ArrayList<Byte>()
         for (id in ids) {
@@ -104,11 +119,8 @@ public class SentencePieceTokenizer(
         }
         if (byteBuf.isNotEmpty()) sb.append(flushBytes(byteBuf))
 
-        var result = sb.toString().replace(WHITESPACE_ESCAPE, ' ')
-        if (addSpacePrefix && result.startsWith(' ')) {
-            result = result.substring(1)
-        }
-        return result
+        val result = sb.toString().replace(WHITESPACE_ESCAPE, ' ')
+        return if (stripLeadingSpace && result.startsWith(' ')) result.substring(1) else result
     }
 
     // ------------------------------------------------------------------

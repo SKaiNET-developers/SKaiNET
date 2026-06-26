@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.32.3"))
+    implementation(platform("sk.ainet:skainet-bom:0.32.4"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -240,6 +240,13 @@ Runnable examples:
 - Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
 
 ---
+
+## What's New in 0.32.4
+
+- **Streaming detokenization keeps word spaces (`Tokenizer.decodeToken`).** Decoding generated tokens
+  one at a time no longer runs words together (`"the process"` → `"theprocess"`). The new
+  `decodeToken(id)` keeps each SentencePiece piece's leading space (llama.cpp `token_to_piece`
+  semantics); `decode(IntArray)` still strips the single sequence-leading space as before.
 
 ## What's New in 0.32.3
 
