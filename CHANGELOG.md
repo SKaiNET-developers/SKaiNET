@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.32.4] - 2026-06-26
+
+### Fixed
+
+- **Streaming detokenization preserves word-boundary spaces (`Tokenizer.decodeToken`).** A generation
+  loop that decodes one token at a time (`decode(tokenId)`) ran words together (`"the process"` →
+  `"theprocess"`): the single-token path delegated to the sequence-level
+  `SentencePieceTokenizer.decode(IntArray)`, whose `addSpacePrefix` leading-space strip is only
+  correct once per sequence. Adds `Tokenizer.decodeToken(id)` (default = `decode(intArrayOf(id))`) and
+  a `SentencePieceTokenizer` override that decodes a single token without the leading strip (llama.cpp
+  `token_to_piece` semantics), plus a `decode(ids, stripLeadingSpace)` overload. Every streaming
+  consumer now reconstructs spacing correctly.
+
 ## [0.32.3] - 2026-06-25
 
 ### Added

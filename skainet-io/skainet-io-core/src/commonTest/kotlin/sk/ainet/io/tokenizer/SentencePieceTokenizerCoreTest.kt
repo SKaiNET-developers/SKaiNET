@@ -128,6 +128,31 @@ class SentencePieceTokenizerCoreTest {
     }
 
     @Test
+    fun `streaming decodeToken keeps each word-boundary space`() {
+        val tok = buildToyTokenizer()
+        val ids = tok.encode("Hello world") // -> [▁Hello, ▁world]
+
+        // Streaming: each per-token piece keeps its own leading space, so a
+        // consumer that appends piece-by-piece reconstructs the spacing.
+        val streamed = ids.joinToString("") { tok.decodeToken(it) }
+        assertEquals(" Hello world", streamed)
+        assertEquals(tok.decode(ids), streamed.trimStart())
+
+        // Regression guard: decoding each token through the sequence-level
+        // decode() strips every leading space and runs the words together.
+        val buggy = ids.joinToString("") { tok.decode(intArrayOf(it)) }
+        assertEquals("Helloworld", buggy)
+    }
+
+    @Test
+    fun `decode with stripLeadingSpace=false keeps the leading space`() {
+        val tok = buildToyTokenizer()
+        val ids = tok.encode("Hello")
+        assertEquals("Hello", tok.decode(ids)) // default strips
+        assertEquals(" Hello", tok.decode(ids, stripLeadingSpace = false))
+    }
+
+    @Test
     fun `bos and eos ids are exposed`() {
         val tok = buildToyTokenizer()
         assertEquals(1, tok.bosTokenId)
