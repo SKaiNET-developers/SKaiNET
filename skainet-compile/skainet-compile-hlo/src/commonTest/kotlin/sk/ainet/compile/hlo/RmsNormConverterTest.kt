@@ -68,8 +68,12 @@ class RmsNormConverterTest {
             "RMSNorm must emit at least one multiply (x*x and/or scale*x/rms)"
         )
         assertTrue(
-            module.content.contains("@reduce_mean"),
-            "RMSNorm must lower mean(x^2) to a real reduction (custom_call style matches the rest of the emitter)"
+            module.content.contains("stablehlo.reduce"),
+            "RMSNorm must lower mean(x^2) to a real stablehlo.reduce (compiles on stock IREE)"
+        )
+        assertFalse(
+            module.content.contains("@reduce_mean") || module.content.contains("@reduce_variance"),
+            "RMSNorm must not emit @reduce_* custom_call stubs (uncompilable)"
         )
         assertTrue(
             module.content.contains("stablehlo.sqrt"),
@@ -104,7 +108,8 @@ class RmsNormConverterTest {
             "RMSNorm without a scale operand must still be claimed by the converter"
         )
         // The core norm still happens — we just skip the final scale multiply.
-        assertTrue(module.content.contains("@reduce_mean"))
+        assertTrue(module.content.contains("stablehlo.reduce"))
+        assertFalse(module.content.contains("@reduce_mean"))
         assertTrue(module.content.contains("stablehlo.sqrt"))
         assertTrue(module.content.contains("stablehlo.divide"))
     }

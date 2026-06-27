@@ -18,9 +18,9 @@ import kotlin.test.assertTrue
  * Before this fix, `NeuralNetOperationsConverter.convertLayerNorm`
  * emitted `stablehlo.custom_call @layer_norm(...)`, which no MLIR
  * tool in the repo understands. This test pins the new lowering:
- * a real elementwise decomposition using @reduce_mean / @reduce_variance
- * / broadcast_in_dim / sqrt / divide — matching softmax #467 and the
- * codebase's existing reduction-via-custom-call style.
+ * a real elementwise decomposition using `stablehlo.reduce` (sum / count)
+ * / broadcast_in_dim / sqrt / divide — compilable on stock IREE, matching
+ * convertGroupNorm. No @reduce_* custom_call stubs.
  *
  *   layer_norm(x) = scale * (x - mean) / sqrt(var + eps) + offset
  */
@@ -45,14 +45,14 @@ class LayerNormConverterTest {
         val converter = StableHloConverterFactory.createExtended()
         val module = converter.convert(graph, "test_layer_norm_full")
 
-        // Core elementwise decomposition.
+        // Core elementwise decomposition — real reductions, no custom_call stubs.
         assertTrue(
-            module.content.contains("@reduce_mean"),
-            "layerNorm must lower mean(x) to a real reduction"
+            module.content.contains("stablehlo.reduce"),
+            "layerNorm must lower mean/var to real stablehlo.reduce (compiles on stock IREE)"
         )
-        assertTrue(
-            module.content.contains("@reduce_variance"),
-            "layerNorm must lower var(x) to a real reduction"
+        assertFalse(
+            module.content.contains("@reduce_mean") || module.content.contains("@reduce_variance"),
+            "layerNorm must not emit @reduce_* custom_call stubs (uncompilable)"
         )
         assertTrue(
             module.content.contains("stablehlo.subtract"),
@@ -87,8 +87,9 @@ class LayerNormConverterTest {
         val module = converter.convert(graph, "test_layer_norm_minimal")
 
         assertFalse(module.content.contains("@layer_norm"))
-        assertTrue(module.content.contains("@reduce_mean"))
-        assertTrue(module.content.contains("@reduce_variance"))
+        assertTrue(module.content.contains("stablehlo.reduce"))
+        assertFalse(module.content.contains("@reduce_mean"))
+        assertFalse(module.content.contains("@reduce_variance"))
         assertTrue(module.content.contains("stablehlo.subtract"))
         assertTrue(module.content.contains("stablehlo.sqrt"))
         assertTrue(module.content.contains("stablehlo.divide"))
