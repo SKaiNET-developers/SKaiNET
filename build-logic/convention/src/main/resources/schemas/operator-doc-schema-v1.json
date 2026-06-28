@@ -115,6 +115,14 @@
           },
           "description": "Array of notes associated with the function"
         },
+        "isDifferentiable": {
+          "type": "boolean",
+          "description": "Whether the op carries @Diff, i.e. has a generated backward-rule contract and must be wired into the autodiff dispatch. Sourced from the @Diff annotation."
+        },
+        "diffRuleName": {
+          "type": "string",
+          "description": "Custom adjoint rule name when @Diff(ruleName=...) is set; omitted for bare @Diff (rule name defaults to the op name)."
+        },
         "validated": {
           "type": "boolean",
           "description": "Whether the function's documentation has been DARC-validated by a reviewer. Sourced from the @DarcValidated annotation on the function."
