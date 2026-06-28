@@ -203,6 +203,9 @@ private class TestTensorOps : TensorOps {
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> = input
     override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> convTranspose1d(input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?, stride: Int, padding: Int, outputPadding: Int, dilation: Int, groups: Int): Tensor<T, V> = input
     override fun <T : DType, V> scaledDotProductAttention(query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>, mask: Tensor<T, V>?, scale: Float, causal: Boolean): Tensor<T, V> = query
     override fun <T : DType, V> conv1d(input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?, stride: Int, padding: Int, dilation: Int, groups: Int): Tensor<T, V> = input
     override fun <T : DType, V> conv2d(input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?, stride: Pair<Int, Int>, padding: Pair<Int, Int>, dilation: Pair<Int, Int>, groups: Int): Tensor<T, V> = input

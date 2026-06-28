@@ -57,6 +57,7 @@ class TracingWrapperGenerator(
             val differentiableMethods = methods.filter { it.isDifferentiable }
             if (differentiableMethods.isNotEmpty()) {
                 generateDifferentiableOps(interfaceDeclaration, differentiableMethods)
+                generateDifferentiableOpsRules(interfaceDeclaration, differentiableMethods)
             }
             
             logger.info("Successfully generated $generatedClassName.kt in package $packageName")
@@ -117,7 +118,47 @@ class TracingWrapperGenerator(
             outputStream.write(code.toByteArray())
         }
     }
-    
+
+    /**
+     * Generates the authoritative set of differentiable op rule-names (one per @Diff method).
+     * This is the machine-readable companion to the [generateDifferentiableOps] interface: the
+     * interface forces every @Diff op to have a backward *formula* (compile error otherwise), while
+     * this set lets a downstream test assert every @Diff op is also *dispatched* in the execution
+     * tape — closing the contract ⟷ formula ⟷ wiring loop so none can silently drift.
+     */
+    private fun generateDifferentiableOpsRules(
+        interfaceDeclaration: KSClassDeclaration,
+        methods: List<MethodInfo>
+    ) {
+        val packageName = interfaceDeclaration.packageName.asString()
+        val objectName = "Differentiable${interfaceDeclaration.simpleName.asString()}Rules"
+        val ruleNames = methods.map { it.diffRuleName ?: it.name }.distinct().sorted()
+
+        val file = codeGenerator.createNewFile(
+            dependencies = Dependencies(false, interfaceDeclaration.containingFile!!),
+            packageName = packageName,
+            fileName = objectName
+        )
+
+        file.use { outputStream ->
+            val code = buildString {
+                appendLine("package $packageName")
+                appendLine()
+                appendLine("/**")
+                appendLine(" * Authoritative set of differentiable op rule-names, generated from @Diff annotations on")
+                appendLine(" * ${interfaceDeclaration.simpleName.asString()}. Used by the autodiff-coverage guard to verify every")
+                appendLine(" * differentiable op has a wired backward rule. Do not edit by hand.")
+                appendLine(" */")
+                appendLine("public object $objectName {")
+                appendLine("    public val ruleNames: Set<String> = setOf(")
+                ruleNames.forEach { appendLine("        \"$it\",") }
+                appendLine("    )")
+                appendLine("}")
+            }
+            outputStream.write(code.toByteArray())
+        }
+    }
+
     /**
      * Validates that code generation is possible for all methods.
      */
@@ -294,7 +335,7 @@ class TracingWrapperGenerator(
                 // Fix the type for nullable parameters that should have ? suffix
                 val correctedType = when {
                     param.name == "dim" && method.name in listOf("squeeze", "sum", "mean", "variance") && !param.type.endsWith("?") -> "${param.type}?"
-                    param.name == "bias" && method.name in listOf("conv1d", "conv2d", "conv3d") && !param.type.endsWith("?") -> "${param.type}?"
+                    param.name == "bias" && method.name in listOf("conv1d", "conv2d", "conv3d", "convTranspose1d") && !param.type.endsWith("?") -> "${param.type}?"
                     param.name == "mask" && method.name == "scaledDotProductAttention" && !param.type.endsWith("?") -> "${param.type}?"
                     else -> param.type
                 }
