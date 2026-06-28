@@ -14,6 +14,7 @@ import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
 import sk.ainet.tape.TapeStack
 import kotlin.math.exp
+import kotlin.math.floor
 import sk.ainet.lang.tensor.ops.AddOperation
 import sk.ainet.lang.tensor.ops.DivideOperation
 import sk.ainet.lang.tensor.ops.MatmulOperation
@@ -817,7 +818,8 @@ public class DefaultGradientTape(
         val input = inputs[0]
         val scale = pair2(attributes["scale"], 1)
         val mode = (attributes["mode"] as? String) ?: "Nearest"
-        return listOf(upsample2dGrad(upstream, input, scale, mode))
+        val alignCorners = (attributes["alignCorners"] as? Boolean) ?: false
+        return listOf(upsample2dGrad(upstream, input, scale, mode, alignCorners))
     }
 
     override fun leakyReluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -1761,20 +1763,20 @@ public class DefaultGradientTape(
     }
 
     /**
-     * upsample2d backward (NEAREST only — the CPU forward only supports
-     * Nearest, so the backward mirrors that). For each input position, sum
-     * the upstream gradients of every output position it produced (the
-     * scaleH × scaleW block above-left of [ih*scaleH, iw*scaleW]).
+     * upsample2d backward — the transpose (scatter) of the forward sampler.
+     * Nearest: each input position sums the upstream gradients of every output
+     * position it produced (the scaleH × scaleW block above-left of
+     * [ih*scaleH, iw*scaleW]). Bilinear: each output gradient is distributed
+     * back to the same 4 source neighbors with the same bilinear weights used
+     * in the forward blend.
      */
     private fun upsample2dGrad(
         upstream: Tensor<DType, Any>,
         input: Tensor<DType, Any>,
         scale: Pair<Int, Int>,
         mode: String,
+        alignCorners: Boolean,
     ): Tensor<DType, Any> {
-        require(mode.equals("Nearest", ignoreCase = true)) {
-            "upsample2dBackward: only Nearest mode implemented (got mode=$mode)"
-        }
         val n = input.shape[0]
         val c = input.shape[1]
         val inH = input.shape[2]
@@ -1784,23 +1786,67 @@ public class DefaultGradientTape(
         val outW = upstream.shape[3]
         val dInput = zerosLike(input)
 
-        for (b in 0 until n) {
-            for (ch in 0 until c) {
-                for (oh in 0 until outH) {
-                    val ih = oh / scaleH
-                    if (ih !in 0 until inH) continue
-                    for (ow in 0 until outW) {
-                        val iw = ow / scaleW
-                        if (iw !in 0 until inW) continue
-                        val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
-                        val cur = (dInput.data.get(b, ch, ih, iw) as Number).toFloat()
-                        @Suppress("UNCHECKED_CAST")
-                        dInput.data.set(b, ch, ih, iw, value = (cur + gOut) as Any)
+        fun accumulate(b: Int, ch: Int, ih: Int, iw: Int, delta: Float) {
+            val cur = (dInput.data.get(b, ch, ih, iw) as Number).toFloat()
+            @Suppress("UNCHECKED_CAST")
+            dInput.data.set(b, ch, ih, iw, value = (cur + delta) as Any)
+        }
+
+        when (mode.lowercase()) {
+            "nearest" -> {
+                for (b in 0 until n) {
+                    for (ch in 0 until c) {
+                        for (oh in 0 until outH) {
+                            val ih = oh / scaleH
+                            if (ih !in 0 until inH) continue
+                            for (ow in 0 until outW) {
+                                val iw = ow / scaleW
+                                if (iw !in 0 until inW) continue
+                                val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
+                                accumulate(b, ch, ih, iw, gOut)
+                            }
+                        }
                     }
                 }
             }
+
+            "bilinear" -> {
+                for (b in 0 until n) {
+                    for (ch in 0 until c) {
+                        for (oh in 0 until outH) {
+                            val srcH = upsampleSourceCoord(oh, scaleH, inH, alignCorners)
+                            val ih0 = floor(srcH).toInt().coerceIn(0, inH - 1)
+                            val ih1 = (ih0 + 1).coerceIn(0, inH - 1)
+                            val wh = (srcH - ih0).coerceIn(0.0f, 1.0f)
+                            for (ow in 0 until outW) {
+                                val srcW = upsampleSourceCoord(ow, scaleW, inW, alignCorners)
+                                val iw0 = floor(srcW).toInt().coerceIn(0, inW - 1)
+                                val iw1 = (iw0 + 1).coerceIn(0, inW - 1)
+                                val ww = (srcW - iw0).coerceIn(0.0f, 1.0f)
+                                val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
+                                accumulate(b, ch, ih0, iw0, gOut * (1f - wh) * (1f - ww))
+                                accumulate(b, ch, ih0, iw1, gOut * (1f - wh) * ww)
+                                accumulate(b, ch, ih1, iw0, gOut * wh * (1f - ww))
+                                accumulate(b, ch, ih1, iw1, gOut * wh * ww)
+                            }
+                        }
+                    }
+                }
+            }
+
+            else -> throw IllegalArgumentException("upsample2dBackward: unsupported mode '$mode'")
         }
         return dInput
+    }
+
+    /** Output→source coordinate map for upsampling (PyTorch convention); see DefaultCpuOps.sourceCoord. */
+    private fun upsampleSourceCoord(out: Int, scale: Int, inDim: Int, alignCorners: Boolean): Float {
+        val outDim = inDim * scale
+        return if (alignCorners) {
+            if (outDim <= 1) 0f else out.toFloat() * (inDim - 1) / (outDim - 1)
+        } else {
+            (out + 0.5f) / scale - 0.5f
+        }
     }
 
     private fun <T : DType, V> clampGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
