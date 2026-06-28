@@ -34,6 +34,7 @@ import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
 import sk.ainet.lang.types.Int8
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.log10 as kmLog10
 import kotlin.math.log2 as kmLog2
@@ -1257,7 +1258,6 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(input.rank == 4) { "upsample2d: input must be 4D (N, C, H, W)" }
         val (scaleH, scaleW) = scale
         require(scaleH > 0 && scaleW > 0) { "upsample2d: scale factors must be positive" }
-        require(mode == UpsampleMode.Nearest) { "upsample2d: only Nearest mode is implemented on CPU backend" }
 
         val n = input.shape[0]
         val c = input.shape[1]
@@ -1267,14 +1267,59 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val outW = inW * scaleW
         val outShape = Shape(n, c, outH, outW)
 
-        val outData = dataFactory.init<T, V>(outShape, input.dtype) { idx ->
-            val oh = idx[2]
-            val ow = idx[3]
-            val ih = oh / scaleH
-            val iw = ow / scaleW
-            input.data.get(idx[0], idx[1], ih, iw)
+        val outData = when (mode) {
+            UpsampleMode.Nearest -> dataFactory.init<T, V>(outShape, input.dtype) { idx ->
+                val oh = idx[2]
+                val ow = idx[3]
+                val ih = oh / scaleH
+                val iw = ow / scaleW
+                input.data.get(idx[0], idx[1], ih, iw)
+            }
+
+            UpsampleMode.Bilinear -> {
+                require(input.dtype == FP32::class || input.dtype == FP16::class) {
+                    "upsample2d: Bilinear mode is only implemented for float dtypes (got ${input.dtype})"
+                }
+                dataFactory.init<T, V>(outShape, input.dtype) { idx ->
+                    val b = idx[0]
+                    val ch = idx[1]
+                    val srcH = sourceCoord(idx[2], scaleH, inH, alignCorners)
+                    val srcW = sourceCoord(idx[3], scaleW, inW, alignCorners)
+                    val ih0 = floor(srcH).toInt().coerceIn(0, inH - 1)
+                    val ih1 = (ih0 + 1).coerceIn(0, inH - 1)
+                    val iw0 = floor(srcW).toInt().coerceIn(0, inW - 1)
+                    val iw1 = (iw0 + 1).coerceIn(0, inW - 1)
+                    val wh = (srcH - ih0).coerceIn(0.0f, 1.0f)
+                    val ww = (srcW - iw0).coerceIn(0.0f, 1.0f)
+                    val v00 = (input.data.get(b, ch, ih0, iw0) as Number).toFloat()
+                    val v01 = (input.data.get(b, ch, ih0, iw1) as Number).toFloat()
+                    val v10 = (input.data.get(b, ch, ih1, iw0) as Number).toFloat()
+                    val v11 = (input.data.get(b, ch, ih1, iw1) as Number).toFloat()
+                    val blend = v00 * (1f - wh) * (1f - ww) +
+                        v01 * (1f - wh) * ww +
+                        v10 * wh * (1f - ww) +
+                        v11 * wh * ww
+                    @Suppress("UNCHECKED_CAST")
+                    (blend as V)
+                }
+            }
         }
         return newTensor(outData, input.dtype, input)
+    }
+
+    /**
+     * Maps an output coordinate to the (fractional) source coordinate for upsampling,
+     * matching the PyTorch convention. With [alignCorners] = false the sample centers are
+     * `(o + 0.5) / scale - 0.5`; with align corners the endpoints are pinned via
+     * `o * (in - 1) / (out - 1)`. The result may fall outside `[0, in-1]`; callers clamp.
+     */
+    private fun sourceCoord(out: Int, scale: Int, inDim: Int, alignCorners: Boolean): Float {
+        val outDim = inDim * scale
+        return if (alignCorners) {
+            if (outDim <= 1) 0f else out.toFloat() * (inDim - 1) / (outDim - 1)
+        } else {
+            (out + 0.5f) / scale - 0.5f
+        }
     }
 
     @TensorOp()

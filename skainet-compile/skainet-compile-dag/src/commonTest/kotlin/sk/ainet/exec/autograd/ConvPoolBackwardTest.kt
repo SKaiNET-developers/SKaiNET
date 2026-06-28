@@ -222,4 +222,14 @@ class ConvPoolBackwardTest {
             x.ops.upsample2d(x, scale = 2 to 2, mode = UpsampleMode.Nearest, alignCorners = false)
         }
     }
+
+    @Test
+    fun upsample2d_bilinear_backward_distributes_weights() {
+        assertGradMatchesFiniteDiff(
+            xShape = Shape(1, 1, 3, 3),
+            x0 = FloatArray(9) { (it - 4) * 0.25f },
+        ) { _, x ->
+            x.ops.upsample2d(x, scale = 2 to 2, mode = UpsampleMode.Bilinear, alignCorners = false)
+        }
+    }
 }

@@ -4,6 +4,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.graph.GraphNode
+import kotlin.math.floor
 
 /**
  * Converter for neural network operations.
@@ -31,7 +32,9 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         "rmsNorm", "rms_norm", "RMSNorm", "RmsNorm",
         "groupNorm", "groupNormalization", "GroupNormalization", "group_norm",
         // Attention
-        "scaledDotProductAttention"
+        "scaledDotProductAttention",
+        // Upsampling / interpolation (Nearest + Bilinear)
+        "upsample2d", "Upsample2d", "upsample_2d"
     )
 
     override fun convert(
@@ -49,6 +52,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             "rmsnorm", "rms_norm" -> convertRmsNorm(node, operands, context)
             "groupnorm", "groupnormalization", "group_norm" -> convertGroupNorm(node, operands, context)
             "scaleddotproductattention" -> convertSdpa(node, operands, context)
+            "upsample2d", "upsample_2d" -> convertUpsample2d(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by NeuralNetOperationsConverter"
@@ -694,6 +698,176 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             outputValueName = current,
             emittedOperations = operations
         )
+    }
+
+    /**
+     * Lower Upsample2d to traceable StableHLO. Input is NCHW (rank-4); scale,
+     * mode and alignCorners are all static at trace time, so both modes lower
+     * to fixed shape/linear ops (no runtime index math, no custom_call):
+     *
+     *  - Nearest: pixel replication via reshape -> broadcast_in_dim -> reshape,
+     *    exactly matching the eager op out[oh,ow] = in[oh/sH, ow/sW].
+     *
+     *  - Bilinear: resize is a separable linear map, so we precompute the two
+     *    resize matrices A_h [outH x inH] and A_w [outW x inW] (each row holds
+     *    the two bilinear neighbor weights) as constants and apply them with two
+     *    dot_general contractions. The weights are the same static floats the
+     *    eager/numpy blend uses, so the result matches to fp tolerance.
+     */
+    private fun convertUpsample2d(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Upsample2d operation requires exactly 1 operand (input), got ${operands.size}",
+                "Unsupported upsample2d arity for node ${node.id}"
+            )
+        }
+
+        val typeMapper = context.getTypeMapper()
+        val inputSpec = node.inputs.firstOrNull()
+        val outputSpec = node.outputs.firstOrNull()
+        val inputShape = inputSpec?.shape ?: outputSpec?.shape ?: emptyList()
+        if (inputShape.size != 4) {
+            return ConversionResult.Failure(
+                "Upsample2d requires a rank-4 NCHW input, got rank ${inputShape.size}",
+                "Unsupported upsample2d input rank for node ${node.id}"
+            )
+        }
+
+        val params = node.operation.parameters
+        val (scaleH, scaleW) = extractScalePair(params)
+        if (scaleH < 1 || scaleW < 1) {
+            return ConversionResult.Failure(
+                "Upsample2d requires positive integer scale, got [$scaleH, $scaleW]",
+                "Unsupported upsample2d scale for node ${node.id}"
+            )
+        }
+        val mode = (params["mode"] as? String) ?: "Nearest"
+        val alignCorners = (params["alignCorners"] as? Boolean) ?: false
+
+        val n = inputShape[0]
+        val c = inputShape[1]
+        val h = inputShape[2]
+        val w = inputShape[3]
+        val outH = h * scaleH
+        val outW = w * scaleW
+
+        val elementType = inputSpec?.let { typeMapper.mapDType(it.dtype) }
+            ?: outputSpec?.let { typeMapper.mapDType(it.dtype) }
+            ?: "f32"
+        val inputType = inputSpec?.let { typeMapper.mapTensorType(it) }
+            ?: "tensor<${n}x${c}x${h}x${w}x$elementType>"
+        val outputType = outputSpec?.let { typeMapper.mapTensorType(it) }
+            ?: "tensor<${n}x${c}x${outH}x${outW}x$elementType>"
+
+        val xInput = operands[0]
+        val operations = mutableListOf<String>()
+
+        return when (mode.lowercase()) {
+            "nearest" -> {
+                // Insert unit axes after H and W, replicate each pixel sH x sW, then
+                // collapse (H,sH)->H*sH and (W,sW)->W*sW.
+                val expandedType = "tensor<${n}x${c}x${h}x1x${w}x1x$elementType>"
+                val replicatedType = "tensor<${n}x${c}x${h}x${scaleH}x${w}x${scaleW}x$elementType>"
+                val expanded = context.nextTempValue()
+                val replicated = context.nextTempValue()
+                val result = context.nextTempValue()
+                operations += "$expanded = stablehlo.reshape $xInput : ($inputType) -> $expandedType"
+                operations += "$replicated = stablehlo.broadcast_in_dim $expanded, " +
+                    "dims = [0, 1, 2, 3, 4, 5] : ($expandedType) -> $replicatedType"
+                operations += "$result = stablehlo.reshape $replicated : ($replicatedType) -> $outputType"
+                operations.forEach { context.emitOperation(it) }
+                ConversionResult.Success(outputValueName = result, emittedOperations = operations)
+            }
+
+            "bilinear" -> {
+                val ah = buildResizeMatrix(h, scaleH, alignCorners)   // [outH x inH]
+                val aw = buildResizeMatrix(w, scaleW, alignCorners)   // [outW x inW]
+                val ahType = "tensor<${outH}x${h}x$elementType>"
+                val awType = "tensor<${outW}x${w}x$elementType>"
+                // dot_general output layout = lhs-free ++ rhs-free, so contracting the
+                // input H axis against A_h yields [N, C, inW, outH]; then contracting that
+                // inW axis against A_w yields [N, C, outH, outW] — no transposes needed.
+                val intermediateType = "tensor<${n}x${c}x${w}x${outH}x$elementType>"
+
+                val ahConst = context.nextTempValue()
+                val awConst = context.nextTempValue()
+                val tmp = context.nextTempValue()
+                val result = context.nextTempValue()
+
+                operations += "$ahConst = stablehlo.constant dense<${denseMatrixLiteral(ah)}> : $ahType"
+                operations += "$awConst = stablehlo.constant dense<${denseMatrixLiteral(aw)}> : $awType"
+                operations += "$tmp = stablehlo.dot_general $xInput, $ahConst, " +
+                    "contracting_dims = [2] x [1] : ($inputType, $ahType) -> $intermediateType"
+                operations += "$result = stablehlo.dot_general $tmp, $awConst, " +
+                    "contracting_dims = [2] x [1] : ($intermediateType, $awType) -> $outputType"
+                operations.forEach { context.emitOperation(it) }
+                ConversionResult.Success(outputValueName = result, emittedOperations = operations)
+            }
+
+            else -> ConversionResult.Failure(
+                "Upsample2d mode '$mode' is not supported (expected Nearest or Bilinear)",
+                "Unsupported upsample2d mode for node ${node.id}"
+            )
+        }
+    }
+
+    /** Read the [sH, sW] integer scale from op params (tape records List<Int>; also accept Pair/Int). */
+    private fun extractScalePair(params: Map<String, Any>): Pair<Int, Int> {
+        return when (val scale = params["scale"]) {
+            is Pair<*, *> ->
+                ((scale.first as? Number)?.toInt() ?: 1) to ((scale.second as? Number)?.toInt() ?: 1)
+            is Number -> scale.toInt() to scale.toInt()
+            is List<*> -> {
+                val list = scale.mapNotNull { (it as? Number)?.toInt() }
+                when {
+                    list.size >= 2 -> list[0] to list[1]
+                    list.size == 1 -> list[0] to list[0]
+                    else -> 1 to 1
+                }
+            }
+            else -> 1 to 1
+        }
+    }
+
+    /**
+     * Build the [outDim x inDim] bilinear resize matrix: row o holds the weights of
+     * the (at most two) source neighbors for output index o, matching the eager
+     * DefaultCpuOps coordinate map and border clamping. When the two neighbors clamp
+     * to the same index their weights sum to 1.
+     */
+    private fun buildResizeMatrix(inDim: Int, scale: Int, alignCorners: Boolean): Array<FloatArray> {
+        val outDim = inDim * scale
+        val m = Array(outDim) { FloatArray(inDim) }
+        for (o in 0 until outDim) {
+            val src = if (alignCorners) {
+                if (outDim <= 1) 0f else o.toFloat() * (inDim - 1) / (outDim - 1)
+            } else {
+                (o + 0.5f) / scale - 0.5f
+            }
+            val i0 = floor(src).toInt().coerceIn(0, inDim - 1)
+            val i1 = (i0 + 1).coerceIn(0, inDim - 1)
+            val frac = (src - i0).coerceIn(0.0f, 1.0f)
+            m[o][i0] += (1f - frac)
+            m[o][i1] += frac
+        }
+        return m
+    }
+
+    /** Render a 2D float matrix as a nested-bracket MLIR `dense<...>` literal. */
+    private fun denseMatrixLiteral(m: Array<FloatArray>): String {
+        return m.joinToString(prefix = "[", postfix = "]", separator = ", ") { row ->
+            row.joinToString(prefix = "[", postfix = "]", separator = ", ") { v -> formatMlirFloat(v) }
+        }
+    }
+
+    /** Float -> MLIR f-literal. Bilinear weights lie in [0,1] and render as plain decimals. */
+    private fun formatMlirFloat(v: Float): String {
+        val s = v.toString()
+        return if (s.contains('.') || s.contains('e') || s.contains('E')) s else "$s.0"
     }
 
     /**
