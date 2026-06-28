@@ -389,37 +389,39 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(a.dtype == b.dtype) { "DType mismatch: ${a.dtype} vs ${b.dtype}" }
 
         // Packed-quant fast path (FP32 input × packed weight), resolved via KernelRegistry.
-        chooseQuantizedMatmulHeap(a, b)?.let { return it }
+        KernelProfile.timeQuant { chooseQuantizedMatmulHeap(a, b) }?.let { return it }
 
         // Fast path: 2D × 2D with FloatArray backing — direct buffer access, no per-element allocation
         if (a.rank == 2 && b.rank == 2
             && (a.dtype == FP32::class)
             && a.data is FloatArrayTensorData<*> && b.data is FloatArrayTensorData<*>
         ) {
-            val aBuf = (a.data as FloatArrayTensorData<*>).buffer
-            val bBuf = (b.data as FloatArrayTensorData<*>).buffer
-            val m = a.shape[0]
-            val k = a.shape[1]
-            val n = b.shape[1]
-            require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
-            val out = FloatArray(m * n)
-            for (i in 0 until m) {
-                val aOff = i * k
-                for (j in 0 until n) {
-                    var sum = 0f
-                    for (p in 0 until k) {
-                        sum += aBuf[aOff + p] * bBuf[p * n + j]
+            return KernelProfile.timeFp32 {
+                val aBuf = (a.data as FloatArrayTensorData<*>).buffer
+                val bBuf = (b.data as FloatArrayTensorData<*>).buffer
+                val m = a.shape[0]
+                val k = a.shape[1]
+                val n = b.shape[1]
+                require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
+                val out = FloatArray(m * n)
+                for (i in 0 until m) {
+                    val aOff = i * k
+                    for (j in 0 until n) {
+                        var sum = 0f
+                        for (p in 0 until k) {
+                            sum += aBuf[aOff + p] * bBuf[p * n + j]
+                        }
+                        out[i * n + j] = sum
                     }
-                    out[i * n + j] = sum
                 }
+                @Suppress("UNCHECKED_CAST")
+                val outData = dataFactory.fromFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+                newTensor(outData, a.dtype, a, b)
             }
-            @Suppress("UNCHECKED_CAST")
-            val outData = dataFactory.fromFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
-            return newTensor(outData, a.dtype, a, b)
         }
 
         // Generic fallback for batched / non-float / non-2D cases
-        return matmulGeneric(a, b)
+        return KernelProfile.timeGeneric { matmulGeneric(a, b) }
     }
 
     private fun <T : DType, V> matmulGeneric(
