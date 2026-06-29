@@ -43,10 +43,6 @@ dependencies {
 }
 ```
 
-> The BOM was first correctly published to Maven Central in 0.22.2 — earlier versions
-> shipped at the wrong coordinates and could not be imported. Pin versions directly if
-> you need an older release.
-
 ### Hello Neural Net
 
 ```kotlin
