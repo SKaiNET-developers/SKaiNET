@@ -103,12 +103,25 @@ SKAINET_API void skainet_q5k_matmul(
     int scale_idx[Q5K_SUB_BLOCKS];
     int min_idx[Q5K_SUB_BLOCKS];
 
-    for (int32_t o = 0; o < output_dim; ++o) {
-        float acc = 0.0f;
+    /*
+     * Loop order: block OUTER, output row INNER — see q4k_matmul.c for the
+     * rationale. The weight is block-major (blockIdx*output_dim + o)*176, so for
+     * a fixed block consecutive `o` are 176 bytes apart: weight bytes are read
+     * sequentially (cache/prefetch friendly) instead of striding output_dim*176
+     * per step, which on the in-order A55 makes every read a cold miss.
+     * out_base[o] accumulates across blocks (a per-o register `acc` holds the
+     * inner sum); accumulation order over blocks is unchanged ⇒ numerically
+     * identical to the o-outer form.
+     */
+    for (int32_t o = 0; o < output_dim; ++o) out_base[o] = 0.0f;
 
-        for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
-            const uint8_t* block = weight + weight_byte_offset
-                + (size_t)(block_idx * output_dim + o) * Q5K_BYTES_PER_BLOCK;
+    for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
+        const float* in_block = in_base + (size_t) block_idx * Q5K_BLOCK_SIZE;
+        const uint8_t* block = weight + weight_byte_offset
+            + (size_t)(block_idx * output_dim) * Q5K_BYTES_PER_BLOCK;
+
+        for (int32_t o = 0; o < output_dim; ++o, block += Q5K_BYTES_PER_BLOCK) {
+            float acc = 0.0f;
 
             /* d, dMin (FP16 LE -> FP32). */
             const uint16_t d_bits     = (uint16_t) block[0] | ((uint16_t) block[1] << 8);
@@ -121,7 +134,6 @@ SKAINET_API void skainet_q5k_matmul(
 
             const uint8_t* qh = block + Q5K_QH_OFFSET;
             const uint8_t* qs = block + Q5K_QS_OFFSET;
-            const float* in_block = in_base + (size_t) block_idx * Q5K_BLOCK_SIZE;
 
             /* 4 strided qs groups; group j carries sub-blocks 2j (lo) and 2j+1 (hi). */
             for (int group_j = 0; group_j < 4; ++group_j) {
@@ -195,8 +207,8 @@ SKAINET_API void skainet_q5k_matmul(
                 acc += code_sum_lo * scale_lo - input_sum_lo * offset_lo;
                 acc += code_sum_hi * scale_hi - input_sum_hi * offset_hi;
             }
-        }
 
-        out_base[o] = acc;
+            out_base[o] += acc;
+        }
     }
 }

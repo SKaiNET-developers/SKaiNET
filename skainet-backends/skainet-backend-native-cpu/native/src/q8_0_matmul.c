@@ -71,18 +71,29 @@ SKAINET_API void skainet_q8_0_matmul(
     const int32_t BLOCK_SIZE = 32;
     const int32_t BYTES_PER_BLOCK = 34;
     const int32_t blocks_per_input_dim = input_dim / BLOCK_SIZE;
+    float* SKAINET_RESTRICT out_base = output + output_offset;
 
-    for (int32_t o = 0; o < output_dim; ++o) {
-        float acc = 0.0f;
-        for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
-            const uint8_t* SKAINET_RESTRICT block =
-                weight + weight_byte_offset +
-                (size_t)(block_idx * output_dim + o) * BYTES_PER_BLOCK;
+    /*
+     * Loop order: block OUTER, output row INNER — see q4k_matmul.c for the
+     * rationale. The weight is block-major (blockIdx*output_dim + o)*34, so for
+     * a fixed block consecutive `o` are 34 bytes apart: weight bytes are read
+     * sequentially instead of striding output_dim*34 per step, which on the
+     * in-order A55 makes every read a cold cache miss. out_base[o] accumulates
+     * across blocks; accumulation order is unchanged ⇒ numerically identical.
+     */
+    for (int32_t o = 0; o < output_dim; ++o) out_base[o] = 0.0f;
+
+    for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
+        const float* SKAINET_RESTRICT input_block =
+            input + input_offset + (size_t) block_idx * BLOCK_SIZE;
+        const uint8_t* SKAINET_RESTRICT block =
+            weight + weight_byte_offset +
+            (size_t)(block_idx * output_dim) * BYTES_PER_BLOCK;
+
+        for (int32_t o = 0; o < output_dim; ++o, block += BYTES_PER_BLOCK) {
             uint16_t d_bits = (uint16_t) block[0] | ((uint16_t) block[1] << 8);
             float d = skainet_fp16_to_fp32(d_bits);
             const int8_t* SKAINET_RESTRICT codes = (const int8_t*) (block + 2);
-            const float* SKAINET_RESTRICT input_block =
-                input + input_offset + (size_t) block_idx * BLOCK_SIZE;
             float block_sum = 0.0f;
 #ifdef SKAINET_HAVE_NEON
             /* Activations are FP32, so widen int8 codes to float and FMA
@@ -107,8 +118,7 @@ SKAINET_API void skainet_q8_0_matmul(
                 block_sum += input_block[k] * (float) codes[k];
             }
 #endif
-            acc += block_sum * d;
+            out_base[o] += block_sum * d;
         }
-        output[output_offset + o] = acc;
     }
 }
