@@ -1,6 +1,9 @@
 package sk.ainet.data.source
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.Buffer
+import kotlinx.io.Source
+import kotlinx.io.readByteArray
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -23,6 +26,10 @@ class DefaultDataSourceResolverTest {
         assertTrue(artifact.cacheHit)
         assertEquals(0, fetcher.calls)
         assertContentEquals("local".encodeToByteArray(), artifact.readBytes())
+
+        val copied = Buffer()
+        assertEquals(5, artifact.copyTo(copied))
+        assertContentEquals("local".encodeToByteArray(), copied.readByteArray())
     }
 
     @Test
@@ -66,8 +73,9 @@ class DefaultDataSourceResolverTest {
 
     @Test
     fun verifiesChecksumsInCommonCore() = runTest {
+        val store = MemoryDataSourceByteStore()
         val resolver = DefaultDataSourceResolver(
-            store = MemoryDataSourceByteStore(),
+            store = store,
             fetcher = RecordingFetcher("payload".encodeToByteArray()),
             checksum = TestChecksum
         )
@@ -80,6 +88,7 @@ class DefaultDataSourceResolverTest {
                 )
             )
         }
+        assertEquals(0, store.cacheWrites)
     }
 
     @Test
@@ -113,8 +122,8 @@ class DefaultDataSourceResolverTest {
 
 private class MemoryDataSourceByteStore(
     private val localArtifacts: Map<String, ByteArray> = emptyMap()
-) : DataSourceByteStore {
-    private val cacheArtifacts = mutableMapOf<String, ByteArray>()
+) : DataSourceArtifactStore {
+    private val cacheArtifacts = mutableMapOf<String, DataSourceStoredArtifact>()
 
     var cacheWrites: Int = 0
         private set
@@ -124,22 +133,29 @@ private class MemoryDataSourceByteStore(
     }
 
     override suspend fun readCache(cacheKey: String): DataSourceStoredArtifact? {
-        return cacheArtifacts[cacheKey]?.storedAt("/cache/$cacheKey")
+        return cacheArtifacts[cacheKey]
     }
 
-    override suspend fun writeCache(cacheKey: String, bytes: ByteArray): DataSourceStoredArtifact {
+    override suspend fun writeCache(
+        cacheKey: String,
+        source: Source,
+        sizeBytes: Long?,
+        validate: suspend (DataSourceStoredArtifact) -> Unit
+    ): DataSourceStoredArtifact {
+        val stored = DataSourceStoredArtifact.inMemoryFrom(
+            source = source,
+            localPath = "/cache/$cacheKey",
+            sizeBytes = sizeBytes
+        )
+        validate(stored)
         cacheWrites++
-        cacheArtifacts[cacheKey] = bytes
-        return bytes.storedAt("/cache/$cacheKey")
+        cacheArtifacts[cacheKey] = stored
+        return stored
     }
 
     private fun ByteArray.storedAt(path: String): DataSourceStoredArtifact {
         val bytes = copyOf()
-        return DataSourceStoredArtifact(
-            localPath = path,
-            sizeBytes = bytes.size.toLong(),
-            byteReader = { bytes.copyOf() }
-        )
+        return DataSourceStoredArtifact.inMemory(bytes, localPath = path)
     }
 }
 
@@ -152,13 +168,23 @@ private class RecordingFetcher(
     var lastHeaders: Map<String, String> = emptyMap()
         private set
 
-    override suspend fun fetch(uri: String, headers: Map<String, String>): ByteArray {
+    override suspend fun fetch(uri: String, headers: Map<String, String>): DataSourceRemoteContent {
         calls++
         lastHeaders = headers
-        return bytes.copyOf()
+        return DataSourceRemoteContent.fromBytes(bytes.copyOf())
     }
 }
 
 private object TestChecksum : DataSourceChecksum {
-    override fun sha256Hex(bytes: ByteArray): String = "sha:${bytes.decodeToString()}"
+    override fun newSha256(): DataSourceHash = TestHash()
+}
+
+private class TestHash : DataSourceHash {
+    private val text = StringBuilder()
+
+    override fun update(bytes: ByteArray, startIndex: Int, endIndex: Int) {
+        text.append(bytes.copyOfRange(startIndex, endIndex).decodeToString())
+    }
+
+    override fun hex(): String = "sha:$text"
 }
