@@ -145,26 +145,41 @@ Quick local replay:
 ## Architecture goal
 
 SKaiNET is built around one path: **a model is defined once in the Kotlin DSL,
-then either compiled to native code or executed eagerly — without rewriting it.**
+then either compiled or executed eagerly — without rewriting it.**
 
 1. **Define** the model with the DSL (`nn { }` / `dag { }`).
-2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph).
+2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph) — a `ComputeGraph`.
 3. **Run** it one of two ways:
-   - **Compile** — lower the graph to MLIR / StableHLO (`HloGenerator`) and
-     compile to **native** code (IREE-compatible) for native / edge targets.
+   - **Compile** — lower the captured `ComputeGraph` through one of several
+     **sibling code-generation backends**, each emitting code for a different target
+     from the *same* graph:
+     - **StableHLO / MLIR** (`HloGenerator`) → IREE-compilable, for native / edge /
+       accelerator targets and the wider MLIR ecosystem.
+     - **Arduino / C99** → standalone, statically-allocated C for microcontrollers.
+     - **Minerva** → a secure-MCU bundle (weights + firmware skeleton + fingerprinted
+       manifest).
    - **Eager** — execute directly on an available backend. On the **JVM this is
      the primary, go-to path.**
 
+StableHLO/MLIR is therefore **one code-generation backend among siblings** — the
+IREE/native path next to the C99/Arduino and Minerva MCU paths — not a separate
+pipeline.
+
 ```mermaid
 flowchart LR
-    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG"]
-    Graph --> HLO["MLIR / StableHLO"]
+    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG (ComputeGraph)"]
     Graph --> Eager["Eager backend (JVM, …)"]
-    HLO --> Native["Native code"]
+    Graph -->|code generation| HLO["StableHLO / MLIR"]
+    Graph -->|code generation| C99["Arduino / C99"]
+    Graph -->|code generation| Minerva["Minerva"]
+    HLO --> Native["IREE → native / edge / accelerator"]
+    C99 --> MCU["Microcontroller"]
+    Minerva --> SecMCU["Secure-MCU bundle"]
 ```
 
-The same DSL model feeds both paths — eager execution for development and JVM
-deployment, the StableHLO path for native and edge targets.
+The same DSL model feeds every path: eager execution for development and JVM
+deployment, and the code-generation backends — StableHLO/MLIR (→ IREE), Arduino/C99,
+and Minerva — as **sibling alternatives** for native, edge, and secure-MCU targets.
 
 ---
 
