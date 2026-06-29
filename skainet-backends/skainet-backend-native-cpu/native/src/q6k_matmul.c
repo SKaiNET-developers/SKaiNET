@@ -115,17 +115,27 @@ SKAINET_API void skainet_q6k_matmul(
 
     float scratch[Q6K_BLOCK_SIZE];
 
-    for (int32_t o = 0; o < output_dim; ++o) {
-        float acc = 0.0f;
+    /*
+     * Loop order: block OUTER, output row INNER — see q4k_matmul.c for the
+     * rationale. The weight is block-major (blockIdx*output_dim + o)*210, so for
+     * a fixed block consecutive `o` are 210 bytes apart: the weight bytes are
+     * read sequentially (cache/prefetch friendly) instead of striding
+     * output_dim*210 per step, which on the in-order A55 makes every read a cold
+     * miss. The big Q6_K `output` projection (hidden→vocab, hit every token) is
+     * the main beneficiary. out_base[o] accumulates across blocks; the order
+     * over blocks is unchanged ⇒ numerically identical to the o-outer form.
+     */
+    for (int32_t o = 0; o < output_dim; ++o) out_base[o] = 0.0f;
 
-        for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
-            const uint8_t* block = weight + weight_byte_offset
-                + (size_t)(block_idx * output_dim + o) * Q6K_BYTES_PER_BLOCK;
+    for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
+        const float* in_block = in_base + (size_t) block_idx * Q6K_BLOCK_SIZE;
+        const uint8_t* block = weight + weight_byte_offset
+            + (size_t)(block_idx * output_dim) * Q6K_BYTES_PER_BLOCK;
 
+        for (int32_t o = 0; o < output_dim; ++o, block += Q6K_BYTES_PER_BLOCK) {
             skainet_q6k_dequant_block(block, scratch);
 
-            const float* in_block = in_base + (size_t) block_idx * Q6K_BLOCK_SIZE;
-
+            float acc = 0.0f;
 #ifdef SKAINET_HAVE_NEON
             float32x4_t vacc = vdupq_n_f32(0.0f);
             for (int i = 0; i < Q6K_BLOCK_SIZE; i += 4) {
@@ -133,14 +143,13 @@ SKAINET_API void skainet_q6k_matmul(
                 const float32x4_t vw = vld1q_f32(scratch + i);
                 vacc = vfmaq_f32(vacc, vi, vw);
             }
-            acc += skainet_neon_hadd_f32(vacc);
+            acc = skainet_neon_hadd_f32(vacc);
 #else
             for (int i = 0; i < Q6K_BLOCK_SIZE; ++i) {
                 acc += in_block[i] * scratch[i];
             }
 #endif
+            out_base[o] += acc;
         }
-
-        out_base[o] = acc;
     }
 }
