@@ -17,6 +17,15 @@ class DataSourceUriParserTest {
     }
 
     @Test
+    fun parsesJvmFileUri() {
+        val parsed = DataSourceUriParser.parse("file:/tmp/skainet/train-images.idx")
+
+        assertEquals(DataSourceProvider.File, parsed.provider)
+        assertEquals("/tmp/skainet/train-images.idx", parsed.localPath)
+        assertEquals("train-images.idx", parsed.filename)
+    }
+
+    @Test
     fun parsesPlainPathAsFile() {
         val parsed = DataSourceUriParser.parse("fixtures/mnist/train-labels.idx")
 

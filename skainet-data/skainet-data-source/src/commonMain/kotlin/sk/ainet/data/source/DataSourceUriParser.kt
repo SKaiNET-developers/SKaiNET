@@ -19,7 +19,7 @@ public object DataSourceUriParser {
         return when {
             raw.startsWith(HF_HTTPS_PREFIX) -> parseHfHttps(raw)
             raw.startsWith(HF_URI_PREFIX) -> parseHfUri(raw)
-            raw.startsWith(FILE_URI_PREFIX) -> parseFileUri(raw)
+            raw.startsWith(FILE_URI_SCHEME) -> parseFileUri(raw)
             raw.startsWith(HTTPS_PREFIX) || raw.startsWith(HTTP_PREFIX) -> parseHttp(raw)
             raw.contains("://") -> throw UnsupportedDataSourceUriException(raw)
             else -> parsePlainFilePath(raw)
@@ -27,7 +27,7 @@ public object DataSourceUriParser {
     }
 
     private fun parseFileUri(raw: String): ParsedDataSourceUri {
-        val localPath = normalizeFileUriPath(raw.removePrefix(FILE_URI_PREFIX))
+        val localPath = normalizeFileUriPath(raw.removePrefix(FILE_URI_SCHEME))
         val filename = extractFilename(localPath)
         return ParsedDataSourceUri(
             rawUri = raw,
@@ -127,8 +127,13 @@ public object DataSourceUriParser {
     }
 
     private fun normalizeFileUriPath(path: String): String {
-        val withoutLocalhost = path.removePrefix("localhost/")
-        val normalized = if (withoutLocalhost.startsWith("/")) withoutLocalhost else "/$withoutLocalhost"
+        val normalized = when {
+            path.startsWith("//localhost/") -> path.removePrefix("//localhost")
+            path.startsWith("///") -> path.drop(2)
+            path.startsWith("//") -> path.drop(1)
+            path.startsWith("/") -> path
+            else -> "/$path"
+        }
         return percentDecode(normalized)
     }
 
@@ -189,7 +194,7 @@ public object DataSourceUriParser {
         return chars.concatToString()
     }
 
-    private const val FILE_URI_PREFIX = "file://"
+    private const val FILE_URI_SCHEME = "file:"
     private const val HTTP_PREFIX = "http://"
     private const val HTTPS_PREFIX = "https://"
     private const val HF_HTTPS_PREFIX = "hf+https://"
