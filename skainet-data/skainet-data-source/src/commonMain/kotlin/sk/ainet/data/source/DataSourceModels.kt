@@ -1,5 +1,9 @@
 package sk.ainet.data.source
 
+import kotlinx.io.Sink
+import kotlinx.io.Source
+import kotlinx.io.readByteArray
+
 /**
  * Cache behavior requested by a caller resolving a data artifact.
  */
@@ -80,9 +84,38 @@ public class DataSourceArtifact(
     public val localPath: String?,
     public val sizeBytes: Long?,
     public val cacheHit: Boolean,
-    private val byteReader: suspend () -> ByteArray
+    private val sourceOpener: suspend () -> Source
 ) {
-    public suspend fun readBytes(): ByteArray = byteReader()
+    /**
+     * Opens a fresh source for this artifact. Callers own and must close it.
+     */
+    public suspend fun openSource(): Source = sourceOpener()
+
+    /**
+     * Convenience for small artifacts. Prefer [openSource] or [copyTo] for
+     * model-scale data.
+     */
+    public suspend fun readBytes(): ByteArray {
+        val source = openSource()
+        return try {
+            source.readByteArray()
+        } finally {
+            source.close()
+        }
+    }
+
+    /**
+     * Streams this artifact into [sink]. The source is closed after copying;
+     * [sink] is left open for the caller.
+     */
+    public suspend fun copyTo(sink: Sink): Long {
+        val source = openSource()
+        return try {
+            source.transferTo(sink)
+        } finally {
+            source.close()
+        }
+    }
 }
 
 /**

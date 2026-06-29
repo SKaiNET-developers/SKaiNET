@@ -1,11 +1,15 @@
 package sk.ainet.data.source
 
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
+import io.ktor.utils.io.asSource
+import kotlinx.io.buffered
+import kotlinx.io.files.Path
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -24,10 +28,14 @@ public class KtorRemoteDataSourceFetcher(
         }
     }
 ) : RemoteDataSourceFetcher, AutoCloseable {
-    override suspend fun fetch(uri: String, headers: Map<String, String>): ByteArray {
-        return client.get(uri) {
+    override suspend fun fetch(uri: String, headers: Map<String, String>): DataSourceRemoteContent {
+        val response = client.get(uri) {
             headers.forEach { (name, value) -> header(name, value) }
-        }.body()
+        }
+        return DataSourceRemoteContent(
+            source = response.bodyAsChannel().asSource().buffered(),
+            sizeBytes = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+        )
     }
 
     override fun close() {
@@ -43,7 +51,7 @@ public class JvmDataSourceResolver(
     fetcher: RemoteDataSourceFetcher = KtorRemoteDataSourceFetcher()
 ) : DataSourceResolver {
     private val delegate = DefaultDataSourceResolver(
-        store = JvmFileDataSourceByteStore(cacheDir),
+        store = FileSystemDataSourceArtifactStore(Path(cacheDir.absolutePath)),
         fetcher = fetcher,
         checksum = JvmSha256DataSourceChecksum,
         headerProvider = JvmHuggingFaceHeaderProvider
@@ -62,44 +70,6 @@ public class JvmDataSourceResolver(
     }
 }
 
-internal class JvmFileDataSourceByteStore(
-    private val cacheDir: File
-) : DataSourceByteStore {
-    override suspend fun readLocal(path: String): DataSourceStoredArtifact? {
-        val file = File(path)
-        if (!file.exists()) return null
-        if (!file.isFile) {
-            throw DataSourceException("Data source path is not a file: ${file.absolutePath}")
-        }
-        return file.toStoredArtifact()
-    }
-
-    override suspend fun readCache(cacheKey: String): DataSourceStoredArtifact? {
-        val target = File(cacheDir, cacheKey)
-        return if (target.exists() && target.isFile) target.toStoredArtifact() else null
-    }
-
-    override suspend fun writeCache(cacheKey: String, bytes: ByteArray): DataSourceStoredArtifact {
-        cacheDir.mkdirs()
-        val target = File(cacheDir, cacheKey)
-        val temp = File(cacheDir, "$cacheKey.tmp")
-        temp.writeBytes(bytes)
-        if (!temp.renameTo(target)) {
-            temp.copyTo(target, overwrite = true)
-            temp.delete()
-        }
-        return target.toStoredArtifact()
-    }
-
-    private fun File.toStoredArtifact(): DataSourceStoredArtifact {
-        return DataSourceStoredArtifact(
-            localPath = absolutePath,
-            sizeBytes = length(),
-            byteReader = { readBytes() }
-        )
-    }
-}
-
 internal object JvmHuggingFaceHeaderProvider : DataSourceHeaderProvider {
     override fun headers(request: DataSourceRequest, parsedUri: ParsedDataSourceUri): Map<String, String> {
         if (parsedUri.provider != DataSourceProvider.HuggingFace) return request.headers
@@ -113,9 +83,19 @@ internal object JvmHuggingFaceHeaderProvider : DataSourceHeaderProvider {
 }
 
 internal object JvmSha256DataSourceChecksum : DataSourceChecksum {
-    override fun sha256Hex(bytes: ByteArray): String {
-        return MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
+    override fun newSha256(): DataSourceHash = JvmSha256DataSourceHash()
+}
+
+private class JvmSha256DataSourceHash : DataSourceHash {
+    private val digest = MessageDigest.getInstance("SHA-256")
+
+    override fun update(bytes: ByteArray, startIndex: Int, endIndex: Int) {
+        digest.update(bytes, startIndex, endIndex - startIndex)
+    }
+
+    override fun hex(): String {
+        return digest
+            .digest()
             .joinToString("") { byte -> "%02x".format(byte) }
     }
 }

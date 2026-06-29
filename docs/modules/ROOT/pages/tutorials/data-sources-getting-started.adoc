@@ -40,9 +40,9 @@ dependencies {
 === Resolve one artifact
 
 `JvmDataSourceResolver` materializes remote artifacts into a cache and returns
-a `DataSourceArtifact` that can be read as bytes. Public Hugging Face files do
-not need credentials. Private files can use an `Authorization` header, or the
-JVM resolver will read `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` from the
+a `DataSourceArtifact` that opens a `kotlinx.io.Source`. Public Hugging Face
+files do not need credentials. Private files can use an `Authorization` header,
+or the JVM resolver will read `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` from the
 environment when the URI provider is Hugging Face.
 
 [source,kotlin]
@@ -60,6 +60,14 @@ val artifact = resolver.resolve(
 println(artifact.filename)
 println(artifact.localPath)
 
+val source = artifact.openSource()
+try {
+    // Pass the source to a parser/loader for model-sized artifacts.
+} finally {
+    source.close()
+}
+
+// Convenience for small sidecars and tests.
 val bytes = artifact.readBytes()
 ----
 

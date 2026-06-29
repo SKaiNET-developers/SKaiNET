@@ -22,7 +22,7 @@ class JvmDataSourceResolverTest {
             val artifact = resolver.resolve(DataSourceRequest(file.toURI().toString()))
 
             assertEquals("sample.txt", artifact.filename)
-            assertEquals(file.absolutePath, artifact.localPath)
+            assertEquals(file.canonicalPath, artifact.localPath)
             assertTrue(artifact.cacheHit)
             assertContentEquals("hello".encodeToByteArray(), artifact.readBytes())
         } finally {
@@ -142,9 +142,9 @@ private class FakeFetcher(
     var calls: Int = 0
         private set
 
-    override suspend fun fetch(uri: String, headers: Map<String, String>): ByteArray {
+    override suspend fun fetch(uri: String, headers: Map<String, String>): DataSourceRemoteContent {
         calls++
-        return bytes
+        return DataSourceRemoteContent.fromBytes(bytes)
     }
 }
 
@@ -154,9 +154,9 @@ private class QueueFetcher(
     var calls: Int = 0
         private set
 
-    override suspend fun fetch(uri: String, headers: Map<String, String>): ByteArray {
+    override suspend fun fetch(uri: String, headers: Map<String, String>): DataSourceRemoteContent {
         val index = calls.coerceAtMost(responses.lastIndex)
         calls++
-        return responses[index]
+        return DataSourceRemoteContent.fromBytes(responses[index])
     }
 }
