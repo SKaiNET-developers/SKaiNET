@@ -5,6 +5,7 @@
 * Tutorials
 ** xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started]
 ** xref:tutorials/java-getting-started.adoc[Java getting started]
+** xref:tutorials/data-sources-getting-started.adoc[Data sources and Hugging Face]
 ** xref:tutorials/image-data-getting-started.adoc[Image and data API]
 ** xref:tutorials/hlo-getting-started.adoc[StableHLO getting started]
 ** xref:tutorials/minerva-getting-started.adoc[Minerva getting started]
