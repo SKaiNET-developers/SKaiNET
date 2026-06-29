@@ -23,7 +23,7 @@ asciidoctorj = "3.0.1"
 dokka = "2.1.0"
 kotlinxCli = "0.3.6"
 kotlinxBenchmark = "0.4.17"
-kotlinxIo = "0.9.0"
+kotlinxIo = "0.9.1"
 pbandk = "0.16.0"
 kotest = "6.2.1"
 
