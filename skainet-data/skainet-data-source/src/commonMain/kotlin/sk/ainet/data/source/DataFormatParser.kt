@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
 public enum class DataFormat(public val extensions: Set<String>) {
     CSV(setOf("csv")),
     TSV(setOf("tsv")),
+    JSON(setOf("json")),
     JSON_LINES(setOf("jsonl", "ndjson"))
 }
 
@@ -65,6 +66,7 @@ public fun defaultDataFormatParsers(): List<DataFormatParser> =
     listOf(
         DelimitedTextDataFormatParser(DataFormat.CSV, delimiter = ','),
         DelimitedTextDataFormatParser(DataFormat.TSV, delimiter = '\t'),
+        JsonDataFormatParser(),
         JsonLinesDataFormatParser()
     )
 
@@ -99,6 +101,27 @@ public class DelimitedTextDataFormatParser(
     }
 }
 
+/** Parser for JSON object datasets encoded as one object or an array of objects. */
+public class JsonDataFormatParser(
+    private val json: Json = Json
+) : DataFormatParser {
+    override val format: DataFormat = DataFormat.JSON
+
+    override fun parse(text: String): RawDataset {
+        val root = json.parseToJsonElement(text)
+        val objects = when (root) {
+            is JsonObject -> listOf(root)
+            is JsonArray -> root.mapIndexed { index, element ->
+                require(element is JsonObject) { "JSON array element ${index + 1} must be an object" }
+                element
+            }
+            else -> throw IllegalArgumentException("JSON input must be an object or array of objects")
+        }
+
+        return objects.toRawDataset(format)
+    }
+}
+
 /** Parser for newline-delimited JSON objects. */
 public class JsonLinesDataFormatParser(
     private val json: Json = Json
@@ -116,20 +139,21 @@ public class JsonLinesDataFormatParser(
             }
             .toList()
 
-        val columns = objects
-            .flatMap { it.keys }
-            .distinct()
-
-        val rows = objects.map { obj ->
-            RawDataRow(columns.associateWith { column -> obj[column]?.toRawString().orEmpty() })
-        }
-
-        return RawDataset(
-            rows = rows,
-            schema = DataSchema(columns),
-            metadata = mapOf("format" to format.name, "rowCount" to rows.size.toString())
-        )
+        return objects.toRawDataset(format)
     }
+}
+
+private fun List<JsonObject>.toRawDataset(format: DataFormat): RawDataset {
+    val columns = flatMap { it.keys }.distinct()
+    val rows = map { obj ->
+        RawDataRow(columns.associateWith { column -> obj[column]?.toRawString().orEmpty() })
+    }
+
+    return RawDataset(
+        rows = rows,
+        schema = DataSchema(columns),
+        metadata = mapOf("format" to format.name, "rowCount" to rows.size.toString())
+    )
 }
 
 private fun splitDelimitedLine(line: String, delimiter: Char): List<String> {

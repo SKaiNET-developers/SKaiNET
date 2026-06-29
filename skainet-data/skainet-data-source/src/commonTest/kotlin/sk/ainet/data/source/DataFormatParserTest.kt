@@ -57,6 +57,41 @@ class DataFormatParserTest {
     }
 
     @Test
+    fun parsesJsonArrayWithUnionSchema() {
+        val dataset = DataFormatParserRegistry.default().parse(
+            DataFormat.JSON,
+            "[" +
+                "{\"id\":1,\"label\":\"cat\",\"pixels\":[0,1]}," +
+                "{\"id\":2,\"label\":\"dog\",\"score\":0.5}" +
+                "]"
+        )
+
+        assertEquals(listOf("id", "label", "pixels", "score"), dataset.schema.columns)
+        assertEquals("JSON", dataset.metadata["format"])
+        assertEquals("2", dataset.metadata["rowCount"])
+        assertEquals("[0,1]", dataset.rows[0].values["pixels"])
+        assertEquals("", dataset.rows[0].values["score"])
+    }
+
+    @Test
+    fun parsesJsonSingleObject() {
+        val dataset = DataFormatParserRegistry.default().parse(
+            DataFormat.JSON,
+            "{\"id\":1,\"label\":\"cat\"}"
+        )
+
+        assertEquals(listOf("id", "label"), dataset.schema.columns)
+        assertEquals(mapOf("id" to "1", "label" to "cat"), dataset.rows.single().values)
+    }
+
+    @Test
+    fun rejectsJsonArraysWithNonObjectElements() {
+        assertFailsWith<IllegalArgumentException> {
+            DataFormatParserRegistry.default().parse(DataFormat.JSON, "[1]")
+        }
+    }
+
+    @Test
     fun replacesRegisteredParser() {
         val registry = DataFormatParserRegistry(parsers = emptyList())
         val parser = object : DataFormatParser {
