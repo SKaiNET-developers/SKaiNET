@@ -112,6 +112,50 @@ class DatasetAndDataBatchTest {
     }
 
     @Test
+    fun dataBatchCarriesIndicesAndMetadata() {
+        val ctx = DefaultDataExecutionContext()
+        val x: Tensor<FP32, Float> = data<FP32, Float>(ctx) { tensor { shape(2, 2) { from(1f, 2f, 3f, 4f) } } }
+        val y: Tensor<FP32, Float> = tensor(ctx, FP32::class) { tensor { shape(2) { from(0f, 1f) } } }
+
+        val batch = DataBatch(
+            x = arrayOf(x),
+            y = y,
+            indices = intArrayOf(10, 20),
+            metadata = mapOf("split" to "train")
+        )
+        val enriched = batch.withMetadata(mapOf("epoch" to "1"))
+
+        assertEquals(2, batch.batchSize)
+        assertEquals(mapOf("split" to "train", "epoch" to "1"), enriched.metadata)
+        assertNotEquals(batch, batch.copy(indices = intArrayOf(11, 20)))
+    }
+
+    @Test
+    fun dataBatchSliceUsesLeadingDimension() {
+        val ctx = DefaultDataExecutionContext()
+        val x: Tensor<FP32, Float> = data<FP32, Float>(ctx) {
+            tensor {
+                shape(3, 2) {
+                    from(1f, 2f, 3f, 4f, 5f, 6f)
+                }
+            }
+        }
+        val y: Tensor<FP32, Float> = tensor(ctx, FP32::class) { tensor { shape(3) { from(0f, 1f, 2f) } } }
+        val batch = DataBatch(arrayOf(x), y, indices = intArrayOf(4, 5, 6))
+
+        val sliced = batch.slice(1..2)
+
+        assertEquals(2, sliced.batchSize)
+        assertEquals(listOf(5, 6), sliced.indices.toList())
+        assertEquals(2, sliced.x[0].shape[0])
+        assertEquals(2, sliced.y.shape[0])
+        assertEquals(3f, sliced.x[0].data[0, 0])
+        assertEquals(6f, sliced.x[0].data[1, 1])
+        assertEquals(1f, sliced.y.data[0])
+        assertEquals(2f, sliced.y.data[1])
+    }
+
+    @Test
     fun batchIteratorProducesCorrectSlices() {
         val feats = listOf(
             floatArrayOf(1f, 10f, 100f),
