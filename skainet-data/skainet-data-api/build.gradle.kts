@@ -46,11 +46,13 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(project(":skainet-lang:skainet-lang-core"))
+                implementation(libs.kotlinx.coroutines)
             }
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
           //  implementation(project(":skainet-core:skainet-performance"))
         }
     }
