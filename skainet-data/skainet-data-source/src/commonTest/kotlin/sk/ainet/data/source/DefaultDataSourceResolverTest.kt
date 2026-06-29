@@ -118,6 +118,73 @@ class DefaultDataSourceResolverTest {
             fetcher.lastHeaders
         )
     }
+
+    @Test
+    fun addsHuggingFaceTokenFromRequest() = runTest {
+        val fetcher = RecordingFetcher("payload".encodeToByteArray())
+        val resolver = DefaultDataSourceResolver(
+            store = MemoryDataSourceByteStore(),
+            fetcher = fetcher,
+            checksum = TestChecksum
+        )
+        val token = DataSourceAuthToken.from("hf_request")
+
+        resolver.resolve(
+            DataSourceRequest(
+                uri = "hf://datasets/org/repo@main/file.bin",
+                headers = mapOf("Accept" to "application/octet-stream"),
+                huggingFaceToken = token
+            )
+        )
+
+        assertEquals(
+            mapOf(
+                "Accept" to "application/octet-stream",
+                "Authorization" to "Bearer hf_request"
+            ),
+            fetcher.lastHeaders
+        )
+        assertEquals("DataSourceAuthToken(***)", token.toString())
+    }
+
+    @Test
+    fun keepsExistingAuthorizationHeaderOverHuggingFaceToken() = runTest {
+        val fetcher = RecordingFetcher("payload".encodeToByteArray())
+        val resolver = DefaultDataSourceResolver(
+            store = MemoryDataSourceByteStore(),
+            fetcher = fetcher,
+            checksum = TestChecksum
+        )
+
+        resolver.resolve(
+            DataSourceRequest(
+                uri = "hf://org/repo@main/file.bin",
+                headers = mapOf("authorization" to "Bearer explicit"),
+                huggingFaceToken = DataSourceAuthToken.from("hf_request")
+            )
+        )
+
+        assertEquals(mapOf("authorization" to "Bearer explicit"), fetcher.lastHeaders)
+    }
+
+    @Test
+    fun doesNotAddHuggingFaceTokenToGenericHttp() = runTest {
+        val fetcher = RecordingFetcher("payload".encodeToByteArray())
+        val resolver = DefaultDataSourceResolver(
+            store = MemoryDataSourceByteStore(),
+            fetcher = fetcher,
+            checksum = TestChecksum
+        )
+
+        resolver.resolve(
+            DataSourceRequest(
+                uri = "https://example.test/data.bin",
+                huggingFaceToken = DataSourceAuthToken.from("hf_request")
+            )
+        )
+
+        assertEquals(emptyMap(), fetcher.lastHeaders)
+    }
 }
 
 private class MemoryDataSourceByteStore(

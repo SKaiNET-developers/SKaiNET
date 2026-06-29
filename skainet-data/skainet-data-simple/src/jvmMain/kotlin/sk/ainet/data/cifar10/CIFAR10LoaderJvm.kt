@@ -15,7 +15,12 @@ import java.io.FileOutputStream
  * @property config The configuration for the CIFAR-10 loader.
  */
 public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon(config) {
-    private val sources = JvmDatasetSourceReader(config.cacheDir, config.useCache)
+    private val sources = JvmDatasetSourceReader(
+        cacheDir = config.cacheDir,
+        useCache = config.useCache,
+        huggingFaceTokenProvider = config.huggingFaceTokenProvider,
+        useEnvironmentHuggingFaceToken = config.useEnvironmentHuggingFaceToken
+    )
 
     /**
      * Downloads the CIFAR-10 archive and extracts the specified batch file.

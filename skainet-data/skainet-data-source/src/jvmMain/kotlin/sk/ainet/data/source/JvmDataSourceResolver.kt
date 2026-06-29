@@ -48,13 +48,20 @@ public class KtorRemoteDataSourceFetcher(
  */
 public class JvmDataSourceResolver(
     cacheDir: File = defaultCacheDir(),
-    fetcher: RemoteDataSourceFetcher = KtorRemoteDataSourceFetcher()
+    fetcher: RemoteDataSourceFetcher = KtorRemoteDataSourceFetcher(),
+    huggingFaceToken: DataSourceAuthToken? = null,
+    useEnvironmentHuggingFaceToken: Boolean = false
 ) : DataSourceResolver {
     private val delegate = DefaultDataSourceResolver(
         store = FileSystemDataSourceArtifactStore(Path(cacheDir.absolutePath)),
         fetcher = fetcher,
         checksum = JvmSha256DataSourceChecksum,
-        headerProvider = JvmHuggingFaceHeaderProvider
+        headerProvider = HuggingFaceTokenHeaderProvider(
+            JvmHuggingFaceTokenProvider(
+                configuredToken = huggingFaceToken,
+                useEnvironmentToken = useEnvironmentHuggingFaceToken
+            )
+        )
     )
 
     override suspend fun resolve(request: DataSourceRequest): DataSourceArtifact = withContext(Dispatchers.IO) {
@@ -70,15 +77,16 @@ public class JvmDataSourceResolver(
     }
 }
 
-internal object JvmHuggingFaceHeaderProvider : DataSourceHeaderProvider {
-    override fun headers(request: DataSourceRequest, parsedUri: ParsedDataSourceUri): Map<String, String> {
-        if (parsedUri.provider != DataSourceProvider.HuggingFace) return request.headers
-        if (request.headers.keys.any { it.equals("Authorization", ignoreCase = true) }) return request.headers
-        val token = System.getenv("HF_TOKEN")
-            ?.takeIf { it.isNotBlank() }
-            ?: System.getenv("HUGGING_FACE_HUB_TOKEN")?.takeIf { it.isNotBlank() }
-            ?: return request.headers
-        return request.headers + ("Authorization" to "Bearer $token")
+internal class JvmHuggingFaceTokenProvider(
+    private val configuredToken: DataSourceAuthToken?,
+    private val useEnvironmentToken: Boolean
+) : HuggingFaceTokenProvider {
+    override fun token(request: DataSourceRequest, parsedUri: ParsedDataSourceUri): DataSourceAuthToken? {
+        if (parsedUri.provider != DataSourceProvider.HuggingFace) return null
+        configuredToken?.let { return it }
+        if (!useEnvironmentToken) return null
+        return DataSourceAuthToken.fromOrNull(System.getenv("HF_TOKEN"))
+            ?: DataSourceAuthToken.fromOrNull(System.getenv("HUGGING_FACE_HUB_TOKEN"))
     }
 }
 

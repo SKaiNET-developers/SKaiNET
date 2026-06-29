@@ -1,6 +1,7 @@
 package sk.ainet.data.common
 
 import sk.ainet.data.source.CachePolicy
+import sk.ainet.data.source.DataSourceAuthToken
 import sk.ainet.data.source.DataSourceRequest
 import sk.ainet.data.source.JvmDataSourceResolver
 import java.io.ByteArrayInputStream
@@ -9,16 +10,22 @@ import java.util.zip.GZIPInputStream
 
 internal class JvmDatasetSourceReader(
     cacheDir: String,
-    useCache: Boolean
+    useCache: Boolean,
+    private val huggingFaceTokenProvider: DatasetHuggingFaceTokenProvider? = null,
+    useEnvironmentHuggingFaceToken: Boolean = false
 ) {
-    private val resolver = JvmDataSourceResolver(File(cacheDir, "sources"))
+    private val resolver = JvmDataSourceResolver(
+        cacheDir = File(cacheDir, "sources"),
+        useEnvironmentHuggingFaceToken = useEnvironmentHuggingFaceToken
+    )
     private val cachePolicy = if (useCache) CachePolicy.Use else CachePolicy.Refresh
 
     suspend fun read(uri: String): ByteArray {
         val artifact = resolver.resolve(
             DataSourceRequest(
                 uri = uri,
-                cachePolicy = cachePolicy
+                cachePolicy = cachePolicy,
+                huggingFaceToken = DataSourceAuthToken.fromOrNull(huggingFaceTokenProvider?.token())
             )
         )
         return artifact.readBytes()

@@ -51,6 +51,33 @@ public data class HuggingFaceLocation(
 )
 
 /**
+ * Authentication token for provider-specific data source requests.
+ *
+ * The raw value is intentionally hidden from [toString] output so tokens are
+ * not leaked when requests or configs are logged.
+ */
+public class DataSourceAuthToken private constructor(
+    private val value: String
+) {
+    override fun toString(): String = "DataSourceAuthToken(***)"
+
+    internal fun authorizationHeaderValue(): String = "Bearer $value"
+
+    public companion object {
+        public fun from(value: String): DataSourceAuthToken {
+            val normalized = value.trim()
+            require(normalized.isNotEmpty()) { "Data source auth token cannot be blank" }
+            return DataSourceAuthToken(normalized)
+        }
+
+        public fun fromOrNull(value: String?): DataSourceAuthToken? {
+            val normalized = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            return DataSourceAuthToken(normalized)
+        }
+    }
+}
+
+/**
  * A normalized, provider-aware source URI.
  */
 public data class ParsedDataSourceUri(
@@ -70,7 +97,8 @@ public data class DataSourceRequest(
     public val uri: String,
     public val cachePolicy: CachePolicy = CachePolicy.Use,
     public val expectedSha256: String? = null,
-    public val headers: Map<String, String> = emptyMap()
+    public val headers: Map<String, String> = emptyMap(),
+    public val huggingFaceToken: DataSourceAuthToken? = null
 )
 
 /**
