@@ -2,13 +2,10 @@ package sk.ainet.data.cifar10
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import sk.ainet.data.source.CachePolicy
-import sk.ainet.data.source.DataSourceRequest
-import sk.ainet.data.source.JvmDataSourceResolver
-import java.io.ByteArrayInputStream
+import sk.ainet.data.common.JvmDatasetSourceReader
+import sk.ainet.data.common.gunzip
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.GZIPInputStream
 
 /**
  * JVM implementation of the CIFAR-10 loader.
@@ -18,7 +15,7 @@ import java.util.zip.GZIPInputStream
  * @property config The configuration for the CIFAR-10 loader.
  */
 public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon(config) {
-    private val resolver = JvmDataSourceResolver(File(config.cacheDir, "sources"))
+    private val sources = JvmDatasetSourceReader(config.cacheDir, config.useCache)
 
     /**
      * Downloads the CIFAR-10 archive and extracts the specified batch file.
@@ -43,14 +40,8 @@ public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon
 
         // Check if we need to resolve and extract the archive
         if (!extractedDir.exists() || !config.useCache) {
-            val archive = resolver.resolve(
-                DataSourceRequest(
-                    uri = config.archiveUri,
-                    cachePolicy = if (config.useCache) CachePolicy.Use else CachePolicy.Refresh
-                )
-            )
             println("Extracting CIFAR-10 archive...")
-            extractTarGz(archive.readBytes(), cacheDir.path)
+            extractTarGz(sources.read(config.archiveUri), cacheDir.path)
         }
 
         if (!batchFile.exists()) {
@@ -68,14 +59,7 @@ public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon
      */
     private fun extractTarGz(archiveBytes: ByteArray, outputDir: String) {
         val outputDirFile = File(outputDir)
-
-        // First, decompress gzip to get the tar content
-        val tarBytes = GZIPInputStream(ByteArrayInputStream(archiveBytes)).use { gzipIn ->
-            gzipIn.readBytes()
-        }
-
-        // Parse the TAR archive
-        extractTar(tarBytes, outputDirFile)
+        extractTar(archiveBytes.gunzip(), outputDirFile)
     }
 
     /**

@@ -22,6 +22,7 @@ kotlin {
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
 
         jvmMain.dependencies {
@@ -31,8 +32,5 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core.jvm)
         }
 
-        jvmTest.dependencies {
-            implementation(libs.kotlinx.coroutines.test)
-        }
     }
 }
