@@ -6,6 +6,7 @@ import sk.ainet.data.fashionmnist.FashionMNISTImage
 import sk.ainet.data.fashionmnist.FashionMNISTLoaderConfig
 import sk.ainet.data.fashionmnist.FashionMNISTLoaderCommon
 import sk.ainet.data.fashionmnist.createFashionMNISTLoader
+import sk.ainet.lang.types.Int8
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -54,6 +55,19 @@ class FashionMNISTLoaderTest {
         assertEquals(2, subset.images.size)
         assertEquals(dataset.images[0], subset.images[0])
         assertEquals(dataset.images[1], subset.images[1])
+    }
+
+    @Test
+    fun testShuffledDatasetViewCanCreateBatch() = runBlocking {
+        val dataset = createFakeLoader().loadTrainingData()
+        val shuffled = dataset.shuffle(seed = 123)
+
+        val batch = shuffled.batchIterator<Int8, Byte>(2).next()
+
+        assertEquals(2, batch.batchSize)
+        assertEquals(2, batch.indices.size)
+        assertEquals(2, batch.x[0].shape[0])
+        assertEquals(2, batch.y.shape[0])
     }
 
     @Test

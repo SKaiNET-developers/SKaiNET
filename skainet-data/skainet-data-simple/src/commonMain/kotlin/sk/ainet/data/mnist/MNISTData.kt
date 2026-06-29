@@ -82,10 +82,23 @@ public data class MNISTDataset(
      */
     override fun <T : DType, V> createDataBatch(batchStart: Int, batchLength: Int): DataBatch<T, V> {
         val actualLen = min(batchLength, xSize - batchStart)
-        val batchImages = images.subList(batchStart, batchStart + actualLen)
+        val batchIndices = IntArray(actualLen) { offset -> batchStart + offset }
+        return createDataBatchForIndices(batchIndices)
+    }
+
+    /**
+     * Creates a DataBatch from arbitrary sample indices. This keeps shuffled and
+     * filtered dataset views compatible with tensor batching.
+     */
+    override fun <T : DType, V> createIndexedDataBatch(indices: IntArray): DataBatch<T, V> =
+        createDataBatchForIndices(indices)
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> createDataBatchForIndices(indices: IntArray): DataBatch<T, V> {
+        val batchImages = indices.map { images[it] }
 
         // Concatenate raw image bytes (no normalization) for memory efficiency
-        val xData = ByteArray(actualLen * MNISTConstants.IMAGE_PIXELS)
+        val xData = ByteArray(indices.size * MNISTConstants.IMAGE_PIXELS)
         var offset = 0
         for (sample in batchImages) {
             val bytes = sample.image
@@ -94,19 +107,18 @@ public data class MNISTDataset(
         }
 
         // Shape as [batch, 1, 28, 28]
-        val xShape = Shape(actualLen, 1, MNISTConstants.IMAGE_SIZE, MNISTConstants.IMAGE_SIZE)
+        val xShape = Shape(indices.size, 1, MNISTConstants.IMAGE_SIZE, MNISTConstants.IMAGE_SIZE)
         val xTensor: Tensor<Int8, Byte> = executionContext.fromByteArray(xShape, Int8::class, xData)
 
         // Labels as bytes (memory-efficient). Keep as Int8 to satisfy DataBatch single dtype requirement
-        val yData = ByteArray(actualLen) { idx -> batchImages[idx].label }
-        val yShape = Shape(actualLen)
+        val yData = ByteArray(indices.size) { idx -> batchImages[idx].label }
+        val yShape = Shape(indices.size)
         val yTensor: Tensor<Int8, Byte> = executionContext.fromByteArray(yShape, Int8::class, yData)
 
         // DataBatch expects array of input tensors; we provide single input
         val xArray: Array<Tensor<Int8, Byte>> = arrayOf(xTensor)
 
-        @Suppress("UNCHECKED_CAST")
-        return DataBatch(xArray as Array<Tensor<T, V>>, yTensor as Tensor<T, V>)
+        return DataBatch(xArray as Array<Tensor<T, V>>, yTensor as Tensor<T, V>, indices = indices.copyOf())
     }
 
     /**
