@@ -12,7 +12,25 @@ public enum class DataFormat(public val extensions: Set<String>) {
     CSV(setOf("csv")),
     TSV(setOf("tsv")),
     JSON(setOf("json")),
-    JSON_LINES(setOf("jsonl", "ndjson"))
+    JSON_LINES(setOf("jsonl", "ndjson"));
+
+    public companion object {
+        public fun fromExtension(extension: String): DataFormat? {
+            val normalized = extension.trim().lowercase().removePrefix(".")
+            if (normalized.isBlank()) return null
+            return entries.firstOrNull { format -> normalized in format.extensions }
+        }
+
+        public fun inferFromFilename(filename: String): DataFormat? {
+            val normalized = filename
+                .substringBefore('?')
+                .substringBefore('#')
+                .trimEnd('/')
+                .substringAfterLast('/')
+            val extension = normalized.substringAfterLast('.', missingDelimiterValue = "")
+            return fromExtension(extension)
+        }
+    }
 }
 
 /** A simple schema inferred from raw stringly parsed data. */
