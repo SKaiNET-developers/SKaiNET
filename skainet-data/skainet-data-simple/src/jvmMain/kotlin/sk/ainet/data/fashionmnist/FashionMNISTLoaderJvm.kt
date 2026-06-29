@@ -1,13 +1,6 @@
 package sk.ainet.data.fashionmnist
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import sk.ainet.data.source.CachePolicy
-import sk.ainet.data.source.DataSourceRequest
-import sk.ainet.data.source.JvmDataSourceResolver
-import java.io.ByteArrayInputStream
-import java.util.zip.GZIPInputStream
-import java.io.File
+import sk.ainet.data.common.JvmDatasetSourceReader
 
 /**
  * JVM implementation of the Fashion-MNIST loader.
@@ -15,7 +8,7 @@ import java.io.File
  * @property config The configuration for the Fashion-MNIST loader.
  */
 public class FashionMNISTLoaderJvm(config: FashionMNISTLoaderConfig) : FashionMNISTLoaderCommon(config) {
-    private val resolver = JvmDataSourceResolver(File(config.cacheDir, "sources"))
+    private val sources = JvmDatasetSourceReader(config.cacheDir, config.useCache)
 
     /**
      * Resolves, caches, and decompresses a file when needed.
@@ -24,23 +17,8 @@ public class FashionMNISTLoaderJvm(config: FashionMNISTLoaderConfig) : FashionMN
      * @param filename The name of the file to save.
      * @return The bytes of the decompressed file.
      */
-    override suspend fun downloadAndCacheFile(url: String, filename: String): ByteArray = withContext(Dispatchers.IO) {
-        val artifact = resolver.resolve(
-            DataSourceRequest(
-                uri = url,
-                cachePolicy = if (config.useCache) CachePolicy.Use else CachePolicy.Refresh
-            )
-        )
-        return@withContext maybeGunzip(artifact.readBytes())
-    }
-
-    private fun maybeGunzip(bytes: ByteArray): ByteArray {
-        if (!bytes.isGzip()) return bytes
-        return GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
-    }
-
-    private fun ByteArray.isGzip(): Boolean {
-        return size >= 2 && this[0] == 0x1f.toByte() && this[1] == 0x8b.toByte()
+    override suspend fun downloadAndCacheFile(url: String, filename: String): ByteArray {
+        return sources.readGzipDecoded(url)
     }
 
     public companion object {
