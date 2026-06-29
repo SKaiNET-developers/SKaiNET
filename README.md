@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.32.4"))
+    implementation(platform("sk.ainet:skainet-bom:0.33.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -240,6 +240,23 @@ Runnable examples:
 - Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
 
 ---
+
+## What's New in 0.33.0
+
+- **GRU — the first recurrent layer.** `nn.Gru` (`[B,S,D]->[B,S,H]`, PyTorch gate order) composed from
+  existing primitives and unrolled over the static sequence at trace time, so it runs eagerly, trains
+  through the standard tape, and exports to StableHLO with no dedicated converter. Plus a `gru(…)`
+  network-DSL builder. (PR #772, issue #217)
+- **`upsample2d` Bilinear + StableHLO export** for both Nearest and Bilinear — everything lowers to fixed
+  reshape/broadcast/`dot_general` (no `custom_call`), unblocking resize/FPN-style export. (PR #771)
+- **Autodiff correctness + coverage.** Fixes a silent gradient-drop for `elu`/`leakyRelu`/`permute`
+  (backward rules existed but were never wired into the trace dispatch), makes `cos`/`sin`/`tril`/
+  `gather`/`indexSelect`/`unfold`/`convTranspose1d` differentiable, and adds a KSP-generated coverage
+  guard so a differentiable op can no longer ship without a wired backward. (PR #774)
+- **Norms compile on stock IREE.** `layerNorm`/`rmsNorm`/`batchNorm` now lower to real `stablehlo.reduce`
+  instead of export-only `custom_call`s. (PR #769)
+- **Breaking:** `TensorOps.sin`/`cos`/`convTranspose1d` are now abstract — backends implementing
+  `TensorOps` directly must override them (both bundled backends already do).
 
 ## What's New in 0.32.4
 

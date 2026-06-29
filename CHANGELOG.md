@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-06-29
+
+### Added
+
+- **GRU layer (`sk.ainet.lang.nn.Gru`).** SKaiNET's first recurrent layer (issue #217): single-layer,
+  unidirectional, batch-first `[B, S, D] -> [B, S, H]`, PyTorch gate order (reset, update, new). Built
+  by composing existing primitives (matmul/add/sigmoid/tanh/narrow/concat) **unrolled over the static
+  sequence length at trace time** — StableHLO has no loop construct, so any recurrence must unroll. It
+  runs eagerly, is trainable through the standard tape, and exports to StableHLO with no dedicated
+  converter. Also adds a `gru(hiddenSize) { … }` network-DSL builder. (PR #772)
+- **`upsample2d` Bilinear + StableHLO export.** Adds the Bilinear forward (PyTorch coord map, 4-neighbour
+  blend) and its autodiff backward, and a traceable StableHLO lowering for **both** Nearest and Bilinear
+  (scale is static at trace time, so everything lowers to fixed reshape/broadcast/`dot_general` — no
+  runtime index math, no `custom_call`). Unblocks export of resize/FPN-style paths. (PR #771)
+- **Seven newly-differentiable ops.** `cos`, `sin`, `tril`, `gather`, `indexSelect`, `unfold`,
+  `convTranspose1d` now carry `@Diff` and have backward rules (with finite-difference parity tests):
+  trig for RoPE, `gather` for embedding lookup, `tril` for causal masks, the rest structural. (PR #774)
+- **KSP-generated autodiff-coverage guard.** The tracing-wrapper processor now emits
+  `DifferentiableTensorOpsRules.ruleNames` (the authoritative `@Diff` op set); a unit test asserts the
+  execution tape's dispatch covers it, so a differentiable op can no longer ship with a backward rule
+  that is never wired. `operators.json` now records `isDifferentiable` (+ optional `diffRuleName`),
+  schema-validated. (PR #774)
+
+### Fixed
+
+- **Silent gradient drop for `elu`, `leakyRelu`, `permute`.** These were `@Diff` and had correct
+  backward formulas, but had no arm in the execution tape's trace dispatch, so their gradients fell
+  through to `null` and were silently discarded. Now wired (and guarded by the coverage test above);
+  `permuteBackward` also fixed to decode its `axes` attribute as the traced `List<Int>`. (PR #774)
+- **`layerNorm` / `rmsNorm` / `batchNorm` lower to real `stablehlo.reduce`.** The norm converters
+  previously emitted non-compilable `reduce_mean` / `reduce_variance` `custom_call`s (export-only); they
+  now decompose to real `stablehlo.reduce`, so all three compile and run on stock IREE (llvm-cpu). (PR #769)
+
+### Changed
+
+- **BREAKING: `TensorOps.sin`, `TensorOps.cos`, `TensorOps.convTranspose1d` are now abstract.** They
+  previously had default `throw NotImplementedError(...)` bodies; they are abstract so the tracing
+  wrapper records them (and they become differentiable/exportable). Any type implementing `TensorOps`
+  directly must now override them — both bundled backends (`DefaultCpuOpsBase`, `VoidTensorOps`) already
+  do. (PR #774)
+
 ## [0.32.4] - 2026-06-26
 
 ### Fixed
