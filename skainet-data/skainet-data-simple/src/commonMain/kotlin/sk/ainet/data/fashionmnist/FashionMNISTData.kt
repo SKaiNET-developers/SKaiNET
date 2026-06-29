@@ -146,7 +146,11 @@ public data class FashionMNISTDataset(
  */
 public data class FashionMNISTLoaderConfig(
     val cacheDir: String = "fashion-mnist-data",
-    val useCache: Boolean = true
+    val useCache: Boolean = true,
+    val trainImagesUri: String = FashionMNISTConstants.TRAIN_IMAGES_URL,
+    val trainLabelsUri: String = FashionMNISTConstants.TRAIN_LABELS_URL,
+    val testImagesUri: String = FashionMNISTConstants.TEST_IMAGES_URL,
+    val testLabelsUri: String = FashionMNISTConstants.TEST_LABELS_URL
 )
 
 /**

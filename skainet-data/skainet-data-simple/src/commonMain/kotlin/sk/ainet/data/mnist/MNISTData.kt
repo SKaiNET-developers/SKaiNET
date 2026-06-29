@@ -124,7 +124,11 @@ public data class MNISTDataset(
  */
 public data class MNISTLoaderConfig(
     val cacheDir: String = "mnist-data",
-    val useCache: Boolean = true
+    val useCache: Boolean = true,
+    val trainImagesUri: String = MNISTConstants.TRAIN_IMAGES_URL,
+    val trainLabelsUri: String = MNISTConstants.TRAIN_LABELS_URL,
+    val testImagesUri: String = MNISTConstants.TEST_IMAGES_URL,
+    val testLabelsUri: String = MNISTConstants.TEST_LABELS_URL
 )
 
 /**

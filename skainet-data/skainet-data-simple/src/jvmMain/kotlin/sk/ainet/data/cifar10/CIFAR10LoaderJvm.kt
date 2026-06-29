@@ -1,18 +1,13 @@
 package sk.ainet.data.cifar10
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.get
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.call.body
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
+import sk.ainet.data.source.CachePolicy
+import sk.ainet.data.source.DataSourceRequest
+import sk.ainet.data.source.JvmDataSourceResolver
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.util.zip.GZIPInputStream
 
 /**
@@ -23,6 +18,7 @@ import java.util.zip.GZIPInputStream
  * @property config The configuration for the CIFAR-10 loader.
  */
 public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon(config) {
+    private val resolver = JvmDataSourceResolver(File(config.cacheDir, "sources"))
 
     /**
      * Downloads the CIFAR-10 archive and extracts the specified batch file.
@@ -45,21 +41,16 @@ public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon
             return@withContext batchFile.readBytes()
         }
 
-        // Check if we need to download and extract the archive
+        // Check if we need to resolve and extract the archive
         if (!extractedDir.exists() || !config.useCache) {
-            val archiveFile = File(cacheDir, CIFAR10Constants.ARCHIVE_FILENAME)
-
-            // Download if not cached
-            if (!archiveFile.exists() || !config.useCache) {
-                println("Downloading CIFAR-10 archive: ${CIFAR10Constants.DOWNLOAD_URL}")
-                downloadFile(CIFAR10Constants.DOWNLOAD_URL, archiveFile.path)
-            } else {
-                println("Using cached archive: ${archiveFile.path}")
-            }
-
-            // Extract the archive
+            val archive = resolver.resolve(
+                DataSourceRequest(
+                    uri = config.archiveUri,
+                    cachePolicy = if (config.useCache) CachePolicy.Use else CachePolicy.Refresh
+                )
+            )
             println("Extracting CIFAR-10 archive...")
-            extractTarGz(archiveFile.path, cacheDir.path)
+            extractTarGz(archive.readBytes(), cacheDir.path)
         }
 
         if (!batchFile.exists()) {
@@ -70,47 +61,16 @@ public class CIFAR10LoaderJvm(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon
     }
 
     /**
-     * Downloads a file from a URL.
-     *
-     * @param url The URL to download from.
-     * @param outputPath The path to save the file to.
-     */
-    private suspend fun downloadFile(url: String, outputPath: String) {
-        val client = HttpClient(CIO) {
-            install(Logging)
-
-            // Configure timeout for large files (CIFAR-10 is ~170MB)
-            install(HttpTimeout) {
-                requestTimeoutMillis = 600000 // 10 minutes
-                connectTimeoutMillis = 60000 // 60 seconds
-                socketTimeoutMillis = 600000 // 10 minutes
-            }
-        }
-
-        try {
-            val file = File(outputPath)
-
-            val httpResponse: HttpResponse = client.get(url)
-            val responseBody: ByteArray = httpResponse.body()
-            file.writeBytes(responseBody)
-
-            println("File saved to ${file.path} (${responseBody.size} bytes)")
-        } finally {
-            client.close()
-        }
-    }
-
-    /**
      * Extracts a .tar.gz archive using a simple TAR parser.
      *
-     * @param archivePath The path to the .tar.gz file.
+     * @param archiveBytes The bytes of the .tar.gz file.
      * @param outputDir The directory to extract files to.
      */
-    private fun extractTarGz(archivePath: String, outputDir: String) {
+    private fun extractTarGz(archiveBytes: ByteArray, outputDir: String) {
         val outputDirFile = File(outputDir)
 
         // First, decompress gzip to get the tar content
-        val tarBytes = GZIPInputStream(FileInputStream(archivePath)).use { gzipIn ->
+        val tarBytes = GZIPInputStream(ByteArrayInputStream(archiveBytes)).use { gzipIn ->
             gzipIn.readBytes()
         }
 
