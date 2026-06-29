@@ -2,6 +2,7 @@ package sk.ainet.data.cifar10
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * JS (browser) implementation of the CIFAR-10 loader.
@@ -13,7 +14,11 @@ public class CIFAR10LoaderJs(config: CIFAR10LoaderConfig) : CIFAR10LoaderCommon(
 
     override suspend fun downloadAndExtractBatch(batchFilename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("CIFAR10LoaderJs is not fully implemented yet. Tar.gz extraction requires JS library support.")
+            unsupportedDatasetLoader(
+                dataset = "CIFAR-10",
+                target = "js",
+                reason = "tar.gz extraction is not implemented for this browser target"
+            )
         }
 
     public companion object {

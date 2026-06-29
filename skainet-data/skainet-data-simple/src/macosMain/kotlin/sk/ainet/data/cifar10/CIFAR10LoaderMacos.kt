@@ -2,6 +2,7 @@ package sk.ainet.data.cifar10
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * macOS implementation of the CIFAR-10 loader.
@@ -13,7 +14,11 @@ public class CIFAR10LoaderMacos(config: CIFAR10LoaderConfig) : CIFAR10LoaderComm
 
     override suspend fun downloadAndExtractBatch(batchFilename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("CIFAR10LoaderMacos is not implemented yet.")
+            unsupportedDatasetLoader(
+                dataset = "CIFAR-10",
+                target = "macos",
+                reason = "tar.gz extraction is not implemented for this native target"
+            )
         }
 
     public companion object {

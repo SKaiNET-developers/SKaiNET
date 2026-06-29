@@ -7,9 +7,13 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.call.body
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.js.ExperimentalWasmJsInterop
 import kotlin.js.Promise
 import kotlinx.coroutines.await
+import sk.ainet.data.common.hasGzipHeader
+import sk.ainet.data.common.unsupportedDatasetLoader
 
+@OptIn(ExperimentalWasmJsInterop::class)
 @JsFun(
     """
         async function(input) {
@@ -45,7 +49,13 @@ public class FashionMNISTLoaderJs(config: FashionMNISTLoaderConfig) : FashionMNI
             if (decompressed != null) {
                 decompressed
             } else {
-                println("[FashionMNIST][JS] DecompressionStream not available. Returning raw data (likely gzip) which will fail to parse.")
+                if (gzData.hasGzipHeader()) {
+                    unsupportedDatasetLoader(
+                        dataset = "Fashion-MNIST",
+                        target = "js",
+                        reason = "browser DecompressionStream is unavailable; provide an uncompressed IDX URI"
+                    )
+                }
                 gzData
             }
         }
