@@ -60,7 +60,8 @@ class CIFAR10LoaderTest {
     fun testLoaderConfiguration() {
         val config = CIFAR10LoaderConfig(
             cacheDir = "custom-cache-dir",
-            useCache = false
+            useCache = false,
+            archiveUri = "hf+https://huggingface.co/datasets/cifar10/resolve/main/cifar-10-binary.tar.gz"
         )
         val loader = createCIFAR10Loader(config)
 

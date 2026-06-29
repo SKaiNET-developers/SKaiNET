@@ -62,6 +62,7 @@ kotlin {
         }
 
         jvmMain.dependencies {
+            implementation(project(":skainet-data:skainet-data-source"))
             implementation(libs.ktor.client.cio)
             implementation(libs.ktor.client.plugins)
             implementation(libs.ktor.client.logging)

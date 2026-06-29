@@ -14,11 +14,11 @@ public abstract class MNISTLoaderCommon(public val config: MNISTLoaderConfig) : 
      */
     override suspend fun loadTrainingData(): MNISTDataset {
         val imagesBytes = downloadAndCacheFile(
-            MNISTConstants.TRAIN_IMAGES_URL,
+            config.trainImagesUri,
             MNISTConstants.TRAIN_IMAGES_FILENAME
         )
         val labelsBytes = downloadAndCacheFile(
-            MNISTConstants.TRAIN_LABELS_URL,
+            config.trainLabelsUri,
             MNISTConstants.TRAIN_LABELS_FILENAME
         )
 
@@ -32,11 +32,11 @@ public abstract class MNISTLoaderCommon(public val config: MNISTLoaderConfig) : 
      */
     override suspend fun loadTestData(): MNISTDataset {
         val imagesBytes = downloadAndCacheFile(
-            MNISTConstants.TEST_IMAGES_URL,
+            config.testImagesUri,
             MNISTConstants.TEST_IMAGES_FILENAME
         )
         val labelsBytes = downloadAndCacheFile(
-            MNISTConstants.TEST_LABELS_URL,
+            config.testLabelsUri,
             MNISTConstants.TEST_LABELS_FILENAME
         )
 

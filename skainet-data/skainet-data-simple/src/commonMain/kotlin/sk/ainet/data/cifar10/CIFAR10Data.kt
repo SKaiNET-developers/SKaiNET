@@ -144,7 +144,8 @@ public data class CIFAR10Dataset(
  */
 public data class CIFAR10LoaderConfig(
     val cacheDir: String = "cifar10-data",
-    val useCache: Boolean = true
+    val useCache: Boolean = true,
+    val archiveUri: String = CIFAR10Constants.DOWNLOAD_URL
 )
 
 /**

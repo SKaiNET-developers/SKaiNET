@@ -60,7 +60,9 @@ class FashionMNISTLoaderTest {
     fun testLoaderConfiguration() {
         val config = FashionMNISTLoaderConfig(
             cacheDir = "custom-cache-dir",
-            useCache = false
+            useCache = false,
+            trainImagesUri = "file:///datasets/fashion-mnist/train-images",
+            trainLabelsUri = "hf+https://huggingface.co/datasets/zalando-datasets/fashion_mnist/resolve/main/train-labels"
         )
         val loader = createFashionMNISTLoader(config)
 
