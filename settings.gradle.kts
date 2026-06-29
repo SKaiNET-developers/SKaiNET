@@ -48,6 +48,7 @@ include("skainet-backends:benchmarks:jvm-cpu-publish")
 
 // ====== DATA
 include("skainet-data:skainet-data-api")
+include("skainet-data:skainet-data-source")
 include("skainet-data:skainet-data-transform")
 include("skainet-data:skainet-data-simple")
 include("skainet-data:skainet-data-media")
