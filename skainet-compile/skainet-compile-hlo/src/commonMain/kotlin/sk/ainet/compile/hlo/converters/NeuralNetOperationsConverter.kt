@@ -4,6 +4,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.graph.GraphNode
+import kotlin.math.floor
 
 /**
  * Converter for neural network operations.
@@ -31,7 +32,9 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         "rmsNorm", "rms_norm", "RMSNorm", "RmsNorm",
         "groupNorm", "groupNormalization", "GroupNormalization", "group_norm",
         // Attention
-        "scaledDotProductAttention"
+        "scaledDotProductAttention",
+        // Upsampling / interpolation (Nearest + Bilinear)
+        "upsample2d", "Upsample2d", "upsample_2d"
     )
 
     override fun convert(
@@ -49,6 +52,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             "rmsnorm", "rms_norm" -> convertRmsNorm(node, operands, context)
             "groupnorm", "groupnormalization", "group_norm" -> convertGroupNorm(node, operands, context)
             "scaleddotproductattention" -> convertSdpa(node, operands, context)
+            "upsample2d", "upsample_2d" -> convertUpsample2d(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by NeuralNetOperationsConverter"
@@ -249,6 +253,21 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         )
     }
     
+    /**
+     * Lower BatchNorm to real StableHLO elementwise ops, in the same decomposition style as
+     * LayerNorm / GroupNorm — instead of `stablehlo.batch_norm_inference` /
+     * `batch_norm_training` (the training form returns a 3-tuple, which the string emitter
+     * cannot represent as a single SSA value). Per-channel affine over the `feature_index`
+     * (channel) axis of an `(N, C, *spatial)` input:
+     *
+     *     out = (x - mean) / sqrt(var + eps) * scale + offset
+     *
+     * `scale` / `offset` (and `mean` / `var` when provided) are shape `(C,)` and broadcast
+     * over the channel axis. With 5 operands (input, scale, offset, mean, variance) this is
+     * the **inference / eval** form (running statistics). With 3 (input, scale, offset) the
+     * batch statistics are computed via real `stablehlo.reduce` over the non-channel axes
+     * (population variance, ddof=0) — the **training** form's normalized output.
+     */
     private fun convertBatchNorm(
         node: GraphNode,
         operands: List<String>,
@@ -260,36 +279,102 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
                 "Unsupported batchNorm arity for node ${node.id}"
             )
         }
-        
+
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?x?x?x?xf32>"
-        
-        // Extract batch norm parameters
+        val elementType = outputSpec?.let { context.getTypeMapper().mapDType(it.dtype) }
+            ?: "f32"
+
+        val inputShape = node.inputs.firstOrNull()?.shape ?: outputSpec?.shape ?: emptyList()
+        val rank = inputShape.size
+
         val params = node.operation.parameters
-        val epsilon = params["eps"] as? Double ?: 1e-5
-        val featureIndex = params["feature_index"] as? Int ?: 1 // Channel dimension
-        
+        val epsilon = (params["eps"] as? Double) ?: (params["epsilon"] as? Double) ?: 1e-5
+        val rawFeature = params["feature_index"] as? Int ?: 1 // channel dimension
+        val featureIndex = (if (rawFeature < 0) rank + rawFeature else rawFeature)
+            .coerceIn(0, (rank - 1).coerceAtLeast(0))
+        val channels = if (rank > 0) inputShape[featureIndex] else 1
+        val channelType = "tensor<${channels}x$elementType>"
+
+        val xInput = operands[0]
+        val scaleOperand = operands[1]
+        val offsetOperand = operands[2]
+        val meanOperand = if (operands.size > 3) operands[3] else null
+        val varOperand = if (operands.size > 4) operands[4] else null
+
+        val operations = mutableListOf<String>()
+
+        // Per-channel mean & variance: provided directly (inference) or computed via real
+        // `stablehlo.reduce` over the non-channel axes (training). Both are shape (C,).
+        val meanCh: String
+        val varCh: String
+        if (meanOperand != null && varOperand != null) {
+            meanCh = meanOperand
+            varCh = varOperand
+        } else {
+            val reduceDims = (0 until rank).filter { it != featureIndex }
+            val count = reduceDims.fold(1) { acc, d -> acc * inputShape[d] }
+            val dimsList = reduceDims.joinToString(", ")
+            val zeroInit = context.nextTempValue()
+            val countConst = context.nextTempValue()
+            val sumX = context.nextTempValue()
+            val computedMean = context.nextTempValue()
+            val squared = context.nextTempValue()
+            val sumSq = context.nextTempValue()
+            val meanSq = context.nextTempValue()
+            val meanSquared = context.nextTempValue()
+            val computedVar = context.nextTempValue()
+            operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$elementType>"
+            operations += "$countConst = stablehlo.constant dense<${count}.0> : $channelType"
+            operations += "$sumX = stablehlo.reduce($xInput init: $zeroInit) " +
+                "applies stablehlo.add across dimensions = [$dimsList] : ($outputType, tensor<$elementType>) -> $channelType"
+            operations += "$computedMean = stablehlo.divide $sumX, $countConst : $channelType"
+            operations += "$squared = stablehlo.multiply $xInput, $xInput : $outputType"
+            operations += "$sumSq = stablehlo.reduce($squared init: $zeroInit) " +
+                "applies stablehlo.add across dimensions = [$dimsList] : ($outputType, tensor<$elementType>) -> $channelType"
+            operations += "$meanSq = stablehlo.divide $sumSq, $countConst : $channelType"
+            operations += "$meanSquared = stablehlo.multiply $computedMean, $computedMean : $channelType"
+            operations += "$computedVar = stablehlo.subtract $meanSq, $meanSquared : $channelType"
+            meanCh = computedMean
+            varCh = computedVar
+        }
+
+        // std = sqrt(var + eps) per channel.
+        val epsConst = context.nextTempValue()
+        val varPlusEps = context.nextTempValue()
+        val stdCh = context.nextTempValue()
+        operations += "$epsConst = stablehlo.constant dense<$epsilon> : $channelType"
+        operations += "$varPlusEps = stablehlo.add $varCh, $epsConst : $channelType"
+        operations += "$stdCh = stablehlo.sqrt $varPlusEps : $channelType"
+
+        // Broadcast the (C,) tensors over the channel axis and apply the affine.
+        val meanB = context.nextTempValue()
+        val centered = context.nextTempValue()
+        val stdB = context.nextTempValue()
+        val normalized = context.nextTempValue()
+        val scaleB = context.nextTempValue()
+        val scaled = context.nextTempValue()
+        val offsetB = context.nextTempValue()
         val resultValue = context.nextTempValue()
-        
-        // Build StableHLO batch_norm_inference operation
-        val batchNormOperation = buildBatchNormOperation(
-            resultValue = resultValue,
-            input = operands[0],
-            scale = operands[1],
-            offset = operands[2],
-            mean = if (operands.size > 3) operands[3] else null,
-            variance = if (operands.size > 4) operands[4] else null,
-            outputType = outputType,
-            epsilon = epsilon,
-            featureIndex = featureIndex
-        )
-        
-        context.emitOperation(batchNormOperation)
-        
+        operations += "$meanB = stablehlo.broadcast_in_dim $meanCh, " +
+            "dims = [$featureIndex] : ($channelType) -> $outputType"
+        operations += "$centered = stablehlo.subtract $xInput, $meanB : $outputType"
+        operations += "$stdB = stablehlo.broadcast_in_dim $stdCh, " +
+            "dims = [$featureIndex] : ($channelType) -> $outputType"
+        operations += "$normalized = stablehlo.divide $centered, $stdB : $outputType"
+        operations += "$scaleB = stablehlo.broadcast_in_dim $scaleOperand, " +
+            "dims = [$featureIndex] : ($channelType) -> $outputType"
+        operations += "$scaled = stablehlo.multiply $normalized, $scaleB : $outputType"
+        operations += "$offsetB = stablehlo.broadcast_in_dim $offsetOperand, " +
+            "dims = [$featureIndex] : ($channelType) -> $outputType"
+        operations += "$resultValue = stablehlo.add $scaled, $offsetB : $outputType"
+
+        operations.forEach { context.emitOperation(it) }
+
         return ConversionResult.Success(
             outputValueName = resultValue,
-            emittedOperations = listOf(batchNormOperation)
+            emittedOperations = operations
         )
     }
     
@@ -301,15 +386,14 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
      *
      *     out = scale * (x - mean) / sqrt(var + eps) + offset
      *
-     * Emission style matches the softmax fix (#467) and the rest of
-     * the emitter: reductions go through
-     * `stablehlo.custom_call @reduce_mean` / `@reduce_variance` (both
-     * already supported by `ReductionOperationsConverter`), the reduced
-     * tensors are broadcast back to the input shape via
-     * `stablehlo.broadcast_in_dim`, and scale / offset are elementwise
-     * multiplied / added only when their operands are actually present.
-     * Migrating every reduction to real `stablehlo.reduce` regions is
-     * a separate, larger refactor.
+     * Reductions use real `stablehlo.reduce` (sum / count) — not the
+     * `@reduce_mean` / `@reduce_variance` custom_call stubs — so the
+     * module compiles on stock IREE (matching `convertGroupNorm`).
+     * Variance is population (ddof=0) via `E[x²] - E[x]²`. The reduced
+     * mean / std are broadcast back to the input shape via
+     * `stablehlo.broadcast_in_dim`; scale / offset (shape `[axisSize]`)
+     * are broadcast over the normalization axis and applied elementwise
+     * only when their operands are actually present.
      */
     private fun convertLayerNorm(
         node: GraphNode,
@@ -366,9 +450,20 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val scaleOperand: String? = if (operands.size > 1) operands[1] else null
         val offsetOperand: String? = if (operands.size > 2) operands[2] else null
 
+        // Number of elements reduced over the normalization axis (mean/var divisor).
+        val axisSize = if (rank > 0) inputShape[axis] else 1
+        val scaleType = "tensor<${axisSize}x$elementType>"
+
+        val zeroInit = context.nextTempValue()
+        val countConst = context.nextTempValue()
+        val sumX = context.nextTempValue()
         val meanValue = context.nextTempValue()
         val meanBroadcast = context.nextTempValue()
         val centered = context.nextTempValue()
+        val squared = context.nextTempValue()
+        val sumSq = context.nextTempValue()
+        val meanSq = context.nextTempValue()
+        val meanSquared = context.nextTempValue()
         val varValue = context.nextTempValue()
         val epsConst = context.nextTempValue()
         val epsBroadcast = context.nextTempValue()
@@ -379,20 +474,26 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
 
         val operations = mutableListOf<String>()
 
-        // mean(x) along the normalization axis.
-        operations += "$meanValue = stablehlo.custom_call @reduce_mean($xInput) " +
-            "{dimensions = [$axis], keepdim = false} : $reducedType"
+        // mean(x) along the normalization axis, via real `stablehlo.reduce` (sum / count)
+        // so the module compiles on stock IREE (no @reduce_* custom_call stubs).
+        operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$elementType>"
+        operations += "$countConst = stablehlo.constant dense<${axisSize}.0> : $reducedType"
+        operations += "$sumX = stablehlo.reduce($xInput init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [$axis] : ($outputType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanValue = stablehlo.divide $sumX, $countConst : $reducedType"
 
-        // Broadcast mean back to input shape.
+        // Broadcast mean back to input shape, then mean-center.
         operations += "$meanBroadcast = stablehlo.broadcast_in_dim $meanValue, " +
             "dims = [$broadcastDims] : ($reducedType) -> $outputType"
-
-        // Mean-center.
         operations += "$centered = stablehlo.subtract $xInput, $meanBroadcast : $outputType"
 
-        // variance(x) along the normalization axis.
-        operations += "$varValue = stablehlo.custom_call @reduce_variance($xInput) " +
-            "{dimensions = [$axis], keepdim = false} : $reducedType"
+        // var(x) = E[x²] - E[x]² (population, ddof=0), again via real reductions.
+        operations += "$squared = stablehlo.multiply $xInput, $xInput : $outputType"
+        operations += "$sumSq = stablehlo.reduce($squared init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [$axis] : ($outputType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanSq = stablehlo.divide $sumSq, $countConst : $reducedType"
+        operations += "$meanSquared = stablehlo.multiply $meanValue, $meanValue : $reducedType"
+        operations += "$varValue = stablehlo.subtract $meanSq, $meanSquared : $reducedType"
 
         // Epsilon constant broadcast into the reduced shape.
         operations += "$epsConst = stablehlo.constant dense<$epsilon> : tensor<$elementType>"
@@ -412,18 +513,24 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         // normalized = (x - mean) / std
         operations += "$normalized = stablehlo.divide $centered, $stdBroadcast : $outputType"
 
-        // Apply scale and offset if present. Track the current running
-        // SSA value so omitting either one keeps the emitted MLIR
-        // faithful to the input graph.
+        // Apply scale and offset if present. Each has shape [axisSize] and is broadcast over
+        // the normalization axis before the elementwise op. Track the running SSA value so
+        // omitting either one keeps the emitted MLIR faithful to the input graph.
         var current = normalized
         if (scaleOperand != null) {
+            val scaleBroadcast = context.nextTempValue()
             val scaled = context.nextTempValue()
-            operations += "$scaled = stablehlo.multiply $current, $scaleOperand : $outputType"
+            operations += "$scaleBroadcast = stablehlo.broadcast_in_dim $scaleOperand, " +
+                "dims = [$axis] : ($scaleType) -> $outputType"
+            operations += "$scaled = stablehlo.multiply $current, $scaleBroadcast : $outputType"
             current = scaled
         }
         if (offsetOperand != null) {
+            val offsetBroadcast = context.nextTempValue()
             val offsetted = context.nextTempValue()
-            operations += "$offsetted = stablehlo.add $current, $offsetOperand : $outputType"
+            operations += "$offsetBroadcast = stablehlo.broadcast_in_dim $offsetOperand, " +
+                "dims = [$axis] : ($scaleType) -> $outputType"
+            operations += "$offsetted = stablehlo.add $current, $offsetBroadcast : $outputType"
             current = offsetted
         }
 
@@ -594,6 +701,176 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
     }
 
     /**
+     * Lower Upsample2d to traceable StableHLO. Input is NCHW (rank-4); scale,
+     * mode and alignCorners are all static at trace time, so both modes lower
+     * to fixed shape/linear ops (no runtime index math, no custom_call):
+     *
+     *  - Nearest: pixel replication via reshape -> broadcast_in_dim -> reshape,
+     *    exactly matching the eager op out[oh,ow] = in[oh/sH, ow/sW].
+     *
+     *  - Bilinear: resize is a separable linear map, so we precompute the two
+     *    resize matrices A_h [outH x inH] and A_w [outW x inW] (each row holds
+     *    the two bilinear neighbor weights) as constants and apply them with two
+     *    dot_general contractions. The weights are the same static floats the
+     *    eager/numpy blend uses, so the result matches to fp tolerance.
+     */
+    private fun convertUpsample2d(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size != 1) {
+            return ConversionResult.Failure(
+                "Upsample2d operation requires exactly 1 operand (input), got ${operands.size}",
+                "Unsupported upsample2d arity for node ${node.id}"
+            )
+        }
+
+        val typeMapper = context.getTypeMapper()
+        val inputSpec = node.inputs.firstOrNull()
+        val outputSpec = node.outputs.firstOrNull()
+        val inputShape = inputSpec?.shape ?: outputSpec?.shape ?: emptyList()
+        if (inputShape.size != 4) {
+            return ConversionResult.Failure(
+                "Upsample2d requires a rank-4 NCHW input, got rank ${inputShape.size}",
+                "Unsupported upsample2d input rank for node ${node.id}"
+            )
+        }
+
+        val params = node.operation.parameters
+        val (scaleH, scaleW) = extractScalePair(params)
+        if (scaleH < 1 || scaleW < 1) {
+            return ConversionResult.Failure(
+                "Upsample2d requires positive integer scale, got [$scaleH, $scaleW]",
+                "Unsupported upsample2d scale for node ${node.id}"
+            )
+        }
+        val mode = (params["mode"] as? String) ?: "Nearest"
+        val alignCorners = (params["alignCorners"] as? Boolean) ?: false
+
+        val n = inputShape[0]
+        val c = inputShape[1]
+        val h = inputShape[2]
+        val w = inputShape[3]
+        val outH = h * scaleH
+        val outW = w * scaleW
+
+        val elementType = inputSpec?.let { typeMapper.mapDType(it.dtype) }
+            ?: outputSpec?.let { typeMapper.mapDType(it.dtype) }
+            ?: "f32"
+        val inputType = inputSpec?.let { typeMapper.mapTensorType(it) }
+            ?: "tensor<${n}x${c}x${h}x${w}x$elementType>"
+        val outputType = outputSpec?.let { typeMapper.mapTensorType(it) }
+            ?: "tensor<${n}x${c}x${outH}x${outW}x$elementType>"
+
+        val xInput = operands[0]
+        val operations = mutableListOf<String>()
+
+        return when (mode.lowercase()) {
+            "nearest" -> {
+                // Insert unit axes after H and W, replicate each pixel sH x sW, then
+                // collapse (H,sH)->H*sH and (W,sW)->W*sW.
+                val expandedType = "tensor<${n}x${c}x${h}x1x${w}x1x$elementType>"
+                val replicatedType = "tensor<${n}x${c}x${h}x${scaleH}x${w}x${scaleW}x$elementType>"
+                val expanded = context.nextTempValue()
+                val replicated = context.nextTempValue()
+                val result = context.nextTempValue()
+                operations += "$expanded = stablehlo.reshape $xInput : ($inputType) -> $expandedType"
+                operations += "$replicated = stablehlo.broadcast_in_dim $expanded, " +
+                    "dims = [0, 1, 2, 3, 4, 5] : ($expandedType) -> $replicatedType"
+                operations += "$result = stablehlo.reshape $replicated : ($replicatedType) -> $outputType"
+                operations.forEach { context.emitOperation(it) }
+                ConversionResult.Success(outputValueName = result, emittedOperations = operations)
+            }
+
+            "bilinear" -> {
+                val ah = buildResizeMatrix(h, scaleH, alignCorners)   // [outH x inH]
+                val aw = buildResizeMatrix(w, scaleW, alignCorners)   // [outW x inW]
+                val ahType = "tensor<${outH}x${h}x$elementType>"
+                val awType = "tensor<${outW}x${w}x$elementType>"
+                // dot_general output layout = lhs-free ++ rhs-free, so contracting the
+                // input H axis against A_h yields [N, C, inW, outH]; then contracting that
+                // inW axis against A_w yields [N, C, outH, outW] — no transposes needed.
+                val intermediateType = "tensor<${n}x${c}x${w}x${outH}x$elementType>"
+
+                val ahConst = context.nextTempValue()
+                val awConst = context.nextTempValue()
+                val tmp = context.nextTempValue()
+                val result = context.nextTempValue()
+
+                operations += "$ahConst = stablehlo.constant dense<${denseMatrixLiteral(ah)}> : $ahType"
+                operations += "$awConst = stablehlo.constant dense<${denseMatrixLiteral(aw)}> : $awType"
+                operations += "$tmp = stablehlo.dot_general $xInput, $ahConst, " +
+                    "contracting_dims = [2] x [1] : ($inputType, $ahType) -> $intermediateType"
+                operations += "$result = stablehlo.dot_general $tmp, $awConst, " +
+                    "contracting_dims = [2] x [1] : ($intermediateType, $awType) -> $outputType"
+                operations.forEach { context.emitOperation(it) }
+                ConversionResult.Success(outputValueName = result, emittedOperations = operations)
+            }
+
+            else -> ConversionResult.Failure(
+                "Upsample2d mode '$mode' is not supported (expected Nearest or Bilinear)",
+                "Unsupported upsample2d mode for node ${node.id}"
+            )
+        }
+    }
+
+    /** Read the [sH, sW] integer scale from op params (tape records List<Int>; also accept Pair/Int). */
+    private fun extractScalePair(params: Map<String, Any>): Pair<Int, Int> {
+        return when (val scale = params["scale"]) {
+            is Pair<*, *> ->
+                ((scale.first as? Number)?.toInt() ?: 1) to ((scale.second as? Number)?.toInt() ?: 1)
+            is Number -> scale.toInt() to scale.toInt()
+            is List<*> -> {
+                val list = scale.mapNotNull { (it as? Number)?.toInt() }
+                when {
+                    list.size >= 2 -> list[0] to list[1]
+                    list.size == 1 -> list[0] to list[0]
+                    else -> 1 to 1
+                }
+            }
+            else -> 1 to 1
+        }
+    }
+
+    /**
+     * Build the [outDim x inDim] bilinear resize matrix: row o holds the weights of
+     * the (at most two) source neighbors for output index o, matching the eager
+     * DefaultCpuOps coordinate map and border clamping. When the two neighbors clamp
+     * to the same index their weights sum to 1.
+     */
+    private fun buildResizeMatrix(inDim: Int, scale: Int, alignCorners: Boolean): Array<FloatArray> {
+        val outDim = inDim * scale
+        val m = Array(outDim) { FloatArray(inDim) }
+        for (o in 0 until outDim) {
+            val src = if (alignCorners) {
+                if (outDim <= 1) 0f else o.toFloat() * (inDim - 1) / (outDim - 1)
+            } else {
+                (o + 0.5f) / scale - 0.5f
+            }
+            val i0 = floor(src).toInt().coerceIn(0, inDim - 1)
+            val i1 = (i0 + 1).coerceIn(0, inDim - 1)
+            val frac = (src - i0).coerceIn(0.0f, 1.0f)
+            m[o][i0] += (1f - frac)
+            m[o][i1] += frac
+        }
+        return m
+    }
+
+    /** Render a 2D float matrix as a nested-bracket MLIR `dense<...>` literal. */
+    private fun denseMatrixLiteral(m: Array<FloatArray>): String {
+        return m.joinToString(prefix = "[", postfix = "]", separator = ", ") { row ->
+            row.joinToString(prefix = "[", postfix = "]", separator = ", ") { v -> formatMlirFloat(v) }
+        }
+    }
+
+    /** Float -> MLIR f-literal. Bilinear weights lie in [0,1] and render as plain decimals. */
+    private fun formatMlirFloat(v: Float): String {
+        val s = v.toString()
+        return if (s.contains('.') || s.contains('e') || s.contains('E')) s else "$s.0"
+    }
+
+    /**
      * Lower RMSNorm to real StableHLO elementwise ops. This is the
      * normalization every Llama / Mistral / Qwen / Gemma family
      * transformer uses — it drops the mean-centering and the additive
@@ -665,7 +942,13 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         val xInput = operands[0]
         val scaleOperand: String? = if (operands.size >= 2) operands[1] else null
 
+        val axisSize = if (rank > 0) inputShape[axis] else 1
+        val scaleType = "tensor<${axisSize}x$elementType>"
+
         val xSquared = context.nextTempValue()
+        val zeroInit = context.nextTempValue()
+        val countConst = context.nextTempValue()
+        val sumSq = context.nextTempValue()
         val meanSquared = context.nextTempValue()
         val epsConst = context.nextTempValue()
         val epsBroadcast = context.nextTempValue()
@@ -680,9 +963,13 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         // x^2
         operations += "$xSquared = stablehlo.multiply $xInput, $xInput : $outputType"
 
-        // reduce_mean(x^2, axis)
-        operations += "$meanSquared = stablehlo.custom_call @reduce_mean($xSquared) " +
-            "{dimensions = [$axis], keepdim = false} : $reducedType"
+        // mean(x^2, axis) via real `stablehlo.reduce` (sum / count) — not the @reduce_mean
+        // custom_call stub — so the module compiles on stock IREE (matching convertGroupNorm).
+        operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$elementType>"
+        operations += "$countConst = stablehlo.constant dense<${axisSize}.0> : $reducedType"
+        operations += "$sumSq = stablehlo.reduce($xSquared init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [$axis] : ($outputType, tensor<$elementType>) -> $reducedType"
+        operations += "$meanSquared = stablehlo.divide $sumSq, $countConst : $reducedType"
 
         // eps constant broadcast into the reduced shape
         operations += "$epsConst = stablehlo.constant dense<$eps> : tensor<$elementType>"
@@ -702,11 +989,14 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         // x / rms
         operations += "$normalized = stablehlo.divide $xInput, $rmsBroadcast : $outputType"
 
-        // Final scale multiply is optional — when the caller did not
-        // pass a scale operand we return the normalized value directly.
+        // Final scale multiply is optional. Scale has shape [axisSize] and is broadcast over
+        // the normalization axis; when the caller passed no scale we return normalized directly.
         val finalValue: String
         if (scaleOperand != null) {
-            operations += "$resultValue = stablehlo.multiply $normalized, $scaleOperand : $outputType"
+            val scaleBroadcast = context.nextTempValue()
+            operations += "$scaleBroadcast = stablehlo.broadcast_in_dim $scaleOperand, " +
+                "dims = [$axis] : ($scaleType) -> $outputType"
+            operations += "$resultValue = stablehlo.multiply $normalized, $scaleBroadcast : $outputType"
             finalValue = resultValue
         } else {
             finalValue = normalized
@@ -955,27 +1245,6 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         return listOf(initConstant, areaConstant, sumOp, divideOp)
     }
     
-    private fun buildBatchNormOperation(
-        resultValue: String,
-        input: String,
-        scale: String,
-        offset: String,
-        mean: String?,
-        variance: String?,
-        outputType: String,
-        epsilon: Double,
-        featureIndex: Int
-    ): String {
-        return if (mean != null && variance != null) {
-            // Use batch_norm_inference when mean and variance are provided
-            "$resultValue = stablehlo.batch_norm_inference $input, $scale, $offset, $mean, $variance, " +
-                    "epsilon = $epsilon, feature_index = $featureIndex : $outputType"
-        } else {
-            // Use batch_norm_training when mean and variance need to be computed
-            "$resultValue = stablehlo.batch_norm_training $input, $scale, $offset, " +
-                    "epsilon = $epsilon, feature_index = $featureIndex : $outputType"
-        }
-    }
 
     /**
      * Convert scaledDotProductAttention to StableHLO.

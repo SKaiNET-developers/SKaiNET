@@ -108,6 +108,7 @@ public interface TensorOps {
     ): Tensor<T, V>
 
     // Transposed convolutional operations
+    @Diff
     public fun <T : DType, V> convTranspose1d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -117,9 +118,7 @@ public interface TensorOps {
         outputPadding: Int = 0,
         dilation: Int = 1,
         groups: Int = 1
-    ): Tensor<T, V> {
-        throw NotImplementedError("convTranspose1d not implemented by this TensorOps backend")
-    }
+    ): Tensor<T, V>
 
     // Pooling operations
     @Diff
@@ -251,20 +250,22 @@ public interface TensorOps {
 
     /** Extract sliding windows of size [size] along dimension [dim] with stride [step].
      *  Result has one extra dimension appended containing the window elements. */
+    @Diff
     public fun <T : DType, V> unfold(tensor: Tensor<T, V>, dim: Int, size: Int, step: Int): Tensor<T, V>
 
     // Comparison operations (return mask tensors with 1.0 where true, 0.0 where false)
 
-    /** Element-wise less than: x < value → 1.0, else 0.0 */
+    /** Element-wise less than: x < value → 1.0, else 0.0. Non-differentiable by design (boolean mask). */
     public fun <T : DType, V> lt(tensor: Tensor<T, V>, value: Float): Tensor<T, V>
 
-    /** Element-wise greater than or equal: x >= value → 1.0, else 0.0 */
+    /** Element-wise greater than or equal: x >= value → 1.0, else 0.0. Non-differentiable by design (boolean mask). */
     public fun <T : DType, V> ge(tensor: Tensor<T, V>, value: Float): Tensor<T, V>
 
     // Matrix utilities
+    @Diff
     public fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int = 0): Tensor<T, V>
 
-    // Type conversion operations
+    // Type conversion operations. Non-differentiable by design (dtype cast).
     public fun <TFrom : DType, TTo : DType, V> convert(
         tensor: Tensor<TFrom, V>,
         targetType: TTo
@@ -273,7 +274,9 @@ public interface TensorOps {
     // --- LLM / Transformer primitives ---
 
     /** Gather rows from [input] along [dim] using integer [indices].
-     *  Primary use: embedding lookup (dim=0, indices=token IDs). */
+     *  Primary use: embedding lookup (dim=0, indices=token IDs).
+     *  Differentiable w.r.t. [input] only (scatter-add); [indices] are discrete. */
+    @Diff
     public fun <T : DType, V> gather(
         input: Tensor<T, V>,
         indices: Tensor<DType, *>,
@@ -281,7 +284,9 @@ public interface TensorOps {
     ): Tensor<T, V>
 
     /** Select elements from [input] along [dim] at the given [indices].
-     *  Similar to gather but for general index selection patterns. */
+     *  Similar to gather but for general index selection patterns.
+     *  Differentiable w.r.t. [input] only (scatter-add); [indices] are discrete. */
+    @Diff
     public fun <T : DType, V> indexSelect(
         input: Tensor<T, V>,
         indices: Tensor<DType, *>,
@@ -299,13 +304,11 @@ public interface TensorOps {
     public fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V>
 
     // Trigonometric operations
-    public fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
-        throw NotImplementedError("sin not implemented by this TensorOps backend")
-    }
+    @Diff
+    public fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V>
 
-    public fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> {
-        throw NotImplementedError("cos not implemented by this TensorOps backend")
-    }
+    @Diff
+    public fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V>
 
     /**
      * Scaled dot-product attention.

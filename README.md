@@ -36,16 +36,12 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.32.4"))
+    implementation(platform("sk.ainet:skainet-bom:0.33.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
 }
 ```
-
-> The BOM was first correctly published to Maven Central in 0.22.2 — earlier versions
-> shipped at the wrong coordinates and could not be imported. Pin versions directly if
-> you need an older release.
 
 ### Hello Neural Net
 
@@ -145,26 +141,41 @@ Quick local replay:
 ## Architecture goal
 
 SKaiNET is built around one path: **a model is defined once in the Kotlin DSL,
-then either compiled to native code or executed eagerly — without rewriting it.**
+then either compiled or executed eagerly — without rewriting it.**
 
 1. **Define** the model with the DSL (`nn { }` / `dag { }`).
-2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph).
+2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph) — a `ComputeGraph`.
 3. **Run** it one of two ways:
-   - **Compile** — lower the graph to MLIR / StableHLO (`HloGenerator`) and
-     compile to **native** code (IREE-compatible) for native / edge targets.
+   - **Compile** — lower the captured `ComputeGraph` through one of several
+     **sibling code-generation backends**, each emitting code for a different target
+     from the *same* graph:
+     - **StableHLO / MLIR** (`HloGenerator`) → IREE-compilable, for native / edge /
+       accelerator targets and the wider MLIR ecosystem.
+     - **Arduino / C99** → standalone, statically-allocated C for microcontrollers.
+     - **Minerva** → a secure-MCU bundle (weights + firmware skeleton + fingerprinted
+       manifest).
    - **Eager** — execute directly on an available backend. On the **JVM this is
      the primary, go-to path.**
 
+StableHLO/MLIR is therefore **one code-generation backend among siblings** — the
+IREE/native path next to the C99/Arduino and Minerva MCU paths — not a separate
+pipeline.
+
 ```mermaid
 flowchart LR
-    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG"]
-    Graph --> HLO["MLIR / StableHLO"]
+    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG (ComputeGraph)"]
     Graph --> Eager["Eager backend (JVM, …)"]
-    HLO --> Native["Native code"]
+    Graph -->|code generation| HLO["StableHLO / MLIR"]
+    Graph -->|code generation| C99["Arduino / C99"]
+    Graph -->|code generation| Minerva["Minerva"]
+    HLO --> Native["IREE → native / edge / accelerator"]
+    C99 --> MCU["Microcontroller"]
+    Minerva --> SecMCU["Secure-MCU bundle"]
 ```
 
-The same DSL model feeds both paths — eager execution for development and JVM
-deployment, the StableHLO path for native and edge targets.
+The same DSL model feeds every path: eager execution for development and JVM
+deployment, and the code-generation backends — StableHLO/MLIR (→ IREE), Arduino/C99,
+and Minerva — as **sibling alternatives** for native, edge, and secure-MCU targets.
 
 ---
 
@@ -268,6 +279,23 @@ val withoutLabel = dataPipeline<RawDataset>()
 - Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
 
 ---
+
+## What's New in 0.33.0
+
+- **GRU — the first recurrent layer.** `nn.Gru` (`[B,S,D]->[B,S,H]`, PyTorch gate order) composed from
+  existing primitives and unrolled over the static sequence at trace time, so it runs eagerly, trains
+  through the standard tape, and exports to StableHLO with no dedicated converter. Plus a `gru(…)`
+  network-DSL builder. (PR #772, issue #217)
+- **`upsample2d` Bilinear + StableHLO export** for both Nearest and Bilinear — everything lowers to fixed
+  reshape/broadcast/`dot_general` (no `custom_call`), unblocking resize/FPN-style export. (PR #771)
+- **Autodiff correctness + coverage.** Fixes a silent gradient-drop for `elu`/`leakyRelu`/`permute`
+  (backward rules existed but were never wired into the trace dispatch), makes `cos`/`sin`/`tril`/
+  `gather`/`indexSelect`/`unfold`/`convTranspose1d` differentiable, and adds a KSP-generated coverage
+  guard so a differentiable op can no longer ship without a wired backward. (PR #774)
+- **Norms compile on stock IREE.** `layerNorm`/`rmsNorm`/`batchNorm` now lower to real `stablehlo.reduce`
+  instead of export-only `custom_call`s. (PR #769)
+- **Breaking:** `TensorOps.sin`/`cos`/`convTranspose1d` are now abstract — backends implementing
+  `TensorOps` directly must override them (both bundled backends already do).
 
 ## What's New in 0.32.4
 

@@ -6,9 +6,9 @@ review.
 
 ## When to Write an SKEEP
 
-SKEEP stands for SKaiNET Enhancement and Evolution Proposal. It is the
-project's KEEP-style track for changes that need a durable design record before
-or alongside implementation.
+SKEEP stands for SKaiNET Evolution and Enhancement Process. It is the
+project's KEEP-style process for changes that need a durable design record
+before or alongside implementation.
 
 Write an SKEEP when a change affects:
 
