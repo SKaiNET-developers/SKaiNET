@@ -6,6 +6,7 @@ import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.context.ExecutionContext
 import sk.ainet.data.DataBatch
 import sk.ainet.data.Dataset
+import sk.ainet.data.common.DatasetHuggingFaceTokenProvider
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
@@ -124,7 +125,13 @@ public data class MNISTDataset(
  */
 public data class MNISTLoaderConfig(
     val cacheDir: String = "mnist-data",
-    val useCache: Boolean = true
+    val useCache: Boolean = true,
+    val trainImagesUri: String = MNISTConstants.TRAIN_IMAGES_URL,
+    val trainLabelsUri: String = MNISTConstants.TRAIN_LABELS_URL,
+    val testImagesUri: String = MNISTConstants.TEST_IMAGES_URL,
+    val testLabelsUri: String = MNISTConstants.TEST_LABELS_URL,
+    val huggingFaceTokenProvider: DatasetHuggingFaceTokenProvider? = null,
+    val useEnvironmentHuggingFaceToken: Boolean = false
 )
 
 /**

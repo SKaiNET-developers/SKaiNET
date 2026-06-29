@@ -6,6 +6,7 @@ import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.context.ExecutionContext
 import sk.ainet.data.DataBatch
 import sk.ainet.data.Dataset
+import sk.ainet.data.common.DatasetHuggingFaceTokenProvider
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
@@ -144,7 +145,10 @@ public data class CIFAR10Dataset(
  */
 public data class CIFAR10LoaderConfig(
     val cacheDir: String = "cifar10-data",
-    val useCache: Boolean = true
+    val useCache: Boolean = true,
+    val archiveUri: String = CIFAR10Constants.DOWNLOAD_URL,
+    val huggingFaceTokenProvider: DatasetHuggingFaceTokenProvider? = null,
+    val useEnvironmentHuggingFaceToken: Boolean = false
 )
 
 /**

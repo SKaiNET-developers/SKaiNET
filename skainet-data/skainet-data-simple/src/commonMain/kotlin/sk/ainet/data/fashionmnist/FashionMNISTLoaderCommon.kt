@@ -16,11 +16,11 @@ public abstract class FashionMNISTLoaderCommon(public val config: FashionMNISTLo
      */
     override suspend fun loadTrainingData(): FashionMNISTDataset {
         val imagesBytes = downloadAndCacheFile(
-            FashionMNISTConstants.TRAIN_IMAGES_URL,
+            config.trainImagesUri,
             FashionMNISTConstants.TRAIN_IMAGES_FILENAME
         )
         val labelsBytes = downloadAndCacheFile(
-            FashionMNISTConstants.TRAIN_LABELS_URL,
+            config.trainLabelsUri,
             FashionMNISTConstants.TRAIN_LABELS_FILENAME
         )
 
@@ -34,11 +34,11 @@ public abstract class FashionMNISTLoaderCommon(public val config: FashionMNISTLo
      */
     override suspend fun loadTestData(): FashionMNISTDataset {
         val imagesBytes = downloadAndCacheFile(
-            FashionMNISTConstants.TEST_IMAGES_URL,
+            config.testImagesUri,
             FashionMNISTConstants.TEST_IMAGES_FILENAME
         )
         val labelsBytes = downloadAndCacheFile(
-            FashionMNISTConstants.TEST_LABELS_URL,
+            config.testLabelsUri,
             FashionMNISTConstants.TEST_LABELS_FILENAME
         )
 

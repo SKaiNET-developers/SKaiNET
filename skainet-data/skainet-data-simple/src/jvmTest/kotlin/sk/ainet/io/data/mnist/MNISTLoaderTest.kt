@@ -6,6 +6,7 @@ import sk.ainet.data.mnist.MNISTImage
 import sk.ainet.data.mnist.MNISTLoaderConfig
 import sk.ainet.data.mnist.MNISTLoaderFactory
 import sk.ainet.data.mnist.MNISTLoaderCommon
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -60,11 +61,36 @@ class MNISTLoaderTest {
     fun testLoaderConfiguration() {
         val config = MNISTLoaderConfig(
             cacheDir = "custom-cache-dir",
-            useCache = false
+            useCache = false,
+            trainImagesUri = "file:///datasets/mnist/train-images",
+            trainLabelsUri = "hf+https://huggingface.co/datasets/mnist/mnist/resolve/main/train-labels"
         )
         val loader = MNISTLoaderFactory.create(config)
 
         assertNotNull(loader)
+    }
+
+    @Test
+    fun testJvmLoaderReadsConfiguredFileUris() = runBlocking {
+        val root = Files.createTempDirectory("skainet-mnist-loader-test").toFile()
+        try {
+            val trainImages = root.resolve("train-images.idx")
+            val trainLabels = root.resolve("train-labels.idx")
+            trainImages.writeBytes(TRAINING_IMAGES_BYTES)
+            trainLabels.writeBytes(TRAINING_LABELS_BYTES)
+            val config = MNISTLoaderConfig(
+                cacheDir = root.resolve("cache").absolutePath,
+                useCache = false,
+                trainImagesUri = trainImages.toURI().toString(),
+                trainLabelsUri = trainLabels.toURI().toString()
+            )
+
+            val dataset = MNISTLoaderFactory.create(config).loadTrainingData()
+
+            assertEquals(EXPECTED_TRAINING_DATA, dataset.images)
+        } finally {
+            root.deleteRecursively()
+        }
     }
 }
 

@@ -223,6 +223,7 @@ Runnable examples:
 ### Data and I/O
 
 - Built-in loaders: MNIST, Fashion-MNIST, CIFAR-10
+- URI-backed data sources: `file://`, `https://`, `hf+https://`, and `hf://...`
 - Formats: GGUF, ONNX, SafeTensors, JSON, Image (JPEG, PNG)
 - Type-safe transform DSL: resize, crop, normalize, toTensor
 
