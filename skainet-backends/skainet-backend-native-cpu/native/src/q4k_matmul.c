@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <math.h>
 
 #define Q4K_BLOCK_SIZE       256
 #define Q4K_SUB_BLOCK_SIZE    32
@@ -61,20 +63,47 @@ static inline void skainet_q4k_decode_scales(
 }
 
 /*
+ * Quantize one 256-float input block to symmetric int8 (Q8) with a single
+ * per-block scale d_in = maxabs/127, q8[i] = round(in[i]/d_in). Returns d_in
+ * (0 if the block is all-zero, with q8 zeroed). Mirrors ggml's block_q8_K
+ * activation quantization — the source of the (small, well-understood) error
+ * vs the exact float kernel, and what unlocks the int8 dot-product fast path.
+ */
+static inline float skainet_q8_quantize_block(const float* SKAINET_RESTRICT in, int8_t* SKAINET_RESTRICT q8) {
+    float maxabs = 0.0f;
+    for (int i = 0; i < Q4K_BLOCK_SIZE; ++i) {
+        const float a = fabsf(in[i]);
+        if (a > maxabs) maxabs = a;
+    }
+    if (maxabs == 0.0f) {
+        for (int i = 0; i < Q4K_BLOCK_SIZE; ++i) q8[i] = 0;
+        return 0.0f;
+    }
+    const float d_in = maxabs / 127.0f;
+    const float inv = 127.0f / maxabs;
+    for (int i = 0; i < Q4K_BLOCK_SIZE; ++i) {
+        int v = (int) lrintf(in[i] * inv);
+        if (v > 127) v = 127; else if (v < -127) v = -127;
+        q8[i] = (int8_t) v;
+    }
+    return d_in;
+}
+
+/*
  * Native Q4_K matrix-vector multiply matching the
- * sk.ainet.backend.api.kernel.Q4KMatmulKernel SPI contract. Single
- * input row times an `outputDim x inputDim` Q4_K-packed weight tensor
- * laid out (blockIdx * outputDim + o) * 144 bytes.
+ * sk.ainet.backend.api.kernel.Q4KMatmulKernel SPI contract. Single input row
+ * times an `outputDim x inputDim` Q4_K-packed weight laid out
+ * (blockIdx * outputDim + o) * 144 bytes.
  *
- * Lazy-dmin pattern: per sub-block accumulate
- *   codeSum[s] = sum_i input[i] * code[i]
- *   inputSum[s] = sum_i input[i]
- * and combine once via
- *   acc += d * scaleIdx[s] * codeSum[s] - dMin * minIdx[s] * inputSum[s]
- *
- * Scalar single-threaded for PR 2; the tight inner loop is
- * straight-line FP arithmetic so -O3 auto-vectorizes the
- * codeSum/inputSum accumulators on AVX2/NEON.
+ * Fused int8 dot path (ggml-style): the input row is quantized to Q8 ONCE per
+ * 256-block (reused across all output rows), then each weight sub-block is an
+ * int8 dot-product against the Q8 activation:
+ *   acc += d_in[b] * ( d * Σ_s scaleIdx[s]*intDot[s] - dMin * Σ_s minIdx[s]*intSum[s] )
+ * where intDot[s] = Σ q8[i]*code[i] and intSum[s] = Σ q8[i] over the sub-block.
+ * On AArch64 with dotprod (asimddp) the inner dot uses vdotq_s32 (16 int8 MACs
+ * per instruction); otherwise a scalar integer fallback (auto-vectorized).
+ * The index mapping (groups, lo/hi sub-blocks, input alignment) is identical to
+ * the previous float kernel, which was parity-checked against Panama.
  */
 SKAINET_API void skainet_q4k_matmul(
     const float* SKAINET_RESTRICT input,
@@ -92,86 +121,102 @@ SKAINET_API void skainet_q4k_matmul(
     const float* in_base = input + input_offset;
     float* out_base = output + output_offset;
 
+    /* Pre-quantize the whole input row to Q8 once (reused across all o). */
+    int8_t* q8 = (int8_t*) malloc((size_t) input_dim * sizeof(int8_t));
+    float* d_in = (float*) malloc((size_t) blocks_per_input_dim * sizeof(float));
+    if (q8 == NULL || d_in == NULL) { free(q8); free(d_in); return; }
+    for (int32_t b = 0; b < blocks_per_input_dim; ++b) {
+        d_in[b] = skainet_q8_quantize_block(in_base + (size_t) b * Q4K_BLOCK_SIZE,
+                                            q8 + (size_t) b * Q4K_BLOCK_SIZE);
+    }
+
     int scale_idx[Q4K_SUB_BLOCKS];
     int min_idx[Q4K_SUB_BLOCKS];
 
-    for (int32_t o = 0; o < output_dim; ++o) {
-        float acc = 0.0f;
+    /*
+     * Loop order: block OUTER, output row INNER. The weight is packed
+     * block-major — (blockIdx * output_dim + o) * 144 — so for a fixed block,
+     * consecutive `o` are exactly 144 bytes apart: the weight bytes are read
+     * strictly sequentially (prefetch- and cache-line-friendly). The reverse
+     * order (o outer) strides output_dim*144 bytes per step (~295 KB on the
+     * down-proj), which on an in-order A55 with small caches makes every weight
+     * read a cold miss and dominates runtime regardless of inner-loop compute.
+     * out_base[o] is accumulated across blocks (output_dim*4 bytes stays hot in
+     * cache); the accumulation order over blocks is unchanged, so this is
+     * numerically identical to the o-outer form.
+     */
+    for (int32_t o = 0; o < output_dim; ++o) out_base[o] = 0.0f;
 
-        for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
-            const uint8_t* block = weight + weight_byte_offset
-                + (size_t)(block_idx * output_dim + o) * Q4K_BYTES_PER_BLOCK;
+    for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
+        const int8_t* q8_block = q8 + (size_t) block_idx * Q4K_BLOCK_SIZE;
+        const float di = d_in[block_idx];
+        const uint8_t* block = weight + weight_byte_offset
+            + (size_t)(block_idx * output_dim) * Q4K_BYTES_PER_BLOCK;
 
-            /* d, dMin (FP16 LE -> FP32). */
+        for (int32_t o = 0; o < output_dim; ++o, block += Q4K_BYTES_PER_BLOCK) {
             const uint16_t d_bits     = (uint16_t) block[0] | ((uint16_t) block[1] << 8);
             const uint16_t d_min_bits = (uint16_t) block[2] | ((uint16_t) block[3] << 8);
             const float d     = skainet_half_to_float(d_bits);
             const float d_min = skainet_half_to_float(d_min_bits);
 
-            /* 12 bytes of packed (scaleIdx, minIdx) -> 8 ints each. */
             skainet_q4k_decode_scales(block + 4, scale_idx, min_idx);
 
             const uint8_t* qs = block + 16;
-            const float* in_block = in_base + (size_t) block_idx * Q4K_BLOCK_SIZE;
 
-            /* 4 strided qs groups; group j carries sub-blocks 2j (lo) and 2j+1 (hi). */
+            int64_t block_scale_dot = 0;
+            int64_t block_min_sum = 0;
+
             for (int group_j = 0; group_j < 4; ++group_j) {
-                const uint8_t* qs_group   = qs + group_j * Q4K_SUB_BLOCK_SIZE;
+                const uint8_t* qs_group = qs + group_j * Q4K_SUB_BLOCK_SIZE;
                 const int sb_lo = 2 * group_j;
                 const int sb_hi = sb_lo + 1;
-                const float* in_lo = in_block + sb_lo * Q4K_SUB_BLOCK_SIZE;
-                const float* in_hi = in_block + sb_hi * Q4K_SUB_BLOCK_SIZE;
+                const int8_t* q8_lo = q8_block + sb_lo * Q4K_SUB_BLOCK_SIZE;
+                const int8_t* q8_hi = q8_block + sb_hi * Q4K_SUB_BLOCK_SIZE;
 
-                float code_sum_lo = 0.0f, input_sum_lo = 0.0f;
-                float code_sum_hi = 0.0f, input_sum_hi = 0.0f;
+                int32_t dot_lo = 0, sum_lo = 0, dot_hi = 0, sum_hi = 0;
 
-#ifdef SKAINET_HAVE_NEON
-                float32x4_t cacc_lo = vdupq_n_f32(0.0f), iacc_lo = vdupq_n_f32(0.0f);
-                float32x4_t cacc_hi = vdupq_n_f32(0.0f), iacc_hi = vdupq_n_f32(0.0f);
+#ifdef SKAINET_HAVE_DOTPROD
+                int32x4_t acc_dot_lo = vdupq_n_s32(0), acc_dot_hi = vdupq_n_s32(0);
+                int32_t acc_sum_lo = 0, acc_sum_hi = 0;
                 for (int off = 0; off < Q4K_SUB_BLOCK_SIZE; off += 16) {
                     const uint8x16_t packed = vld1q_u8(qs_group + off);
-                    const uint8x16_t lo_nib = vandq_u8(packed, vdupq_n_u8(0x0F));
-                    const uint8x16_t hi_nib = vshrq_n_u8(packed, 4);
-                    float32x4_t cl[4], ch[4];
-                    skainet_neon_u8x16_to_f32x4x4(lo_nib, cl);
-                    skainet_neon_u8x16_to_f32x4x4(hi_nib, ch);
-                    for (int q = 0; q < 4; ++q) {
-                        const float32x4_t v_lo = vld1q_f32(in_lo + off + q * 4);
-                        const float32x4_t v_hi = vld1q_f32(in_hi + off + q * 4);
-                        cacc_lo = vfmaq_f32(cacc_lo, v_lo, cl[q]);
-                        iacc_lo = vaddq_f32(iacc_lo, v_lo);
-                        cacc_hi = vfmaq_f32(cacc_hi, v_hi, ch[q]);
-                        iacc_hi = vaddq_f32(iacc_hi, v_hi);
-                    }
+                    const int8x16_t code_lo = vreinterpretq_s8_u8(vandq_u8(packed, vdupq_n_u8(0x0F)));
+                    const int8x16_t code_hi = vreinterpretq_s8_u8(vshrq_n_u8(packed, 4));
+                    const int8x16_t a_lo = vld1q_s8(q8_lo + off);
+                    const int8x16_t a_hi = vld1q_s8(q8_hi + off);
+                    acc_dot_lo = vdotq_s32(acc_dot_lo, code_lo, a_lo);
+                    acc_dot_hi = vdotq_s32(acc_dot_hi, code_hi, a_hi);
+                    acc_sum_lo += vaddlvq_s8(a_lo);
+                    acc_sum_hi += vaddlvq_s8(a_hi);
                 }
-                code_sum_lo = skainet_neon_hadd_f32(cacc_lo);
-                input_sum_lo = skainet_neon_hadd_f32(iacc_lo);
-                code_sum_hi = skainet_neon_hadd_f32(cacc_hi);
-                input_sum_hi = skainet_neon_hadd_f32(iacc_hi);
+                dot_lo = vaddvq_s32(acc_dot_lo);
+                dot_hi = vaddvq_s32(acc_dot_hi);
+                sum_lo = acc_sum_lo;
+                sum_hi = acc_sum_hi;
 #else
-                /* 32 iterations — auto-vectorizes cleanly under -O3. */
                 for (int i = 0; i < Q4K_SUB_BLOCK_SIZE; ++i) {
-                    const uint8_t b = qs_group[i];
-                    const float code_lo = (float)(b & 0x0F);
-                    const float code_hi = (float)(b >> 4);
-                    const float v_lo = in_lo[i];
-                    const float v_hi = in_hi[i];
-                    code_sum_lo  += v_lo * code_lo;
-                    input_sum_lo += v_lo;
-                    code_sum_hi  += v_hi * code_hi;
-                    input_sum_hi += v_hi;
+                    const uint8_t pb = qs_group[i];
+                    const int code_lo = (int)(pb & 0x0F);
+                    const int code_hi = (int)(pb >> 4);
+                    const int a_lo = (int) q8_lo[i];
+                    const int a_hi = (int) q8_hi[i];
+                    dot_lo += a_lo * code_lo;
+                    sum_lo += a_lo;
+                    dot_hi += a_hi * code_hi;
+                    sum_hi += a_hi;
                 }
 #endif
 
-                const float scale_lo  = d     * (float) scale_idx[sb_lo];
-                const float offset_lo = d_min * (float) min_idx[sb_lo];
-                const float scale_hi  = d     * (float) scale_idx[sb_hi];
-                const float offset_hi = d_min * (float) min_idx[sb_hi];
-                acc += code_sum_lo * scale_lo - input_sum_lo * offset_lo;
-                acc += code_sum_hi * scale_hi - input_sum_hi * offset_hi;
+                block_scale_dot += (int64_t) scale_idx[sb_lo] * dot_lo
+                                 + (int64_t) scale_idx[sb_hi] * dot_hi;
+                block_min_sum   += (int64_t) min_idx[sb_lo] * sum_lo
+                                 + (int64_t) min_idx[sb_hi] * sum_hi;
             }
-        }
 
-        out_base[o] = acc;
+            out_base[o] += di * (d * (float) block_scale_dot - d_min * (float) block_min_sum);
+        }
     }
+
+    free(q8);
+    free(d_in);
 }

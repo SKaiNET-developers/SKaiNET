@@ -224,8 +224,35 @@ Runnable examples:
 
 - Built-in loaders: MNIST, Fashion-MNIST, CIFAR-10
 - URI-backed data sources: `file://`, `https://`, `hf+https://`, and `hf://...`
+- Dataset operations: deterministic shuffle/split, stratified split, filter/map/transform views, batch flows, and epoch flows
+- Raw dataset parsers: CSV, TSV, JSON arrays/objects, JSON Lines (`.jsonl`, `.ndjson`)
+- Type-safe transform DSLs: image/tensor transforms plus suspendable raw data pipelines
 - Formats: GGUF, ONNX, SafeTensors, JSON, Image (JPEG, PNG)
-- Type-safe transform DSL: resize, crop, normalize, toTensor
+
+```kotlin
+val raw = JvmDataSourceResolver().rawDataset {
+    from("hf://datasets/org/repo@main/train.jsonl")
+    format(DataFormat.JSON_LINES)
+    cachePolicy(CachePolicy.Use)
+}
+
+val withoutLabel = dataPipeline<RawDataset>()
+    .stage(
+        dataTransformer(
+            name = "drop-label",
+            outputSchema = { schema -> DataSchema(schema.columns - "label") }
+        ) { dataset ->
+            val columns = dataset.schema.columns - "label"
+            dataset.copy(
+                schema = DataSchema(columns),
+                rows = dataset.rows.map { row ->
+                    RawDataRow(row.values.filterKeys { key -> key in columns })
+                }
+            )
+        }
+    )
+    .execute(raw)
+```
 
 
 ### Edge AI: Arduino / C99 Export

@@ -1,5 +1,7 @@
 package sk.ainet.data
 
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import sk.ainet.context.DefaultDataExecutionContext
@@ -43,15 +45,25 @@ private class FakeDataset(
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> createDataBatch(batchStart: Int, batchLength: Int): DataBatch<T, V> {
         val end = (batchStart + batchLength).coerceAtMost(features.size)
-        val sliceF = features.subList(batchStart, end)
-        val sliceY = labels.subList(batchStart, end)
-        val featureSize = if (sliceF.isNotEmpty()) sliceF[0].size else 0
+        val indices = (batchStart until end).toList()
+        return createBatchForIndices(indices) as DataBatch<T, V>
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : DType, V> createIndexedDataBatch(indices: IntArray): DataBatch<T, V> {
+        return createBatchForIndices(indices.toList()) as DataBatch<T, V>
+    }
+
+    private fun createBatchForIndices(indices: List<Int>): DataBatch<FP32, Float> {
+        val sliceF = indices.map { features[it] }
+        val sliceY = indices.map { labels[it] }
+        val featureSize = sliceF.firstOrNull()?.size ?: 0
 
         // Build a single input tensor [batch, feature]
         val xTensor: Tensor<FP32, Float> = tensor(ctx, FP32::class) {
             tensor {
-                shape(end - batchStart, featureSize) {
-                    val flat = FloatArray((end - batchStart) * featureSize)
+                shape(indices.size, featureSize) {
+                    val flat = FloatArray(indices.size * featureSize)
                     var k = 0
                     for (i in sliceF.indices) {
                         val row = sliceF[i]
@@ -67,15 +79,14 @@ private class FakeDataset(
         // Build label tensor [batch]
         val yTensor: Tensor<FP32, Float> = tensor(ctx, FP32::class) {
             tensor {
-                shape(end - batchStart) {
-                    val flat = FloatArray(end - batchStart) { idx -> sliceY[idx] }
+                shape(indices.size) {
+                    val flat = FloatArray(indices.size) { idx -> sliceY[idx] }
                     fromArray(flat)
                 }
             }
         }
 
-        val batch = DataBatch(arrayOf(xTensor), yTensor)
-        return batch as DataBatch<T, V>
+        return DataBatch(arrayOf(xTensor), yTensor)
     }
 }
 
@@ -98,6 +109,50 @@ class DatasetAndDataBatchTest {
         val y2: Tensor<FP32, Float> = tensor(ctx, FP32::class) { tensor { shape(2) { from(0f, 1f) } } }
         val batchC = DataBatch(arrayOf(x2), y2)
         assertNotEquals(batchA, batchC, "Batches with same values but different tensor instances should not be equal")
+    }
+
+    @Test
+    fun dataBatchCarriesIndicesAndMetadata() {
+        val ctx = DefaultDataExecutionContext()
+        val x: Tensor<FP32, Float> = data<FP32, Float>(ctx) { tensor { shape(2, 2) { from(1f, 2f, 3f, 4f) } } }
+        val y: Tensor<FP32, Float> = tensor(ctx, FP32::class) { tensor { shape(2) { from(0f, 1f) } } }
+
+        val batch = DataBatch(
+            x = arrayOf(x),
+            y = y,
+            indices = intArrayOf(10, 20),
+            metadata = mapOf("split" to "train")
+        )
+        val enriched = batch.withMetadata(mapOf("epoch" to "1"))
+
+        assertEquals(2, batch.batchSize)
+        assertEquals(mapOf("split" to "train", "epoch" to "1"), enriched.metadata)
+        assertNotEquals(batch, batch.copy(indices = intArrayOf(11, 20)))
+    }
+
+    @Test
+    fun dataBatchSliceUsesLeadingDimension() {
+        val ctx = DefaultDataExecutionContext()
+        val x: Tensor<FP32, Float> = data<FP32, Float>(ctx) {
+            tensor {
+                shape(3, 2) {
+                    from(1f, 2f, 3f, 4f, 5f, 6f)
+                }
+            }
+        }
+        val y: Tensor<FP32, Float> = tensor(ctx, FP32::class) { tensor { shape(3) { from(0f, 1f, 2f) } } }
+        val batch = DataBatch(arrayOf(x), y, indices = intArrayOf(4, 5, 6))
+
+        val sliced = batch.slice(1..2)
+
+        assertEquals(2, sliced.batchSize)
+        assertEquals(listOf(5, 6), sliced.indices.toList())
+        assertEquals(2, sliced.x[0].shape[0])
+        assertEquals(2, sliced.y.shape[0])
+        assertEquals(3f, sliced.x[0].data[0, 0])
+        assertEquals(6f, sliced.x[0].data[1, 1])
+        assertEquals(1f, sliced.y.data[0])
+        assertEquals(2f, sliced.y.data[1])
     }
 
     @Test
@@ -167,5 +222,107 @@ class DatasetAndDataBatchTest {
         val a = (0 until ds.xSize).map { ds.getX(it).joinToString(",") }.sorted()
         val b = (0 until shuffled.xSize).map { shuffled.getX(it).joinToString(",") }.sorted()
         assertEquals(a, b)
+    }
+
+    @Test
+    fun sizeAliasMatchesXSize() {
+        val ds = FakeDataset(
+            features = (1..3).map { i -> floatArrayOf(i.toFloat()) },
+            labels = listOf(0f, 1f, 0f)
+        )
+
+        assertEquals(ds.xSize, ds.size)
+    }
+
+    @Test
+    fun seededShuffleIsDeterministic() {
+        val ds = FakeDataset(
+            features = (1..12).map { i -> floatArrayOf(i.toFloat()) },
+            labels = (1..12).map { (it % 2).toFloat() }
+        )
+
+        val first = ds.shuffle(seed = 42)
+        val second = ds.shuffle(seed = 42)
+        val third = ds.shuffle(seed = 99)
+
+        val firstOrder = (0 until first.xSize).map { first.getX(it)[0] }
+        val secondOrder = (0 until second.xSize).map { second.getX(it)[0] }
+        val thirdOrder = (0 until third.xSize).map { third.getX(it)[0] }
+
+        assertEquals(firstOrder, secondOrder)
+        assertNotEquals(firstOrder, thirdOrder)
+    }
+
+    @Test
+    fun seededSplitIsDeterministic() {
+        val ds = FakeDataset(
+            features = (1..10).map { i -> floatArrayOf(i.toFloat()) },
+            labels = (1..10).map { (it % 2).toFloat() }
+        )
+
+        val (trainA, testA) = ds.split(splitRatio = 0.7, seed = 123)
+        val (trainB, testB) = ds.split(splitRatio = 0.7, seed = 123)
+
+        assertEquals((0 until trainA.xSize).map { trainA.getX(it)[0] }, (0 until trainB.xSize).map { trainB.getX(it)[0] })
+        assertEquals((0 until testA.xSize).map { testA.getX(it)[0] }, (0 until testB.xSize).map { testB.getX(it)[0] })
+    }
+
+    @Test
+    fun stratifiedSplitKeepsBothLabelsInBothSides() {
+        val ds = FakeDataset(
+            features = (1..20).map { i -> floatArrayOf(i.toFloat()) },
+            labels = (1..20).map { (it % 2).toFloat() }
+        )
+
+        val (train, test) = ds.split(splitRatio = 0.5, seed = 7, stratified = true)
+
+        assertEquals(setOf(0f, 1f), (0 until train.xSize).map { train.getY(it) }.toSet())
+        assertEquals(setOf(0f, 1f), (0 until test.xSize).map { test.getY(it) }.toSet())
+    }
+
+    @Test
+    fun filterAndMapCreateDatasetViews() {
+        val ds = FakeDataset(
+            features = (1..6).map { i -> floatArrayOf(i.toFloat()) },
+            labels = (1..6).map { (it % 2).toFloat() }
+        )
+
+        val filtered = ds.filter { _, label -> label == 0f }
+        val mapped = filtered
+            .mapX { features -> features[0].toInt() }
+            .mapY { label -> "class-${label.toInt()}" }
+
+        assertEquals(3, mapped.xSize)
+        assertEquals(listOf(2, 4, 6), (0 until mapped.xSize).map { mapped.getX(it) })
+        assertEquals(listOf("class-0", "class-0", "class-0"), (0 until mapped.xSize).map { mapped.getY(it) })
+    }
+
+    @Test
+    fun batchesFlowEmitsAllBatches() = runTest {
+        val ds = FakeDataset(
+            features = (1..5).map { i -> floatArrayOf(i.toFloat(), (i * 10).toFloat()) },
+            labels = (1..5).map { (it % 2).toFloat() }
+        )
+
+        val batches = ds.batches<FP32, Float>(batchSize = 2, shuffle = false).toList()
+
+        assertEquals(3, batches.size)
+        assertEquals(2, batches[0].y.shape[0])
+        assertEquals(2, batches[1].y.shape[0])
+        assertEquals(1, batches[2].y.shape[0])
+    }
+
+    @Test
+    fun epochsFlowUsesSeededShufflePerEpoch() = runTest {
+        val ds = FakeDataset(
+            features = (1..6).map { i -> floatArrayOf(i.toFloat()) },
+            labels = (1..6).map { (it % 2).toFloat() }
+        )
+
+        val batches = ds.epochs<FP32, Float>(epochCount = 2, batchSize = 3, shuffle = true, seed = 11).toList()
+
+        assertEquals(4, batches.size)
+        assertEquals(3, batches[0].y.shape[0])
+        assertEquals(3, batches[3].y.shape[0])
     }
 }

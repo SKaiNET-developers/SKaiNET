@@ -2,6 +2,7 @@ package sk.ainet.data.fashionmnist
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * macOS implementation of the Fashion-MNIST loader.
@@ -14,7 +15,11 @@ public class FashionMNISTLoaderMacos(config: FashionMNISTLoaderConfig) : Fashion
      */
     override suspend fun downloadAndCacheFile(url: String, filename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("FashionMNISTLoaderMacos.downloadAndCacheFile is not implemented yet. Provide an appleMain implementation or avoid macOS usage for now.")
+            unsupportedDatasetLoader(
+                dataset = "Fashion-MNIST",
+                target = "macos",
+                reason = "gzip decompression and cache materialization are not implemented for this native target"
+            )
         }
 
     public companion object {

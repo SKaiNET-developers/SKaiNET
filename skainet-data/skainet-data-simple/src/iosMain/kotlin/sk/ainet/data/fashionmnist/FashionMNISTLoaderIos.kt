@@ -7,6 +7,8 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.hasGzipHeader
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * iOS implementation of the Fashion-MNIST loader.
@@ -29,9 +31,13 @@ public class FashionMNISTLoaderIos(config: FashionMNISTLoaderConfig) : FashionMN
             println("Downloading Fashion-MNIST file: $url")
             val data = downloadFile(url)
 
-            // Note: In a real implementation, we would use a native gzip library to decompress the data
-            // For this example, we're assuming the server provides uncompressed data for iOS clients
-            println("iOS implementation does not support gzip decompression in this example. Assuming data is already decompressed.")
+            if (data.hasGzipHeader()) {
+                unsupportedDatasetLoader(
+                    dataset = "Fashion-MNIST",
+                    target = "ios",
+                    reason = "gzip decompression is not implemented; provide an uncompressed IDX URI"
+                )
+            }
 
             return@withContext data
         }
