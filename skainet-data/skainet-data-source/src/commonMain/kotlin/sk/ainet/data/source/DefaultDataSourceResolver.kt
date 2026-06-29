@@ -43,6 +43,32 @@ public fun interface DataSourceHeaderProvider {
 }
 
 /**
+ * Supplies a Hugging Face token when a request does not carry one directly.
+ */
+public fun interface HuggingFaceTokenProvider {
+    public fun token(request: DataSourceRequest, parsedUri: ParsedDataSourceUri): DataSourceAuthToken?
+}
+
+/**
+ * Adds Hugging Face bearer auth from explicit request or resolver-level token
+ * configuration while leaving generic HTTP requests unchanged.
+ */
+public class HuggingFaceTokenHeaderProvider(
+    private val tokenProvider: HuggingFaceTokenProvider = HuggingFaceTokenProvider { _, _ -> null }
+) : DataSourceHeaderProvider {
+    override fun headers(request: DataSourceRequest, parsedUri: ParsedDataSourceUri): Map<String, String> {
+        if (parsedUri.provider != DataSourceProvider.HuggingFace) return request.headers
+        if (request.headers.hasAuthorizationHeader()) return request.headers
+        val token = request.huggingFaceToken ?: tokenProvider.token(request, parsedUri) ?: return request.headers
+        return request.headers + (AUTHORIZATION_HEADER to token.authorizationHeaderValue())
+    }
+
+    private companion object {
+        private const val AUTHORIZATION_HEADER = "Authorization"
+    }
+}
+
+/**
  * Computes checksums for integrity verification without tying resolver policy
  * to a concrete platform crypto API.
  */
@@ -204,9 +230,7 @@ public class DefaultDataSourceResolver(
     private val store: DataSourceArtifactStore,
     private val fetcher: RemoteDataSourceFetcher,
     private val checksum: DataSourceChecksum,
-    private val headerProvider: DataSourceHeaderProvider = DataSourceHeaderProvider { request, _ ->
-        request.headers
-    }
+    private val headerProvider: DataSourceHeaderProvider = HuggingFaceTokenHeaderProvider()
 ) : DataSourceResolver {
     override suspend fun resolve(request: DataSourceRequest): DataSourceArtifact {
         val parsed = DataSourceUriParser.parse(request.uri)
@@ -324,6 +348,10 @@ public class DefaultDataSourceResolver(
     private companion object {
         private const val STREAM_BUFFER_SIZE = 8 * 1024
     }
+}
+
+private fun Map<String, String>.hasAuthorizationHeader(): Boolean {
+    return keys.any { it.equals("Authorization", ignoreCase = true) }
 }
 
 private class HashingRawSource(

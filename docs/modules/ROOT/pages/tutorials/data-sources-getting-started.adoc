@@ -41,16 +41,20 @@ dependencies {
 
 `JvmDataSourceResolver` materializes remote artifacts into a cache and returns
 a `DataSourceArtifact` that opens a `kotlinx.io.Source`. Public Hugging Face
-files do not need credentials. Private files can use an `Authorization` header,
-or the JVM resolver will read `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` from the
-environment when the URI provider is Hugging Face.
+files do not need credentials. Private files should pass an explicit
+`DataSourceAuthToken` on the request or resolver. Existing `Authorization`
+headers still take precedence. On JVM, the resolver can also read `HF_TOKEN` /
+`HUGGING_FACE_HUB_TOKEN` from the environment as an opt-in convenience fallback.
 
 [source,kotlin]
 ----
+import sk.ainet.data.source.DataSourceAuthToken
 import sk.ainet.data.source.DataSourceRequest
 import sk.ainet.data.source.JvmDataSourceResolver
 
-val resolver = JvmDataSourceResolver()
+val resolver = JvmDataSourceResolver(
+    huggingFaceToken = DataSourceAuthToken.from("hf_...")
+)
 val artifact = resolver.resolve(
     DataSourceRequest(
         uri = "hf+https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/main/tokenizer.json"
@@ -71,6 +75,28 @@ try {
 val bytes = artifact.readBytes()
 ----
 
+For per-request credentials, pass the token directly on `DataSourceRequest`.
+This is useful when one resolver works with more than one private repository:
+
+[source,kotlin]
+----
+val privateArtifact = resolver.resolve(
+    DataSourceRequest(
+        uri = "hf://datasets/your-org/private-dataset@main/data/train.bin",
+        huggingFaceToken = DataSourceAuthToken.from("hf_...")
+    )
+)
+----
+
+To opt into JVM environment fallback:
+
+[source,kotlin]
+----
+val resolver = JvmDataSourceResolver(
+    useEnvironmentHuggingFaceToken = true
+)
+----
+
 === Use sources with built-in loaders
 
 MNIST and Fashion-MNIST expose per-file URI overrides. CIFAR-10 exposes an
@@ -82,10 +108,12 @@ locations, so existing code keeps working.
 import sk.ainet.data.mnist.MNIST
 import sk.ainet.data.mnist.MNISTLoaderConfig
 
+val token = "hf_..."
 val train = MNIST.loadTrain(
     MNISTLoaderConfig(
         trainImagesUri = "file:///datasets/mnist/train-images-idx3-ubyte",
-        trainLabelsUri = "hf+https://huggingface.co/your-org/mnist-idx/resolve/main/train-labels-idx1-ubyte.gz"
+        trainLabelsUri = "hf+https://huggingface.co/your-org/mnist-idx/resolve/main/train-labels-idx1-ubyte.gz",
+        huggingFaceTokenProvider = { token }
     )
 )
 

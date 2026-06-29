@@ -8,7 +8,12 @@ import sk.ainet.data.common.JvmDatasetSourceReader
  * @property config The configuration for the Fashion-MNIST loader.
  */
 public class FashionMNISTLoaderJvm(config: FashionMNISTLoaderConfig) : FashionMNISTLoaderCommon(config) {
-    private val sources = JvmDatasetSourceReader(config.cacheDir, config.useCache)
+    private val sources = JvmDatasetSourceReader(
+        cacheDir = config.cacheDir,
+        useCache = config.useCache,
+        huggingFaceTokenProvider = config.huggingFaceTokenProvider,
+        useEnvironmentHuggingFaceToken = config.useEnvironmentHuggingFaceToken
+    )
 
     /**
      * Resolves, caches, and decompresses a file when needed.

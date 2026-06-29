@@ -134,6 +134,51 @@ class JvmDataSourceResolverTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun sendsConfiguredHuggingFaceToken() = runTest {
+        val root = Files.createTempDirectory("skainet-data-source-test").toFile()
+        try {
+            val fetcher = FakeFetcher("payload".encodeToByteArray())
+            val resolver = JvmDataSourceResolver(
+                cacheDir = root.resolve("cache"),
+                fetcher = fetcher,
+                huggingFaceToken = DataSourceAuthToken.from("hf_configured"),
+                useEnvironmentHuggingFaceToken = false
+            )
+
+            resolver.resolve(DataSourceRequest("hf://org/repo@main/file.bin"))
+
+            assertEquals(mapOf("Authorization" to "Bearer hf_configured"), fetcher.lastHeaders)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun requestHuggingFaceTokenOverridesConfiguredToken() = runTest {
+        val root = Files.createTempDirectory("skainet-data-source-test").toFile()
+        try {
+            val fetcher = FakeFetcher("payload".encodeToByteArray())
+            val resolver = JvmDataSourceResolver(
+                cacheDir = root.resolve("cache"),
+                fetcher = fetcher,
+                huggingFaceToken = DataSourceAuthToken.from("hf_configured"),
+                useEnvironmentHuggingFaceToken = false
+            )
+
+            resolver.resolve(
+                DataSourceRequest(
+                    uri = "hf://org/repo@main/file.bin",
+                    huggingFaceToken = DataSourceAuthToken.from("hf_request")
+                )
+            )
+
+            assertEquals(mapOf("Authorization" to "Bearer hf_request"), fetcher.lastHeaders)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }
 
 private class FakeFetcher(
@@ -142,8 +187,12 @@ private class FakeFetcher(
     var calls: Int = 0
         private set
 
+    var lastHeaders: Map<String, String> = emptyMap()
+        private set
+
     override suspend fun fetch(uri: String, headers: Map<String, String>): DataSourceRemoteContent {
         calls++
+        lastHeaders = headers
         return DataSourceRemoteContent.fromBytes(bytes)
     }
 }
