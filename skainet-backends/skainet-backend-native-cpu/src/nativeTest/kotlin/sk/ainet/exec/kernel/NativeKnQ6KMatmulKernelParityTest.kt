@@ -12,10 +12,13 @@ import kotlin.test.assertTrue
  * `-ffast-math` reassociation tolerance.
  *
  * Runs on linuxX64 (host archive: scalar/auto-vectorized) AND linuxArm64
- * (cross-built archive: NEON), so the aarch64 run bit-checks the
- * `SKAINET_HAVE_NEON` path in q6k_matmul.c. Q6_K magnitudes (codes
- * [-32, 31] × signed int8 scales) are larger than Q5_K, so absolute tolerances
- * are a touch looser; the `rel < 1e-4` relative check is the real gate.
+ * (cross-built archive: NEON), so the aarch64 run exercises the
+ * `SKAINET_HAVE_NEON` / `SKAINET_HAVE_DOTPROD` path in q6k_matmul.c.
+ *
+ * The C kernel quantizes the activation to int8 (Q8) for the dotprod fast path
+ * — deliberately lossy (ggml-style), so it is NOT bit-exact vs the scalar
+ * reference. The gate is the aggregate error energy RMS(error)/RMS(signal), not
+ * per-row relative error (unbounded on near-zero rows of zero-mean fixtures).
  */
 class NativeKnQ6KMatmulKernelParityTest {
 
@@ -46,14 +49,24 @@ class NativeKnQ6KMatmulKernelParityTest {
         val knOut = FloatArray(outputDim)
         NativeKnQ6KMatmulKernel.matmul(input, 0, packed, 0, inputDim, outputDim, knOut, 0)
 
+        var sqErr = 0.0
+        var sqSig = 0.0
         for (o in 0 until outputDim) {
-            val diff = abs(refOut[o] - knOut[o])
-            val rel = diff / (abs(refOut[o]) + 1e-9f)
-            assertTrue(
-                diff <= tol || rel < 1e-4f,
-                "row $o diverged: scalar=${refOut[o]} cinterop=${knOut[o]} diff=$diff rel=$rel tol=$tol",
-            )
+            val d = (refOut[o] - knOut[o]).toDouble()
+            sqErr += d * d
+            sqSig += refOut[o].toDouble() * refOut[o].toDouble()
         }
+        val rmsErr = kotlin.math.sqrt(sqErr / outputDim)
+        val rmsSig = kotlin.math.sqrt(sqSig / outputDim)
+        val relRms = rmsErr / (rmsSig + 1e-9)
+        assertTrue(
+            relRms < AGG_REL_TOL || rmsErr < tol,
+            "Q8 parity exceeded: relRms=$relRms (rmsErr=$rmsErr rmsSig=$rmsSig) over $outputDim rows, tol=$AGG_REL_TOL",
+        )
+    }
+
+    private companion object {
+        const val AGG_REL_TOL = 0.03
     }
 
     @Test
