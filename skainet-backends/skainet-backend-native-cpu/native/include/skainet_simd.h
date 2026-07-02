@@ -11,10 +11,19 @@
  * with the right -march). `__ARM_FEATURE_DOTPROD` / `__ARM_FEATURE_MATMUL_INT8`
  * are gated on the build flags (`-march=armv8.2-a+dotprod`, etc.).
  *
- * BOARD-VERIFY-PENDING: the NEON paths in this tree compile to the scalar
- * fallback on the x86 build host and have NOT been executed on aarch64.
- * They must be built with the cross toolchain and bit-exact-checked under
- * QEMU or on the SL2610 before being relied on.
+ * AARCH64-VERIFIED (2026-07-02): the NEON paths (fp32 vfmaq_f32, q4k
+ * vdotq_s32 dotprod, q5k, q6k, q8_0) were cross-built with
+ * `-march=armv8.2-a+fp16+dotprod` (aarch64 gcc 8.3, the K/N-bundled
+ * toolchain) and parity-checked against the commonMain scalar references:
+ *   - under qemu-aarch64 via
+ *       ./gradlew :skainet-backends:skainet-backend-native-cpu:linuxArm64Test -PcrossArm64=true
+ *   - AND on the physical SL2610 board (Cortex-A55, aarch64): the same
+ *     test.kexe run natively on-device — 23/23 tests green, no SIGILL.
+ *     `/proc/cpuinfo` confirmed asimddp + fphp/asimdhp present and i8mm
+ *     absent, matching the chosen -march (no +i8mm).
+ * The linked archive was confirmed to contain udot/sdot + fmla, i.e. the
+ * SIMD paths — not the scalar fallback — executed. bf16 and q4_0 have no
+ * NEON path (scalar only).
  */
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)

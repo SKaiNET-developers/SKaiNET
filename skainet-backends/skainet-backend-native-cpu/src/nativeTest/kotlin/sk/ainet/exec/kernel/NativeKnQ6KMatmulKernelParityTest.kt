@@ -11,9 +11,9 @@ import kotlin.test.assertTrue
  * agree with the commonMain [ScalarQ6_KMatmulKernel] reference within FMA +
  * `-ffast-math` reassociation tolerance.
  *
- * This is the host (linuxX64) de-risking of the board (linuxArm64) consumption:
- * the cinterop mechanism + kernel correctness are verified here; only the NEON
- * codegen differs on aarch64 (board-verify-pending). Q6_K magnitudes (codes
+ * Runs on linuxX64 (host archive: scalar/auto-vectorized) AND linuxArm64
+ * (cross-built archive: NEON), so the aarch64 run bit-checks the
+ * `SKAINET_HAVE_NEON` path in q6k_matmul.c. Q6_K magnitudes (codes
  * [-32, 31] × signed int8 scales) are larger than Q5_K, so absolute tolerances
  * are a touch looser; the `rel < 1e-4` relative check is the real gate.
  */
