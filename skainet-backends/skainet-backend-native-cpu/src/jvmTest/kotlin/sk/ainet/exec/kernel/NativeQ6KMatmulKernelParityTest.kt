@@ -16,9 +16,16 @@ import kotlin.test.assertTrue
  * Fixture mirrors [NativeQ5KMatmulKernelParityTest]: random Q6_K bytes with
  * `d` clamped to `1.0f16` (bytes 208-209), packed input-block-major
  * `(blockIdx * outputDim + o) * 210`. Random `ql`/`qh`/`scales` exercise the
- * 6-bit bit-assembly and the signed int8 scales. Q6_K magnitudes are larger
- * than Q5_K (codes [-32, 31] × int8 scales), so absolute tolerances are a
- * touch looser; the `rel < 1e-4` relative check is the real gate.
+ * 6-bit bit-assembly and the signed int8 scales.
+ *
+ * Like [NativeQ4KMatmulKernelParityTest], the native kernel quantizes the
+ * activation to int8 (Q8) for the dotprod fast path — deliberately lossy
+ * (ggml-style), so it is NOT bit-exact vs the float Panama reference. Per-row
+ * relative error is the wrong gate (a near-zero true row shows unbounded
+ * relative error from a tiny absolute one on zero-mean random fixtures); the
+ * meaningful metric is the aggregate error energy RMS(error)/RMS(signal). Real
+ * (smoother) LLM activations are far tighter than these worst-case fixtures;
+ * the end-to-end gate is the on-board generation output.
  */
 class NativeQ6KMatmulKernelParityTest {
 
@@ -58,14 +65,25 @@ class NativeQ6KMatmulKernelParityTest {
         val nativeOut = FloatArray(outputDim)
         NativeQ6KMatmulKernel.matmul(input, 0, packed, 0, inputDim, outputDim, nativeOut, 0)
 
+        var sqErr = 0.0
+        var sqSig = 0.0
         for (o in 0 until outputDim) {
-            val diff = abs(refOut[o] - nativeOut[o])
-            val rel = diff / (abs(refOut[o]) + 1e-9f)
-            assertTrue(
-                diff <= tol || rel < 1e-4f,
-                "row $o diverged: panama=${refOut[o]} native=${nativeOut[o]} diff=$diff rel=$rel tol=$tol",
-            )
+            val d = (refOut[o] - nativeOut[o]).toDouble()
+            sqErr += d * d
+            sqSig += refOut[o].toDouble() * refOut[o].toDouble()
         }
+        val rmsErr = kotlin.math.sqrt(sqErr / outputDim)
+        val rmsSig = kotlin.math.sqrt(sqSig / outputDim)
+        val relRms = rmsErr / (rmsSig + 1e-9)
+        assertTrue(
+            relRms < AGG_REL_TOL || rmsErr < tol,
+            "Q8 parity exceeded: relRms=$relRms (rmsErr=$rmsErr rmsSig=$rmsSig) over $outputDim rows, tol=$AGG_REL_TOL",
+        )
+    }
+
+    private companion object {
+        // Aggregate Q8-activation RMS-relative-error bound (uniform-random worst case).
+        const val AGG_REL_TOL = 0.03
     }
 
     @Test
