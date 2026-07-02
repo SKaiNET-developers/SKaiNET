@@ -144,7 +144,7 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         }
 
         // softmax(softmaxIn) over the key-length axis
-        ops += "$maxInit = stablehlo.constant dense<0xFF800000> : tensor<$elem>"
+        ops += "$maxInit = stablehlo.constant dense<${mapper.negInfBits(elem)}> : tensor<$elem>"
         ops += "$maxV = stablehlo.reduce($softmaxIn init: $maxInit) applies stablehlo.maximum across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
         ops += "$maxB = stablehlo.broadcast_in_dim $maxV, dims = [$bcastDims] : ($reducedType) -> $scoresType"
         ops += "$shifted = stablehlo.subtract $softmaxIn, $maxB : $scoresType"

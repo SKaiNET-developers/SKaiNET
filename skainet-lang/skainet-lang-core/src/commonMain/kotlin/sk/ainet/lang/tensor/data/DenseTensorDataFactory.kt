@@ -3,6 +3,7 @@ package sk.ainet.lang.tensor.data
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.dense.DenseByteTensorArray
 import sk.ainet.lang.tensor.storage.ActiveMemoryTracker
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -346,6 +347,13 @@ public class DenseTensorDataFactory: TensorDataFactory {
                 val data = FloatArray(shape.volume) { 0.0f }
                 createFloatTensorData(shape, data, FP16 as T) as TensorData<T, V>
             }
+            BF16::class -> {
+                // Float-backed, BF16-tagged (mirrors FP16). The dtype tag is what
+                // the DSL trace / StableHLO export reads to emit `bf16` element
+                // types — required for the Torq NPU (bf16-native weights).
+                val data = FloatArray(shape.volume) { 0.0f }
+                createFloatTensorData(shape, data, BF16 as T) as TensorData<T, V>
+            }
             Int32::class -> {
                 val data = IntArray(shape.volume) { 0 }
                 createIntTensorData(shape, data) as TensorData<T, V>
@@ -369,6 +377,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
         return when (dtype) {
             FP32::class -> LazyZeroFloatArrayTensorData<T>(shape) as TensorData<T, V>
             FP16::class -> LazyZeroFloatArrayTensorData<T>(shape) as TensorData<T, V>
+            BF16::class -> LazyZeroFloatArrayTensorData<T>(shape) as TensorData<T, V>
             Int32::class -> LazyZeroIntArrayTensorData<T>(shape) as TensorData<T, V>
             else -> zeros(shape, dtype)
         }
