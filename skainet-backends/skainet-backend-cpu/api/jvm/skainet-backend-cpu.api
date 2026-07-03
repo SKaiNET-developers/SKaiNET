@@ -24,6 +24,7 @@ public final class sk/ainet/context/DirectCpuExecutionContext : sk/ainet/context
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
@@ -54,6 +55,7 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProvider : sk/ainet/ba
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
 	public fun matmulQ5_0 ()Lsk/ainet/backend/api/kernel/Q5_0MatmulKernel;
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
@@ -70,6 +72,7 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProviderFactory : sk/a
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
 	public fun matmulQ5_0 ()Lsk/ainet/backend/api/kernel/Q5_0MatmulKernel;
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
@@ -102,6 +105,11 @@ public final class sk/ainet/exec/kernel/PanamaVectorQ5_1MatmulKernel : sk/ainet/
 	public fun matmul ([FI[BIII[FI)V
 }
 
+public final class sk/ainet/exec/kernel/PanamaVectorQ5_KMatmulKernel : sk/ainet/backend/api/kernel/Q5KMatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ5_KMatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
 public final class sk/ainet/exec/kernel/PanamaVectorQ6_KMatmulKernel : sk/ainet/backend/api/kernel/Q6KMatmulKernel {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorQ6_KMatmulKernel;
 	public fun matmul ([FI[BIII[FI)V
@@ -126,6 +134,7 @@ public final class sk/ainet/exec/kernel/ScalarKernelProvider : sk/ainet/backend/
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
 	public fun matmulQ5_0 ()Lsk/ainet/backend/api/kernel/Q5_0MatmulKernel;
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
@@ -142,6 +151,7 @@ public final class sk/ainet/exec/kernel/ScalarKernelProviderFactory : sk/ainet/b
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
+	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
 	public fun matmulQ5_0 ()Lsk/ainet/backend/api/kernel/Q5_0MatmulKernel;
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
@@ -171,6 +181,11 @@ public final class sk/ainet/exec/kernel/ScalarQ5_0MatmulKernel : sk/ainet/backen
 
 public final class sk/ainet/exec/kernel/ScalarQ5_1MatmulKernel : sk/ainet/backend/api/kernel/Q5_1MatmulKernel {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarQ5_1MatmulKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
+public final class sk/ainet/exec/kernel/ScalarQ5_KMatmulKernel : sk/ainet/backend/api/kernel/Q5KMatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarQ5_KMatmulKernel;
 	public fun matmul ([FI[BIII[FI)V
 }
 
@@ -285,6 +300,21 @@ public final class sk/ainet/exec/tensor/ops/JvmTurboQuantKernels {
 	public static synthetic fun dequantize$default (Lsk/ainet/exec/tensor/ops/JvmTurboQuantKernels;[B[F[FIILjava/lang/Object;)V
 	public final fun quantize ([FI)Lsk/ainet/lang/tensor/ops/turboquant/QuantizedVector;
 	public final fun walshHadamardButterfly ([FII)V
+}
+
+public final class sk/ainet/exec/tensor/ops/KernelProfile {
+	public static final field INSTANCE Lsk/ainet/exec/tensor/ops/KernelProfile;
+	public final fun getFp32Calls ()J
+	public final fun getFp32Nanos ()J
+	public final fun getGenericCalls ()J
+	public final fun getGenericNanos ()J
+	public final fun getQuantCalls ()J
+	public final fun getQuantNanos ()J
+	public final fun report ()Ljava/lang/String;
+	public final fun reset ()V
+	public final fun timeFp32 (Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public final fun timeGeneric (Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public final fun timeQuant (Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 }
 
 public final class sk/ainet/java/SKaiNET {

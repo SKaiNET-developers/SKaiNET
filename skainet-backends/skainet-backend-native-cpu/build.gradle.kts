@@ -146,6 +146,23 @@ tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxX64") }.co
     dependsOn(buildNativeKernels)
 }
 
+// The linuxX64/linuxArm64 K/N *test* binaries link the CMake static archive and
+// execute a Linux ELF. On a non-Linux host the CMake build emits host-format
+// objects (Mach-O on macOS), which ld.lld cannot cross-link into a Linux binary,
+// and a Linux .kexe cannot be executed anyway. Disable the K/N test link + run
+// on non-Linux hosts so `build`/`allTests` stay green locally; klib compilation
+// (compileKotlinLinux*) and publishing are unaffected, and the native NEON parity
+// suite still runs on Linux CI / qemu-aarch64 / the SL2610 board. Mirrors the
+// existing `-PcrossArm64` opt-in gating for the aarch64 cross artifacts.
+val isLinuxHost: Boolean = System.getProperty("os.name").lowercase().contains("linux")
+if (!isLinuxHost) {
+    tasks.matching {
+        (it.name.startsWith("link") && it.name.contains("Test") &&
+            (it.name.endsWith("LinuxX64") || it.name.endsWith("LinuxArm64"))) ||
+            it.name == "linuxX64Test" || it.name == "linuxArm64Test"
+    }.configureEach { enabled = false }
+}
+
 val packageNativeKernels by tasks.registering(Copy::class) {
     group = "build"
     description = "Stage the built native kernels library into JVM resources."
