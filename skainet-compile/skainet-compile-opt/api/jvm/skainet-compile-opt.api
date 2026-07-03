@@ -47,6 +47,10 @@ public final class sk/ainet/compile/opt/GraphOptimizationResult {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/opt/GraphPruningKt {
+	public static final fun prunedToOutputs (Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/Set;)Lsk/ainet/lang/graph/ComputeGraph;
+}
+
 public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
