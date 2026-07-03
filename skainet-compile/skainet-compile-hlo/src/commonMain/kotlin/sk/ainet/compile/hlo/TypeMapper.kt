@@ -34,6 +34,19 @@ public class TypeMapper {
     }
     
     /**
+     * Bit-pattern literal for -inf in the given MLIR float element type. The
+     * width MUST match the type — a 32-bit `0xFF800000` in a `bf16` constant is
+     * "out of range" to iree-compile. Used as the identity for `stablehlo.maximum`
+     * (softmax / attention max-reduce).
+     */
+    public fun negInfBits(mlirElementType: String): String = when (mlirElementType) {
+        "f64" -> "0xFFF0000000000000"
+        "f16" -> "0xFC00"
+        "bf16" -> "0xFF80"
+        else -> "0xFF800000" // f32 and fallback
+    }
+
+    /**
      * Map a TensorSpec to MLIR tensor type string
      */
     public fun mapTensorType(spec: TensorSpec): String {

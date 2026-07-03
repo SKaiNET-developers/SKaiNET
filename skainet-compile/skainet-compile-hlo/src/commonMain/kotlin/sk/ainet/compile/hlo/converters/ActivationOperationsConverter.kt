@@ -157,8 +157,9 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         val resultValue = context.nextTempValue()
 
         // Identity for stablehlo.maximum on floats: -inf. Spell it via the bit
-        // pattern so MLIR parses it regardless of how the element type prints.
-        val maxIdentity = "0xFF800000"
+        // pattern (width-matched to the element type — a 32-bit pattern in a bf16
+        // constant is out of range).
+        val maxIdentity = context.getTypeMapper().negInfBits(elementType)
 
         val operations = listOf(
             // Reduce-max along the softmax axis (for numerical stability).

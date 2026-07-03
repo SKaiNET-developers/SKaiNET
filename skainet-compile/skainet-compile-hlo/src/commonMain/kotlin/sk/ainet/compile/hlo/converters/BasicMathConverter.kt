@@ -131,7 +131,9 @@ public class BasicMathConverter : StableHloOperationConverter {
                 dtype = targetSpec.dtype
             )
             val toType = typeMapper.mapTensorType(promotedSpec)
-            context.emitOperation("$converted = stablehlo.convert $current : $fromType to $toType")
+            // Functional-type form `: (A) -> B`; the `A to B` short form is not
+            // valid stablehlo.convert assembly and is rejected by iree-compile.
+            context.emitOperation("$converted = stablehlo.convert $current : ($fromType) -> $toType")
             current = converted
             currentSpec = promotedSpec
         }
