@@ -49,9 +49,23 @@ public data class StableHloModule(
  * - Currently supports: input, add, matmul, relu. Unsupported ops are emitted as comments.
  * - DType mapping expects TensorSpec.dtype to be strings like "FP32", "F32", "F64", "I32".
  */
-public fun toStableHlo(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
+public fun toStableHlo(
+    graph: ComputeGraph,
+    functionName: String = "main",
+    /**
+     * Selected compile target (iree device id, e.g. "torq", "llvm-cpu"); `null` =
+     * target-agnostic emission (the portable default, unchanged behavior).
+     */
+    target: String? = null,
+    /**
+     * Per-target op-granularity policy (fused vs decomposed). Resolve it at the call
+     * site with `TargetOptimizers.granularityFor(target)` and pass it in, so the emitter
+     * stays decoupled from the optimizer registry. `null` = decompose everything.
+     */
+    granularity: sk.ainet.compile.target.OpGranularityPolicy? = null,
+): StableHloModule {
     // Use the new converter architecture
-    val converter = StableHloConverterFactory.createBasic()
+    val converter = StableHloConverterFactory.createBasic(target = target, granularity = granularity)
     return converter.convert(graph, functionName)
 }
 
@@ -78,6 +92,8 @@ public fun toStableHlo(
     graph: sk.ainet.lang.graph.ResolvedComputeGraph,
     functionName: String = "main",
     validate: Boolean = true,
+    target: String? = null,
+    granularity: sk.ainet.compile.target.OpGranularityPolicy? = null,
 ): StableHloModule {
     if (validate) {
         graph.validate().requireValid()
@@ -86,7 +102,7 @@ public fun toStableHlo(
     // for graphs that pass validation. Future versions can branch here to
     // consume `graph.resolvedLayout(edgeId)` / `graph.backendAssignment(nodeId)`
     // once those passes ship.
-    return toStableHlo(graph.delegate, functionName)
+    return toStableHlo(graph.delegate, functionName, target, granularity)
 }
 
 /**

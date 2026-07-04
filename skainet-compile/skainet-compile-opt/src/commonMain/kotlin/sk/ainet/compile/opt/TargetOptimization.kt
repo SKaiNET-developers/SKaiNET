@@ -26,6 +26,14 @@ public interface TargetOptimizer {
     /** DAG-phase graph rewrites (produce standard, still-portable ops). */
     public fun dagPasses(): List<GraphOptimizationPass> = emptyList()
 
+    /**
+     * Op-granularity policy for the emitters (fused vs decomposed). `null` = decompose
+     * everything (the portable default). A target that wants a fused op kept as a single
+     * `stablehlo.composite` / kernel-call returns a policy here. See
+     * [sk.ainet.compile.target.OpGranularityPolicy].
+     */
+    public fun granularity(): sk.ainet.compile.target.OpGranularityPolicy? = null
+
     // Future phases keep the same shape, e.g.:
     //   public fun tapePasses(): List<TapePass> = emptyList()
     //   public fun stableHloPasses(): List<StableHloPass> = emptyList()
@@ -58,6 +66,15 @@ public object TargetOptimizers {
     /** Optimizers registered for [target] (empty if none / null). */
     public fun forTarget(target: String?): List<TargetOptimizer> =
         target?.let { registry[it]?.toList() } ?: emptyList()
+
+    /**
+     * The op-granularity policy for [target] — the first non-null [TargetOptimizer.granularity]
+     * among the registered optimizers, or `null` (decompose everything) if none provide one.
+     * Callers (the model-build tool) resolve this and pass it into `toStableHlo(...)`, so the
+     * emitter stays decoupled from this registry.
+     */
+    public fun granularityFor(target: String?): sk.ainet.compile.target.OpGranularityPolicy? =
+        forTarget(target).firstNotNullOfOrNull { it.granularity() }
 
     /** Test/reset hook. */
     public fun clear(): Unit = registry.clear()
