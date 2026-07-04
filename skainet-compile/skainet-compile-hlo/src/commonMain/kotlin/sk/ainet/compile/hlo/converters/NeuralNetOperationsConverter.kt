@@ -474,44 +474,73 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
 
         val operations = mutableListOf<String>()
 
+        // Compute the numerically-sensitive normalization (mean / variance / std /
+        // divide) in f32 regardless of the model dtype. This is standard LayerNorm
+        // practice — PyTorch and JAX upcast fp16/bf16 LayerNorm to f32 internally —
+        // because a bf16 variance (a sum of `axisSize` bf16 squares) loses enough
+        // precision that `sqrt(var + eps)` can overflow/NaN, and some accelerator
+        // backends miscompile the decomposed bf16 reduce/normalize outright. Only the
+        // scale/offset affine stays in the model dtype. No-op when the model is f32.
+        val computeElement = "f32"
+        val isMixed = elementType != computeElement
+        val computeType = if (rank > 0) {
+            "tensor<${inputShape.joinToString("x")}x$computeElement>"
+        } else {
+            "tensor<$computeElement>"
+        }
+        val computeReducedType = if (reducedShape.isEmpty()) {
+            "tensor<$computeElement>"
+        } else {
+            "tensor<${reducedShape.joinToString("x")}x$computeElement>"
+        }
+        val xF32 = if (isMixed) context.nextTempValue() else xInput
+        if (isMixed) {
+            operations += "$xF32 = stablehlo.convert $xInput : ($outputType) -> $computeType"
+        }
+
         // mean(x) along the normalization axis, via real `stablehlo.reduce` (sum / count)
         // so the module compiles on stock IREE (no @reduce_* custom_call stubs).
-        operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$elementType>"
-        operations += "$countConst = stablehlo.constant dense<${axisSize}.0> : $reducedType"
-        operations += "$sumX = stablehlo.reduce($xInput init: $zeroInit) " +
-            "applies stablehlo.add across dimensions = [$axis] : ($outputType, tensor<$elementType>) -> $reducedType"
-        operations += "$meanValue = stablehlo.divide $sumX, $countConst : $reducedType"
+        operations += "$zeroInit = stablehlo.constant dense<0.0> : tensor<$computeElement>"
+        operations += "$countConst = stablehlo.constant dense<${axisSize}.0> : $computeReducedType"
+        operations += "$sumX = stablehlo.reduce($xF32 init: $zeroInit) " +
+            "applies stablehlo.add across dimensions = [$axis] : ($computeType, tensor<$computeElement>) -> $computeReducedType"
+        operations += "$meanValue = stablehlo.divide $sumX, $countConst : $computeReducedType"
 
         // Broadcast mean back to input shape, then mean-center.
         operations += "$meanBroadcast = stablehlo.broadcast_in_dim $meanValue, " +
-            "dims = [$broadcastDims] : ($reducedType) -> $outputType"
-        operations += "$centered = stablehlo.subtract $xInput, $meanBroadcast : $outputType"
+            "dims = [$broadcastDims] : ($computeReducedType) -> $computeType"
+        operations += "$centered = stablehlo.subtract $xF32, $meanBroadcast : $computeType"
 
         // var(x) = E[x²] - E[x]² (population, ddof=0), again via real reductions.
-        operations += "$squared = stablehlo.multiply $xInput, $xInput : $outputType"
+        operations += "$squared = stablehlo.multiply $xF32, $xF32 : $computeType"
         operations += "$sumSq = stablehlo.reduce($squared init: $zeroInit) " +
-            "applies stablehlo.add across dimensions = [$axis] : ($outputType, tensor<$elementType>) -> $reducedType"
-        operations += "$meanSq = stablehlo.divide $sumSq, $countConst : $reducedType"
-        operations += "$meanSquared = stablehlo.multiply $meanValue, $meanValue : $reducedType"
-        operations += "$varValue = stablehlo.subtract $meanSq, $meanSquared : $reducedType"
+            "applies stablehlo.add across dimensions = [$axis] : ($computeType, tensor<$computeElement>) -> $computeReducedType"
+        operations += "$meanSq = stablehlo.divide $sumSq, $countConst : $computeReducedType"
+        operations += "$meanSquared = stablehlo.multiply $meanValue, $meanValue : $computeReducedType"
+        operations += "$varValue = stablehlo.subtract $meanSq, $meanSquared : $computeReducedType"
 
         // Epsilon constant broadcast into the reduced shape.
-        operations += "$epsConst = stablehlo.constant dense<$epsilon> : tensor<$elementType>"
+        operations += "$epsConst = stablehlo.constant dense<$epsilon> : tensor<$computeElement>"
         operations += "$epsBroadcast = stablehlo.broadcast_in_dim $epsConst, " +
-            "dims = [] : (tensor<$elementType>) -> $reducedType"
+            "dims = [] : (tensor<$computeElement>) -> $computeReducedType"
 
         // variance + eps
-        operations += "$varPlusEps = stablehlo.add $varValue, $epsBroadcast : $reducedType"
+        operations += "$varPlusEps = stablehlo.add $varValue, $epsBroadcast : $computeReducedType"
 
         // std = sqrt(variance + eps)
-        operations += "$stdValue = stablehlo.sqrt $varPlusEps : $reducedType"
+        operations += "$stdValue = stablehlo.sqrt $varPlusEps : $computeReducedType"
 
         // Broadcast std back to the input shape.
         operations += "$stdBroadcast = stablehlo.broadcast_in_dim $stdValue, " +
-            "dims = [$broadcastDims] : ($reducedType) -> $outputType"
+            "dims = [$broadcastDims] : ($computeReducedType) -> $computeType"
 
-        // normalized = (x - mean) / std
-        operations += "$normalized = stablehlo.divide $centered, $stdBroadcast : $outputType"
+        // normalized = (x - mean) / std  (in f32), then cast back to the model dtype
+        // before the scale/offset affine.
+        val normalizedF32 = if (isMixed) context.nextTempValue() else normalized
+        operations += "$normalizedF32 = stablehlo.divide $centered, $stdBroadcast : $computeType"
+        if (isMixed) {
+            operations += "$normalized = stablehlo.convert $normalizedF32 : ($computeType) -> $outputType"
+        }
 
         // Apply scale and offset if present. Each has shape [axisSize] and is broadcast over
         // the normalization axis before the elementwise op. Track the running SSA value so
