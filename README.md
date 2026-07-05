@@ -36,7 +36,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.33.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.34.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -254,6 +254,7 @@ val withoutLabel = dataPipeline<RawDataset>()
     .execute(raw)
 ```
 
+- Start with the [data sources getting started guide](docs/modules/ROOT/pages/tutorials/data-sources-getting-started.adoc)
 
 ### Edge AI: Arduino / C99 Export
 
@@ -275,85 +276,19 @@ val withoutLabel = dataPipeline<RawDataset>()
 ### Choosing an Export Path
 
 - Use **StableHLO** when you want portable MLIR/IREE-compatible graphs for native, accelerator, or ecosystem compiler flows.
-- Use **Arduino / C99 export** when you want standalone generated C with static memory allocation and no external secure runtime.
-- Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
+- Use **Arduino / C99 export / Minerva export** when you want standalone generated C with static memory allocation or external secure runtime.
 
 ---
 
-## What's New in 0.33.0
+## What's New in 0.34.0
 
-- **GRU — the first recurrent layer.** `nn.Gru` (`[B,S,D]->[B,S,H]`, PyTorch gate order) composed from
-  existing primitives and unrolled over the static sequence at trace time, so it runs eagerly, trains
-  through the standard tape, and exports to StableHLO with no dedicated converter. Plus a `gru(…)`
-  network-DSL builder. (PR #772, issue #217)
-- **`upsample2d` Bilinear + StableHLO export** for both Nearest and Bilinear — everything lowers to fixed
-  reshape/broadcast/`dot_general` (no `custom_call`), unblocking resize/FPN-style export. (PR #771)
-- **Autodiff correctness + coverage.** Fixes a silent gradient-drop for `elu`/`leakyRelu`/`permute`
-  (backward rules existed but were never wired into the trace dispatch), makes `cos`/`sin`/`tril`/
-  `gather`/`indexSelect`/`unfold`/`convTranspose1d` differentiable, and adds a KSP-generated coverage
-  guard so a differentiable op can no longer ship without a wired backward. (PR #774)
-- **Norms compile on stock IREE.** `layerNorm`/`rmsNorm`/`batchNorm` now lower to real `stablehlo.reduce`
-  instead of export-only `custom_call`s. (PR #769)
-- **Breaking:** `TensorOps.sin`/`cos`/`convTranspose1d` are now abstract — backends implementing
-  `TensorOps` directly must override them (both bundled backends already do).
+- **URI-backed data sources** — new `skainet-data-source` module: `file://`, `https://`, and Hugging Face URIs, raw-format parsers (CSV/TSV/JSON/JSONL), suspendable data pipelines
+- **Dataset views and richer batches** — seeded shuffle, stratified split, filter views, batch/epoch flows, batch indices + metadata
+- **bf16-native DSL → StableHLO export** — weights reach the matmuls as bf16, verified down to an aarch64 vmfb
+- **Pluggable per-phase, per-target compile optimization** (`TargetOptimizers`, `OpGranularityPolicy`)
+- **2.07× Q4_K NEON matmul on Cortex-A55** — plus LayerNorm statistics now computed in f32 (bf16-safe)
 
-## What's New in 0.32.4
-
-- **Streaming detokenization keeps word spaces (`Tokenizer.decodeToken`).** Decoding generated tokens
-  one at a time no longer runs words together (`"the process"` → `"theprocess"`). The new
-  `decodeToken(id)` keeps each SentencePiece piece's leading space (llama.cpp `token_to_piece`
-  semantics); `decode(IntArray)` still strips the single sequence-leading space as before.
-
-## What's New in 0.32.3
-
-- **Graph-output pruning for export (`ComputeGraph.prunedToOutputs`).** Trims a traced decoder's
-  StableHLO/IREE export to just the designated outputs (e.g. the logits), eliminating the dozens of
-  dangling per-layer tensors and dead op subgraphs a full trace otherwise emits as `func` returns —
-  via new `OutputDesignatedGraph` (compile-dag) + `prunedToOutputs` (compile-opt) running
-  `DeadCodeEliminationPass`. (PR #760)
-- **SDPA causal mask** now emits a large finite fill (`-1e30`) instead of `-inf`, matching
-  `buildSlidingCausalMask` and avoiding a `-inf` splat in the exported IR (numerically equivalent
-  after softmax). (`AttentionOperationsConverter`)
-
-## What's New in 0.32.2
-
-- **`ExecutionContext.isRecording`.** A default-`false` flag (overridden by the graph/tape context)
-  so a module with an eager fast-path that bypasses `ops.*` — e.g. RoPE's raw-array INTERLEAVED
-  rotation — can detect tracing and emit a graph-traceable `ctx.ops.*` path instead, exporting to
-  StableHLO while keeping the eager fast path. Backward-compatible. (PR #757)
-- **Docs:** Antora version-currency + broken-link fixes across all pages (PR #758).
-- **Dependency:** `ch.qos.logback:logback-classic` → 1.5.35 (#756).
-
-## What's New in 0.32.1
-
-- **GroupNorm compiles on stock IREE.** The 0.32.0 GroupNorm converter emitted `@reduce_mean` /
-  `@reduce_variance` custom_calls that `iree-compile` can't lower; it now emits real `stablehlo.reduce`
-  (variance as `E[x²] − E[x]²`, ddof=0), like `sum` / `mean` / `variance`. Verified end-to-end through
-  the [`skainet-iree-conformance`](https://github.com/SKaiNET-developers/skainet-iree-conformance) harness
-  (`iree-compile` + `iree-run-module` + numpy validate → PASS, `max_abs_err = 1.2e-7`). (PR #754)
-
-### Recent releases
-
-- **0.32.0** — **GroupNorm StableHLO converter** (#752): `groupNorm` lowers to real `stablehlo.*` ops; plus a SKEEP proposals docs module (#750), a quantization-process explanation (#747), and dependency bumps.
-
-- **0.31.2** — `RowDequantSource` + `ops.gather` row-dequant: a packed/oversized embedding (a Q-quantised `token_embd`) stays packed and is looked up via `ops.gather`, dequantising only the touched rows. (PR #741)
-- **0.31.0** — `ops.transpose` lazily handles every packed matmul dtype (Q8_0/Q4_0 added, completing the Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0 set); `json-schema-validator` → 3.0.4. (PRs #736, #737, #733)
-
-- **0.30.0** — First-class **Q5_K packed in-kernel dequant-matmul** across the CPU backends (`Q5_KBlockTensorData` + `Q5KMatmulKernel` SPI: scalar / Panama Vector / native-C), **hand-written ARM NEON kernels** (fp32/q8_0/q4k/q5k, `-march=armv8.2-a+fp16+dotprod`), and **Kotlin/Native consumption of the C kernels via cinterop** (`skainet-backend-native-cpu` static archive + `linuxX64`/`linuxArm64` `KernelProvider`). (PR #734)
-
-- **0.29.1** — `sk.ainet.core:skainet-compile-minerva` now publishes to Maven Central (packaging fix for the Minerva export module shipped in 0.29.0).
-- **0.29.0** — **Minerva secure-MCU export module**: an end-to-end pipeline that lowers a SKaiNET model through shared graph-export contracts → Minerva IR → an `.npz` compiler input → a libminerva-packaged secure MCU project bundle, with host-side runtime verification and fingerprinted manifest artifacts (runnable sample, examples, ONNX workflow, getting-started docs). Plus **packed-quant matmul kernels with Kotlin/Native parity** (Q5_0/Q5_1/Q4_K/Q6_K — commonMain scalar + SPI, packed-quant dispatch in `DefaultCpuOpsBase`, Panama Vector for Q5_1/Q5_0 and Q6_K via the `KernelRegistry`), and an **auto-generated, CI-gated kernel × platform support matrix**. (PRs #697–#726)
-- **0.28.1** — Kotlin DSL → StableHLO → IREE is green end-to-end for the whole conformance suite (7/7 models, 27/27 ops compile to a `vmfb`): `inferDagOutputSpecs` now infers correct output shapes for shape-changing ops, and `reduce_window` (pooling) emits IREE's generic region form. (PRs #674, #676)
-- **0.28.0** — Four StableHLO export bugs fixed (reshape #666, concatenate #667, constants/reductions #663, `HloGenerator` tracing #668) plus non-JVM image runtime support (#671). (PRs #664, #670, #671)
-- **0.27.0** — A full gemma3 network lowers to StableHLO and compiles to an IREE `vmfb` (zero op gaps, verified by `GemmaTraceTest`): new `scaledDotProductAttention` (with causal + explicit additive mask), `permute`, `narrow`, and multi-output `split` converters, plus boxing-free `FloatArray` weight externalization for `.irpa` baking. (PRs #661 et al.)
-- **0.26.0** — Q4_0 promoted to a first-class quantized format across the provider stack, `tanh` as a first-class activation primitive, and a CPU tensor `convert` op, plus test/build/CI hygiene. (PRs #648–#651, #631, #636)
-- **0.25.0** — BF16 and Q8_0 matmul kernels end-to-end across the provider stack, autograd completeness for `pow`/`log` and the conv/pool/upsample/split family, the hybrid adaptive dtype-constraint DSL, the `@DarcValidated` operator-doc flag, and the SentencePiece special-token splitter. (PRs #595, #605–#628)
-- **0.23.0** — Real-model GGUFs no longer OOM at network construction (lazy `TensorDataFactory.placeholder(...)`); Kotlin/Native can finally load GGUFs over 2 GiB via the new POSIX-`pread`-backed `PosixPreadRandomAccessSource`. (Issues #587, #589; PRs #588, #591)
-- **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)
-- **0.22.1** — `StreamingShardedSafeTensorsReader.loadTensorStorageMapped` for zero-copy reads of multi-shard tensors above the 2 GB JVM `ByteArray` limit. (PR #582)
-- **0.22.0** — Native (FFM) CPU kernel provider: **4–6× faster Q4_K matmul, 1.5–1.8× FP32 SGEMM** vs Panama Vector; auto-selected via `KernelRegistry.bestAvailable()`. (PR #571)
-
-See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
 ---
 
@@ -361,8 +296,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 - **Q1 2026**: Comprehensive documentation ✅
 - **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0); Qwen/LLaMA tokenizers ✅ (shipped in 0.20.0)
-- **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
-- **Q4 2026**: Federated learning support for multi-device training
+- **Q3 2026**: Missing ML features: metrics, optimizers, and training utilities. 
+- **Q4 2026**: On-Device AI, small LLMs improvements
 
 ---
 

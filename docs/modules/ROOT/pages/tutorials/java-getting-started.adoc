@@ -42,11 +42,11 @@ For Maven Surefire / exec-maven-plugin, add them to `++<++jvmArgs++>++`. For Gra
 
 The `skainet-bom` manages all SKaiNET module versions so you never have to keep them in sync manually. Add it to your `++<++dependencyManagement++>++` section:
 
-[source,xml]
+[source,xml,subs="attributes+"]
 ----
 <project>
     <properties>
-        <skainet.version>0.32.4</skainet.version>
+        <skainet.version>{skainet_version}</skainet.version>
     </properties>
 
     <dependencyManagement>
@@ -131,7 +131,7 @@ Because the BOM is imported, you can add any module without repeating the versio
 
 === Gradle Kotlin DSL Setup
 
-[source,kotlin]
+[source,kotlin,subs="attributes+"]
 ----
 plugins {
     java
@@ -144,7 +144,7 @@ repositories {
 
 dependencies {
     // Import BOM for version alignment
-    implementation(platform("sk.ainet:skainet-bom:0.32.4"))
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
 
     // Core tensor library
     implementation("sk.ainet:skainet-lang-core-jvm")

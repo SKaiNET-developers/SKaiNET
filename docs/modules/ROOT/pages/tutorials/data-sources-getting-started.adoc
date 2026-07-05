@@ -27,10 +27,10 @@ can live either on disk or behind a remote URI.
 
 For JVM consumers, add the source module beside the data loaders you use:
 
-[source,kotlin]
+[source,kotlin,subs="attributes+"]
 ----
 dependencies {
-    implementation(platform("sk.ainet:skainet-bom:0.32.4"))
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
 
     implementation("sk.ainet.core:skainet-data-source-jvm")
     implementation("sk.ainet.core:skainet-data-simple-jvm")

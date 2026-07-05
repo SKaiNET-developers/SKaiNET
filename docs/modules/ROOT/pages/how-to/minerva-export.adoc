@@ -35,10 +35,10 @@ dependencies {
 
 For a published application, use the SKaiNET BOM and the Minerva artifact:
 
-[source,kotlin]
+[source,kotlin,subs="attributes+"]
 ----
 dependencies {
-    implementation(platform("sk.ainet:skainet-bom:0.32.4"))
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
     implementation("sk.ainet.core:skainet-compile-minerva")
 }
 ----

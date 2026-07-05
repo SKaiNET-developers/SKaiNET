@@ -16,14 +16,14 @@ This guide covers building neural networks, defining loss functions and optimize
 
 ==== Maven Dependencies
 
-[source,xml]
+[source,xml,subs="attributes+"]
 ----
 <dependencyManagement>
     <dependencies>
         <dependency>
             <groupId>sk.ainet</groupId>
             <artifactId>skainet-bom</artifactId>
-            <version>0.32.4</version>
+            <version>{skainet_version}</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
