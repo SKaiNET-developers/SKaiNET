@@ -7,7 +7,10 @@ import sk.ainet.lang.nn.topology.ModuleParameters
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.*
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP16
+import sk.ainet.lang.types.FP32
 import kotlin.reflect.KClass
 
 /**
@@ -84,13 +87,32 @@ public class LayerNormalization<T : DType, V>(
                 "Input shape ${normDims.contentToString()} doesn't match normalized shape ${normalizedShape.contentToString()}"
             }
             
-            // Calculate mean and variance across the normalized dimensions
-            val mean = calculateLayerMean(input)
-            val variance = calculateLayerVariance(input, mean)
-            
-            // Normalize
-            val normalized = normalize(input, mean, variance)
-            
+            // Compute the numerically-sensitive normalization (mean / variance /
+            // std / divide) in f32, regardless of the model dtype. This is standard
+            // LayerNorm practice — PyTorch and JAX upcast fp16/bf16 LayerNorm to f32
+            // internally — because a low-precision variance (a sum of many bf16/fp16
+            // squares) loses enough precision that `sqrt(var + eps)` can overflow to
+            // NaN, and some accelerator backends miscompile the decomposed
+            // low-precision reduce/normalize outright. The affine (gamma/beta) stays in
+            // the model dtype. No-op when the model already runs f32.
+            val normalized: Tensor<T, V> = if (input.dtype != FP32::class) {
+                val xF32 = input.ops.convert(input, FP32)
+                val mean = calculateLayerMean(xF32)
+                val variance = calculateLayerVariance(xF32, mean)
+                val normF32 = normalize(xF32, mean, variance)
+                val modelDtype: DType = when (input.dtype) {
+                    BF16::class -> BF16
+                    FP16::class -> FP16
+                    else -> FP32
+                }
+                @Suppress("UNCHECKED_CAST")
+                (input.ops.convert(normF32, modelDtype) as Tensor<T, V>)
+            } else {
+                val mean = calculateLayerMean(input)
+                val variance = calculateLayerVariance(input, mean)
+                normalize(input, mean, variance)
+            }
+
             if (elementwiseAffine) {
                 val gamma = params[0].value // weight parameter
                 val beta = params[1].value  // bias parameter
@@ -100,7 +122,7 @@ public class LayerNormalization<T : DType, V>(
             }
         }
 
-    private fun calculateLayerMean(input: Tensor<T, V>): Tensor<T, V> {
+    private fun <D : DType> calculateLayerMean(input: Tensor<D, V>): Tensor<D, V> {
         var m = input
         for (i in normalizedShape.indices.reversed()) {
             m = m.mean(dim = m.rank - 1)
@@ -113,7 +135,7 @@ public class LayerNormalization<T : DType, V>(
         return result
     }
 
-    private fun calculateLayerVariance(input: Tensor<T, V>, mean: Tensor<T, V>): Tensor<T, V> {
+    private fun <D : DType> calculateLayerVariance(input: Tensor<D, V>, mean: Tensor<D, V>): Tensor<D, V> {
         val centered = input - mean
         var v = centered * centered
         for (i in normalizedShape.indices.reversed()) {
@@ -127,7 +149,7 @@ public class LayerNormalization<T : DType, V>(
         return result
     }
 
-    private fun normalize(input: Tensor<T, V>, mean: Tensor<T, V>, variance: Tensor<T, V>): Tensor<T, V> {
+    private fun <D : DType> normalize(input: Tensor<D, V>, mean: Tensor<D, V>, variance: Tensor<D, V>): Tensor<D, V> {
         return (input - mean) / (variance + eps).sqrt()
     }
 }

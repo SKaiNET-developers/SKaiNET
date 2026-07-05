@@ -32,7 +32,9 @@ public object StableHloConverterFactory {
     @JvmStatic
     @kotlin.jvm.JvmOverloads
     public fun createBasic(
-        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways,
+        target: String? = null,
+        granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
     ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -75,7 +77,7 @@ public object StableHloConverterFactory {
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, validator, policy)
+        return StableHloConverter(registry, typeMapper, validator, policy, target, granularity)
     }
 
     /**

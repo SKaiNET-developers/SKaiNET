@@ -23,7 +23,19 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
      * See issue #523 for the architecture context.
      */
     public val materializationPolicy: ConstantMaterializationPolicy =
-        ConstantMaterializationPolicy.InlineAlways
+        ConstantMaterializationPolicy.InlineAlways,
+    /**
+     * Selected compile target (iree device id, e.g. "torq"); `null` = target-agnostic.
+     * Threaded through so per-target emit decisions (e.g. op granularity) are possible
+     * without any hardware knowledge in the shared emitter.
+     */
+    public val target: String? = null,
+    /**
+     * Per-target op-granularity policy (fused vs decomposed emission). Resolved by the
+     * caller from the [sk.ainet.compile.opt.TargetOptimizers] registry and passed in;
+     * `null` = decompose everything (portable default). The emitter only *reads* it.
+     */
+    public val granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
 ) {
     private val valueNames = mutableMapOf<String, String>()
     private val valueTypes = mutableMapOf<String, String>()

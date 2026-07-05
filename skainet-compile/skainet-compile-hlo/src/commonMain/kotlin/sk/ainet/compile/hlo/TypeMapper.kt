@@ -52,7 +52,8 @@ public class TypeMapper {
     public fun mapTensorType(spec: TensorSpec): String {
         val elementType = mapDType(spec.dtype)
         val shapeStr = formatShape(spec.shape)
-        return "tensor<${shapeStr}x${elementType}>"
+        // Rank-0 (scalar) is `tensor<elem>`, not `tensor<xelem>` — no leading `x`.
+        return if (shapeStr.isEmpty()) "tensor<$elementType>" else "tensor<${shapeStr}x${elementType}>"
     }
     
     /**
@@ -131,6 +132,7 @@ public class TypeMapper {
      */
     public fun createTensorType(shape: List<Int>, dtype: String): String {
         val elementType = mapDType(dtype)
+        if (shape.isEmpty()) return "tensor<$elementType>" // rank-0 scalar
         val shapeStr = shape.joinToString("x")
         return "tensor<${shapeStr}x${elementType}>"
     }
