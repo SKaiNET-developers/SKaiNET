@@ -2,6 +2,91 @@
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-07-05
+
+### Added
+
+- **New module `sk.ainet.core:skainet-data-source` — URI-backed data sources.** One declarative way to
+  get raw data into SKaiNET from `file://`, `https://`, and Hugging Face (`hf://owner/repo/path` and
+  `hf+https://…`) URIs: `DataSource` contracts + `DataSourceUriParser`, a `DefaultDataSourceResolver`
+  (JVM: `JvmDataSourceResolver` with artifact materialization/caching via `CachePolicy`), streaming of
+  source artifacts with kotlinx-io, and parameterizable Hugging Face auth (token provider — no
+  hard-coded credentials). (PRs #784, #785)
+- **Raw dataset parsers + suspendable data pipeline DSL.** `DataFormatParser` implementations for CSV,
+  TSV, JSON arrays/objects, and JSON Lines (`.jsonl` / `.ndjson`) produce schema-carrying `RawDataset`s;
+  `rawDataset { from(…); format(…); cachePolicy(…) }` builds a dataset straight from a source URI, and
+  `dataPipeline<T>()` chains named, schema-aware `dataTransformer` stages as a suspend pipeline.
+  See the new [data sources getting-started tutorial](docs/modules/ROOT/pages/tutorials/data-sources-getting-started.adoc). (PR #785)
+- **Dataset operation views and richer batches (`skainet-data-api`).** `Dataset` gains deterministic
+  seeded `shuffle(seed)`, `split(ratio, seed, stratified)` (label-stratified splitting), `filter` /
+  index-based views, optional `inputShape`/`outputShape` metadata, and batch/epoch `Flow`s. `DataBatch`
+  now carries sample `indices` and a `metadata` map, and supports `slice(range)` over the leading batch
+  dimension. All additions have defaults — existing `Dataset` implementations keep compiling; the bundled
+  MNIST / Fashion-MNIST / CIFAR-10 loaders support indexed (non-contiguous) batches, are routed through
+  the source layer, and unsupported platform targets now fail with a clear
+  `DatasetLoaderUnsupportedTargetException`. (PR #785)
+- **bf16-native DSL → StableHLO export path.** A model authored in bf16 in the NN DSL now exports
+  StableHLO whose weights reach the matmuls as bf16 (required by NPUs that reject fp32 weights). Adds
+  `DtypeForwardPropagationPass` (unifies the graph's float dtype end-to-end, coercing float sources when
+  `targetFloatDtype` is set), a width-matched `-inf` bit pattern for softmax/attention max-reduce
+  identities, valid `stablehlo.convert` function-form emission, and BF16 support in
+  `DenseTensorDataFactory.zeros/placeholder`. Verified: a DSL-authored bf16 Moonshine encoder traces to
+  all-bf16 StableHLO and compiles to an aarch64 llvm-cpu vmfb. (PRs #788, #791)
+- **Pluggable per-phase, per-target compile optimization (`skainet-compile-opt`).** The seam that keeps
+  hardware knowledge out of the agnostic compiler core: `CompilePhase { TAPE, DAG, STABLE_HLO }`,
+  `TargetOptimizer` (per-phase pass provider), the `TargetOptimizers` registry, and
+  `dagPipelineFor(target, corePasses)`. The StableHLO emitter additionally accepts an optional target id
+  and `OpGranularityPolicy` (+ `FusedOpAllowList`) so per-target fused-vs-decomposed emission decisions
+  are possible; everything defaults to the previous behavior — emission is byte-identical when unused. (PR #791)
+- **`KernelProfile` diagnostics (`skainet-backend-cpu`).** Always-on accumulating profiler over the three
+  `DefaultCpuOps.matmul` dispatch paths (quant-NEON / fp32-scalar / generic), read via
+  `KernelProfile.report()` — used to localize on-device decode cost.
+- **Contributor Covenant 3.0 Code of Conduct**, with GitHub private vulnerability reporting as the
+  contact channel. (PR #790)
+
+### Performance
+
+- **Native CPU K-quant matmul: 2.07× Q4_K on Cortex-A55.** Two levers, validated against the Panama
+  reference and on-board: (1) block-outer / output-row-inner loop order so block-major weight bytes are
+  read strictly sequentially (the dominant win on in-order cores — the old order made every weight read
+  a cold cache miss), applied to Q4_K, Q5_K, Q6_K, and Q8_0; (2) ggml-style fused Q8 activation
+  quantization + int8 dot path (`vdotq_s32` on dotprod targets, scalar fallback otherwise) for Q4_K and
+  Q6_K. TinyLlama Q4_K_M on-board decode improved 1.50× end-to-end. Note: the fused int8 path is
+  deliberately lossy (activation quantization, ~1–3% worst-case on uniform-random fixtures); parity
+  tests gate on aggregate `RMS(error)/RMS(signal) < 0.03` instead of bit-exactness. (PR #787)
+- **NEON kernels verified on real aarch64.** Shared `nativeTest` suite now runs the matmul parity tests
+  on linuxX64 and linuxArm64 (cross-built binary under the bundled qemu-aarch64, overridable to a real
+  board); all fp32/q4k/q5k/q6k/q8_0 kernels pass on QEMU and on a physical Cortex-A55, with objdump
+  confirming genuine SIMD (`udot`/`sdot`/`fmla`), not the scalar fallback. (PR #786)
+
+### Fixed
+
+- **LayerNorm normalization computed in f32 regardless of model dtype.** A bf16 variance (sum of many
+  bf16 squares) loses enough precision that `sqrt(var + eps)` can produce NaN, and some accelerator
+  backends miscompile the low-precision decomposed reduce. Mean/variance/std/divide are now upcast to
+  f32 (standard PyTorch/JAX practice); the gamma/beta affine stays in the model dtype. No-op for f32
+  models. (PR #791)
+- **Rank-0 tensor types emit as `tensor<elem>`.** The StableHLO type mapper unconditionally inserted the
+  `x` shape separator, so scalars produced the malformed `tensor<xbf16>` that `iree-compile` rejects. (PR #791)
+- **Green `./gradlew build` on macOS hosts.** Refreshed lagging binary-compatibility API dumps (additive
+  only) and gated the linuxX64/linuxArm64 Kotlin/Native test-link/run tasks off non-Linux hosts (the
+  CMake host build emits Mach-O objects that cannot cross-link into a Linux ELF); klib compilation and
+  publishing untouched, the native NEON parity suite still runs on Linux CI / QEMU / hardware. (PR #789)
+
+### Docs
+
+- **Antora docs image consolidated to the offline `markup-antora` build.** One image shared across the
+  SKaiNET docs projects: offline Mermaid rendering to inline SVG at build time (no Kroki, no network),
+  content-hash diagram caching, rootless-safe, with a build-time Mermaid smoke test. (PR #781)
+- Data source URIs and the data loader APIs documented, including a new
+  `data-sources-getting-started` tutorial; README reworked to frame StableHLO/MLIR as one of several
+  sibling code-generation backends (next to Arduino/C99 and Minerva) lowering the same `ComputeGraph`. (PR #776)
+
+### Dependencies
+
+- Gradle wrapper 9.6.0 → 9.6.1, logback-classic 1.5.36 → 1.5.37, JUnit Jupiter 6.1.0 → 6.1.1,
+  kotlinx-io-core 0.9.0 → 0.9.1. (PRs #777–#780)
+
 ## [0.33.0] - 2026-06-29
 
 ### Added
