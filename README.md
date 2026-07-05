@@ -276,8 +276,7 @@ val withoutLabel = dataPipeline<RawDataset>()
 ### Choosing an Export Path
 
 - Use **StableHLO** when you want portable MLIR/IREE-compatible graphs for native, accelerator, or ecosystem compiler flows.
-- Use **Arduino / C99 export** when you want standalone generated C with static memory allocation and no external secure runtime.
-- Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
+- Use **Arduino / C99 export / Minerva export** when you want standalone generated C with static memory allocation or external secure runtime.
 
 ---
 
@@ -297,8 +296,8 @@ See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
 - **Q1 2026**: Comprehensive documentation ✅
 - **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0); Qwen/LLaMA tokenizers ✅ (shipped in 0.20.0)
-- **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
-- **Q4 2026**: Federated learning support for multi-device training
+- **Q3 2026**: Missing ML features: metrics, optimizers, and training utilities. 
+- **Q4 2026**: On-Device AI, small LLMs improvements
 
 ---
 
