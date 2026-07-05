@@ -5,7 +5,11 @@
 
 <img src="docs/modules/ROOT/images/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-> For architecture details see [ARCHITECTURE.md](ARCHITECTURE.md).
+<a href="https://skainet-developers.github.io/SKaiNET/skainet/reference/architecture.html" title="Open the full architecture reference">
+  <img src="docs/modules/ROOT/images/SKaiNET-compiler.png" alt="SKaiNET compiler architecture — click for the full architecture reference" width="640">
+</a>
+
+_Click the diagram for the full [architecture reference](https://skainet-developers.github.io/SKaiNET/skainet/reference/architecture.html), or read the short [ARCHITECTURE.md](ARCHITECTURE.md)._
 
 ---
 
