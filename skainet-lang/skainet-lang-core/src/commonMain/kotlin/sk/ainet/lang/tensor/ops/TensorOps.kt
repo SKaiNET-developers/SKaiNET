@@ -196,8 +196,12 @@ public interface TensorOps {
     /**
      * Index of the maximum value along [dim]. The reduced dimension is removed from
      * the output (no keepdim); ties resolve to the LOWEST index (numpy/greedy
-     * semantics). The output holds `Int32` indices, so downstream consumers should
-     * treat it as an index tensor. Non-differentiable by design (index selection).
+     * semantics). Non-differentiable by design (index selection).
+     *
+     * Indices are integers: the traced/compiled form is a real `i32` tensor
+     * (see the StableHLO lowering), while the eager CPU path materializes them as
+     * index-valued floats in the input dtype so the result is a portable
+     * `Tensor<T, V>` (an i32 payload in a float tensor is unreadable on native/wasm).
      *
      * Like [scaledDotProductAttention], this stays a single op and is lowered at the
      * StableHLO stage (`ArgMaxOperationsConverter`: reduce-max → broadcast → compare →

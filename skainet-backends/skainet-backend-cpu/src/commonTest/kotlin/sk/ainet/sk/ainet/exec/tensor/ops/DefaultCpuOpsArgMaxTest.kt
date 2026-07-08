@@ -8,14 +8,13 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.dsl.tensor
 import sk.ainet.lang.types.FP32
-import sk.ainet.lang.types.Int32
 
 class DefaultCpuOpsArgMaxTest {
     private val ctx = DirectCpuExecutionContext()
     private val ops get() = ctx.ops
 
-    // argMax returns an Int32-backed tensor (typed <FP32,Float> by the op signature);
-    // read the raw index via the underlying TensorData.
+    // Eager argMax returns index-valued floats in the input dtype (portable across JVM/native/wasm);
+    // read them back as ints.
     private fun idx(t: Tensor<FP32, Float>, vararg i: Int): Int = (t.data.get(*i) as Number).toInt()
 
     @Test
@@ -26,7 +25,7 @@ class DefaultCpuOpsArgMaxTest {
             val t = tensor<FP32, Float> { shape(2, 3) { init { v[it[0] * 3 + it[1]] } } }
             val r = ops.argMax(t, dim = -1)
             assertEquals(Shape(2), r.shape)
-            assertEquals<Any>(Int32::class, r.dtype) // runtime dtype is Int32 despite the <FP32,Float> static type
+            assertEquals<Any>(FP32::class, r.dtype) // eager result is the input dtype (index-valued floats)
             assertEquals(2, idx(r, 0))
             assertEquals(0, idx(r, 1))
         }

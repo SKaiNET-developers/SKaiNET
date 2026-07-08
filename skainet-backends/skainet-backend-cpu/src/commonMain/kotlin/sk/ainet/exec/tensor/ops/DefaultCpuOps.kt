@@ -2079,12 +2079,15 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             var d = reduced.size - 1
             while (d >= 0) { outIdx[d]++; if (outIdx[d] < reduced[d]) break; outIdx[d] = 0; d-- }
         }
+        // Eager result: store the indices as index-valued floats in the INPUT dtype so the tensor is
+        // a consistent Tensor<T,V> readable on every target (an Int32 payload inside a <FP32,Float>
+        // tensor throws ClassCastException on Kotlin/Native + Wasm). The traced/compiled form is a
+        // real i32 tensor — see VoidTensorOps.argMax + ArgMaxOperationsConverter (emits stablehlo i32).
+        val floats = FloatArray(outCount) { indices[it].toFloat() }
         @Suppress("UNCHECKED_CAST")
-        val int32 = sk.ainet.lang.types.Int32::class as KClass<T>
-        @Suppress("UNCHECKED_CAST")
-        val outData = dataFactory.fromIntArray<T, Int>(outShape, int32, indices)
+        val outData = dataFactory.fromFloatArray<T, Float>(outShape, tensor.dtype, floats)
             as sk.ainet.lang.tensor.data.TensorData<T, V>
-        return CpuTensor(outData, this, int32, GradState(requiresGrad = false))
+        return CpuTensor(outData, this, tensor.dtype, GradState(requiresGrad = false))
     }
 
     @TensorOp()
