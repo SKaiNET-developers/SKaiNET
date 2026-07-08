@@ -447,6 +447,7 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.sum(tensor, dim)
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.mean(tensor, dim)
     override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.variance(tensor, dim)
+    override fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> = base.argMax(tensor, dim)
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> = base.sqrt(tensor)
     override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> = base.log(tensor)
     override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> = base.log2(tensor)

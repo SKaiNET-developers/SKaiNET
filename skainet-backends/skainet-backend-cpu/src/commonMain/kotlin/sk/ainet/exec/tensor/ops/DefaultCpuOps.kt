@@ -2051,6 +2051,43 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     @TensorOp()
+    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-argmax")
+    override fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val rank = tensor.rank
+        require(rank >= 1) { "argMax: input must have rank >= 1" }
+        val nd = if (dim < 0) dim + rank else dim
+        require(nd in 0 until rank) { "argMax: dim $dim out of range for rank $rank" }
+        val inDims = tensor.shape.dimensions
+        // Reduced (dim removed) shape; scalar -> Shape(1) to match VoidTensorOps.
+        val reduced = IntArray(rank - 1)
+        run { var o = 0; for (i in 0 until rank) if (i != nd) reduced[o++] = inDims[i] }
+        val outShape = if (reduced.isEmpty()) Shape(1) else Shape(reduced)
+        val outCount = reduced.fold(1) { a, b -> a * b }
+        val indices = IntArray(outCount)
+        val outIdx = IntArray(reduced.size)
+        for (flat in 0 until outCount) {
+            val inIdx = IntArray(rank)
+            run { var o = 0; for (i in 0 until rank) if (i != nd) inIdx[i] = outIdx[o++] }
+            var bestK = 0
+            var bestV = Float.NEGATIVE_INFINITY
+            for (k in 0 until inDims[nd]) {
+                inIdx[nd] = k
+                val v = (tensor.data.get(*inIdx) as Number).toFloat()
+                if (v > bestV) { bestV = v; bestK = k } // strict > keeps the LOWEST index on ties
+            }
+            indices[flat] = bestK
+            var d = reduced.size - 1
+            while (d >= 0) { outIdx[d]++; if (outIdx[d] < reduced[d]) break; outIdx[d] = 0; d-- }
+        }
+        @Suppress("UNCHECKED_CAST")
+        val int32 = sk.ainet.lang.types.Int32::class as KClass<T>
+        @Suppress("UNCHECKED_CAST")
+        val outData = dataFactory.fromIntArray<T, Int>(outShape, int32, indices)
+            as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return CpuTensor(outData, this, int32, GradState(requiresGrad = false))
+    }
+
+    @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-mean")
     override fun <T : DType, V> mean(
         tensor: Tensor<T, V>,
