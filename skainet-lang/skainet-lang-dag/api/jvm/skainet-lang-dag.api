@@ -41,6 +41,8 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun add$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun addScalar (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/Number;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun addScalar$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/Number;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun argMax (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun argMax$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun avgPool2d (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun avgPool2d$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun clamp (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FFLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
