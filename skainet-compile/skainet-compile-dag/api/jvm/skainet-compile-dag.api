@@ -1,3 +1,14 @@
+public final class sk/ainet/compile/target/FusedOpAllowList : sk/ainet/compile/target/OpGranularityPolicy {
+	public fun <init> (Ljava/lang/String;Ljava/util/Set;)V
+	public fun getTarget ()Ljava/lang/String;
+	public fun keepFused (Ljava/lang/String;)Z
+}
+
+public abstract interface class sk/ainet/compile/target/OpGranularityPolicy {
+	public abstract fun getTarget ()Ljava/lang/String;
+	public abstract fun keepFused (Ljava/lang/String;)Z
+}
+
 public abstract interface class sk/ainet/lang/graph/ComputeGraph {
 	public abstract fun addEdge (Lsk/ainet/lang/graph/GraphEdge;)Lsk/ainet/lang/graph/GraphEdge;
 	public abstract fun addNode (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/lang/graph/GraphNode;

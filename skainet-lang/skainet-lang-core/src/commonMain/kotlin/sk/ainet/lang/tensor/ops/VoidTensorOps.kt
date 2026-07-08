@@ -366,6 +366,16 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
+    override fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        // Reduced shape (dim removed) with an Int32 index dtype — mirrors `convert`'s
+        // dtype-changing pattern (the traced graph node then carries i32 output).
+        val resultShape = calculateReductionShape(tensor.shape, dim, "argMax")
+        @Suppress("UNCHECKED_CAST")
+        val int32 = sk.ainet.lang.types.Int32::class as kotlin.reflect.KClass<T>
+        val resultData = dataFactory.zeros<T, V>(resultShape, int32)
+        return VoidOpsTensor(resultData, int32)
+    }
+
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> {
         // Square root function preserves shape
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)

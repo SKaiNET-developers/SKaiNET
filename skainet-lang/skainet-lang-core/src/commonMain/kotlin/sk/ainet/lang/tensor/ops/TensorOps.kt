@@ -193,6 +193,22 @@ public interface TensorOps {
     @Diff
     public fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int? = null): Tensor<T, V>
 
+    /**
+     * Index of the maximum value along [dim]. The reduced dimension is removed from
+     * the output (no keepdim); ties resolve to the LOWEST index (numpy/greedy
+     * semantics). Non-differentiable by design (index selection).
+     *
+     * Indices are integers: the traced/compiled form is a real `i32` tensor
+     * (see the StableHLO lowering), while the eager CPU path materializes them as
+     * index-valued floats in the input dtype so the result is a portable
+     * `Tensor<T, V>` (an i32 payload in a float tensor is unreadable on native/wasm).
+     *
+     * Like [scaledDotProductAttention], this stays a single op and is lowered at the
+     * StableHLO stage (`ArgMaxOperationsConverter`: reduce-max → broadcast → compare →
+     * iota → select → reduce-min) rather than having a dedicated hardware kernel.
+     */
+    public fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V>
+
     // Mathematical functions
     @Diff
     public fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V>

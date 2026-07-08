@@ -4102,6 +4102,7 @@ public final class sk/ainet/lang/tensor/ops/KspTensorOps : sk/ainet/lang/tensor/
 	public fun abs (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun add (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun addScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
+	public fun argMax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun avgPool2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Z)Lsk/ainet/lang/tensor/Tensor;
 	public fun clamp (Lsk/ainet/lang/tensor/Tensor;FF)Lsk/ainet/lang/tensor/Tensor;
 	public fun concat (Ljava/util/List;I)Lsk/ainet/lang/tensor/Tensor;
@@ -4354,6 +4355,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public abstract fun abs (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun add (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun addScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun argMax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun avgPool2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Z)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun avgPool2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun clamp (Lsk/ainet/lang/tensor/Tensor;FF)Lsk/ainet/lang/tensor/Tensor;
@@ -4556,6 +4558,7 @@ public final class sk/ainet/lang/tensor/ops/VoidTensorOps : sk/ainet/lang/tensor
 	public fun abs (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun add (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun addScalar (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
+	public fun argMax (Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun avgPool2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Z)Lsk/ainet/lang/tensor/Tensor;
 	public fun clamp (Lsk/ainet/lang/tensor/Tensor;FF)Lsk/ainet/lang/tensor/Tensor;
 	public fun concat (Ljava/util/List;I)Lsk/ainet/lang/tensor/Tensor;

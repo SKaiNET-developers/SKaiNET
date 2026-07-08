@@ -1,6 +1,7 @@
 package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ActivationOperationsConverter
+import sk.ainet.compile.hlo.converters.ArgMaxOperationsConverter
 import sk.ainet.compile.hlo.converters.AttentionOperationsConverter
 import sk.ainet.compile.hlo.converters.ConstantOperationsConverter
 import sk.ainet.compile.hlo.converters.GatherOperationsConverter
@@ -57,6 +58,8 @@ public object StableHloConverterFactory {
         
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
+        // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
+        registry.register(ArgMaxOperationsConverter())
 
         // Register elementwise unary math converter (sqrt, exp, log, abs, …).
         // Must be present so downstream consumers don't cascade-fail with
@@ -114,6 +117,8 @@ public object StableHloConverterFactory {
 
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
+        // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
+        registry.register(ArgMaxOperationsConverter())
 
         // Register elementwise unary math converter (sqrt, exp, log, abs, …).
         // Must be present so downstream consumers don't cascade-fail with
@@ -157,6 +162,8 @@ public object StableHloConverterFactory {
         registry.register(ActivationOperationsConverter())
         registry.register(ShapeOperationsConverter())
         registry.register(ReductionOperationsConverter())
+        // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
+        registry.register(ArgMaxOperationsConverter())
         registry.register(UnaryMathConverter())
         registry.register(ScalarOperationsConverter())
         registry.register(ConstantOperationsConverter())
