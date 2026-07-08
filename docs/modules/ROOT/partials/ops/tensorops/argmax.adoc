@@ -1,0 +1,47 @@
+// tag::math[]
+Given a tensor stem:[X] and a reduction dimension stem:[d] of size stem:[n], `argMax` returns, for
+each position of the remaining dimensions, the index stem:[k^\*] of the maximum value along stem:[d]:
+
+[stem]
+++++
+k^\* = \min \{\, k \in [0, n) : X_{\ldots, k, \ldots} = \max_{0 \le j < n} X_{\ldots, j, \ldots} \,\}
+++++
+
+Ties resolve to the *lowest* index (the `\min` above — numpy/greedy semantics). Dimension stem:[d]
+is removed from the output (no keepdim), and the result holds integer indices.
+// end::math[]
+
+// tag::intuition[]
+`argMax` turns scores into a decision: "which entry won?" It is the final step of greedy decoding
+(pick the highest-probability next token from a `[..., vocab]` logits tensor) and of classification
+(pick the top class). Because it selects an index rather than blending values, it is
+*non-differentiable* and carries no backward rule.
+
+SKaiNET keeps `argMax` a *single* op (like `scaledDotProductAttention`) and lowers it at the
+StableHLO stage rather than adding a dedicated primitive. `ArgMaxOperationsConverter` composes it
+from ops the exporter already emits:
+
+. `stablehlo.iota` along stem:[d] — the candidate indices,
+. reduce-`maximum` along stem:[d], then `broadcast_in_dim` back — the per-position max value,
+. `compare EQ` of the input against that max — a boolean mask of the maxima,
+. `select` mask ? index : stem:[n] (an out-of-range sentinel), then reduce-`minimum` — the lowest
+  index among the maxima.
+
+*Output dtype.* Indices are `i32` in the compiled StableHLO. The *eager* CPU path materializes them
+as index-valued floats in the input dtype, so the eager result is a portable `Tensor<T, V>` — an
+`i32` payload inside a float tensor is unreadable on Kotlin/Native and Wasm.
+// end::intuition[]
+
+// tag::examples[]
+[source,kotlin]
+----
+// [batch, vocab] logits -> [batch] token ids (greedy decode)
+val logits: Tensor<FP32, FloatArray> = tensor(shape(1, 4)) { float(0.1f, 3.2f, 0.5f, 2.0f) }
+val ids = ops.argMax(logits, dim = -1)   // shape(1); value 1 (the max, 3.2, is at index 1)
+----
+// end::examples[]
+
+// tag::references[]
+* https://numpy.org/doc/stable/reference/generated/numpy.argmax.html[numpy.argmax] — the tie-breaking (lowest index) reference semantics.
+* https://openxla.org/stablehlo/spec#reduce[StableHLO `reduce`] and https://openxla.org/stablehlo/spec#iota[`iota`] — the primitives the lowering composes.
+// end::references[]
