@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ComputeGraphExecutor` replayed `permute` as a plain transpose, dropping the recorded axes.**
+  The builtin dispatch grouped `permute` with `transpose`/`transpose2d`, so a traced
+  `permute(t, axes)` executed as a last-two-dims swap — only coincidentally correct for rank-2.
+  Any rank-3 permutation (e.g. multi-head attention's heads/sequence swap `[1, 0, 2]` in a
+  full-sequence encoder or prefill trace) silently produced the wrong layout; single-token decode
+  paths never hit it, which is why generation workloads didn't surface the bug. `permute` now
+  replays with its recorded `axes` (the same `List<Int>` convention `permuteBackward` and the
+  StableHLO converter already parse), falling back to the legacy transpose behavior for older
+  traces without axes. Surfaced by the BERT DSL-path encoder work in SKaiNET-transformers, which
+  carries a temporary `LLMFusedOpHandlers` override to be removed once this fix ships.
+
 ## [0.35.0] - 2026-07-08
 
 ### Added
