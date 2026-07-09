@@ -14,6 +14,7 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -120,6 +121,62 @@ class ComputeGraphExecutorTest {
     }
 
     @Test
+    fun permuteReplaysRecordedAxes() {
+        // Regression: permute used to be dispatched as a plain last-two-dims
+        // transpose, silently dropping the recorded axes — wrong for any
+        // rank-3 permutation (e.g. attention's heads/sequence swap [1, 0, 2]).
+        var replayedAxes: IntArray? = null
+        var transposeCalled = false
+        val ops = object : TensorOps by TestTensorOps() {
+            override fun <T : DType, V> permute(tensor: Tensor<T, V>, axes: IntArray): Tensor<T, V> {
+                replayedAxes = axes
+                return tensor
+            }
+
+            override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
+                transposeCalled = true
+                return tensor
+            }
+        }
+
+        val graph = DefaultComputeGraph()
+        val input = graph.addNode(inputNode("input"))
+        // The tape records axes as a List<Int> (axes.toList())
+        val perm = graph.addNode(opNode("perm", "permute", mapOf("axes" to listOf(1, 0, 2))))
+        graph.addEdge(GraphEdge("e1", input, perm, tensorSpec = spec()))
+
+        val executor = ComputeGraphExecutor(graph, ops)
+        val rank3 = TestTensor(floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f), shape = intArrayOf(2, 1, 3))
+        val results = executor.execute<FP32, Float>(mapOf("input" to rank3))
+
+        assertNotNull(results["perm"])
+        assertContentEquals(intArrayOf(1, 0, 2), replayedAxes, "permute must replay with its recorded axes")
+        assertTrue(!transposeCalled, "permute must not degrade to transpose when axes are recorded")
+    }
+
+    @Test
+    fun permuteWithoutRecordedAxesFallsBackToTranspose() {
+        var transposeCalled = false
+        val ops = object : TensorOps by TestTensorOps() {
+            override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
+                transposeCalled = true
+                return tensor
+            }
+        }
+
+        val graph = DefaultComputeGraph()
+        val input = graph.addNode(inputNode("input"))
+        val perm = graph.addNode(opNode("perm", "permute"))
+        graph.addEdge(GraphEdge("e1", input, perm, tensorSpec = spec()))
+
+        val executor = ComputeGraphExecutor(graph, ops)
+        val results = executor.execute<FP32, Float>(mapOf("input" to TestTensor(floatArrayOf(1f, 2f))))
+
+        assertNotNull(results["perm"])
+        assertTrue(transposeCalled, "legacy traces without axes keep the transpose behavior")
+    }
+
+    @Test
     fun emptyGraphReturnsEmptyResults() {
         val graph = DefaultComputeGraph()
         val executor = ComputeGraphExecutor(graph, TestTensorOps())
@@ -133,8 +190,11 @@ class ComputeGraphExecutorTest {
  * Used for testing graph execution without needing a full tensor backend.
  */
 @Suppress("UNCHECKED_CAST")
-private class TestTensor(val values: FloatArray) : Tensor<FP32, Float> {
-    private val tensorShape = sk.ainet.lang.tensor.Shape(intArrayOf(1, values.size))
+private class TestTensor(
+    val values: FloatArray,
+    shape: IntArray = intArrayOf(1, values.size),
+) : Tensor<FP32, Float> {
+    private val tensorShape = sk.ainet.lang.tensor.Shape(shape)
     override val data: sk.ainet.lang.tensor.data.TensorData<FP32, Float> = object : sk.ainet.lang.tensor.data.TensorData<FP32, Float> {
         override fun get(vararg indices: Int): Float = values[indices.last()]
         override fun set(vararg indices: Int, value: Float) { values[indices.last()] = value }

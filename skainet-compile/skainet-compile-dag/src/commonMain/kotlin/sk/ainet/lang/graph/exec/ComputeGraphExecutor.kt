@@ -192,7 +192,25 @@ public class ComputeGraphExecutor(
             }
 
             // Shape ops
-            "transpose", "permute", "transpose2d" -> listOf(ops.transpose(inputs[0]))
+            "transpose", "transpose2d" -> listOf(ops.transpose(inputs[0]))
+            "permute" -> {
+                // The trace records axes as a List<Int> (axes.toList()) — same
+                // convention permuteBackward parses. Replaying permute as a
+                // plain last-two-dims transpose is only correct for rank-2;
+                // e.g. attention's heads/sequence swap [1, 0, 2] on rank-3
+                // silently produced the wrong layout.
+                val axes = when (val a = params["axes"]) {
+                    is IntArray -> a
+                    is List<*> -> IntArray(a.size) { (a[it] as Number).toInt() }
+                    else -> null
+                }
+                if (axes != null && axes.size == inputs[0].rank) {
+                    listOf(ops.permute(inputs[0], axes))
+                } else {
+                    // No usable axes recorded (older traces) — legacy behavior.
+                    listOf(ops.transpose(inputs[0]))
+                }
+            }
             "reshape", "view" -> {
                 // Shape can come from different parameter keys depending on trace source
                 val targetShape = (params["shape"] as? List<Int>)
