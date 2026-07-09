@@ -23,14 +23,18 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
      * through to every [ConversionContext] this converter creates.
      */
     private val materializationPolicy: ConstantMaterializationPolicy =
-        ConstantMaterializationPolicy.InlineAlways
+        ConstantMaterializationPolicy.InlineAlways,
+    /** Selected compile target (iree device id, e.g. "torq"); handed to every context. */
+    private val target: String? = null,
+    /** Per-target op-granularity policy; handed to every context (null = decompose all). */
+    private val granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
 ) {
 
     /**
      * Convert a ComputeGraph to StableHLO MLIR format
      */
     public fun convert(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
-        val context = ConversionContext(typeMapper, graph, materializationPolicy)
+        val context = ConversionContext(typeMapper, graph, materializationPolicy, target, granularity)
         
         // Pre-conversion validation (allow orphaned nodes for backward compatibility)
         val validationResult = graph.validate()

@@ -1,0 +1,153 @@
+== Data sources and Hugging Face
+
+SKaiNET separates artifact resolution from dataset parsing and preprocessing.
+Use `skainet-data-source` when a dataset, tokenizer, model sidecar, or fixture
+can live either on disk or behind a remote URI.
+
+[cols="1,3",options="header"]
+|===
+| URI form | Meaning
+| `file:///path/to/file`
+| Read a local file.
+
+| `https://host/path/file`
+| Download and cache a generic remote artifact.
+
+| `hf+https://huggingface.co/org/repo/resolve/main/file`
+| Treat a Hugging Face resolve URL as a Hugging Face artifact.
+
+| `hf://org/repo@main/path/file`
+| Expand to a Hugging Face model repository resolve URL.
+
+| `hf://datasets/org/repo@main/path/file`
+| Expand to a Hugging Face dataset repository resolve URL.
+|===
+
+=== Add the modules
+
+For JVM consumers, add the source module beside the data loaders you use:
+
+[source,kotlin,subs="attributes+"]
+----
+dependencies {
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
+
+    implementation("sk.ainet.core:skainet-data-source-jvm")
+    implementation("sk.ainet.core:skainet-data-simple-jvm")
+}
+----
+
+=== Resolve one artifact
+
+`JvmDataSourceResolver` materializes remote artifacts into a cache and returns
+a `DataSourceArtifact` that opens a `kotlinx.io.Source`. Public Hugging Face
+files do not need credentials. Private files should pass an explicit
+`DataSourceAuthToken` on the request or resolver. Existing `Authorization`
+headers still take precedence. On JVM, the resolver can also read `HF_TOKEN` /
+`HUGGING_FACE_HUB_TOKEN` from the environment as an opt-in convenience fallback.
+
+[source,kotlin]
+----
+import sk.ainet.data.source.DataSourceAuthToken
+import sk.ainet.data.source.DataSourceRequest
+import sk.ainet.data.source.JvmDataSourceResolver
+
+val resolver = JvmDataSourceResolver(
+    huggingFaceToken = DataSourceAuthToken.from("hf_...")
+)
+val artifact = resolver.resolve(
+    DataSourceRequest(
+        uri = "hf+https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/main/tokenizer.json"
+    )
+)
+
+println(artifact.filename)
+println(artifact.localPath)
+
+val source = artifact.openSource()
+try {
+    // Pass the source to a parser/loader for model-sized artifacts.
+} finally {
+    source.close()
+}
+
+// Convenience for small sidecars and tests.
+val bytes = artifact.readBytes()
+----
+
+For per-request credentials, pass the token directly on `DataSourceRequest`.
+This is useful when one resolver works with more than one private repository:
+
+[source,kotlin]
+----
+val privateArtifact = resolver.resolve(
+    DataSourceRequest(
+        uri = "hf://datasets/your-org/private-dataset@main/data/train.bin",
+        huggingFaceToken = DataSourceAuthToken.from("hf_...")
+    )
+)
+----
+
+To opt into JVM environment fallback:
+
+[source,kotlin]
+----
+val resolver = JvmDataSourceResolver(
+    useEnvironmentHuggingFaceToken = true
+)
+----
+
+=== Use sources with built-in loaders
+
+MNIST and Fashion-MNIST expose per-file URI overrides. CIFAR-10 exposes an
+archive URI override. Defaults still point to the historical public dataset
+locations, so existing code keeps working.
+
+[source,kotlin]
+----
+import sk.ainet.data.mnist.MNIST
+import sk.ainet.data.mnist.MNISTLoaderConfig
+
+val token = "hf_..."
+val train = MNIST.loadTrain(
+    MNISTLoaderConfig(
+        trainImagesUri = "file:///datasets/mnist/train-images-idx3-ubyte",
+        trainLabelsUri = "hf+https://huggingface.co/your-org/mnist-idx/resolve/main/train-labels-idx1-ubyte.gz",
+        huggingFaceTokenProvider = { token }
+    )
+)
+
+val batches = train.batchIterator<sk.ainet.lang.types.Int8, Byte>(batchSize = 64)
+----
+
+=== Cache behavior
+
+Use `CachePolicy.Use` for normal operation, `Refresh` to re-download,
+`Offline` to require a cached copy, and `Bypass` to avoid writing the cache.
+Built-in JVM loaders map `useCache = true` to `Use` and `useCache = false`
+to `Refresh`.
+
+[source,kotlin]
+----
+import sk.ainet.data.source.CachePolicy
+import sk.ainet.data.source.DataSourceRequest
+
+val refreshed = resolver.resolve(
+    DataSourceRequest(
+        uri = "hf://datasets/your-org/your-dataset@main/data/train-00000.parquet",
+        cachePolicy = CachePolicy.Refresh
+    )
+)
+----
+
+=== Keep preprocessing separate
+
+After bytes are parsed into a dataset, continue using the existing transform
+DSL for image/tensor preprocessing:
+
+[source,kotlin]
+----
+import sk.ainet.data.transform.mnistPreprocessing
+
+val preprocessing = mnistPreprocessing(ctx)
+----

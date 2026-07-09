@@ -5,7 +5,11 @@
 
 <img src="docs/modules/ROOT/images/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
 
-> For architecture details see [ARCHITECTURE.md](ARCHITECTURE.md).
+<a href="https://skainet-developers.github.io/SKaiNET/skainet/reference/architecture.html" title="Open the full architecture reference">
+  <img src="docs/modules/ROOT/images/SKaiNET-compiler.png" alt="SKaiNET compiler architecture — click for the full architecture reference" width="640">
+</a>
+
+_Click the diagram for the full [architecture reference](https://skainet-developers.github.io/SKaiNET/skainet/reference/architecture.html), or read the short [ARCHITECTURE.md](ARCHITECTURE.md)._
 
 ---
 
@@ -36,16 +40,12 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.35.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
 }
 ```
-
-> The BOM was first correctly published to Maven Central in 0.22.2 — earlier versions
-> shipped at the wrong coordinates and could not be imported. Pin versions directly if
-> you need an older release.
 
 ### Hello Neural Net
 
@@ -145,26 +145,41 @@ Quick local replay:
 ## Architecture goal
 
 SKaiNET is built around one path: **a model is defined once in the Kotlin DSL,
-then either compiled to native code or executed eagerly — without rewriting it.**
+then either compiled or executed eagerly — without rewriting it.**
 
 1. **Define** the model with the DSL (`nn { }` / `dag { }`).
-2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph).
+2. **Capture** it as a *tape* (traced execution) or a *DAG* (explicit graph) — a `ComputeGraph`.
 3. **Run** it one of two ways:
-   - **Compile** — lower the graph to MLIR / StableHLO (`HloGenerator`) and
-     compile to **native** code (IREE-compatible) for native / edge targets.
+   - **Compile** — lower the captured `ComputeGraph` through one of several
+     **sibling code-generation backends**, each emitting code for a different target
+     from the *same* graph:
+     - **StableHLO / MLIR** (`HloGenerator`) → IREE-compilable, for native / edge /
+       accelerator targets and the wider MLIR ecosystem.
+     - **Arduino / C99** → standalone, statically-allocated C for microcontrollers.
+     - **Minerva** → a secure-MCU bundle (weights + firmware skeleton + fingerprinted
+       manifest).
    - **Eager** — execute directly on an available backend. On the **JVM this is
      the primary, go-to path.**
 
+StableHLO/MLIR is therefore **one code-generation backend among siblings** — the
+IREE/native path next to the C99/Arduino and Minerva MCU paths — not a separate
+pipeline.
+
 ```mermaid
 flowchart LR
-    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG"]
-    Graph --> HLO["MLIR / StableHLO"]
+    DSL["Model — Kotlin DSL"] --> Graph["Tape / DAG (ComputeGraph)"]
     Graph --> Eager["Eager backend (JVM, …)"]
-    HLO --> Native["Native code"]
+    Graph -->|code generation| HLO["StableHLO / MLIR"]
+    Graph -->|code generation| C99["Arduino / C99"]
+    Graph -->|code generation| Minerva["Minerva"]
+    HLO --> Native["IREE → native / edge / accelerator"]
+    C99 --> MCU["Microcontroller"]
+    Minerva --> SecMCU["Secure-MCU bundle"]
 ```
 
-The same DSL model feeds both paths — eager execution for development and JVM
-deployment, the StableHLO path for native and edge targets.
+The same DSL model feeds every path: eager execution for development and JVM
+deployment, and the code-generation backends — StableHLO/MLIR (→ IREE), Arduino/C99,
+and Minerva — as **sibling alternatives** for native, edge, and secure-MCU targets.
 
 ---
 
@@ -212,9 +227,38 @@ Runnable examples:
 ### Data and I/O
 
 - Built-in loaders: MNIST, Fashion-MNIST, CIFAR-10
+- URI-backed data sources: `file://`, `https://`, `hf+https://`, and `hf://...`
+- Dataset operations: deterministic shuffle/split, stratified split, filter/map/transform views, batch flows, and epoch flows
+- Raw dataset parsers: CSV, TSV, JSON arrays/objects, JSON Lines (`.jsonl`, `.ndjson`)
+- Type-safe transform DSLs: image/tensor transforms plus suspendable raw data pipelines
 - Formats: GGUF, ONNX, SafeTensors, JSON, Image (JPEG, PNG)
-- Type-safe transform DSL: resize, crop, normalize, toTensor
 
+```kotlin
+val raw = JvmDataSourceResolver().rawDataset {
+    from("hf://datasets/org/repo@main/train.jsonl")
+    format(DataFormat.JSON_LINES)
+    cachePolicy(CachePolicy.Use)
+}
+
+val withoutLabel = dataPipeline<RawDataset>()
+    .stage(
+        dataTransformer(
+            name = "drop-label",
+            outputSchema = { schema -> DataSchema(schema.columns - "label") }
+        ) { dataset ->
+            val columns = dataset.schema.columns - "label"
+            dataset.copy(
+                schema = DataSchema(columns),
+                rows = dataset.rows.map { row ->
+                    RawDataRow(row.values.filterKeys { key -> key in columns })
+                }
+            )
+        }
+    )
+    .execute(raw)
+```
+
+- Start with the [data sources getting started guide](docs/modules/ROOT/pages/tutorials/data-sources-getting-started.adoc)
 
 ### Edge AI: Arduino / C99 Export
 
@@ -236,42 +280,20 @@ Runnable examples:
 ### Choosing an Export Path
 
 - Use **StableHLO** when you want portable MLIR/IREE-compatible graphs for native, accelerator, or ecosystem compiler flows.
-- Use **Arduino / C99 export** when you want standalone generated C with static memory allocation and no external secure runtime.
-- Use **Minerva export** when you need a secure MCU project bundle that goes through libminerva packaging and host verification.
+- Use **Arduino / C99 export / Minerva export** when you want standalone generated C with static memory allocation or external secure runtime.
 
 ---
 
-## What's New in 0.31.2
+## What's New in 0.35.0
 
-- **`RowDequantSource` + `ops.gather` row-dequant.** A `TensorData` can now mark itself `RowDequantSource`
-  (`dequantRow(rowIdx): FloatArray`); `ops.gather` then dequantises only the rows it touches instead of
-  materialising the whole table (and instead of the `get()` path, which such tensors don't support). The
-  table presents as logical FP32, so a packed/oversized embedding (a Q-quantised `token_embd`) can stay
-  packed and be looked up via `ops.gather` directly — moving the per-row-dequant trick out of model code
-  into the engine. (PR #741)
+- **`argMax(dim)` tensor op** — index of the maximum along a dimension (ties → lowest index). Lowered to StableHLO by composing `iota` + reduce-max + `compare`/`select` + reduce-min — a single op, no new primitive — plus an eager CPU kernel. Lets an LLM's `logits → token-ids` argmax tail live inside the DSL trace.
+- **URI-backed data sources** — new `skainet-data-source` module: `file://`, `https://`, and Hugging Face URIs, raw-format parsers (CSV/TSV/JSON/JSONL), suspendable data pipelines
+- **Dataset views and richer batches** — seeded shuffle, stratified split, filter views, batch/epoch flows, batch indices + metadata
+- **bf16-native DSL → StableHLO export** — weights reach the matmuls as bf16, verified down to an aarch64 vmfb
+- **Pluggable per-phase, per-target compile optimization** (`TargetOptimizers`, `OpGranularityPolicy`)
+- **2.07× Q4_K NEON matmul on Cortex-A55** — plus LayerNorm statistics now computed in f32 (bf16-safe)
 
-## What's New in 0.31.0
-
-- **`ops.transpose` lazily handles every packed matmul dtype.** The CPU backend rewraps packed bytes with a flipped shape (metadata-only "lazy transpose") so a packed weight survives `linearProject`'s `matmul(x, transpose(W))` instead of inflating to FP32 — but **Q8_0 and Q4_0** were missing and threw `Byte → Float ClassCastException`. Now the full dispatch set (Q4_K/Q5_K/Q6_K/Q5_0/Q5_1/Q8_0/Q4_0) transposes lazily, so a packed Q8_0/Q4_0 matmul weight (e.g. a tied Q8_0 `lm_head`) stays packed end-to-end on its NEON/SIMD kernel. Regression-tested across all seven packed types. (PRs #736, #737)
-- **Dependency:** `com.networknt:json-schema-validator` → 3.0.4. (PR #733)
-
-### Recent releases
-
-- **0.30.0** — First-class **Q5_K packed in-kernel dequant-matmul** across the CPU backends (`Q5_KBlockTensorData` + `Q5KMatmulKernel` SPI: scalar / Panama Vector / native-C), **hand-written ARM NEON kernels** (fp32/q8_0/q4k/q5k, `-march=armv8.2-a+fp16+dotprod`), and **Kotlin/Native consumption of the C kernels via cinterop** (`skainet-backend-native-cpu` static archive + `linuxX64`/`linuxArm64` `KernelProvider`). (PR #734)
-
-- **0.29.1** — `sk.ainet.core:skainet-compile-minerva` now publishes to Maven Central (packaging fix for the Minerva export module shipped in 0.29.0).
-- **0.29.0** — **Minerva secure-MCU export module**: an end-to-end pipeline that lowers a SKaiNET model through shared graph-export contracts → Minerva IR → an `.npz` compiler input → a libminerva-packaged secure MCU project bundle, with host-side runtime verification and fingerprinted manifest artifacts (runnable sample, examples, ONNX workflow, getting-started docs). Plus **packed-quant matmul kernels with Kotlin/Native parity** (Q5_0/Q5_1/Q4_K/Q6_K — commonMain scalar + SPI, packed-quant dispatch in `DefaultCpuOpsBase`, Panama Vector for Q5_1/Q5_0 and Q6_K via the `KernelRegistry`), and an **auto-generated, CI-gated kernel × platform support matrix**. (PRs #697–#726)
-- **0.28.1** — Kotlin DSL → StableHLO → IREE is green end-to-end for the whole conformance suite (7/7 models, 27/27 ops compile to a `vmfb`): `inferDagOutputSpecs` now infers correct output shapes for shape-changing ops, and `reduce_window` (pooling) emits IREE's generic region form. (PRs #674, #676)
-- **0.28.0** — Four StableHLO export bugs fixed (reshape #666, concatenate #667, constants/reductions #663, `HloGenerator` tracing #668) plus non-JVM image runtime support (#671). (PRs #664, #670, #671)
-- **0.27.0** — A full gemma3 network lowers to StableHLO and compiles to an IREE `vmfb` (zero op gaps, verified by `GemmaTraceTest`): new `scaledDotProductAttention` (with causal + explicit additive mask), `permute`, `narrow`, and multi-output `split` converters, plus boxing-free `FloatArray` weight externalization for `.irpa` baking. (PRs #661 et al.)
-- **0.26.0** — Q4_0 promoted to a first-class quantized format across the provider stack, `tanh` as a first-class activation primitive, and a CPU tensor `convert` op, plus test/build/CI hygiene. (PRs #648–#651, #631, #636)
-- **0.25.0** — BF16 and Q8_0 matmul kernels end-to-end across the provider stack, autograd completeness for `pow`/`log` and the conv/pool/upsample/split family, the hybrid adaptive dtype-constraint DSL, the `@DarcValidated` operator-doc flag, and the SentencePiece special-token splitter. (PRs #595, #605–#628)
-- **0.23.0** — Real-model GGUFs no longer OOM at network construction (lazy `TensorDataFactory.placeholder(...)`); Kotlin/Native can finally load GGUFs over 2 GiB via the new POSIX-`pread`-backed `PosixPreadRandomAccessSource`. (Issues #587, #589; PRs #588, #591)
-- **0.22.2** — `sk.ainet:skainet-bom` now resolves from Maven Central (earlier versions shipped at the wrong coordinates). (Issue #584)
-- **0.22.1** — `StreamingShardedSafeTensorsReader.loadTensorStorageMapped` for zero-copy reads of multi-shard tensors above the 2 GB JVM `ByteArray` limit. (PR #582)
-- **0.22.0** — Native (FFM) CPU kernel provider: **4–6× faster Q4_K matmul, 1.5–1.8× FP32 SGEMM** vs Panama Vector; auto-selected via `KernelRegistry.bestAvailable()`. (PR #571)
-
-See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
 ---
 
@@ -279,8 +301,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 - **Q1 2026**: Comprehensive documentation ✅
 - **Q2 2026**: TurboQuant KV-cache compression ✅ (shipped in 0.18.0); Qwen/LLaMA tokenizers ✅ (shipped in 0.20.0)
-- **Q3 2026**: Agentic AI enhancements ✅ (tool calling shipped in 0.13.0; ongoing)
-- **Q4 2026**: Federated learning support for multi-device training
+- **Q3 2026**: Missing ML features: metrics, optimizers, and training utilities. 
+- **Q4 2026**: On-Device AI, small LLMs improvements
 
 ---
 

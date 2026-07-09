@@ -221,7 +221,7 @@ SKaiNET uses the MLIR/XLA compilation pipeline to target different hardware plat
 ==== Prerequisites for GPU Compilation
 
 [arabic]
-. *XLA with GPU support*: https://www.tensorflow.org/xla/tutorials/compile[Installation guide]
+. *XLA with GPU support*: https://openxla.org/xla[Installation guide]
 . *NVIDIA CUDA Toolkit* (for NVIDIA GPUs): https://developer.nvidia.com/cuda-downloads[Download here]
 . *ROCm* (for AMD GPUs): https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html[Installation guide]
 
@@ -343,9 +343,9 @@ optimizer.dumpGraphviz("rgb2gray.dot")
 
 * https://github.com/openxla/stablehlo/blob/main/docs/spec.md[StableHLO Specification]
 * https://mlir.llvm.org/docs/[MLIR Documentation]
-* https://www.tensorflow.org/xla[XLA Compilation Guide]
+* https://openxla.org/xla[XLA Compilation Guide]
 * https://docs.nvidia.com/jetson/[NVIDIA Jetson Documentation]
-* link:./examples/hlo/[SKaiNET HLO Examples]
+* https://github.com/SKaiNET-developers/SKaiNET/tree/develop/skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/examples[SKaiNET HLO Examples]
 
 === Next Steps
 
@@ -355,4 +355,4 @@ optimizer.dumpGraphviz("rgb2gray.dot")
 . *Contribute*: Add new HLO converters for missing operations
 . *Optimize*: Profile and optimize your models using HLO tools
 
-For more detailed information, see the link:./OPTIMIZATION.md[HLO Optimization Guide] and https://docs.skainet.sk/hlo/[API Documentation].
+For more detailed information, see the https://github.com/SKaiNET-developers/SKaiNET/blob/develop/skainet-compile/skainet-compile-hlo/OPTIMIZATION.md[HLO Optimization Guide] and xref:reference/api.adoc[API reference].

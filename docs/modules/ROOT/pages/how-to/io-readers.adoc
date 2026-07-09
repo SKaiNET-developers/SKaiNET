@@ -17,10 +17,10 @@ Add the following dependencies to your `build.gradle.kts`:
 
 ==== For GGUF Support
 
-[source,kotlin]
+[source,kotlin,subs="attributes+"]
 ----
 dependencies {
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
 
     implementation("sk.ainet.core:skainet-io-gguf")
     implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
@@ -29,10 +29,10 @@ dependencies {
 
 ==== For ONNX Support
 
-[source,kotlin]
+[source,kotlin,subs="attributes+"]
 ----
 dependencies {
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
 
     implementation("sk.ainet.core:skainet-io-onnx")
     implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")

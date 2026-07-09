@@ -447,6 +447,7 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.sum(tensor, dim)
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.mean(tensor, dim)
     override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = base.variance(tensor, dim)
+    override fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> = base.argMax(tensor, dim)
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> = base.sqrt(tensor)
     override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> = base.log(tensor)
     override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> = base.log2(tensor)
@@ -465,6 +466,12 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> = base.indexSelect(input, indices, dim)
     override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> = base.exp(tensor)
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> = base.expm1(tensor)
+    override fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> = base.sin(tensor)
+    override fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> = base.cos(tensor)
+    override fun <T : DType, V> convTranspose1d(
+        input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?,
+        stride: Int, padding: Int, outputPadding: Int, dilation: Int, groups: Int
+    ): Tensor<T, V> = base.convTranspose1d(input, weight, bias, stride, padding, outputPadding, dilation, groups)
     override fun <T : DType, V> scaledDotProductAttention(
         query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>,
         mask: Tensor<T, V>?, scale: Float, causal: Boolean

@@ -2,6 +2,7 @@ package sk.ainet.data.mnist
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * Linux implementation of the MNIST loader.
@@ -14,7 +15,11 @@ public class MNISTLoaderLinux(config: MNISTLoaderConfig) : MNISTLoaderCommon(con
      */
     override suspend fun downloadAndCacheFile(url: String, filename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("MNISTLoaderLinux.downloadAndCacheFile is not implemented yet.")
+            unsupportedDatasetLoader(
+                dataset = "MNIST",
+                target = "linux",
+                reason = "gzip decompression and cache materialization are not implemented for this native target"
+            )
         }
 
     public companion object {

@@ -29,10 +29,10 @@ By the end you will:
 
 For a JVM project, add the image/data modules alongside the CPU backend:
 
-[source,kotlin]
+[source,kotlin,subs="attributes+"]
 ----
 dependencies {
-    implementation(platform("sk.ainet:skainet-bom:0.31.2"))
+    implementation(platform("sk.ainet:skainet-bom:{skainet_version}"))
 
     implementation("sk.ainet:skainet-backend-cpu-jvm")
     implementation("sk.ainet:skainet-io-image-jvm")

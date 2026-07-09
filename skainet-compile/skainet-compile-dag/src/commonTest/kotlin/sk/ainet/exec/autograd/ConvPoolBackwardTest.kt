@@ -13,6 +13,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
+import sk.ainet.lang.nn.Gru
 import sk.ainet.lang.tensor.ops.UpsampleMode
 import sk.ainet.lang.tensor.withRequiresGrad
 import sk.ainet.lang.trace.GraphSink
@@ -220,6 +221,40 @@ class ConvPoolBackwardTest {
             x0 = FloatArray(9) { (it - 4) * 0.25f },
         ) { _, x ->
             x.ops.upsample2d(x, scale = 2 to 2, mode = UpsampleMode.Nearest, alignCorners = false)
+        }
+    }
+
+    @Test
+    fun upsample2d_bilinear_backward_distributes_weights() {
+        assertGradMatchesFiniteDiff(
+            xShape = Shape(1, 1, 3, 3),
+            x0 = FloatArray(9) { (it - 4) * 0.25f },
+        ) { _, x ->
+            x.ops.upsample2d(x, scale = 2 to 2, mode = UpsampleMode.Bilinear, alignCorners = false)
+        }
+    }
+
+    @Test
+    fun gru_backward_input_matches_finite_diff() {
+        // Single-layer GRU, input [batch=1, seq=2, in=2], hidden=2. The composed/unrolled
+        // cell must propagate gradients through every gate back to the input.
+        val d = 2; val h = 2; val g = 3 * h
+        val wIh = FloatArray(d * g) { ((it % 7) - 3) * 0.1f }
+        val wHh = FloatArray(h * g) { ((it % 5) - 2) * 0.1f }
+        val bIh = FloatArray(g) { ((it % 3) - 1) * 0.1f }
+        val bHh = FloatArray(g) { ((it % 4) - 2) * 0.05f }
+        assertGradMatchesFiniteDiff(
+            xShape = Shape(1, 2, d),
+            x0 = floatArrayOf(0.3f, -0.2f, 0.1f, 0.4f),
+        ) { c, x ->
+            val gru = Gru<FP32, Float>(
+                inputSize = d, hiddenSize = h, name = "gru",
+                initWeightIh = floatTensor(c, Shape(d, g), wIh),
+                initWeightHh = floatTensor(c, Shape(h, g), wHh),
+                initBiasIh = floatTensor(c, Shape(g), bIh),
+                initBiasHh = floatTensor(c, Shape(g), bHh),
+            )
+            gru.forward(x, c)
         }
     }
 }

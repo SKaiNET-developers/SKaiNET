@@ -13,6 +13,7 @@ set(SKAINET_KERNEL_SOURCES
     src/skainet_smoke.c
     src/q4k_matmul.c
     src/q5k_matmul.c
+    src/q6k_matmul.c
     src/fp32_matmul.c
     src/bf16_matmul.c
     src/q8_0_matmul.c

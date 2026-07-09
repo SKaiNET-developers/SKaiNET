@@ -14,6 +14,7 @@ import sk.ainet.tape.GradientTape
 import sk.ainet.tape.RecordedOperation
 import sk.ainet.tape.TapeStack
 import kotlin.math.exp
+import kotlin.math.floor
 import sk.ainet.lang.tensor.ops.AddOperation
 import sk.ainet.lang.tensor.ops.DivideOperation
 import sk.ainet.lang.tensor.ops.MatmulOperation
@@ -672,9 +673,12 @@ public class DefaultGradientTape(
 
     override fun permuteBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // Gradient of permute(t, axes) is permute(upstream, inverseAxes)
-        // where inverseAxes[axes[i]] = i.
-        val axes = (attributes["axes"] as? IntArray)
-            ?: error("permuteBackward: missing 'axes' attribute")
+        // where inverseAxes[axes[i]] = i. The trace records axes as a List<Int> (axes.toList()).
+        val axes = when (val a = attributes["axes"]) {
+            is IntArray -> a
+            is List<*> -> IntArray(a.size) { (a[it] as Number).toInt() }
+            else -> error("permuteBackward: missing 'axes' attribute")
+        }
         val inverse = IntArray(axes.size)
         for (i in axes.indices) inverse[axes[i]] = i
         return listOf(upstream.ops.permute(upstream, inverse))
@@ -817,7 +821,8 @@ public class DefaultGradientTape(
         val input = inputs[0]
         val scale = pair2(attributes["scale"], 1)
         val mode = (attributes["mode"] as? String) ?: "Nearest"
-        return listOf(upsample2dGrad(upstream, input, scale, mode))
+        val alignCorners = (attributes["alignCorners"] as? Boolean) ?: false
+        return listOf(upsample2dGrad(upstream, input, scale, mode, alignCorners))
     }
 
     override fun leakyReluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -1020,70 +1025,278 @@ public class DefaultGradientTape(
         return inputs.map { null }
     }
 
+    override fun sinBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(sin(x))/dx = cos(x)
+        val x = inputs[0]
+        return listOf(upstream.ops.multiply(upstream, x.ops.cos(x)))
+    }
+
+    override fun cosBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(cos(x))/dx = -sin(x)
+        val x = inputs[0]
+        val negSin = x.ops.mulScalar(x.ops.sin(x), -1.0)
+        return listOf(upstream.ops.multiply(upstream, negSin))
+    }
+
+    override fun trilBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // tril zeroes the strict upper triangle; the gradient keeps the same lower-triangular region.
+        val k = (attributes["k"] as? Int) ?: 0
+        return listOf(upstream.ops.tril(upstream, k))
+    }
+
+    override fun gatherBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // gather(input[vocab,emb], indices, dim=0) -> backward scatter-adds upstream rows into the gathered rows.
+        // Differentiable w.r.t. input only; indices gradient is null.
+        val input = inputs[0]
+        val indices = inputs[1]
+        val gradInput = zerosLike(input)
+        val numIndices = indices.volume
+        val indexList = IntArray(numIndices) { (indices.data[it] as Number).toInt() }
+        fun rowOf(outIdx: IntArray): Int {
+            val flatIdx = if (outIdx.size == 2) outIdx[0] else {
+                var flat = 0
+                for (d in 0 until outIdx.size - 1) {
+                    flat = flat * (if (d < indices.rank) indices.shape[d] else 1) + outIdx[d]
+                }
+                flat
+            }
+            return indexList[flatIdx]
+        }
+        val upDims = upstream.shape.dimensions
+        val outIdx = IntArray(upDims.size)
+        val srcIdx = IntArray(2)
+        fun walk(d: Int) {
+            if (d == upDims.size) {
+                srcIdx[0] = rowOf(outIdx)
+                srcIdx[1] = outIdx[upDims.size - 1]
+                accumulateAt(gradInput, srcIdx, upstream, outIdx)
+                return
+            }
+            for (i in 0 until upDims[d]) { outIdx[d] = i; walk(d + 1) }
+        }
+        walk(0)
+        return listOf(gradInput, null)
+    }
+
+    override fun indexSelectBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // indexSelect(input, indices, dim) -> backward scatter-adds upstream slices into the selected positions.
+        val input = inputs[0]
+        val indices = inputs[1]
+        val dim = (attributes["dim"] as? Int) ?: 0
+        val gradInput = zerosLike(input)
+        val numIndices = indices.volume
+        val indexList = IntArray(numIndices) { (indices.data[it] as Number).toInt() }
+        val upDims = upstream.shape.dimensions
+        val outIdx = IntArray(upDims.size)
+        val srcIdx = IntArray(upDims.size)
+        fun walk(d: Int) {
+            if (d == upDims.size) {
+                for (k in upDims.indices) srcIdx[k] = if (k == dim) indexList[outIdx[dim]] else outIdx[k]
+                accumulateAt(gradInput, srcIdx, upstream, outIdx)
+                return
+            }
+            for (i in 0 until upDims[d]) { outIdx[d] = i; walk(d + 1) }
+        }
+        walk(0)
+        return listOf(gradInput, null)
+    }
+
+    override fun unfoldBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // unfold extracts overlapping windows; backward folds the window gradients back (overlapping-sum).
+        val input = inputs[0]
+        val rank = input.shape.rank
+        val dim = (attributes["dim"] as? Int) ?: 0
+        val step = (attributes["step"] as? Int) ?: 1
+        val actualDim = if (dim < 0) rank + dim else dim
+        val gradInput = zerosLike(input)
+        val upDims = upstream.shape.dimensions // rank + 1
+        val outIdx = IntArray(upDims.size)
+        val srcIdx = IntArray(rank)
+        fun walk(d: Int) {
+            if (d == upDims.size) {
+                val windowIdx = outIdx[rank]
+                for (i in 0 until rank) srcIdx[i] = if (i == actualDim) outIdx[i] * step + windowIdx else outIdx[i]
+                accumulateAt(gradInput, srcIdx, upstream, outIdx)
+                return
+            }
+            for (i in 0 until upDims[d]) { outIdx[d] = i; walk(d + 1) }
+        }
+        walk(0)
+        return listOf(gradInput)
+    }
+
+    override fun convTranspose1dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Adjoint of convTranspose1d forward: out[b,oc,ol] += in[b,ic,il]*w[ic,oc,k], ol = il*stride - padding + k*dilation.
+        val input = inputs[0]
+        val weight = inputs[1]
+        val hasBias = inputs.size > 2
+        val stride = (attributes["stride"] as? Int) ?: 1
+        val padding = (attributes["padding"] as? Int) ?: 0
+        val dilation = (attributes["dilation"] as? Int) ?: 1
+        val groups = (attributes["groups"] as? Int) ?: 1
+
+        val batch = input.shape[0]
+        val inChannels = input.shape[1]
+        val inLength = input.shape[2]
+        val outChannelsPerGroup = weight.shape[1]
+        val kernelSize = weight.shape[2]
+        val outLength = upstream.shape[2]
+        val inChPerGroup = inChannels / groups
+
+        val gradInput = zerosLike(input)
+        val gradWeight = zerosLike(weight)
+        val gIdx = IntArray(3)
+        val wIdx = IntArray(3)
+        val uIdx = IntArray(3)
+
+        for (b in 0 until batch) {
+            for (g in 0 until groups) {
+                for (ic in 0 until inChPerGroup) {
+                    val inCh = g * inChPerGroup + ic
+                    for (oc in 0 until outChannelsPerGroup) {
+                        val outCh = g * outChannelsPerGroup + oc
+                        for (il in 0 until inLength) {
+                            for (k in 0 until kernelSize) {
+                                val ol = il * stride - padding + k * dilation
+                                if (ol < 0 || ol >= outLength) continue
+                                uIdx[0] = b; uIdx[1] = outCh; uIdx[2] = ol
+                                val up = (upstream.data.get(*uIdx) as Number).toFloat()
+                                wIdx[0] = inCh; wIdx[1] = oc; wIdx[2] = k
+                                val w = (weight.data.get(*wIdx) as Number).toFloat()
+                                gIdx[0] = b; gIdx[1] = inCh; gIdx[2] = il
+                                val xVal = (input.data.get(*gIdx) as Number).toFloat()
+                                accumulateScalar(gradInput, gIdx, up * w)
+                                accumulateScalar(gradWeight, wIdx, xVal * up)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val grads = mutableListOf<Tensor<DType, Any>?>(gradInput, gradWeight)
+        if (hasBias) {
+            val bias = inputs[2]
+            val gradBias = zerosLike(bias)
+            val bIdx = IntArray(1)
+            val outChannels = outChannelsPerGroup * groups
+            for (oc in 0 until outChannels) {
+                var acc = 0f
+                for (b in 0 until batch) {
+                    for (ol in 0 until outLength) {
+                        uIdx[0] = b; uIdx[1] = oc; uIdx[2] = ol
+                        acc += (upstream.data.get(*uIdx) as Number).toFloat()
+                    }
+                }
+                bIdx[0] = oc
+                accumulateScalar(gradBias, bIdx, acc)
+            }
+            grads.add(gradBias)
+        }
+        return grads
+    }
+
+    /** Read-add-write [src]'s value at [srcIdx] into [dest] at [destIdx]; used by scatter-add backwards. */
+    private fun accumulateAt(dest: Tensor<DType, Any>, destIdx: IntArray, src: Tensor<DType, Any>, srcIdx: IntArray) {
+        accumulateScalar(dest, destIdx, (src.data.get(*srcIdx) as Number).toFloat())
+    }
+
+    /** Add [delta] into [dest] at [idx]. */
+    private fun accumulateScalar(dest: Tensor<DType, Any>, idx: IntArray, delta: Float) {
+        val cur = (dest.data.get(*idx) as Number).toFloat()
+        dest.data.set(*idx, value = (cur + delta))
+    }
+
+    /**
+     * Trace-op-name → adjoint rule. Backward funcs all share the
+     * `(upstream, output, inputs, attributes) -> List<Tensor?>` signature, so each arm is a member
+     * reference. This table is the single source of dispatch truth; [dispatchedOpNames] exposes its
+     * keys to the autodiff-coverage guard (AutodiffCoverageTest) which asserts every `@Diff` op
+     * (the KSP-generated DifferentiableTensorOpsRules.ruleNames) is present here — preventing the
+     * silent "implemented-but-not-wired" drift that previously dropped elu/leakyRelu/permute grads.
+     */
+    private val backwardDispatch:
+        Map<String, (Tensor<DType, Any>, Tensor<DType, Any>, List<Tensor<DType, Any>>, Map<String, Any?>) -> List<Tensor<DType, Any>?>> =
+        mapOf(
+            "add" to ::addBackward,
+            "addScalar" to ::addScalarBackward,
+            "subtract" to ::subtractBackward,
+            "subScalar" to ::subScalarBackward,
+            "rsubScalar" to ::rsubScalarBackward,
+            "multiply" to ::multiplyBackward,
+            "mulScalar" to ::mulScalarBackward,
+            "divide" to ::divideBackward,
+            "divScalar" to ::divScalarBackward,
+            "rdivScalar" to ::rdivScalarBackward,
+            "matmul" to ::matmulBackward,
+            "transpose" to ::transposeBackward,
+            "permute" to ::permuteBackward,
+            "relu" to ::reluBackward,
+            "leakyRelu" to ::leakyReluBackward,
+            "elu" to ::eluBackward,
+            "sum" to ::sumBackward,
+            "mean" to ::meanBackward,
+            "softmax" to ::softmaxBackward,
+            "logSoftmax" to ::logSoftmaxBackward,
+            "reshape" to ::reshapeBackward,
+            "flatten" to ::flattenBackward,
+            "squeeze" to ::squeezeBackward,
+            "unsqueeze" to ::unsqueezeBackward,
+            "sigmoid" to ::sigmoidBackward,
+            "tanh" to ::tanhBackward,
+            "silu" to ::siluBackward,
+            "gelu" to ::geluBackward,
+            "variance" to ::varianceBackward,
+            "sqrt" to ::sqrtBackward,
+            "pow" to ::powBackward,
+            "powScalar" to ::powScalarBackward,
+            "log" to ::logBackward,
+            "log2" to ::log2Backward,
+            "log10" to ::log10Backward,
+            "abs" to ::absBackward,
+            "clamp" to ::clampBackward,
+            "narrow" to ::narrowBackward,
+            "pad2d" to ::pad2dBackward,
+            "conv1d" to ::conv1dBackward,
+            "conv2d" to ::conv2dBackward,
+            "conv3d" to ::conv3dBackward,
+            "convTranspose1d" to ::convTranspose1dBackward,
+            "maxPool2d" to ::maxPool2dBackward,
+            "avgPool2d" to ::avgPool2dBackward,
+            "upsample2d" to ::upsample2dBackward,
+            "concat" to ::concatBackward,
+            "split" to ::splitBackward,
+            "exp" to ::expBackward,
+            "expm1" to ::expm1Backward,
+            "sin" to ::sinBackward,
+            "cos" to ::cosBackward,
+            "tril" to ::trilBackward,
+            "gather" to ::gatherBackward,
+            "indexSelect" to ::indexSelectBackward,
+            "unfold" to ::unfoldBackward,
+            "scaledDotProductAttention" to ::scaledDotProductAttentionBackward,
+        )
+
+    /** Trace op names with a wired backward rule. Consumed by the autodiff-coverage guard test. */
+    internal val dispatchedOpNames: Set<String> get() = backwardDispatch.keys
+
     private fun buildBackwardFromTrace(
         trace: OpTrace,
         inputs: List<Tensor<DType, Any>>,
         output: Tensor<DType, Any>
     ): BackwardOp<DType, Any>? {
-        return when (trace.opType) {
-            "add" -> BackwardOp(inputs, output) { upstream -> addBackward(upstream, output, inputs, trace.attributes) }
-            "addScalar" -> BackwardOp(inputs, output) { upstream -> addScalarBackward(upstream, output, inputs, trace.attributes) }
-            "subtract" -> BackwardOp(inputs, output) { upstream -> subtractBackward(upstream, output, inputs, trace.attributes) }
-            "subScalar" -> BackwardOp(inputs, output) { upstream -> subScalarBackward(upstream, output, inputs, trace.attributes) }
-            "rsubScalar" -> BackwardOp(inputs, output) { upstream -> rsubScalarBackward(upstream, output, inputs, trace.attributes) }
-            "multiply" -> BackwardOp(inputs, output) { upstream -> multiplyBackward(upstream, output, inputs, trace.attributes) }
-            "mulScalar" -> BackwardOp(inputs, output) { upstream -> mulScalarBackward(upstream, output, inputs, trace.attributes) }
-            "divide" -> BackwardOp(inputs, output) { upstream -> divideBackward(upstream, output, inputs, trace.attributes) }
-            "divScalar" -> BackwardOp(inputs, output) { upstream -> divScalarBackward(upstream, output, inputs, trace.attributes) }
-            "rdivScalar" -> BackwardOp(inputs, output) { upstream -> rdivScalarBackward(upstream, output, inputs, trace.attributes) }
-            "matmul" -> BackwardOp(inputs, output) { upstream -> matmulBackward(upstream, output, inputs, trace.attributes) }
-            "transpose" -> BackwardOp(inputs, output) { upstream -> transposeBackward(upstream, output, inputs, trace.attributes) }
-            "relu" -> BackwardOp(inputs, output) { upstream -> reluBackward(upstream, output, inputs, trace.attributes) }
-            "sum" -> BackwardOp(inputs, output) { upstream -> sumBackward(upstream, output, inputs, trace.attributes) }
-            "mean" -> BackwardOp(inputs, output) { upstream -> meanBackward(upstream, output, inputs, trace.attributes) }
-            "softmax" -> BackwardOp(inputs, output) { upstream -> softmaxBackward(upstream, output, inputs, trace.attributes) }
-            "logSoftmax" -> BackwardOp(inputs, output) { upstream -> logSoftmaxBackward(upstream, output, inputs, trace.attributes) }
-            "reshape" -> BackwardOp(inputs, output) { upstream -> reshapeBackward(upstream, output, inputs, trace.attributes) }
-            "flatten" -> BackwardOp(inputs, output) { upstream -> flattenBackward(upstream, output, inputs, trace.attributes) }
-            "squeeze" -> BackwardOp(inputs, output) { upstream -> squeezeBackward(upstream, output, inputs, trace.attributes) }
-            "unsqueeze" -> BackwardOp(inputs, output) { upstream -> unsqueezeBackward(upstream, output, inputs, trace.attributes) }
-            "sigmoid" -> BackwardOp(inputs, output) { upstream -> sigmoidBackward(upstream, output, inputs, trace.attributes) }
-            "tanh" -> BackwardOp(inputs, output) { upstream -> tanhBackward(upstream, output, inputs, trace.attributes) }
-            "silu" -> BackwardOp(inputs, output) { upstream -> siluBackward(upstream, output, inputs, trace.attributes) }
-            "gelu" -> BackwardOp(inputs, output) { upstream -> geluBackward(upstream, output, inputs, trace.attributes) }
-            "variance" -> BackwardOp(inputs, output) { upstream -> varianceBackward(upstream, output, inputs, trace.attributes) }
-            "sqrt" -> BackwardOp(inputs, output) { upstream -> sqrtBackward(upstream, output, inputs, trace.attributes) }
-            "pow" -> BackwardOp(inputs, output) { upstream -> powBackward(upstream, output, inputs, trace.attributes) }
-            "powScalar" -> BackwardOp(inputs, output) { upstream -> powScalarBackward(upstream, output, inputs, trace.attributes) }
-            "log" -> BackwardOp(inputs, output) { upstream -> logBackward(upstream, output, inputs, trace.attributes) }
-            "log2" -> BackwardOp(inputs, output) { upstream -> log2Backward(upstream, output, inputs, trace.attributes) }
-            "log10" -> BackwardOp(inputs, output) { upstream -> log10Backward(upstream, output, inputs, trace.attributes) }
-            "abs" -> BackwardOp(inputs, output) { upstream -> absBackward(upstream, output, inputs, trace.attributes) }
-            "clamp" -> BackwardOp(inputs, output) { upstream -> clampBackward(upstream, output, inputs, trace.attributes) }
-            "narrow" -> BackwardOp(inputs, output) { upstream -> narrowBackward(upstream, output, inputs, trace.attributes) }
-            "pad2d" -> BackwardOp(inputs, output) { upstream -> pad2dBackward(upstream, output, inputs, trace.attributes) }
-            "conv1d" -> BackwardOp(inputs, output) { upstream -> conv1dBackward(upstream, output, inputs, trace.attributes) }
-            "conv2d" -> BackwardOp(inputs, output) { upstream -> conv2dBackward(upstream, output, inputs, trace.attributes) }
-            "conv3d" -> BackwardOp(inputs, output) { upstream -> conv3dBackward(upstream, output, inputs, trace.attributes) }
-            "maxPool2d" -> BackwardOp(inputs, output) { upstream -> maxPool2dBackward(upstream, output, inputs, trace.attributes) }
-            "avgPool2d" -> BackwardOp(inputs, output) { upstream -> avgPool2dBackward(upstream, output, inputs, trace.attributes) }
-            "upsample2d" -> BackwardOp(inputs, output) { upstream -> upsample2dBackward(upstream, output, inputs, trace.attributes) }
-            "concat" -> BackwardOp(inputs, output) { upstream -> concatBackward(upstream, output, inputs, trace.attributes) }
-            "split" -> BackwardOp(inputs, output) { upstream -> splitBackward(upstream, output, inputs, trace.attributes) }
-            "exp" -> BackwardOp(inputs, output) { upstream -> expBackward(upstream, output, inputs, trace.attributes) }
-            "expm1" -> BackwardOp(inputs, output) { upstream -> expm1Backward(upstream, output, inputs, trace.attributes) }
-            "scaledDotProductAttention" -> BackwardOp(inputs, output) { upstream -> scaledDotProductAttentionBackward(upstream, output, inputs, trace.attributes) }
-            else -> {
-                // Support custom backward functions passed via trace attributes
-                @Suppress("UNCHECKED_CAST")
-                val customBackward = trace.attributes["_backwardFn"]
-                    as? (Tensor<DType, Any>, Tensor<DType, Any>, List<Tensor<DType, Any>>, Map<String, Any?>) -> List<Tensor<DType, Any>?>
-                if (customBackward != null) {
-                    BackwardOp(inputs, output) { upstream -> customBackward(upstream, output, inputs, trace.attributes) }
-                } else {
-                    null
-                }
-            }
+        val rule = backwardDispatch[trace.opType]
+        if (rule != null) {
+            return BackwardOp(inputs, output) { upstream -> rule(upstream, output, inputs, trace.attributes) }
+        }
+        // Support custom backward functions passed via trace attributes
+        @Suppress("UNCHECKED_CAST")
+        val customBackward = trace.attributes["_backwardFn"]
+            as? (Tensor<DType, Any>, Tensor<DType, Any>, List<Tensor<DType, Any>>, Map<String, Any?>) -> List<Tensor<DType, Any>?>
+        return if (customBackward != null) {
+            BackwardOp(inputs, output) { upstream -> customBackward(upstream, output, inputs, trace.attributes) }
+        } else {
+            null
         }
     }
 
@@ -1761,20 +1974,20 @@ public class DefaultGradientTape(
     }
 
     /**
-     * upsample2d backward (NEAREST only — the CPU forward only supports
-     * Nearest, so the backward mirrors that). For each input position, sum
-     * the upstream gradients of every output position it produced (the
-     * scaleH × scaleW block above-left of [ih*scaleH, iw*scaleW]).
+     * upsample2d backward — the transpose (scatter) of the forward sampler.
+     * Nearest: each input position sums the upstream gradients of every output
+     * position it produced (the scaleH × scaleW block above-left of
+     * [ih*scaleH, iw*scaleW]). Bilinear: each output gradient is distributed
+     * back to the same 4 source neighbors with the same bilinear weights used
+     * in the forward blend.
      */
     private fun upsample2dGrad(
         upstream: Tensor<DType, Any>,
         input: Tensor<DType, Any>,
         scale: Pair<Int, Int>,
         mode: String,
+        alignCorners: Boolean,
     ): Tensor<DType, Any> {
-        require(mode.equals("Nearest", ignoreCase = true)) {
-            "upsample2dBackward: only Nearest mode implemented (got mode=$mode)"
-        }
         val n = input.shape[0]
         val c = input.shape[1]
         val inH = input.shape[2]
@@ -1784,23 +1997,67 @@ public class DefaultGradientTape(
         val outW = upstream.shape[3]
         val dInput = zerosLike(input)
 
-        for (b in 0 until n) {
-            for (ch in 0 until c) {
-                for (oh in 0 until outH) {
-                    val ih = oh / scaleH
-                    if (ih !in 0 until inH) continue
-                    for (ow in 0 until outW) {
-                        val iw = ow / scaleW
-                        if (iw !in 0 until inW) continue
-                        val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
-                        val cur = (dInput.data.get(b, ch, ih, iw) as Number).toFloat()
-                        @Suppress("UNCHECKED_CAST")
-                        dInput.data.set(b, ch, ih, iw, value = (cur + gOut) as Any)
+        fun accumulate(b: Int, ch: Int, ih: Int, iw: Int, delta: Float) {
+            val cur = (dInput.data.get(b, ch, ih, iw) as Number).toFloat()
+            @Suppress("UNCHECKED_CAST")
+            dInput.data.set(b, ch, ih, iw, value = (cur + delta) as Any)
+        }
+
+        when (mode.lowercase()) {
+            "nearest" -> {
+                for (b in 0 until n) {
+                    for (ch in 0 until c) {
+                        for (oh in 0 until outH) {
+                            val ih = oh / scaleH
+                            if (ih !in 0 until inH) continue
+                            for (ow in 0 until outW) {
+                                val iw = ow / scaleW
+                                if (iw !in 0 until inW) continue
+                                val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
+                                accumulate(b, ch, ih, iw, gOut)
+                            }
+                        }
                     }
                 }
             }
+
+            "bilinear" -> {
+                for (b in 0 until n) {
+                    for (ch in 0 until c) {
+                        for (oh in 0 until outH) {
+                            val srcH = upsampleSourceCoord(oh, scaleH, inH, alignCorners)
+                            val ih0 = floor(srcH).toInt().coerceIn(0, inH - 1)
+                            val ih1 = (ih0 + 1).coerceIn(0, inH - 1)
+                            val wh = (srcH - ih0).coerceIn(0.0f, 1.0f)
+                            for (ow in 0 until outW) {
+                                val srcW = upsampleSourceCoord(ow, scaleW, inW, alignCorners)
+                                val iw0 = floor(srcW).toInt().coerceIn(0, inW - 1)
+                                val iw1 = (iw0 + 1).coerceIn(0, inW - 1)
+                                val ww = (srcW - iw0).coerceIn(0.0f, 1.0f)
+                                val gOut = (upstream.data.get(b, ch, oh, ow) as Number).toFloat()
+                                accumulate(b, ch, ih0, iw0, gOut * (1f - wh) * (1f - ww))
+                                accumulate(b, ch, ih0, iw1, gOut * (1f - wh) * ww)
+                                accumulate(b, ch, ih1, iw0, gOut * wh * (1f - ww))
+                                accumulate(b, ch, ih1, iw1, gOut * wh * ww)
+                            }
+                        }
+                    }
+                }
+            }
+
+            else -> throw IllegalArgumentException("upsample2dBackward: unsupported mode '$mode'")
         }
         return dInput
+    }
+
+    /** Output→source coordinate map for upsampling (PyTorch convention); see DefaultCpuOps.sourceCoord. */
+    private fun upsampleSourceCoord(out: Int, scale: Int, inDim: Int, alignCorners: Boolean): Float {
+        val outDim = inDim * scale
+        return if (alignCorners) {
+            if (outDim <= 1) 0f else out.toFloat() * (inDim - 1) / (outDim - 1)
+        } else {
+            (out + 0.5f) / scale - 0.5f
+        }
     }
 
     private fun <T : DType, V> clampGrad(upstream: Tensor<T, V>, input: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {

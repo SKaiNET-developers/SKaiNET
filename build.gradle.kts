@@ -151,6 +151,7 @@ dependencies {
 
     // skainet-data
     dokka(project(":skainet-data:skainet-data-api"))
+    dokka(project(":skainet-data:skainet-data-source"))
     dokka(project(":skainet-data:skainet-data-transform"))
     dokka(project(":skainet-data:skainet-data-simple"))
     dokka(project(":skainet-data:skainet-data-media"))

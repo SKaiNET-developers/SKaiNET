@@ -2,6 +2,7 @@ package sk.ainet.data.cifar10
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * WASM JS implementation of the CIFAR-10 loader.
@@ -13,7 +14,11 @@ public class CIFAR10LoaderWasmJs(config: CIFAR10LoaderConfig) : CIFAR10LoaderCom
 
     override suspend fun downloadAndExtractBatch(batchFilename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("CIFAR10LoaderWasmJs is not implemented yet.")
+            unsupportedDatasetLoader(
+                dataset = "CIFAR-10",
+                target = "wasmJs",
+                reason = "tar.gz extraction is not implemented for this browser target"
+            )
         }
 
     public companion object {

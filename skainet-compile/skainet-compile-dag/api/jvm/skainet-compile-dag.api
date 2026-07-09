@@ -1,3 +1,14 @@
+public final class sk/ainet/compile/target/FusedOpAllowList : sk/ainet/compile/target/OpGranularityPolicy {
+	public fun <init> (Ljava/lang/String;Ljava/util/Set;)V
+	public fun getTarget ()Ljava/lang/String;
+	public fun keepFused (Ljava/lang/String;)Z
+}
+
+public abstract interface class sk/ainet/compile/target/OpGranularityPolicy {
+	public abstract fun getTarget ()Ljava/lang/String;
+	public abstract fun keepFused (Ljava/lang/String;)Z
+}
+
 public abstract interface class sk/ainet/lang/graph/ComputeGraph {
 	public abstract fun addEdge (Lsk/ainet/lang/graph/GraphEdge;)Lsk/ainet/lang/graph/GraphEdge;
 	public abstract fun addNode (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/lang/graph/GraphNode;
@@ -82,15 +93,19 @@ public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph
 	public fun conv1dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun conv2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun conv3dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun convTranspose1dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun copy ()Lsk/ainet/tape/ExecutionTape;
+	public fun cosBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun divScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun divideBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun eluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun expBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun expm1Backward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun flattenBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun gatherBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun geluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun getComputeGradients ()Z
+	public fun indexSelectBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun leakyReluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun log10Backward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun log2Backward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -116,6 +131,7 @@ public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph
 	public fun scaledDotProductAttentionBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun sigmoidBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun siluBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun sinBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun softmaxBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun splitBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun sqrtBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -127,6 +143,8 @@ public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph
 	public final fun suppressRecording ()V
 	public fun tanhBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun transposeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun trilBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public fun unfoldBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun unsqueezeBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun upsample2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public fun varianceBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -278,6 +296,24 @@ public final class sk/ainet/lang/graph/GraphNode {
 }
 
 public abstract interface class sk/ainet/lang/graph/Layout {
+}
+
+public final class sk/ainet/lang/graph/OutputDesignatedGraph : sk/ainet/lang/graph/ComputeGraph {
+	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/Set;)V
+	public fun addEdge (Lsk/ainet/lang/graph/GraphEdge;)Lsk/ainet/lang/graph/GraphEdge;
+	public fun addNode (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/lang/graph/GraphNode;
+	public fun clear ()V
+	public fun copy ()Lsk/ainet/lang/graph/ComputeGraph;
+	public fun getEdges ()Ljava/util/List;
+	public fun getInputNodes ()Ljava/util/List;
+	public fun getInputNodes (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
+	public fun getNodes ()Ljava/util/List;
+	public fun getOutputNodes ()Ljava/util/List;
+	public fun getOutputNodes (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
+	public fun getTopologicalOrder ()Ljava/util/List;
+	public fun removeEdge (Lsk/ainet/lang/graph/GraphEdge;)Z
+	public fun removeNode (Lsk/ainet/lang/graph/GraphNode;)Z
+	public fun validate ()Lsk/ainet/lang/tensor/ops/ValidationResult;
 }
 
 public final class sk/ainet/lang/graph/ResolvedComputeGraph {

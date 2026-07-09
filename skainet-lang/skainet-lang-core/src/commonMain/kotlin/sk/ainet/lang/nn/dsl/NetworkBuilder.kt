@@ -6,6 +6,7 @@ import sk.ainet.lang.nn.Conv1d
 import sk.ainet.lang.nn.Conv2d
 import sk.ainet.lang.nn.Conv3d
 import sk.ainet.lang.nn.Flatten
+import sk.ainet.lang.nn.Gru
 import sk.ainet.lang.nn.Input
 import sk.ainet.lang.nn.Linear
 import sk.ainet.lang.nn.MaxPool2d
@@ -152,6 +153,17 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
      * @param content Configuration block where output dimension, weights, and bias are set
      */
     public fun dense(id: String = "", content: DENSE<T, V>.() -> Unit = {})
+
+    /**
+     * Creates a single-layer unidirectional GRU. Input `[batch, seq, features]` ->
+     * output `[batch, seq, hiddenSize]`. Input feature size is inferred from the
+     * preceding layer's output dimension.
+     *
+     * @param hiddenSize size of the GRU hidden state
+     * @param id Optional identifier for the layer
+     * @param content Configuration block (e.g. `trainable`)
+     */
+    public fun gru(hiddenSize: Int, id: String = "", content: GRU<T, V>.() -> Unit = {})
 
     /**
      * Creates a dense layer with precision override and specified output dimension.
@@ -595,6 +607,37 @@ public class FlattenImpl<T : DType, V>(
 ) : FLATTEN<T, V> {
     public fun create(): Module<T, V> {
         return Flatten(startDim, endDim, id)
+    }
+}
+
+/** DSL config handle for a [Gru] layer. */
+public interface GRU<T : DType, V> : NetworkDslItem {
+    public var trainable: Boolean
+}
+
+public class GruImpl<T : DType, V>(
+    override val executionContext: ExecutionContext,
+    private val inputSize: Int,
+    private val hiddenSize: Int,
+    private val id: String,
+    private val kClass: KClass<T>,
+) : GRU<T, V> {
+    override var trainable: Boolean = true
+
+    public fun create(): Gru<T, V> {
+        require(inputSize > 0) { "Gru inputSize must be > 0 (declare an input shape before gru)." }
+        require(hiddenSize > 0) { "Gru hiddenSize must be > 0." }
+        val g = 3 * hiddenSize
+        return Gru(
+            inputSize = inputSize,
+            hiddenSize = hiddenSize,
+            name = id,
+            initWeightIh = executionContext.placeholder(Shape(inputSize, g), kClass),
+            initWeightHh = executionContext.placeholder(Shape(hiddenSize, g), kClass),
+            initBiasIh = executionContext.placeholder(Shape(g), kClass),
+            initBiasHh = executionContext.placeholder(Shape(g), kClass),
+            trainable = trainable,
+        )
     }
 }
 
@@ -1237,6 +1280,21 @@ public class StageImpl<T : DType, V>(
         modules += impl.create()
     }
 
+    override fun gru(hiddenSize: Int, id: String, content: GRU<T, V>.() -> Unit) {
+        val inputSize = lastDimension
+        lastDimension = hiddenSize
+        currentShape = intArrayOf(hiddenSize)
+        val impl = GruImpl<T, V>(
+            executionContext,
+            inputSize = inputSize,
+            hiddenSize = hiddenSize,
+            id = getDefaultName(id, "gru", modules.size),
+            kClass = kClass,
+        )
+        impl.content()
+        modules += impl.create()
+    }
+
     override fun activation(id: String, activation: (Tensor<T, V>) -> Tensor<T, V>) {
         modules += ActivationsWrapperModule(activation, getDefaultName(id, "activation", modules.size))
     }
@@ -1613,6 +1671,21 @@ public class NeuralNetworkDslImpl<T : DType, V>(
         lastDimension = impl.outputDimension
         currentShape = intArrayOf(impl.outputDimension)
         // dense layer consists of linear module and activation function module (2 modules)
+        modules += impl.create()
+    }
+
+    override fun gru(hiddenSize: Int, id: String, content: GRU<T, V>.() -> Unit) {
+        val inputSize = lastDimension
+        lastDimension = hiddenSize
+        currentShape = intArrayOf(hiddenSize)
+        val impl = GruImpl<T, V>(
+            executionContext,
+            inputSize = inputSize,
+            hiddenSize = hiddenSize,
+            id = getDefaultName(id, "gru", modules.size),
+            kClass = kClass,
+        )
+        impl.content()
         modules += impl.create()
     }
 

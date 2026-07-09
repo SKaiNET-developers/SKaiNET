@@ -6,6 +6,7 @@ import sk.ainet.data.cifar10.CIFAR10Image
 import sk.ainet.data.cifar10.CIFAR10LoaderConfig
 import sk.ainet.data.cifar10.CIFAR10LoaderCommon
 import sk.ainet.data.cifar10.createCIFAR10Loader
+import sk.ainet.lang.types.Int8
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -57,10 +58,24 @@ class CIFAR10LoaderTest {
     }
 
     @Test
+    fun testShuffledDatasetViewCanCreateBatch() = runBlocking {
+        val dataset = createFakeLoader().loadTrainingData()
+        val shuffled = dataset.shuffle(seed = 123)
+
+        val batch = shuffled.batchIterator<Int8, Byte>(4).next()
+
+        assertEquals(4, batch.batchSize)
+        assertEquals(4, batch.indices.size)
+        assertEquals(4, batch.x[0].shape[0])
+        assertEquals(4, batch.y.shape[0])
+    }
+
+    @Test
     fun testLoaderConfiguration() {
         val config = CIFAR10LoaderConfig(
             cacheDir = "custom-cache-dir",
-            useCache = false
+            useCache = false,
+            archiveUri = "hf+https://huggingface.co/datasets/cifar10/resolve/main/cifar-10-binary.tar.gz"
         )
         val loader = createCIFAR10Loader(config)
 

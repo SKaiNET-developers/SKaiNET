@@ -1,6 +1,7 @@
 package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ActivationOperationsConverter
+import sk.ainet.compile.hlo.converters.ArgMaxOperationsConverter
 import sk.ainet.compile.hlo.converters.AttentionOperationsConverter
 import sk.ainet.compile.hlo.converters.ConstantOperationsConverter
 import sk.ainet.compile.hlo.converters.GatherOperationsConverter
@@ -32,7 +33,9 @@ public object StableHloConverterFactory {
     @JvmStatic
     @kotlin.jvm.JvmOverloads
     public fun createBasic(
-        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways,
+        target: String? = null,
+        granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
     ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -55,6 +58,8 @@ public object StableHloConverterFactory {
         
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
+        // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
+        registry.register(ArgMaxOperationsConverter())
 
         // Register elementwise unary math converter (sqrt, exp, log, abs, …).
         // Must be present so downstream consumers don't cascade-fail with
@@ -75,7 +80,7 @@ public object StableHloConverterFactory {
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, validator, policy)
+        return StableHloConverter(registry, typeMapper, validator, policy, target, granularity)
     }
 
     /**
@@ -112,6 +117,8 @@ public object StableHloConverterFactory {
 
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
+        // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
+        registry.register(ArgMaxOperationsConverter())
 
         // Register elementwise unary math converter (sqrt, exp, log, abs, …).
         // Must be present so downstream consumers don't cascade-fail with
@@ -155,6 +162,8 @@ public object StableHloConverterFactory {
         registry.register(ActivationOperationsConverter())
         registry.register(ShapeOperationsConverter())
         registry.register(ReductionOperationsConverter())
+        // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
+        registry.register(ArgMaxOperationsConverter())
         registry.register(UnaryMathConverter())
         registry.register(ScalarOperationsConverter())
         registry.register(ConstantOperationsConverter())

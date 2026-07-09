@@ -31,6 +31,11 @@ data class FunctionDoc(
     val returnType: String,
     val statusByBackend: Map<String, String>,
     val notes: List<Note>,
+    // Autodiff coverage: whether the op carries @Diff (so it has a generated backward
+    // contract and must be wired into the execution tape's dispatch). diffRuleName is the
+    // custom adjoint rule name if @Diff(ruleName=...) was set, else empty (= method name).
+    val isDifferentiable: Boolean = false,
+    val diffRuleName: String = "",
     // DARC validation metadata. `validated = false` means @DarcValidated is
     // absent — the generator will render a "not validated" badge.
     val validated: Boolean = false,
@@ -195,6 +200,8 @@ class OperatorDocProcessor(
                 returnType = extractReturnType(fn),
                 statusByBackend = statusByBackend,
                 notes = emptyList(),
+                isDifferentiable = extractDiffRule(fn) != null,
+                diffRuleName = extractDiffRule(fn).orEmpty(),
                 validated = validation.validated,
                 validatedBy = validation.by,
                 validatedOn = validation.on,
@@ -281,12 +288,28 @@ class OperatorDocProcessor(
             returnType = extractReturnType(function),
             statusByBackend = deriveStatusByBackend(function),
             notes = deriveNotes(function),
+            isDifferentiable = extractDiffRule(function) != null,
+            diffRuleName = extractDiffRule(function).orEmpty(),
             validated = validation.validated,
             validatedBy = validation.by,
             validatedOn = validation.on,
             validatedCommit = validation.commit,
             referencesChecked = validation.referencesChecked,
         )
+    }
+
+    /**
+     * Returns the adjoint rule name when the function carries `@Diff` (its `ruleName` argument, or
+     * the empty string for bare `@Diff`), or `null` when the op is not differentiable. Mirrors the
+     * detection in the autodiff KSP processor (`MethodAnalyzer`) so operators.json agrees with the
+     * generated `DifferentiableTensorOps` contract.
+     */
+    private fun extractDiffRule(function: KSFunctionDeclaration): String? {
+        val diff = function.annotations.find {
+            it.shortName.asString() == "Diff" ||
+                it.annotationType.resolve().declaration.qualifiedName?.asString() == "sk.ainet.lang.trace.Diff"
+        } ?: return null
+        return diff.arguments.find { it.name?.asString() == "ruleName" }?.value as? String ?: ""
     }
 
     private data class DarcValidation(
@@ -566,6 +589,13 @@ class OperatorDocProcessor(
                             if (noteIndex < function.notes.size - 1) append(", ")
                         }
                         append("]")
+
+                        // Autodiff coverage. Always emitted so the manifest is the single source of
+                        // differentiability truth; diffRuleName only when a custom @Diff(ruleName=...) is set.
+                        append(",\n          \"isDifferentiable\": ${function.isDifferentiable}")
+                        if (function.diffRuleName.isNotEmpty()) {
+                            append(",\n          \"diffRuleName\": \"${escapeJson(function.diffRuleName)}\"")
+                        }
 
                         // DARC validation block. Only emitted when an actual
                         // @DarcValidated annotation is present, so unannotated

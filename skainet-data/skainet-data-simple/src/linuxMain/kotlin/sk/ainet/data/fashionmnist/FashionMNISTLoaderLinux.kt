@@ -2,6 +2,7 @@ package sk.ainet.data.fashionmnist
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * Linux implementation of the Fashion-MNIST loader.
@@ -14,7 +15,11 @@ public class FashionMNISTLoaderLinux(config: FashionMNISTLoaderConfig) : Fashion
      */
     override suspend fun downloadAndCacheFile(url: String, filename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("FashionMNISTLoaderLinux.downloadAndCacheFile is not implemented yet.")
+            unsupportedDatasetLoader(
+                dataset = "Fashion-MNIST",
+                target = "linux",
+                reason = "gzip decompression and cache materialization are not implemented for this native target"
+            )
         }
 
     public companion object {

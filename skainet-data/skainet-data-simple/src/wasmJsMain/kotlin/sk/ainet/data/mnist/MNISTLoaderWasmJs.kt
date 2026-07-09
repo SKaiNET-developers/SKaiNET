@@ -7,6 +7,8 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.call.body
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.hasGzipHeader
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * WASM JS implementation of the MNIST loader.
@@ -29,9 +31,13 @@ public class MNISTLoaderWasmJs(config: MNISTLoaderConfig) : MNISTLoaderCommon(co
             println("Downloading file: $url")
             val data = downloadFile(url)
 
-            // Note: In a real implementation, we would use a JS gzip library to decompress the data
-            // For this example, we're assuming the server provides uncompressed data for WASM clients
-            println("WASM JS implementation does not support gzip decompression. Assuming data is already decompressed.")
+            if (data.hasGzipHeader()) {
+                unsupportedDatasetLoader(
+                    dataset = "MNIST",
+                    target = "wasmJs",
+                    reason = "gzip decompression is not implemented; provide an uncompressed IDX URI"
+                )
+            }
 
             return@withContext data
         }

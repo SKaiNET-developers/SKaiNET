@@ -1,4 +1,4 @@
-= SKEEP: SKaiNET Enhancement and Evolution Proposals
+= SKEEP: SKaiNET Evolution and Enhancement Process
 :description: SKaiNET's KEEP-style proposal track for language-facing APIs, public architecture decisions, and long-lived design records.
 
 SKEEP is SKaiNET's proposal track for design changes that need more durability than an issue or pull request description.

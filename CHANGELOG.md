@@ -2,6 +2,236 @@
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-07-08
+
+### Added
+
+- **`argMax(tensor, dim)` tensor op.** Index of the maximum value along a dimension, with ties
+  resolved to the **lowest** index (numpy/greedy); the reduced dimension is removed (no keepdim).
+  Non-differentiable by design (index selection). Like `scaledDotProductAttention`, it stays a
+  single op and is lowered at the **StableHLO stage** rather than needing a new primitive:
+  `ArgMaxOperationsConverter` composes `iota` + reduce-`maximum` + `broadcast_in_dim` + `compare EQ`
+  + `select` + reduce-`minimum` (the same `stablehlo` primitives the causal-mask code already
+  emits) — so no variadic reducer region and no new DSL ops. The eager CPU kernel is a scalar
+  reduction-to-index. Indices are `i32` in the compiled StableHLO; the **eager** path materializes
+  them as index-valued floats in the input dtype so the result is a portable `Tensor<T, V>` (an i32
+  payload inside a float tensor is unreadable on Kotlin/Native + Wasm). Unblocks folding an LLM's
+  `logits → token-ids` argmax tail into the DSL trace instead of a post-hoc MLIR rewrite. (PR #800)
+
+- **BREAKING (coordinates): `skainet-data-simple` now publishes under its module name.** The artifactId
+  changes from the mismatched `sk.ainet.core:skainet-data-basic` to `sk.ainet.core:skainet-data-simple`;
+  update your dependency declarations when upgrading past 0.34.0 (BOM consumers only need the new
+  artifactId). `skainet-data-transform` also gets a distinct POM name ("skainet data transforms" — it
+  previously duplicated the datasets module's name); its coordinates are unchanged.
+
+## [0.34.0] - 2026-07-05
+
+### Added
+
+- **New module `sk.ainet.core:skainet-data-source` — URI-backed data sources.** One declarative way to
+  get raw data into SKaiNET from `file://`, `https://`, and Hugging Face (`hf://owner/repo/path` and
+  `hf+https://…`) URIs: `DataSource` contracts + `DataSourceUriParser`, a `DefaultDataSourceResolver`
+  (JVM: `JvmDataSourceResolver` with artifact materialization/caching via `CachePolicy`), streaming of
+  source artifacts with kotlinx-io, and parameterizable Hugging Face auth (token provider — no
+  hard-coded credentials). (PRs #784, #785)
+- **Raw dataset parsers + suspendable data pipeline DSL.** `DataFormatParser` implementations for CSV,
+  TSV, JSON arrays/objects, and JSON Lines (`.jsonl` / `.ndjson`) produce schema-carrying `RawDataset`s;
+  `rawDataset { from(…); format(…); cachePolicy(…) }` builds a dataset straight from a source URI, and
+  `dataPipeline<T>()` chains named, schema-aware `dataTransformer` stages as a suspend pipeline.
+  See the new [data sources getting-started tutorial](docs/modules/ROOT/pages/tutorials/data-sources-getting-started.adoc). (PR #785)
+- **Dataset operation views and richer batches (`skainet-data-api`).** `Dataset` gains deterministic
+  seeded `shuffle(seed)`, `split(ratio, seed, stratified)` (label-stratified splitting), `filter` /
+  index-based views, optional `inputShape`/`outputShape` metadata, and batch/epoch `Flow`s. `DataBatch`
+  now carries sample `indices` and a `metadata` map, and supports `slice(range)` over the leading batch
+  dimension. All additions have defaults — existing `Dataset` implementations keep compiling; the bundled
+  MNIST / Fashion-MNIST / CIFAR-10 loaders support indexed (non-contiguous) batches, are routed through
+  the source layer, and unsupported platform targets now fail with a clear
+  `DatasetLoaderUnsupportedTargetException`. (PR #785)
+- **bf16-native DSL → StableHLO export path.** A model authored in bf16 in the NN DSL now exports
+  StableHLO whose weights reach the matmuls as bf16 (required by NPUs that reject fp32 weights). Adds
+  `DtypeForwardPropagationPass` (unifies the graph's float dtype end-to-end, coercing float sources when
+  `targetFloatDtype` is set), a width-matched `-inf` bit pattern for softmax/attention max-reduce
+  identities, valid `stablehlo.convert` function-form emission, and BF16 support in
+  `DenseTensorDataFactory.zeros/placeholder`. Verified: a DSL-authored bf16 Moonshine encoder traces to
+  all-bf16 StableHLO and compiles to an aarch64 llvm-cpu vmfb. (PRs #788, #791)
+- **Pluggable per-phase, per-target compile optimization (`skainet-compile-opt`).** The seam that keeps
+  hardware knowledge out of the agnostic compiler core: `CompilePhase { TAPE, DAG, STABLE_HLO }`,
+  `TargetOptimizer` (per-phase pass provider), the `TargetOptimizers` registry, and
+  `dagPipelineFor(target, corePasses)`. The StableHLO emitter additionally accepts an optional target id
+  and `OpGranularityPolicy` (+ `FusedOpAllowList`) so per-target fused-vs-decomposed emission decisions
+  are possible; everything defaults to the previous behavior — emission is byte-identical when unused. (PR #791)
+- **`KernelProfile` diagnostics (`skainet-backend-cpu`).** Always-on accumulating profiler over the three
+  `DefaultCpuOps.matmul` dispatch paths (quant-NEON / fp32-scalar / generic), read via
+  `KernelProfile.report()` — used to localize on-device decode cost.
+- **Contributor Covenant 3.0 Code of Conduct**, with GitHub private vulnerability reporting as the
+  contact channel. (PR #790)
+
+### Performance
+
+- **Native CPU K-quant matmul: 2.07× Q4_K on Cortex-A55.** Two levers, validated against the Panama
+  reference and on-board: (1) block-outer / output-row-inner loop order so block-major weight bytes are
+  read strictly sequentially (the dominant win on in-order cores — the old order made every weight read
+  a cold cache miss), applied to Q4_K, Q5_K, Q6_K, and Q8_0; (2) ggml-style fused Q8 activation
+  quantization + int8 dot path (`vdotq_s32` on dotprod targets, scalar fallback otherwise) for Q4_K and
+  Q6_K. TinyLlama Q4_K_M on-board decode improved 1.50× end-to-end. Note: the fused int8 path is
+  deliberately lossy (activation quantization, ~1–3% worst-case on uniform-random fixtures); parity
+  tests gate on aggregate `RMS(error)/RMS(signal) < 0.03` instead of bit-exactness. (PR #787)
+- **NEON kernels verified on real aarch64.** Shared `nativeTest` suite now runs the matmul parity tests
+  on linuxX64 and linuxArm64 (cross-built binary under the bundled qemu-aarch64, overridable to a real
+  board); all fp32/q4k/q5k/q6k/q8_0 kernels pass on QEMU and on a physical Cortex-A55, with objdump
+  confirming genuine SIMD (`udot`/`sdot`/`fmla`), not the scalar fallback. (PR #786)
+
+### Fixed
+
+- **LayerNorm normalization computed in f32 regardless of model dtype.** A bf16 variance (sum of many
+  bf16 squares) loses enough precision that `sqrt(var + eps)` can produce NaN, and some accelerator
+  backends miscompile the low-precision decomposed reduce. Mean/variance/std/divide are now upcast to
+  f32 (standard PyTorch/JAX practice); the gamma/beta affine stays in the model dtype. No-op for f32
+  models. (PR #791)
+- **Rank-0 tensor types emit as `tensor<elem>`.** The StableHLO type mapper unconditionally inserted the
+  `x` shape separator, so scalars produced the malformed `tensor<xbf16>` that `iree-compile` rejects. (PR #791)
+- **Green `./gradlew build` on macOS hosts.** Refreshed lagging binary-compatibility API dumps (additive
+  only) and gated the linuxX64/linuxArm64 Kotlin/Native test-link/run tasks off non-Linux hosts (the
+  CMake host build emits Mach-O objects that cannot cross-link into a Linux ELF); klib compilation and
+  publishing untouched, the native NEON parity suite still runs on Linux CI / QEMU / hardware. (PR #789)
+
+### Docs
+
+- **Antora docs image consolidated to the offline `markup-antora` build.** One image shared across the
+  SKaiNET docs projects: offline Mermaid rendering to inline SVG at build time (no Kroki, no network),
+  content-hash diagram caching, rootless-safe, with a build-time Mermaid smoke test. (PR #781)
+- Data source URIs and the data loader APIs documented, including a new
+  `data-sources-getting-started` tutorial; README reworked to frame StableHLO/MLIR as one of several
+  sibling code-generation backends (next to Arduino/C99 and Minerva) lowering the same `ComputeGraph`. (PR #776)
+
+### Dependencies
+
+- Gradle wrapper 9.6.0 → 9.6.1, logback-classic 1.5.36 → 1.5.37, JUnit Jupiter 6.1.0 → 6.1.1,
+  kotlinx-io-core 0.9.0 → 0.9.1. (PRs #777–#780)
+
+## [0.33.0] - 2026-06-29
+
+### Added
+
+- **GRU layer (`sk.ainet.lang.nn.Gru`).** SKaiNET's first recurrent layer (issue #217): single-layer,
+  unidirectional, batch-first `[B, S, D] -> [B, S, H]`, PyTorch gate order (reset, update, new). Built
+  by composing existing primitives (matmul/add/sigmoid/tanh/narrow/concat) **unrolled over the static
+  sequence length at trace time** — StableHLO has no loop construct, so any recurrence must unroll. It
+  runs eagerly, is trainable through the standard tape, and exports to StableHLO with no dedicated
+  converter. Also adds a `gru(hiddenSize) { … }` network-DSL builder. (PR #772)
+- **`upsample2d` Bilinear + StableHLO export.** Adds the Bilinear forward (PyTorch coord map, 4-neighbour
+  blend) and its autodiff backward, and a traceable StableHLO lowering for **both** Nearest and Bilinear
+  (scale is static at trace time, so everything lowers to fixed reshape/broadcast/`dot_general` — no
+  runtime index math, no `custom_call`). Unblocks export of resize/FPN-style paths. (PR #771)
+- **Seven newly-differentiable ops.** `cos`, `sin`, `tril`, `gather`, `indexSelect`, `unfold`,
+  `convTranspose1d` now carry `@Diff` and have backward rules (with finite-difference parity tests):
+  trig for RoPE, `gather` for embedding lookup, `tril` for causal masks, the rest structural. (PR #774)
+- **KSP-generated autodiff-coverage guard.** The tracing-wrapper processor now emits
+  `DifferentiableTensorOpsRules.ruleNames` (the authoritative `@Diff` op set); a unit test asserts the
+  execution tape's dispatch covers it, so a differentiable op can no longer ship with a backward rule
+  that is never wired. `operators.json` now records `isDifferentiable` (+ optional `diffRuleName`),
+  schema-validated. (PR #774)
+
+### Fixed
+
+- **Silent gradient drop for `elu`, `leakyRelu`, `permute`.** These were `@Diff` and had correct
+  backward formulas, but had no arm in the execution tape's trace dispatch, so their gradients fell
+  through to `null` and were silently discarded. Now wired (and guarded by the coverage test above);
+  `permuteBackward` also fixed to decode its `axes` attribute as the traced `List<Int>`. (PR #774)
+- **`layerNorm` / `rmsNorm` / `batchNorm` lower to real `stablehlo.reduce`.** The norm converters
+  previously emitted non-compilable `reduce_mean` / `reduce_variance` `custom_call`s (export-only); they
+  now decompose to real `stablehlo.reduce`, so all three compile and run on stock IREE (llvm-cpu). (PR #769)
+
+### Changed
+
+- **BREAKING: `TensorOps.sin`, `TensorOps.cos`, `TensorOps.convTranspose1d` are now abstract.** They
+  previously had default `throw NotImplementedError(...)` bodies; they are abstract so the tracing
+  wrapper records them (and they become differentiable/exportable). Any type implementing `TensorOps`
+  directly must now override them — both bundled backends (`DefaultCpuOpsBase`, `VoidTensorOps`) already
+  do. (PR #774)
+
+## [0.32.4] - 2026-06-26
+
+### Fixed
+
+- **Streaming detokenization preserves word-boundary spaces (`Tokenizer.decodeToken`).** A generation
+  loop that decodes one token at a time (`decode(tokenId)`) ran words together (`"the process"` →
+  `"theprocess"`): the single-token path delegated to the sequence-level
+  `SentencePieceTokenizer.decode(IntArray)`, whose `addSpacePrefix` leading-space strip is only
+  correct once per sequence. Adds `Tokenizer.decodeToken(id)` (default = `decode(intArrayOf(id))`) and
+  a `SentencePieceTokenizer` override that decodes a single token without the leading strip (llama.cpp
+  `token_to_piece` semantics), plus a `decode(ids, stripLeadingSpace)` overload. Every streaming
+  consumer now reconstructs spacing correctly.
+
+## [0.32.3] - 2026-06-25
+
+### Added
+
+- **Graph-output pruning for export (`ComputeGraph.prunedToOutputs`).** A traced decoder surfaces
+  every leaf tensor (e.g. per-layer intermediates) as a graph output, so a StableHLO/IREE export
+  returns the logits plus dozens of dangling tensors — extra `func` returns and dead op subgraphs.
+  Adds `OutputDesignatedGraph` (skainet-compile-dag) to override the output set by node id, and
+  `ComputeGraph.prunedToOutputs(outputNodeIds)` (skainet-compile-opt) which designates those outputs
+  and runs `DeadCodeEliminationPass` so only the nodes feeding them survive. Exporters can now keep
+  just the logits. Adds `GraphPruningTest` (commonTest).
+
+### Changed
+
+- **SDPA causal mask uses a large finite fill (`-1e30`) instead of `-inf`.** The attention HLO
+  converter's causal path emitted `dense<0xFF800000>` (`-inf`) for the masked-fill select; it now
+  emits `-1.000000e+30`, matching `MultiHeadAttention.buildSlidingCausalMask` and avoiding a `-inf`
+  splat in the IR (numerically equivalent after softmax). (`AttentionOperationsConverter`)
+
+## [0.32.2] - 2026-06-24
+
+### Added
+
+- **`ExecutionContext.isRecording`.** A default-`false` `isRecording` on the lang-core
+  `ExecutionContext` interface, overridden by `GraphExecutionContext` (`currentTape?.isRecording`).
+  Lets modules with an eager fast-path that bypasses `ops.*` (e.g. RoPE's raw-array INTERLEAVED
+  rotation) detect tracing and emit a graph-traceable `ctx.ops.*` path — so they export to StableHLO
+  while keeping the fast path for eager inference — without depending on the compile-dag module.
+  Backward-compatible (existing `ExecutionContext` implementations inherit the default). (PR #757)
+
+### Changed
+
+- **Docs:** Antora docs version-currency (dependency snippets → current release) and broken-link
+  fixes across all pages (`.md` `link:` → `xref:`, dead `tensorflow.org/xla` → `openxla.org`, dead
+  `rfc.md`/`bench-prd.md` references, `ainet-sk` → `SKaiNET-developers`). (PR #758)
+- **Dependency:** `ch.qos.logback:logback-classic` 1.5.34 → 1.5.35. (PR #756)
+
+## [0.32.1] - 2026-06-23
+
+### Fixed
+
+- **GroupNorm now compiles on stock IREE.** The 0.32.0 GroupNorm converter lowered mean/variance
+  with `stablehlo.custom_call @reduce_mean` / `@reduce_variance` (mirroring LayerNorm), which
+  `iree-compile` cannot lower — so a `groupNorm` module exported but failed to compile. It now emits
+  real `stablehlo.reduce` (add region) + `divide`, computing variance as `E[x²] − E[x]²` (population,
+  ddof=0), exactly like the `sum` / `mean` / `variance` converters. Verified end-to-end through the
+  `skainet-iree-conformance` harness: `iree-compile` + `iree-run-module` + numpy validate → PASS
+  (`max_abs_err = 1.2e-7`). `GroupNormConverterTest` asserts real reductions and no `custom_call`.
+  (PR #754)
+
+## [0.32.0] - 2026-06-22
+
+### Added
+
+- **GroupNorm StableHLO converter.** `NeuralNetOperationsConverter` now lowers `groupNorm`
+  (and the `groupNormalization` / `GroupNormalization` / `group_norm` aliases) to real
+  `stablehlo.*` ops instead of falling through to the "operation not supported" path. The
+  lowering mirrors the LayerNorm/RMSNorm decomposition: reshape `(N, C, *spatial)` to
+  `(N, G, M)`, per-group `mean` / `variance`, normalize, reshape back, and apply the optional
+  per-channel `scale` / `offset`. Adds `GroupNormConverterTest` (commonTest). (PR #752)
+- **SKEEP proposals docs module.** (PR #750)
+- **Quantization-process explanation doc** (weights, activations, calibration). (PR #747)
+
+### Changed
+
+- **Dependency bumps:** `com.vanniktech.maven.publish` → 0.37.0 (PR #748),
+  `com.networknt:json-schema-validator` → 3.0.5 (PR #749), kotest → 6.2.1 (PR #744),
+  Gradle wrapper → 9.6.0 (PR #745), `actions/checkout` → 7 (PR #743).
+
 ## [0.31.2] - 2026-06-18
 
 ### Added

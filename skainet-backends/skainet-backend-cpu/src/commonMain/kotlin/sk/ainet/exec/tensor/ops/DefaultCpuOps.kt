@@ -34,6 +34,7 @@ import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
 import sk.ainet.lang.types.Int8
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.log10 as kmLog10
 import kotlin.math.log2 as kmLog2
@@ -389,37 +390,39 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(a.dtype == b.dtype) { "DType mismatch: ${a.dtype} vs ${b.dtype}" }
 
         // Packed-quant fast path (FP32 input × packed weight), resolved via KernelRegistry.
-        chooseQuantizedMatmulHeap(a, b)?.let { return it }
+        KernelProfile.timeQuant { chooseQuantizedMatmulHeap(a, b) }?.let { return it }
 
         // Fast path: 2D × 2D with FloatArray backing — direct buffer access, no per-element allocation
         if (a.rank == 2 && b.rank == 2
             && (a.dtype == FP32::class)
             && a.data is FloatArrayTensorData<*> && b.data is FloatArrayTensorData<*>
         ) {
-            val aBuf = (a.data as FloatArrayTensorData<*>).buffer
-            val bBuf = (b.data as FloatArrayTensorData<*>).buffer
-            val m = a.shape[0]
-            val k = a.shape[1]
-            val n = b.shape[1]
-            require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
-            val out = FloatArray(m * n)
-            for (i in 0 until m) {
-                val aOff = i * k
-                for (j in 0 until n) {
-                    var sum = 0f
-                    for (p in 0 until k) {
-                        sum += aBuf[aOff + p] * bBuf[p * n + j]
+            return KernelProfile.timeFp32 {
+                val aBuf = (a.data as FloatArrayTensorData<*>).buffer
+                val bBuf = (b.data as FloatArrayTensorData<*>).buffer
+                val m = a.shape[0]
+                val k = a.shape[1]
+                val n = b.shape[1]
+                require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
+                val out = FloatArray(m * n)
+                for (i in 0 until m) {
+                    val aOff = i * k
+                    for (j in 0 until n) {
+                        var sum = 0f
+                        for (p in 0 until k) {
+                            sum += aBuf[aOff + p] * bBuf[p * n + j]
+                        }
+                        out[i * n + j] = sum
                     }
-                    out[i * n + j] = sum
                 }
+                @Suppress("UNCHECKED_CAST")
+                val outData = dataFactory.fromFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+                newTensor(outData, a.dtype, a, b)
             }
-            @Suppress("UNCHECKED_CAST")
-            val outData = dataFactory.fromFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
-            return newTensor(outData, a.dtype, a, b)
         }
 
         // Generic fallback for batched / non-float / non-2D cases
-        return matmulGeneric(a, b)
+        return KernelProfile.timeGeneric { matmulGeneric(a, b) }
     }
 
     private fun <T : DType, V> matmulGeneric(
@@ -1257,7 +1260,6 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(input.rank == 4) { "upsample2d: input must be 4D (N, C, H, W)" }
         val (scaleH, scaleW) = scale
         require(scaleH > 0 && scaleW > 0) { "upsample2d: scale factors must be positive" }
-        require(mode == UpsampleMode.Nearest) { "upsample2d: only Nearest mode is implemented on CPU backend" }
 
         val n = input.shape[0]
         val c = input.shape[1]
@@ -1267,14 +1269,59 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val outW = inW * scaleW
         val outShape = Shape(n, c, outH, outW)
 
-        val outData = dataFactory.init<T, V>(outShape, input.dtype) { idx ->
-            val oh = idx[2]
-            val ow = idx[3]
-            val ih = oh / scaleH
-            val iw = ow / scaleW
-            input.data.get(idx[0], idx[1], ih, iw)
+        val outData = when (mode) {
+            UpsampleMode.Nearest -> dataFactory.init<T, V>(outShape, input.dtype) { idx ->
+                val oh = idx[2]
+                val ow = idx[3]
+                val ih = oh / scaleH
+                val iw = ow / scaleW
+                input.data.get(idx[0], idx[1], ih, iw)
+            }
+
+            UpsampleMode.Bilinear -> {
+                require(input.dtype == FP32::class || input.dtype == FP16::class) {
+                    "upsample2d: Bilinear mode is only implemented for float dtypes (got ${input.dtype})"
+                }
+                dataFactory.init<T, V>(outShape, input.dtype) { idx ->
+                    val b = idx[0]
+                    val ch = idx[1]
+                    val srcH = sourceCoord(idx[2], scaleH, inH, alignCorners)
+                    val srcW = sourceCoord(idx[3], scaleW, inW, alignCorners)
+                    val ih0 = floor(srcH).toInt().coerceIn(0, inH - 1)
+                    val ih1 = (ih0 + 1).coerceIn(0, inH - 1)
+                    val iw0 = floor(srcW).toInt().coerceIn(0, inW - 1)
+                    val iw1 = (iw0 + 1).coerceIn(0, inW - 1)
+                    val wh = (srcH - ih0).coerceIn(0.0f, 1.0f)
+                    val ww = (srcW - iw0).coerceIn(0.0f, 1.0f)
+                    val v00 = (input.data.get(b, ch, ih0, iw0) as Number).toFloat()
+                    val v01 = (input.data.get(b, ch, ih0, iw1) as Number).toFloat()
+                    val v10 = (input.data.get(b, ch, ih1, iw0) as Number).toFloat()
+                    val v11 = (input.data.get(b, ch, ih1, iw1) as Number).toFloat()
+                    val blend = v00 * (1f - wh) * (1f - ww) +
+                        v01 * (1f - wh) * ww +
+                        v10 * wh * (1f - ww) +
+                        v11 * wh * ww
+                    @Suppress("UNCHECKED_CAST")
+                    (blend as V)
+                }
+            }
         }
         return newTensor(outData, input.dtype, input)
+    }
+
+    /**
+     * Maps an output coordinate to the (fractional) source coordinate for upsampling,
+     * matching the PyTorch convention. With [alignCorners] = false the sample centers are
+     * `(o + 0.5) / scale - 0.5`; with align corners the endpoints are pinned via
+     * `o * (in - 1) / (out - 1)`. The result may fall outside `[0, in-1]`; callers clamp.
+     */
+    private fun sourceCoord(out: Int, scale: Int, inDim: Int, alignCorners: Boolean): Float {
+        val outDim = inDim * scale
+        return if (alignCorners) {
+            if (outDim <= 1) 0f else out.toFloat() * (inDim - 1) / (outDim - 1)
+        } else {
+            (out + 0.5f) / scale - 0.5f
+        }
     }
 
     @TensorOp()
@@ -2001,6 +2048,46 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             }
             return newTensor(outData, tensor.dtype, tensor)
         }
+    }
+
+    @TensorOp()
+    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-argmax")
+    override fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val rank = tensor.rank
+        require(rank >= 1) { "argMax: input must have rank >= 1" }
+        val nd = if (dim < 0) dim + rank else dim
+        require(nd in 0 until rank) { "argMax: dim $dim out of range for rank $rank" }
+        val inDims = tensor.shape.dimensions
+        // Reduced (dim removed) shape; scalar -> Shape(1) to match VoidTensorOps.
+        val reduced = IntArray(rank - 1)
+        run { var o = 0; for (i in 0 until rank) if (i != nd) reduced[o++] = inDims[i] }
+        val outShape = if (reduced.isEmpty()) Shape(1) else Shape(reduced)
+        val outCount = reduced.fold(1) { a, b -> a * b }
+        val indices = IntArray(outCount)
+        val outIdx = IntArray(reduced.size)
+        for (flat in 0 until outCount) {
+            val inIdx = IntArray(rank)
+            run { var o = 0; for (i in 0 until rank) if (i != nd) inIdx[i] = outIdx[o++] }
+            var bestK = 0
+            var bestV = Float.NEGATIVE_INFINITY
+            for (k in 0 until inDims[nd]) {
+                inIdx[nd] = k
+                val v = (tensor.data.get(*inIdx) as Number).toFloat()
+                if (v > bestV) { bestV = v; bestK = k } // strict > keeps the LOWEST index on ties
+            }
+            indices[flat] = bestK
+            var d = reduced.size - 1
+            while (d >= 0) { outIdx[d]++; if (outIdx[d] < reduced[d]) break; outIdx[d] = 0; d-- }
+        }
+        // Eager result: store the indices as index-valued floats in the INPUT dtype so the tensor is
+        // a consistent Tensor<T,V> readable on every target (an Int32 payload inside a <FP32,Float>
+        // tensor throws ClassCastException on Kotlin/Native + Wasm). The traced/compiled form is a
+        // real i32 tensor — see VoidTensorOps.argMax + ArgMaxOperationsConverter (emits stablehlo i32).
+        val floats = FloatArray(outCount) { indices[it].toFloat() }
+        @Suppress("UNCHECKED_CAST")
+        val outData = dataFactory.fromFloatArray<T, Float>(outShape, tensor.dtype, floats)
+            as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return CpuTensor(outData, this, tensor.dtype, GradState(requiresGrad = false))
     }
 
     @TensorOp()

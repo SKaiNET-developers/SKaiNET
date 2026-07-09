@@ -1,3 +1,12 @@
+public final class sk/ainet/compile/opt/CompilePhase : java/lang/Enum {
+	public static final field DAG Lsk/ainet/compile/opt/CompilePhase;
+	public static final field STABLE_HLO Lsk/ainet/compile/opt/CompilePhase;
+	public static final field TAPE Lsk/ainet/compile/opt/CompilePhase;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/opt/CompilePhase;
+	public static fun values ()[Lsk/ainet/compile/opt/CompilePhase;
+}
+
 public abstract interface class sk/ainet/compile/opt/GraphOptimizationPass {
 	public abstract fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
 	public abstract fun getName ()Ljava/lang/String;
@@ -47,6 +56,35 @@ public final class sk/ainet/compile/opt/GraphOptimizationResult {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/opt/GraphPruningKt {
+	public static final fun prunedToOutputs (Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/Set;)Lsk/ainet/lang/graph/ComputeGraph;
+}
+
+public final class sk/ainet/compile/opt/TargetOptimizationKt {
+	public static final fun dagPipelineFor (Ljava/lang/String;Ljava/util/List;I)Lsk/ainet/compile/opt/GraphOptimizationPipeline;
+	public static synthetic fun dagPipelineFor$default (Ljava/lang/String;Ljava/util/List;IILjava/lang/Object;)Lsk/ainet/compile/opt/GraphOptimizationPipeline;
+}
+
+public abstract interface class sk/ainet/compile/opt/TargetOptimizer {
+	public fun dagPasses ()Ljava/util/List;
+	public abstract fun getTarget ()Ljava/lang/String;
+	public fun granularity ()Lsk/ainet/compile/target/OpGranularityPolicy;
+}
+
+public final class sk/ainet/compile/opt/TargetOptimizer$DefaultImpls {
+	public static fun dagPasses (Lsk/ainet/compile/opt/TargetOptimizer;)Ljava/util/List;
+	public static fun granularity (Lsk/ainet/compile/opt/TargetOptimizer;)Lsk/ainet/compile/target/OpGranularityPolicy;
+}
+
+public final class sk/ainet/compile/opt/TargetOptimizers {
+	public static final field INSTANCE Lsk/ainet/compile/opt/TargetOptimizers;
+	public final fun clear ()V
+	public final fun forTarget (Ljava/lang/String;)Ljava/util/List;
+	public final fun granularityFor (Ljava/lang/String;)Lsk/ainet/compile/target/OpGranularityPolicy;
+	public final fun register (Lsk/ainet/compile/opt/TargetOptimizer;)V
+	public final fun registerDagPasses (Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V
+}
+
 public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
@@ -73,6 +111,14 @@ public final class sk/ainet/compile/opt/passes/DeadCodeEliminationPass : sk/aine
 
 public final class sk/ainet/compile/opt/passes/DtypeConstraintViolationException : java/lang/RuntimeException {
 	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class sk/ainet/compile/opt/passes/DtypeForwardPropagationPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
 }
 
 public final class sk/ainet/compile/opt/passes/LLMFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {

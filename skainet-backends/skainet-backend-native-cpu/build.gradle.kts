@@ -59,13 +59,22 @@ kotlin {
         }
         val linuxX64Main by getting { dependsOn(nativeMain) }
         val linuxArm64Main by getting { dependsOn(nativeMain) }
-        val linuxX64Test by getting {
+        // Shared K/N parity tests (cinterop kernel vs commonMain scalar reference),
+        // run on BOTH linuxX64 (host, scalar/auto-vec archive) and linuxArm64
+        // (cross-built NEON archive, executed under the K/N-bundled qemu-aarch64
+        // or on the SL2610 board). Same tests, two codegens — this is how the
+        // NEON paths get bit-checked without board-only test code.
+        val nativeTest by creating {
+            dependsOn(commonTest.get())
             dependencies {
                 implementation(libs.kotlin.test)
-                // ScalarQ5_KMatmulKernel reference for the cinterop parity test.
+                // ScalarQ*_KMatmulKernel / ScalarQ8_0MatmulKernel / ScalarMatmulKernel
+                // references for the cinterop parity tests.
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
             }
         }
+        val linuxX64Test by getting { dependsOn(nativeTest) }
+        val linuxArm64Test by getting { dependsOn(nativeTest) }
     }
 }
 
@@ -137,6 +146,23 @@ tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxX64") }.co
     dependsOn(buildNativeKernels)
 }
 
+// The linuxX64/linuxArm64 K/N *test* binaries link the CMake static archive and
+// execute a Linux ELF. On a non-Linux host the CMake build emits host-format
+// objects (Mach-O on macOS), which ld.lld cannot cross-link into a Linux binary,
+// and a Linux .kexe cannot be executed anyway. Disable the K/N test link + run
+// on non-Linux hosts so `build`/`allTests` stay green locally; klib compilation
+// (compileKotlinLinux*) and publishing are unaffected, and the native NEON parity
+// suite still runs on Linux CI / qemu-aarch64 / the SL2610 board. Mirrors the
+// existing `-PcrossArm64` opt-in gating for the aarch64 cross artifacts.
+val isLinuxHost: Boolean = System.getProperty("os.name").lowercase().contains("linux")
+if (!isLinuxHost) {
+    tasks.matching {
+        (it.name.startsWith("link") && it.name.contains("Test") &&
+            (it.name.endsWith("LinuxX64") || it.name.endsWith("LinuxArm64"))) ||
+            it.name == "linuxX64Test" || it.name == "linuxArm64Test"
+    }.configureEach { enabled = false }
+}
+
 val packageNativeKernels by tasks.registering(Copy::class) {
     group = "build"
     description = "Stage the built native kernels library into JVM resources."
@@ -162,8 +188,9 @@ val packageNativeKernels by tasks.registering(Copy::class) {
 // host opts in. NativeLibraryLoader resolves native/linux-arm64/ from os.arch
 // at runtime, so the consuming side needs no change once this .so is bundled.
 //
-// BOARD-VERIFY-PENDING: the NEON code is syntax-validated for aarch64 but has
-// not been executed; run the parity tests under QEMU or on the SL2610.
+// NEON parity verified under qemu-aarch64 (see skainet_simd.h banner):
+//   ./gradlew :skainet-backends:skainet-backend-native-cpu:linuxArm64Test -PcrossArm64=true
+// runs the shared nativeTest parity suite against the cross-built archive.
 val crossArm64Enabled: Boolean = (findProperty("crossArm64") as String?)?.toBoolean() == true
 val aarch64Cc: String = (findProperty("skainetAarch64Cc") as String?) ?: "aarch64-linux-gnu-gcc"
 val cmakeBuildArm64Path: String = layout.buildDirectory.dir("native/cmake-build-arm64").get().asFile.absolutePath
@@ -173,7 +200,10 @@ val toolchainFilePath = "$nativeSourcePath/toolchain-aarch64.cmake"
 val configureNativeKernelsArm64 by tasks.registering(Exec::class) {
     group = "build"
     description = "CMake configure for the aarch64 (NEON) native kernels (cross-compile)."
-    onlyIf { crossArm64Enabled }
+    // Local copy so the onlyIf lambda captures a Boolean, not the build script
+    // (script object references break configuration-cache serialization).
+    val enabled = crossArm64Enabled
+    onlyIf { enabled }
     inputs.file("$nativeSourcePath/CMakeLists.txt")
     inputs.dir("$nativeSourcePath/src")
     inputs.dir("$nativeSourcePath/include")
@@ -191,7 +221,8 @@ val configureNativeKernelsArm64 by tasks.registering(Exec::class) {
 val buildNativeKernelsArm64 by tasks.registering(Exec::class) {
     group = "build"
     description = "Cross-build the aarch64 (NEON) native kernels shared library."
-    onlyIf { crossArm64Enabled }
+    val enabled = crossArm64Enabled
+    onlyIf { enabled }
     dependsOn(configureNativeKernelsArm64)
     inputs.file("$nativeSourcePath/CMakeLists.txt")
     inputs.dir("$nativeSourcePath/src")
@@ -203,7 +234,8 @@ val buildNativeKernelsArm64 by tasks.registering(Exec::class) {
 val packageNativeKernelsArm64 by tasks.registering(Copy::class) {
     group = "build"
     description = "Stage the cross-built aarch64 native kernels into JVM resources."
-    onlyIf { crossArm64Enabled }
+    val enabled = crossArm64Enabled
+    onlyIf { enabled }
     dependsOn(buildNativeKernelsArm64)
     from(cmakeBuildArm64Path) {
         include("libskainet_kernels.so")
@@ -228,6 +260,32 @@ tasks.named("jvmProcessResources") {
 if (crossArm64Enabled) {
     tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxArm64") }.configureEach {
         dependsOn(buildNativeKernelsArm64)
+    }
+
+    // The Kotlin Gradle plugin does not create a run task for non-host K/N test
+    // binaries (only linkDebugTestLinuxArm64 / linuxArm64TestBinaries), so wire
+    // one explicitly: run test.kexe under qemu-aarch64 (user-mode emulation).
+    // Defaults point at the K/N-bundled dependencies (~/.konan/dependencies):
+    // the same qemu K/N itself uses for linux_x64 -> linux_arm64 test emulation
+    // (konan.properties emulatorExecutable.linux_x64-linux_arm64) and the glibc
+    // sysroot the binary was linked against. Override with -PskainetQemu /
+    // -PskainetAarch64Sysroot (e.g. /usr/bin/qemu-aarch64-static and
+    // /usr/aarch64-linux-gnu for the distro toolchain). On the SL2610 board
+    // itself, just push and run test.kexe directly — no qemu involved.
+    val konanDeps = "${System.getProperty("user.home")}/.konan/dependencies"
+    val qemuAarch64: String = (findProperty("skainetQemu") as String?)
+        ?: "$konanDeps/qemu-aarch64-static-5.1.0-linux-2/qemu-aarch64"
+    val aarch64Sysroot: String = (findProperty("skainetAarch64Sysroot") as String?)
+        ?: "$konanDeps/aarch64-unknown-linux-gnu-gcc-8.3.0-glibc-2.25-kernel-4.9-2/aarch64-unknown-linux-gnu/sysroot"
+    val testKexePath: String =
+        layout.buildDirectory.file("bin/linuxArm64/debugTest/test.kexe").get().asFile.absolutePath
+
+    tasks.register<Exec>("linuxArm64Test") {
+        group = "verification"
+        description = "Run the linuxArm64 K/N tests under qemu-aarch64 (NEON kernel parity vs scalar reference)."
+        dependsOn("linkDebugTestLinuxArm64")
+        inputs.file(testKexePath)
+        commandLine(qemuAarch64, "-L", aarch64Sysroot, testKexePath)
     }
 }
 

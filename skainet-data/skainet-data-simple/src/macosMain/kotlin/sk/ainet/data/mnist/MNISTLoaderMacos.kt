@@ -2,6 +2,7 @@ package sk.ainet.data.mnist
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import sk.ainet.data.common.unsupportedDatasetLoader
 
 /**
  * macOS implementation of the MNIST loader.
@@ -14,7 +15,11 @@ public class MNISTLoaderMacos(config: MNISTLoaderConfig) : MNISTLoaderCommon(con
      */
     override suspend fun downloadAndCacheFile(url: String, filename: String): ByteArray =
         withContext(Dispatchers.Default) {
-            error("MNISTLoaderMacos.downloadAndCacheFile is not implemented yet. Provide an appleMain implementation or avoid macOS usage for now.")
+            unsupportedDatasetLoader(
+                dataset = "MNIST",
+                target = "macos",
+                reason = "gzip decompression and cache materialization are not implemented for this native target"
+            )
         }
 
     public companion object {
