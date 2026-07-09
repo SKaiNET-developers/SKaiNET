@@ -18,6 +18,12 @@
   payload inside a float tensor is unreadable on Kotlin/Native + Wasm). Unblocks folding an LLM's
   `logits → token-ids` argmax tail into the DSL trace instead of a post-hoc MLIR rewrite. (PR #800)
 
+- **BREAKING (coordinates): `skainet-data-simple` now publishes under its module name.** The artifactId
+  changes from the mismatched `sk.ainet.core:skainet-data-basic` to `sk.ainet.core:skainet-data-simple`;
+  update your dependency declarations when upgrading past 0.34.0 (BOM consumers only need the new
+  artifactId). `skainet-data-transform` also gets a distinct POM name ("skainet data transforms" — it
+  previously duplicated the datasets module's name); its coordinates are unchanged.
+
 ## [0.34.0] - 2026-07-05
 
 ### Added
