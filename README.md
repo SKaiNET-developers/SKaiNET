@@ -40,7 +40,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.34.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.35.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -284,8 +284,9 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.34.0
+## What's New in 0.35.0
 
+- **`argMax(dim)` tensor op** — index of the maximum along a dimension (ties → lowest index). Lowered to StableHLO by composing `iota` + reduce-max + `compare`/`select` + reduce-min — a single op, no new primitive — plus an eager CPU kernel. Lets an LLM's `logits → token-ids` argmax tail live inside the DSL trace.
 - **URI-backed data sources** — new `skainet-data-source` module: `file://`, `https://`, and Hugging Face URIs, raw-format parsers (CSV/TSV/JSON/JSONL), suspendable data pipelines
 - **Dataset views and richer batches** — seeded shuffle, stratified split, filter views, batch/epoch flows, batch indices + metadata
 - **bf16-native DSL → StableHLO export** — weights reach the matmuls as bf16, verified down to an aarch64 vmfb

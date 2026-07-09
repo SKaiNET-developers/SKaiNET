@@ -2,7 +2,21 @@
 
 ## [Unreleased]
 
-### Changed
+## [0.35.0] - 2026-07-08
+
+### Added
+
+- **`argMax(tensor, dim)` tensor op.** Index of the maximum value along a dimension, with ties
+  resolved to the **lowest** index (numpy/greedy); the reduced dimension is removed (no keepdim).
+  Non-differentiable by design (index selection). Like `scaledDotProductAttention`, it stays a
+  single op and is lowered at the **StableHLO stage** rather than needing a new primitive:
+  `ArgMaxOperationsConverter` composes `iota` + reduce-`maximum` + `broadcast_in_dim` + `compare EQ`
+  + `select` + reduce-`minimum` (the same `stablehlo` primitives the causal-mask code already
+  emits) — so no variadic reducer region and no new DSL ops. The eager CPU kernel is a scalar
+  reduction-to-index. Indices are `i32` in the compiled StableHLO; the **eager** path materializes
+  them as index-valued floats in the input dtype so the result is a portable `Tensor<T, V>` (an i32
+  payload inside a float tensor is unreadable on Kotlin/Native + Wasm). Unblocks folding an LLM's
+  `logits → token-ids` argmax tail into the DSL trace instead of a post-hoc MLIR rewrite. (PR #800)
 
 - **BREAKING (coordinates): `skainet-data-simple` now publishes under its module name.** The artifactId
   changes from the mismatched `sk.ainet.core:skainet-data-basic` to `sk.ainet.core:skainet-data-simple`;
