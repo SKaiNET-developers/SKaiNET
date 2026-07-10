@@ -7,11 +7,13 @@ name: REUSE Compliance Check
 on:
   push:
     branches:
-      - master
+      - main
+      - develop
   
   pull_request:
     branches:
-      - master
+      - main
+      - develop
 
   schedule:
     # Weekly on Saturdays at 1:30AM
