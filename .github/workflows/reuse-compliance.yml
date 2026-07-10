@@ -25,6 +25,9 @@ permissions: {}
 jobs:
   test-reuse-compliance:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
     
     steps:
       - name: "Checkout Repository"
