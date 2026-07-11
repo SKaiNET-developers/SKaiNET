@@ -43,7 +43,7 @@ jobs:
       - name: Build and Test (PR)
         if: github.event_name == 'pull_request'
         env:
-          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -Dfile.encoding=UTF-8"
         run: |
           ./gradlew --no-daemon --stacktrace --info \
             -Dorg.gradle.caching=true \
@@ -53,7 +53,7 @@ jobs:
       - name: Build and Test (push)
         if: github.event_name != 'pull_request'
         env:
-          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -Dfile.encoding=UTF-8"
         run: |
           ./gradlew --no-daemon --stacktrace --info \
             -Dorg.gradle.caching=true \
