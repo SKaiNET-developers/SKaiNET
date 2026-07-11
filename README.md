@@ -322,7 +322,6 @@ Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNE
 
 ### Contributors (0.36.0)
 
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — `ComputeGraphExecutor` permute-axes fix (#803), data-module POM coordinate alignment (#793), REUSE compliance setup (#808)
 - **[@MacOS](https://github.com/MacOS)** — REUSE compliance CI workflow and status badge (#806, #807)
 
 ### Contributors (0.14.0)
