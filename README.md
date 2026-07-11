@@ -287,6 +287,7 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ## What's New in 0.36.0
 
+- **Kotlin 2.4.0 toolchain** — the framework now builds on Kotlin 2.4.0, with KSP 2.3.10 and Dokka 2.2.0 aligned to the new compiler. No public API changes.
 - **`permute` replay fix (`ComputeGraphExecutor`)** — a traced `permute(t, axes)` now replays with its recorded axes instead of being dispatched as a plain last-two-dims transpose. Rank-3+ permutations (e.g. multi-head attention's heads/sequence swap in full-sequence encoder/prefill traces) previously produced the wrong layout; decode paths were unaffected, which is why the bug hid.
 - **REUSE / SPDX license-compliance setup** — `REUSE.toml` + `LICENSES/`, a CI compliance workflow, and a REUSE status badge, so the repository is machine-verifiable against the [REUSE](https://reuse.software/) specification.
 - **`skainet-data` POM coordinate alignment** — data-module POM coordinates and display names now match their module names (see CHANGELOG for the `skainet-data-simple` artifactId note).

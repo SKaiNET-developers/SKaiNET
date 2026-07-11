@@ -13,6 +13,10 @@
 
 ### Changed
 
+- **Kotlin 2.4.0 toolchain.** The build now targets Kotlin 2.4.0 (up from 2.3.21), with the
+  supporting toolchain aligned to match: KSP 2.3.10 and Dokka 2.2.0 (Dokka 2.1.0 is incompatible
+  with the Kotlin 2.4.0 Gradle plugin). No public API or behavior changes — this is a compiler and
+  build-toolchain upgrade. (PRs #658, #659, #660)
 - **`skainet-data` module POM coordinates and names aligned with module names.** Data-module POM
   `artifactId`s and display names now match their Gradle module names, removing the previous
   mismatches. (PR #793)
