@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-07-11
+
+### Added
+
+- **REUSE / SPDX license-compliance setup.** Added `REUSE.toml` and the `LICENSES/` directory, a
+  `reuse-compliance` CI workflow (running on `main` and `develop`), and a REUSE status badge in the
+  README, making the repository machine-verifiable against the [REUSE](https://reuse.software/)
+  specification. (PRs #806, #807, #808)
+
+### Changed
+
+- **`skainet-data` module POM coordinates and names aligned with module names.** Data-module POM
+  `artifactId`s and display names now match their Gradle module names, removing the previous
+  mismatches. (PR #793)
+
 ### Fixed
 
 - **`ComputeGraphExecutor` replayed `permute` as a plain transpose, dropping the recorded axes.**
