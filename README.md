@@ -41,7 +41,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.35.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.36.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -285,14 +285,17 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.35.0
+## What's New in 0.36.0
 
-- **`argMax(dim)` tensor op** — index of the maximum along a dimension (ties → lowest index). Lowered to StableHLO by composing `iota` + reduce-max + `compare`/`select` + reduce-min — a single op, no new primitive — plus an eager CPU kernel. Lets an LLM's `logits → token-ids` argmax tail live inside the DSL trace.
-- **URI-backed data sources** — new `skainet-data-source` module: `file://`, `https://`, and Hugging Face URIs, raw-format parsers (CSV/TSV/JSON/JSONL), suspendable data pipelines
-- **Dataset views and richer batches** — seeded shuffle, stratified split, filter views, batch/epoch flows, batch indices + metadata
-- **bf16-native DSL → StableHLO export** — weights reach the matmuls as bf16, verified down to an aarch64 vmfb
-- **Pluggable per-phase, per-target compile optimization** (`TargetOptimizers`, `OpGranularityPolicy`)
-- **2.07× Q4_K NEON matmul on Cortex-A55** — plus LayerNorm statistics now computed in f32 (bf16-safe)
+- **Kotlin 2.4.0 toolchain** — the framework now builds on Kotlin 2.4.0, with KSP 2.3.10 and Dokka 2.2.0 aligned to the new compiler. No public API changes.
+- **`permute` replay fix (`ComputeGraphExecutor`)** — a traced `permute(t, axes)` now replays with its recorded axes instead of being dispatched as a plain last-two-dims transpose. Rank-3+ permutations (e.g. multi-head attention's heads/sequence swap in full-sequence encoder/prefill traces) previously produced the wrong layout; decode paths were unaffected, which is why the bug hid.
+- **REUSE / SPDX license-compliance setup** — `REUSE.toml` + `LICENSES/`, a CI compliance workflow, and a REUSE status badge, so the repository is machine-verifiable against the [REUSE](https://reuse.software/) specification.
+- **`skainet-data` POM coordinate alignment** — data-module POM coordinates and display names now match their module names (see CHANGELOG for the `skainet-data-simple` artifactId note).
+
+### Previously, in 0.35.0
+
+- **`argMax(dim)` tensor op** — index of the maximum along a dimension (ties → lowest index), lowered to StableHLO as a single op (no new primitive) plus an eager CPU kernel.
+- **URI-backed data sources** — `skainet-data-source` module: `file://`, `https://`, and Hugging Face URIs, raw-format parsers (CSV/TSV/JSON/JSONL), suspendable data pipelines.
 
 See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
@@ -317,6 +320,10 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.36.0)
+
+- **[@MacOS](https://github.com/MacOS)** — REUSE compliance CI workflow and status badge (#806, #807)
 
 ### Contributors (0.14.0)
 

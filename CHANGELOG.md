@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-07-11
+
+### Added
+
+- **REUSE / SPDX license-compliance setup.** Added `REUSE.toml` and the `LICENSES/` directory, a
+  `reuse-compliance` CI workflow (running on `main` and `develop`), and a REUSE status badge in the
+  README, making the repository machine-verifiable against the [REUSE](https://reuse.software/)
+  specification. (PRs #806, #807, #808)
+
+### Changed
+
+- **Kotlin 2.4.0 toolchain.** The build now targets Kotlin 2.4.0 (up from 2.3.21), with the
+  supporting toolchain aligned to match: KSP 2.3.10 and Dokka 2.2.0 (Dokka 2.1.0 is incompatible
+  with the Kotlin 2.4.0 Gradle plugin). No public API or behavior changes — this is a compiler and
+  build-toolchain upgrade. (PRs #658, #659, #660)
+- **`skainet-data` module POM coordinates and names aligned with module names.** Data-module POM
+  `artifactId`s and display names now match their Gradle module names, removing the previous
+  mismatches. (PR #793)
+
 ### Fixed
 
 - **`ComputeGraphExecutor` replayed `permute` as a plain transpose, dropping the recorded axes.**
