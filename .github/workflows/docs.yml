@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.0
 
       # JDK 25 matches the version used by every other workflow in
       # this repo. Runs on the RUNNER, not inside the Docker
