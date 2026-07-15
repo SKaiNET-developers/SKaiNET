@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.3.0"
 jacksonDatabind = "2.22.1"
 jsonSchemaValidator = "3.0.6"
 jsonSchemaValidatorVersion = "0.5.5"
