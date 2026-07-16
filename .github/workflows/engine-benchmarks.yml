@@ -93,7 +93,7 @@ jobs:
     runs-on: [self-hosted, linux, x86_64, skainet-bench-linux-x86]
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Show runner identity
         run: |
