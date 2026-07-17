@@ -80,7 +80,7 @@ jobs:
             :skainet-backends:skainet-backend-native-cpu:packageNativeKernels
 
       - name: Upload native artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: native-${{ matrix.arch_label }}
           path: skainet-backends/skainet-backend-native-cpu/build/native/resources/native/${{ matrix.arch_label }}/${{ matrix.lib_name }}
