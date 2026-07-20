@@ -46,9 +46,10 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 #   - @antora/lunr-extension   : offline full-text search
 #   - asciidoctor-kroki        : escape hatch only; the playbook should
 #                                use the local mermaid extension instead.
+# @antora/cli@aa33c8283f9cbc76df93201bec5f8421e8f59a43 -> v3.1.15
 WORKDIR /opt/antora
 RUN npm init -y && npm i --save-exact \
-      @antora/cli@3.1 \
+      @antora/cli@aa33c8283f9cbc76df93201bec5f8421e8f59a43 \
       @antora/site-generator@3.1 \
       @antora/lunr-extension@1.0.0-alpha.8 \
       @mermaid-js/mermaid-cli@11 \
