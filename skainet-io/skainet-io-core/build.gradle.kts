@@ -39,6 +39,13 @@ kotlin {
     macosArm64 ()
     linuxX64 ()
     linuxArm64 ()
+    androidNativeArm64()
+    // androidNativeArm32 is 32-bit: posix ssize_t/size_t are Int here vs Long on every other
+    // native target. PosixPreadRandomAccessSource therefore lives in the 64-bit-only `native64Main`
+    // source set (wired below), NOT in the shared `nativeMain` — otherwise the shared native
+    // metadata compile fails ("numbers with different bit widths"). arm32 gets the rest of
+    // io-core (tokenizers etc.); on-device file I/O for arm32 is a separate concern.
+    androidNativeArm32()
 
     js {
         browser()
@@ -54,7 +61,22 @@ kotlin {
         nodejs()
     }
 
+    // 64-bit-only intermediate source sets: hold the posix `pread` RandomAccessSource, whose
+    // ssize_t/size_t widths are uniform (Long) across every native target EXCEPT androidNativeArm32.
+    // Keeping it out of the all-native `nativeMain` avoids the mixed-width metadata compile error.
+    applyDefaultHierarchyTemplate()
+    val native64Targets = listOf("iosArm64", "iosSimulatorArm64", "macosArm64", "linuxX64", "linuxArm64", "androidNativeArm64")
+
     sourceSets {
+        val nativeMain by getting
+        val nativeTest by getting
+        val native64Main by creating { dependsOn(nativeMain) }
+        val native64Test by creating { dependsOn(nativeTest) }
+        native64Targets.forEach { t ->
+            getByName("${t}Main").dependsOn(native64Main)
+            getByName("${t}Test").dependsOn(native64Test)
+        }
+
         val commonMain by getting {
             dependencies {
                 implementation(project(":skainet-lang:skainet-lang-core"))

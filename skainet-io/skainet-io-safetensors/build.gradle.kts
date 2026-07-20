@@ -32,6 +32,12 @@ kotlin {
     macosArm64()
     linuxX64()
     linuxArm64()
+    // androidNative (edge NPU / phone). io-safetensors has no posix in its own nativeMain —
+    // createRandomAccessSource / readTextFile are stubs and currentTimeMillis uses a monotonic
+    // TimeSource — so there is no bit-width metadata issue here (unlike io-core, whose posix pread
+    // needed the native64Main split). File-backed reads route through io-core's RandomAccessSource.
+    androidNativeArm32()
+    androidNativeArm64()
 
     js {
         browser()
@@ -54,8 +60,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines)
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-io:skainet-io-core"))
-                implementation(project(":skainet-compile:skainet-compile-core"))
-                implementation(project(":skainet-compile:skainet-compile-dag"))
             }
         }
         val commonTest by getting {

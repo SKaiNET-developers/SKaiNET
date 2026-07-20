@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.3.0"
 jacksonDatabind = "2.22.1"
 jsonSchemaValidator = "3.0.6"
 jsonSchemaValidatorVersion = "0.5.5"
@@ -14,7 +14,7 @@ kotlinxSerializationJson = "1.11.0"
 ktorClientCore = "3.5.1"
 ktorClientPlugins = "3.1.1"
 logbackClassic = "1.5.38"
-kover = "0.9.8"
+kover = "0.9.9"
 binaryCompatibilityValidator = "0.18.1"
 ksp = "2.3.10"
 kotlinpoet = "2.3.0"
@@ -92,4 +92,4 @@ dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 
 skainet-docs = { id = "sk.ainet.documentation" }
 kotlinx-benchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinxBenchmark" }
-shadow = { id = "com.gradleup.shadow", version = "9.5.1" }
+shadow = { id = "com.gradleup.shadow", version = "9.6.0" }

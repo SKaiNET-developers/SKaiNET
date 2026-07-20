@@ -1000,6 +1000,27 @@ public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/l
 	public final fun getTrainable ()Z
 }
 
+public final class sk/ainet/lang/nn/Lstm : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
+	public synthetic fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IILsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
+	public final fun getHiddenSize ()I
+	public final fun getInputSize ()I
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+	public fun getParams ()Ljava/util/List;
+	public final fun getTrainable ()Z
+	public final fun initialState (ILsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;)Lsk/ainet/lang/nn/LstmState;
+	public final fun step (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/nn/LstmState;Lsk/ainet/context/ExecutionContext;)Lkotlin/Pair;
+}
+
+public final class sk/ainet/lang/nn/LstmState {
+	public fun <init> (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
+	public final fun getC ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun getH ()Lsk/ainet/lang/tensor/Tensor;
+}
+
 public final class sk/ainet/lang/nn/MaxPool2d : sk/ainet/lang/nn/Module {
 	public fun <init> (Lkotlin/Pair;)V
 	public fun <init> (Lkotlin/Pair;Lkotlin/Pair;)V
