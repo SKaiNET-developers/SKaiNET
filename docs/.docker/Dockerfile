@@ -48,11 +48,12 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 #                                use the local mermaid extension instead.
 # @antora/cli@aa33c8283f9cbc76df93201bec5f8421e8f59a43 -> v3.1.15
 # @antora/site-generator@aa33c8283f9cbc76df93201bec5f8421e8f59a43 -> v3.1.15
+# @antora/lunr-extension@41975fc8f62cb2219a2de2f618de1ae1482bd0ce -> v1.0.0-alpha.8
 WORKDIR /opt/antora
 RUN npm init -y && npm i --save-exact \
       @antora/cli@aa33c8283f9cbc76df93201bec5f8421e8f59a43 \
       @antora/site-generator@aa33c8283f9cbc76df93201bec5f8421e8f59a43 \
-      @antora/lunr-extension@1.0.0-alpha.8 \
+      @antora/lunr-extension@41975fc8f62cb2219a2de2f618de1ae1482bd0ce \
       @mermaid-js/mermaid-cli@11 \
       asciidoctor-kroki@0.18 \
     && npm cache clean --force
