@@ -39,6 +39,12 @@ kotlin {
     macosArm64 ()
     linuxX64 ()
     linuxArm64 ()
+    // androidNativeArm64 joins the existing 64-bit native targets in the shared nativeMain
+    // (PosixPreadRandomAccessSource uses posix pread, whose ssize_t/size_t are Long on all of
+    // them). androidNativeArm32 is intentionally NOT added here: those posix types are Int on
+    // 32-bit, and mixing widths in the shared nativeMain metadata is illegal — arm32 needs the
+    // posix source moved to a 64-bit-only source set (tracked as a follow-up).
+    androidNativeArm64()
 
     js {
         browser()
