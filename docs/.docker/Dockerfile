@@ -13,7 +13,7 @@
 #   3. Offline extras available but not forced: lunr full-text search,
 #      a pre-baked Antora UI bundle, and MathJax es5 for LaTeX.
 #   4. asciidoctor-kroki installed-but-unused as an escape hatch.
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 LABEL org.opencontainers.image.title="markup-antora" \
       org.opencontainers.image.description="Universal Antora site generator with offline Mermaid (mermaid-cli), offline search (lunr), pre-baked UI bundle + MathJax. No Kroki, no CDN." \
