@@ -25,7 +25,7 @@ kotlinxCli = "0.3.6"
 kotlinxBenchmark = "0.4.17"
 kotlinxIo = "0.9.1"
 pbandk = "0.16.0"
-kotest = "6.2.2"
+kotest = "6.2.3"
 
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }
