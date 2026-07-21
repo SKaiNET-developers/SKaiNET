@@ -1,9 +1,10 @@
 name: Docs
 
 # Build the Antora site (with generated operator pages and the
-# cross-backend coverage matrix) on every PR, and publish to GitHub
-# Pages on pushes to develop. Dokka API bundling is wired in
-# commit 6 of the docs-to-Antora migration (see issue #494).
+# cross-backend coverage matrix) on every PR and push, and publish to
+# GitHub Pages when a release is published, so the live site tracks the
+# last released version. Dokka API bundling is wired in commit 6 of the
+# docs-to-Antora migration (see issue #494).
 
 on:
   push:
@@ -21,6 +22,14 @@ on:
       - 'build.gradle.kts'
       - 'build-logic/**'
       - 'skainet-lang/skainet-lang-core/**'
+  # Publish on release: the live site tracks the last released version.
+  # `release: published` is immune to the `paths:` filter above (so every
+  # release rebuilds docs) and checks out the released commit, where
+  # `generateDocs`/`dokkaGenerate` run live against the working tree — no
+  # need to commit generated pages. Single-version for now; a dedicated
+  # multi-repo aggregation site can come later (see issue #494).
+  release:
+    types: [ published ]
   workflow_dispatch:
 
 concurrency:
@@ -117,7 +126,10 @@ jobs:
           path: docs/build/site
 
   deploy-docs:
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    # Canonical site = latest release. Deploy only on a published release;
+    # develop/main pushes still run build-docs above for validation but no
+    # longer publish to Pages.
+    if: github.event_name == 'release'
     needs: build-docs
     runs-on: ubuntu-latest
     environment:

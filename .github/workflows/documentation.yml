@@ -102,6 +102,11 @@ jobs:
           echo "Preview server started at http://localhost:3000"
           
       - name: Create PR comment with preview link
+        # Fork PRs get a read-only GITHUB_TOKEN, so commenting is impossible
+        # regardless of the workflow's `permissions:` block. Only attempt on
+        # same-repo PRs, and never let a failed comment fail the whole run.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
