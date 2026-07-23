@@ -54,7 +54,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 WORKDIR /opt/antora
 RUN npm init -y && npm i --save-exact \
       https://gitlab.com/antora/antora/-/tree/aa33c8283f9cbc76df93201bec5f8421e8f59a43/packages/cli \
-      https://gitlab.com/antora/antora/-/tree/aa33c8283f9cbc76df93201bec5f8421e8f59a43/packages/site-generator \
+      @antora/site-generator@3.1 \
       https://gitlab.com/antora/antora-lunr-extension.git#41975fc8f62cb2219a2de2f618de1ae1482bd0ce \
       https://github.com/mermaid-js/mermaid-cli.git#a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae \
       https://github.com/asciidoctor/asciidoctor-kroki.git#d02fbf06cdb837524f5e4e12537c05e0bb83c715 \
