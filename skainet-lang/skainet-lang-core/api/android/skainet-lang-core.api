@@ -1897,9 +1897,20 @@ public final class sk/ainet/lang/nn/optim/AdamOptimizer : sk/ainet/lang/nn/optim
 	public synthetic fun <init> (DDDDDZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun addParameter (Lsk/ainet/lang/nn/topology/ModuleParameter;Z)V
 	public fun addParameter (Lsk/ainet/lang/nn/topology/Parameter;Z)V
+	public final fun getLr ()D
 	public final fun reset ()V
+	public final fun setLr (D)V
 	public fun step ()V
 	public fun zeroGrad ()V
+}
+
+public abstract interface class sk/ainet/lang/nn/optim/LrSchedule {
+	public abstract fun lrAt (I)D
+}
+
+public final class sk/ainet/lang/nn/optim/LrScheduleKt {
+	public static final fun linearWarmupCosineDecay (IIDDD)Lsk/ainet/lang/nn/optim/LrSchedule;
+	public static synthetic fun linearWarmupCosineDecay$default (IIDDDILjava/lang/Object;)Lsk/ainet/lang/nn/optim/LrSchedule;
 }
 
 public abstract interface class sk/ainet/lang/nn/optim/Optimizer {
@@ -1928,6 +1939,8 @@ public final class sk/ainet/lang/nn/optim/SgdOptimizer : sk/ainet/lang/nn/optim/
 	public synthetic fun <init> (DDDILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun addParameter (Lsk/ainet/lang/nn/topology/ModuleParameter;Z)V
 	public fun addParameter (Lsk/ainet/lang/nn/topology/Parameter;Z)V
+	public final fun getLr ()D
+	public final fun setLr (D)V
 	public fun step ()V
 	public fun zeroGrad ()V
 }
