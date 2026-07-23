@@ -61,10 +61,8 @@ RUN npm init -y && npm i --save-exact \
 RUN git clone https://gitlab.com/antora/antora.git \
     && cd antora \
     && git checkout aa33c8283f9cbc76df93201bec5f8421e8f59a43 \
-    && cd packages/cli \
-    && npm install --save-exact \
-    && cd ../packages/site-generator \
-    && npm install --save-exact
+    && npm install --save-exact packages/cli \
+    && npm install --save-exact packages/site-generator
 
 # Make installed modules resolvable even when the workdir is the mounted
 # project (which has no node_modules of its own).
