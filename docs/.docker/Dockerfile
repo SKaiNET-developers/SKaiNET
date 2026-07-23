@@ -46,18 +46,19 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 #   - @antora/lunr-extension   : offline full-text search
 #   - asciidoctor-kroki        : escape hatch only; the playbook should
 #                                use the local mermaid extension instead.
-# antora/cli: aa33c8283f9cbc76df93201bec5f8421e8f59a43 -> v3.1.15
-# antora/site-generator: aa33c8283f9cbc76df93201bec5f8421e8f59a43 -> v3.1.15
-# antora/lunr-extension: 41975fc8f62cb2219a2de2f618de1ae1482bd0ce -> v1.0.0-alpha.8
-# mermaid-js/mermaid-cli: a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae -> v11.16.0
-# asciidoctor-kroki: d02fbf06cdb837524f5e4e12537c05e0bb83c715 -> v0.18
+# NOTE: commit-hash pinning (PR #848) was reverted here — the GitLab/GitHub
+# `/-/tree/<hash>` URLs it used point at web-UI pages, not tarballs, so npm
+# failed the build with `TAR_BAD_ARCHIVE: Unrecognized archive format`.
+# Back on registry version pins until the hash-pinning approach is fixed.
+# Target versions (from the hashes above): antora 3.1.15,
+# lunr-extension 1.0.0-alpha.8, mermaid-cli 11.16.0, asciidoctor-kroki 0.18.
 WORKDIR /opt/antora
 RUN npm init -y && npm i --save-exact \
-      https://gitlab.com/antora/antora/-/tree/aa33c8283f9cbc76df93201bec5f8421e8f59a43/packages/cli \
-      https://gitlab.com/antora/antora/-/tree/aa33c8283f9cbc76df93201bec5f8421e8f59a43/packages/site-generator \
-      https://gitlab.com/antora/antora-lunr-extension/-/commit/41975fc8f62cb2219a2de2f618de1ae1482bd0ce \
-      https://github.com/mermaid-js/mermaid-cli/tree/a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae \
-      https://github.com/asciidoctor/asciidoctor-kroki.git#d02fbf06cdb837524f5e4e12537c05e0bb83c715 \
+      @antora/cli@3.1 \
+      @antora/site-generator@3.1 \
+      @antora/lunr-extension@1.0.0-alpha.8 \
+      @mermaid-js/mermaid-cli@11 \
+      asciidoctor-kroki@0.18 \
     && npm cache clean --force
 
 # Make installed modules resolvable even when the workdir is the mounted
