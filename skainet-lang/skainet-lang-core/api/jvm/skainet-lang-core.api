@@ -1930,8 +1930,8 @@ public final class sk/ainet/lang/nn/hooks/TapeRecorder$Entry {
 
 public final class sk/ainet/lang/nn/layers/Dropout : sk/ainet/lang/nn/Module {
 	public fun <init> ()V
-	public fun <init> (FZLjava/lang/String;)V
-	public synthetic fun <init> (FZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (FZLjava/lang/String;Lkotlin/random/Random;)V
+	public synthetic fun <init> (FZLjava/lang/String;Lkotlin/random/Random;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun forward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
 	public fun getModules ()Ljava/util/List;
 	public fun getName ()Ljava/lang/String;
