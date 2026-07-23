@@ -990,10 +990,11 @@ public final class sk/ainet/lang/nn/LayerScale : sk/ainet/lang/nn/Module, sk/ain
 }
 
 public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
 	public synthetic fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun <init> (IILsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
+	public fun <init> (IILsk/ainet/lang/tensor/Tensor;)V
 	public fun getModules ()Ljava/util/List;
 	public fun getName ()Ljava/lang/String;
 	public fun getParams ()Ljava/util/List;
@@ -2262,6 +2263,7 @@ public abstract interface class sk/ainet/lang/nn/topology/ModuleParameters {
 
 public final class sk/ainet/lang/nn/topology/ModuleParametersKt {
 	public static final fun bias (Ljava/util/List;)Lsk/ainet/lang/nn/topology/ModuleParameter$BiasParameter;
+	public static final fun biasOrNull (Ljava/util/List;)Lsk/ainet/lang/nn/topology/ModuleParameter$BiasParameter;
 	public static final fun by (Ljava/util/List;Ljava/lang/String;)Lsk/ainet/lang/nn/topology/ModuleParameter;
 	public static final fun weights (Ljava/util/List;)Lsk/ainet/lang/nn/topology/ModuleParameter$WeightParameter;
 	public static final fun zeroGrad (Ljava/lang/Iterable;)V

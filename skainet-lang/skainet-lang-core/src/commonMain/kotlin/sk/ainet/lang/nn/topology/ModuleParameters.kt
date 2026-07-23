@@ -74,6 +74,10 @@ public fun <T : DType, V> List<ModuleParameter<T, V>>.bias(): ModuleParameter.Bi
     this.filterIsInstance<ModuleParameter.BiasParameter<T, V>>()
         .firstOrNull() ?: throw NoSuchElementException("No bias parameter found!")
 
+// Returns the first BiasParameter or null for modules without a bias (e.g. Linear(bias = null)).
+public fun <T : DType, V> List<ModuleParameter<T, V>>.biasOrNull(): ModuleParameter.BiasParameter<T, V>? =
+    this.filterIsInstance<ModuleParameter.BiasParameter<T, V>>().firstOrNull()
+
 // Returns the first WeightParameter or throws a NoSuchElementException if none is found.
 public fun <T : DType, V> List<ModuleParameter<T, V>>.weights(): ModuleParameter.WeightParameter<T, V> =
     this.filterIsInstance<ModuleParameter.WeightParameter<T, V>>()
