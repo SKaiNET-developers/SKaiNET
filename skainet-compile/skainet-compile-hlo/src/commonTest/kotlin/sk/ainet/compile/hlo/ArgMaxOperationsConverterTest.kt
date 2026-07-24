@@ -1,14 +1,19 @@
 package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ArgMaxOperationsConverter
+import sk.ainet.lang.dag.argMax
+import sk.ainet.lang.dag.dag
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.graph.dsl.toComputeGraph
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -55,6 +60,24 @@ class ArgMaxOperationsConverterTest {
         // Sentinel = dim size (262153) so non-maxima lose the min; output is i32.
         assertTrue(ops.any { it.contains("dense<262153>") }, "out-of-range sentinel is the dim size")
         assertTrue(ops.any { it.contains("-> tensor<1x24xi32>") }, "output is the i32 index tensor")
+    }
+
+    @Test
+    fun testArgMaxThroughDagBuilderProducesCompilableIr() {
+        // Regression for SKaiNET#876. The dag{} builder path (not just a hand-built node) must infer the
+        // argMax output spec as a REDUCED, i32 index tensor. Before the fix `inferDagOutputSpecs` had no
+        // argMax case, so it echoed operand-0's f32 dtype + full shape; the converter then emitted
+        // `dense<N> : tensor<...xf32>` (an int literal for an f32 constant — iree-compile rejects it) and a
+        // final reduce that didn't collapse the reduced dim (`1x4x8` instead of `1x4`).
+        val program = dag {
+            val x = input<FP32>("logits", TensorSpec("logits", listOf(1, 4, 8), "FP32"))
+            output(argMax(x, 2, "am"))
+        }
+        val mlir = StableHloConverterFactory.createExtended().convert(program.toComputeGraph(), "argmax_dag").content
+
+        assertTrue(mlir.contains("dense<8> : tensor<1x4x8xi32>"), "sentinel must be an i32 tensor:\n$mlir")
+        assertFalse(mlir.contains("dense<8> : tensor<1x4x8xf32>"), "no int-literal f32 constant (the #876 bug):\n$mlir")
+        assertTrue(mlir.contains("-> tensor<1x4xi32>"), "final reduce must collapse to the reduced i32 shape:\n$mlir")
     }
 
     @Test
