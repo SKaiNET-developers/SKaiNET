@@ -86,4 +86,28 @@ class SgdOptimizerTest {
         opt.step()
         assertEquals(3.9025f, w.value.data[0, 0], 1e-3f)
     }
+
+    @Test
+    fun lr_can_be_rescheduled_between_steps() {
+        val ctx = DirectCpuExecutionContext(phase = Phase.TRAIN)
+        val w = param1x1(10f)
+
+        val opt = sk.ainet.lang.nn.optim.SgdOptimizer(lr = 0.1)
+        opt.addParameter(w)
+
+        // Step 1 at lr = 0.1: w = 10 - 0.1 * 2 = 9.8
+        val g1 = ctx.full<FP32, Float>(Shape(1, 1), FP32::class, 2.0)
+        w.value.accumulateGrad(g1 as sk.ainet.lang.tensor.Tensor<FP32, Float>)
+        opt.step()
+        opt.zeroGrad()
+        assertEquals(9.8f, w.value.data[0, 0], 1e-6f)
+
+        // Reschedule to lr = 0.5 (as a warmup/decay schedule would):
+        // w = 9.8 - 0.5 * 2 = 8.8
+        opt.lr = 0.5
+        val g2 = ctx.full<FP32, Float>(Shape(1, 1), FP32::class, 2.0)
+        w.value.accumulateGrad(g2 as sk.ainet.lang.tensor.Tensor<FP32, Float>)
+        opt.step()
+        assertEquals(8.8f, w.value.data[0, 0], 1e-6f)
+    }
 }

@@ -33,7 +33,12 @@ import kotlin.math.pow
  * @param amsgrad If true, uses the AMSGrad variant that maintains the maximum of all v_t (default: false)
  */
 public class AdamOptimizer @kotlin.jvm.JvmOverloads constructor(
-    private val lr: Double = 0.001,
+    /**
+     * Learning rate. Mutable so learning-rate schedules (warmup, cosine
+     * decay, …) can adjust it between steps without recreating the optimizer
+     * and losing the moment estimates. See [LrSchedule].
+     */
+    public var lr: Double = 0.001,
     private val beta1: Double = 0.9,
     private val beta2: Double = 0.999,
     private val epsilon: Double = 1e-8,

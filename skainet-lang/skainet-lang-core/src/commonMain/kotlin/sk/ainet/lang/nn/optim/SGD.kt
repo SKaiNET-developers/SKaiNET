@@ -9,7 +9,11 @@ import sk.ainet.lang.types.DType
  * Stochastic Gradient Descent optimizer with optional momentum and weight decay.
  */
 public class SgdOptimizer @kotlin.jvm.JvmOverloads constructor(
-    private val lr: Double,
+    /**
+     * Learning rate. Mutable so learning-rate schedules can adjust it between
+     * steps. See [LrSchedule].
+     */
+    public var lr: Double,
     private val momentum: Double = 0.0,
     private val weightDecay: Double = 0.0,
 ) : Optimizer {
