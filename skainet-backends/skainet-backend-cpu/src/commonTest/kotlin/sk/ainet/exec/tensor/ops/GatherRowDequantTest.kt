@@ -42,4 +42,28 @@ class GatherRowDequantTest {
             out.data.copyToFloatArray(),
         )
     }
+
+    @Test
+    fun gatherAcceptsMultiDimensionalIndices() {
+        // Regression for #859: [N, L] indices used to throw because a flat
+        // `indices.data[i]` needs one coordinate per dimension.
+        val ctx = DirectCpuExecutionContext.create()
+        val table = ctx.fromFloatArray<FP32, Float>(
+            Shape(10, 4), FP32::class, FloatArray(40) { it.toFloat() },
+        )
+        val ids = ctx.fromIntArray<Int32, Int>(Shape(2, 3), Int32::class, intArrayOf(0, 1, 2, 7, 8, 9))
+
+        @Suppress("UNCHECKED_CAST")
+        val out = ctx.ops.gather(table, ids as Tensor<sk.ainet.lang.types.DType, *>, dim = 0)
+
+        assertEquals(listOf(2, 3, 4), out.shape.dimensions.toList())
+        // Row r of the table is [4r, 4r+1, 4r+2, 4r+3]; indices pick rows 0,1,2 / 7,8,9.
+        assertContentEquals(
+            floatArrayOf(
+                0f, 1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f, 9f, 10f, 11f,
+                28f, 29f, 30f, 31f, 32f, 33f, 34f, 35f, 36f, 37f, 38f, 39f,
+            ),
+            out.data.copyToFloatArray(),
+        )
+    }
 }

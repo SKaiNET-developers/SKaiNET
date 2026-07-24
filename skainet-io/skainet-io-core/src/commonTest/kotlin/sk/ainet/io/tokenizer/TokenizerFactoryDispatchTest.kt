@@ -99,6 +99,35 @@ class TokenizerFactoryDispatchTest {
     }
 
     @Test
+    fun `legacy tokenizer_json without model_type infers BPE from merges`() {
+        // GPT-2's official tokenizer.json predates the model.type field.
+        val json = """
+            {
+              "version": "1.0",
+              "added_tokens": [
+                {"id": 2, "content": "<|end|>", "special": true}
+              ],
+              "pre_tokenizer": {"type": "ByteLevel"},
+              "model": {
+                "vocab": {"a": 0, "b": 1, "<|end|>": 2, "ab": 3},
+                "merges": ["a b"]
+              }
+            }
+        """.trimIndent()
+        val tok = TokenizerFactory.fromTokenizerJson(json)
+        assertTrue(tok is QwenByteLevelBpeTokenizer)
+        assertEquals(listOf(3, 2), tok.encode("ab<|end|>").toList())
+    }
+
+    @Test
+    fun `tokenizer_json without model_type and without merges throws`() {
+        val json = """{"model":{"vocab":{"a":0}}}"""
+        assertFailsWith<UnsupportedTokenizerException> {
+            TokenizerFactory.fromTokenizerJson(json)
+        }
+    }
+
+    @Test
     fun `tokenizer_json Unigram dispatches to SentencePiece`() {
         val json = """
             {

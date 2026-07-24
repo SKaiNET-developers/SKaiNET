@@ -66,12 +66,18 @@ public object TokenizerFactory {
      * to [QwenByteLevelBpeTokenizer]; `"Unigram"` (SentencePiece) gets
      * wrapped in [SpecialTokenSplitter] when its `added_tokens` registry
      * is non-empty; `"WordPiece"` currently throws.
+     *
+     * Legacy `tokenizer.json` files predating the `model.type` field (e.g. the
+     * official `openai-community/gpt2` tokenizer) are still supported: the model
+     * type is inferred from the structure — a `model.merges` list is unique to
+     * BPE, so such files route to [QwenByteLevelBpeTokenizer].
      */
     @JvmStatic
     public fun fromTokenizerJson(json: String): Tokenizer {
         val root = JSON.parseToJsonElement(json).jsonObject
-        val modelType = root["model"]?.jsonObject?.get("type")?.jsonPrimitive?.content
-            ?: throw UnsupportedTokenizerException("tokenizer.json has no model.type")
+        val model = root["model"]?.jsonObject
+            ?: throw UnsupportedTokenizerException("tokenizer.json has no 'model'")
+        val modelType = model["type"]?.jsonPrimitive?.content ?: inferModelType(model)
         return when (modelType) {
             "BPE" -> QwenByteLevelBpeTokenizer.fromTokenizerJson(root)
             "Unigram" -> wrapSentencePieceWithSpecialsFromJson(
@@ -86,6 +92,21 @@ public object TokenizerFactory {
             )
         }
     }
+
+    /**
+     * Infers the tokenizer's model type for legacy `tokenizer.json` files that
+     * omit `model.type`. A `merges` list is unique to BPE among the HF model
+     * types (Unigram and WordPiece have none), so its presence identifies a
+     * byte-level BPE tokenizer such as GPT-2's.
+     */
+    private fun inferModelType(model: JsonObject): String =
+        if (model["merges"] != null) {
+            "BPE"
+        } else {
+            throw UnsupportedTokenizerException(
+                "tokenizer.json has no model.type and it could not be inferred (no 'merges' list)"
+            )
+        }
 
     /**
      * Apply the [SpecialTokenSplitter] decorator to a SentencePiece base
