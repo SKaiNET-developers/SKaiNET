@@ -2708,9 +2708,26 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         // Input: [vocabSize, embeddingDim], Indices: [L] or [N, L]
         // Output: [L, embeddingDim] or [N, L, embeddingDim]
         val numIndices = indices.volume
-        val indexList = IntArray(numIndices) { i ->
-            val v = indices.data[i]
-            (v as Number).toInt()
+        // Read the indices in row-major order. The vararg element accessor
+        // requires one coordinate per dimension, so a flat `data[i]` throws for
+        // rank >= 2 indices — read the contiguous buffer when present, otherwise
+        // unravel the flat position into a coordinate.
+        val idxData = indices.data
+        val indexList = when (idxData) {
+            is IntArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it] }
+            is FloatArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it].toInt() }
+            else -> {
+                val dims = indices.shape.dimensions
+                IntArray(numIndices) { flat ->
+                    val coord = IntArray(dims.size)
+                    var rem = flat
+                    for (d in dims.indices.reversed()) {
+                        coord[d] = rem % dims[d]
+                        rem /= dims[d]
+                    }
+                    (idxData.get(*coord) as Number).toInt()
+                }
+            }
         }
 
         if (input.rank == 2) {
