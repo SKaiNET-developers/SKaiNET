@@ -17,13 +17,15 @@ class DropoutPhaseTest {
         val layer = Dropout<FP32, Float>(p = 0.3f)
         val y = eval(base) { ctx -> layer.forward(x, ctx) }
         assertEquals(x.shape, y.shape)
+        kotlin.test.assertContentEquals(floatArrayOf(1f, 2f, 3f, 4f), y.data.copyToFloatArray())
     }
 
     @Test
-    fun dropout_identity_in_train_phase_with_ctx() {
+    fun dropout_identity_in_train_phase_when_p_is_zero() {
         val x = base.fromFloatArray<FP32, Float>(Shape(2, 2), FP32::class, floatArrayOf(1f, 2f, 3f, 4f))
         val layer = Dropout<FP32, Float>(p = 0.0f)
         val y = train(base) { ctx -> layer.forward(x, ctx) }
         assertEquals(x.shape, y.shape)
+        kotlin.test.assertContentEquals(floatArrayOf(1f, 2f, 3f, 4f), y.data.copyToFloatArray())
     }
 }
