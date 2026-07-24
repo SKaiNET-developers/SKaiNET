@@ -92,4 +92,4 @@ dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 
 skainet-docs = { id = "sk.ainet.documentation" }
 kotlinx-benchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinxBenchmark" }
-shadow = { id = "com.gradleup.shadow", version = "9.6.0" }
+shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
