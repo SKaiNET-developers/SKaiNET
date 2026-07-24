@@ -56,17 +56,26 @@ public class CrossEntropyLoss @kotlin.jvm.JvmOverloads constructor(
         validateIndexTargetShapes(preds, targets, classDim)
 
         val logProbs = preds.logSoftmax(classDim)
-        val outData = ctx.tensorDataFactory.init<T, V>(targets.shape, preds.dtype) { idx ->
-            val cls = targets.data.get(*idx) as Int
+
+        // Build a one-hot selector for the target classes as a constant tensor,
+        // then compute the NLL with differentiable ops: -sum_c(oneHot * logProbs).
+        // Reading the class indices host-side to construct the (non-differentiable)
+        // one-hot is fine; the gradient path stays intact because the multiply and
+        // sum are recorded through the predictions' ops — unlike the previous
+        // host-side result construction, which detached the tape.
+        val oneHotData = ctx.tensorDataFactory.init<T, V>(preds.shape, preds.dtype) { idx ->
+            val sampleIdx = removeClassIndex(idx, classDim)
+            val cls = targets.data.get(*sampleIdx) as Int
             require(cls in 0 until classCount) {
                 "CrossEntropyLoss target index $cls out of range [0, $classCount)"
             }
-            val logIdx = insertClassIndex(idx, cls, classDim, preds.rank)
-            val logVal = logProbs.data.get(*logIdx) as Float
             @Suppress("UNCHECKED_CAST")
-            (-logVal) as V
+            (if (idx[classDim] == cls) 1f else 0f) as V
         }
-        return ctx.fromData(outData, preds.dtype)
+        val oneHot = ctx.fromData(oneHotData, preds.dtype)
+        val weighted = logProbs.ops.multiply(logProbs, oneHot)
+        val perSample = weighted.ops.sum(weighted, classDim)
+        return perSample.ops.mulScalar(perSample, -1.0)
     }
 
     private fun <T : DType, V> computeSoftTargetLoss(
@@ -79,28 +88,22 @@ public class CrossEntropyLoss @kotlin.jvm.JvmOverloads constructor(
             "CrossEntropyLoss with soft targets requires preds/targets shape match, got ${preds.shape.dimensions.contentToString()} vs ${targets.shape.dimensions.contentToString()}"
         }
         val logProbs = preds.logSoftmax(classDim)
-        val weighted = targets * logProbs
-        val summed = weighted.sum(classDim)
-        return (-1f) * summed
+        // Dispatch the multiply through the predictions' ops (not `targets * ...`,
+        // which would route through targets.ops and detach the tape when the
+        // targets live on a non-recording context).
+        val weighted = logProbs.ops.multiply(logProbs, targets)
+        val summed = weighted.ops.sum(weighted, classDim)
+        return summed.ops.mulScalar(summed, -1.0)
     }
 
-    private fun insertClassIndex(
-        baseIdx: IntArray,
-        cls: Int,
-        classDim: Int,
-        outRank: Int
-    ): IntArray {
-        val result = IntArray(outRank)
-        var bi = 0
-        for (i in 0 until outRank) {
-            if (i == classDim) {
-                result[i] = cls
-            } else {
-                result[i] = baseIdx[bi++]
-            }
-        }
+    /** Drops the class-dimension coordinate from a full prediction index. */
+    private fun removeClassIndex(fullIdx: IntArray, classDim: Int): IntArray {
+        val result = IntArray(fullIdx.size - 1)
+        var j = 0
+        for (i in fullIdx.indices) if (i != classDim) result[j++] = fullIdx[i]
         return result
     }
+
 
     private fun validateIndexTargetShapes(
         preds: Tensor<*, *>,

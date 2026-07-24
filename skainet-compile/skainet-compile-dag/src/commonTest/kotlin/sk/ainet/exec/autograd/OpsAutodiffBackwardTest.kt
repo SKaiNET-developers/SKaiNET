@@ -174,4 +174,37 @@ class OpsAutodiffBackwardTest {
             x.ops.convTranspose1d(x, wT, null, stride = 1, padding = 0, outputPadding = 0, dilation = 1, groups = 1)
         }
     }
+
+    // ── regression: softmax/logSoftmax backward with a negative dim on rank>=3 (issue #863) ──
+
+    @Test
+    fun softmax_backward_negative_dim_rank3_matches_finite_diff() {
+        // `softmax(dim = -1)` on a [2,2,3] tensor previously crashed in backward
+        // because broadcastToInput skipped re-expanding the reduced (negative) axis.
+        assertGradMatchesFiniteDiff(Shape(2, 2, 3), FloatArray(12) { (it - 6) * 0.2f }, tol = 1e-2f) { c, x ->
+            val w = floatTensor(c, Shape(2, 2, 3), FloatArray(12) { 1f + it * 0.1f })
+            x.ops.multiply(x.ops.softmax(x, dim = -1), w) // non-uniform upstream so a wrong grad is detectable
+        }
+    }
+
+    @Test
+    fun logSoftmax_backward_negative_dim_rank3_matches_finite_diff() {
+        assertGradMatchesFiniteDiff(Shape(2, 2, 3), FloatArray(12) { (it - 6) * 0.2f }, tol = 1e-2f) { c, x ->
+            val w = floatTensor(c, Shape(2, 2, 3), FloatArray(12) { 1f + it * 0.1f })
+            x.ops.multiply(x.ops.logSoftmax(x, dim = -1), w)
+        }
+    }
+
+    // ── regression: variance backward on rank>=3 with a reduced axis (issue #864) ──
+
+    @Test
+    fun variance_backward_rank3_matches_finite_diff() {
+        // `variance(dim = 2)` on a [2,2,3] tensor previously threw "shapes cannot be
+        // broadcasted" because the reduced mean/upstream were not re-expanded.
+        assertGradMatchesFiniteDiff(Shape(2, 2, 3), FloatArray(12) { (it - 5) * 0.3f }, tol = 2e-2f) { c, x ->
+            val v = x.ops.variance(x, dim = 2)            // [2,2]
+            val w = floatTensor(c, Shape(2, 2), floatArrayOf(1f, 0.5f, 1.5f, 0.7f))
+            x.ops.multiply(v, w)
+        }
+    }
 }
