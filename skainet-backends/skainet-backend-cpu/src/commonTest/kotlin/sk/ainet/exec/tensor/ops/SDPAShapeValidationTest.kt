@@ -3,6 +3,7 @@ package sk.ainet.exec.tensor.ops
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -76,5 +77,32 @@ class SDPAShapeValidationTest {
         val v = zeros(Shape(1, 2, 3, 4))
         val out = ctx.ops.scaledDotProductAttention(q, k, v, mask = null, scale = 1f, causal = true)
         assertEquals(Shape(1, 2, 3, 4), out.shape)
+    }
+
+    @Test
+    fun default_scale_uses_one_over_sqrt_head_dim_not_zero() {
+        // Regression for #860: the default scale = 0f must be resolved to
+        // 1/sqrt(headDim), not applied literally (which flattens the softmax
+        // to a uniform average and silently discards the attention pattern).
+        val rng = kotlin.random.Random(42)
+        fun rnd(shape: Shape) = ctx.fromFloatArray<FP32, Float>(shape, FP32::class, FloatArray(shape.volume) { rng.nextFloat() })
+        val headDim = 4
+        val q = rnd(Shape(1, 1, 3, headDim))
+        val k = rnd(Shape(1, 1, 3, headDim))
+        val v = rnd(Shape(1, 1, 3, headDim))
+
+        val defaulted = ctx.ops.scaledDotProductAttention(q, k, v, mask = null, scale = 0f, causal = true)
+        val explicit = ctx.ops.scaledDotProductAttention(
+            q, k, v, mask = null, scale = (1.0 / kotlin.math.sqrt(headDim.toDouble())).toFloat(), causal = true,
+        )
+        // The two must agree...
+        val a = defaulted.data.copyToFloatArray()
+        val b = explicit.data.copyToFloatArray()
+        for (i in a.indices) assertEquals(b[i], a[i], 1e-6f)
+
+        // ...and must differ from the degenerate scale=0 (uniform) result.
+        val uniform = ctx.ops.scaledDotProductAttention(q, k, v, mask = null, scale = Float.MIN_VALUE, causal = true)
+        val u = uniform.data.copyToFloatArray()
+        assertTrue(a.indices.any { kotlin.math.abs(a[it] - u[it]) > 1e-4f }, "default scale must not equal the near-zero (uniform) result")
     }
 }
