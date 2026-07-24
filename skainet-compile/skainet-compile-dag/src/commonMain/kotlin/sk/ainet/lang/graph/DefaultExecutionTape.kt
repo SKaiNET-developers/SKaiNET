@@ -941,17 +941,22 @@ public class DefaultGradientTape(
     }
 
     override fun varianceBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // var(x) = E[x^2] - E[x]^2
-        // d(var(x))/dx = 2/N * (x - E[x])
+        // Biased variance: var(x) = E[(x - E[x])^2];  d(var)/dx = (2/N)(x - E[x]).
+        // Both the mean and the upstream gradient carry the reduced shape, so
+        // they are expanded back over the reduced axis before combining —
+        // otherwise the subtract/multiply cannot broadcast for rank >= 2.
         val x = inputs[0]
-        val dim = (attributes["dim"] as? Int)
-        val meanX = x.ops.mean(x, dim)
-        // Need to broadcast meanX back to x shape.
-        // For now, let's assume it's handled or use a simplified version.
-        val diff = x.ops.subtract(x, meanX)
-        val n = x.shape.volume.toDouble() // Simplified: should be size along dim
+        val nd = (attributes["dim"] as? Int)?.let { if (it < 0) it + x.rank else it }
+
+        val meanX = x.ops.mean(x, nd)
+        val meanKeep = if (nd != null) x.ops.unsqueeze(meanX, nd) else meanX
+        val diff = x.ops.subtract(x, meanKeep)
+
+        val n = (if (nd != null) x.shape[nd] else x.shape.volume).coerceAtLeast(1)
         val gradX = diff.ops.mulScalar(diff, 2.0 / n)
-        return listOf(upstream.ops.multiply(upstream, gradX))
+
+        val upstreamFull = broadcastToInput(upstream, x, nd)
+        return listOf(gradX.ops.multiply(gradX, upstreamFull))
     }
 
     override fun sqrtBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -1454,17 +1459,22 @@ public class DefaultGradientTape(
     }
 
     private fun <T : DType, V> softmaxGrad(upstream: Tensor<T, V>, output: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        // softmax reduces exactly one axis: normalize a negative dim (e.g. -1
+        // from `softmax(dim = -1)`) so the reduced axis is re-expanded correctly
+        // by broadcastToInput, which reserves -1 as a "no-unsqueeze" sentinel.
+        val d = if (dim < 0) dim + output.rank else dim
         val dot = upstream.ops.multiply(upstream, output)
-        val sum = upstream.ops.sum(dot, dim)
-        val expanded = broadcastToInput(sum, output, dim)
+        val sum = upstream.ops.sum(dot, d)
+        val expanded = broadcastToInput(sum, output, d)
         val diff = upstream.ops.subtract(upstream, expanded)
         return output.ops.multiply(output, diff)
     }
 
     private fun <T : DType, V> logSoftmaxGrad(upstream: Tensor<T, V>, logOutput: Tensor<T, V>, dim: Int): Tensor<T, V> {
+        val d = if (dim < 0) dim + logOutput.rank else dim
         val softmaxApprox = expTensor(logOutput)
-        val sum = upstream.ops.sum(upstream, dim)
-        val expanded = broadcastToInput(sum, logOutput, dim)
+        val sum = upstream.ops.sum(upstream, d)
+        val expanded = broadcastToInput(sum, logOutput, d)
         val scaled = softmaxApprox.ops.multiply(softmaxApprox, expanded)
         return upstream.ops.subtract(upstream, scaled)
     }
