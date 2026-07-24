@@ -2881,6 +2881,11 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val headDim = query.shape[3]
         val seqKV = key.shape[2]
 
+        // The signature default `scale = 0f` means "use the standard
+        // 1/sqrt(headDim)"; applying 0 literally would flatten every softmax to
+        // a uniform distribution. Resolve it here.
+        val effectiveScale = if (scale == 0f) (1.0 / kotlin.math.sqrt(headDim.toDouble())).toFloat() else scale
+
         val qBuf = query.data.copyToFloatArray()
         val kBuf = key.data.copyToFloatArray()
         val vBuf = value.data.copyToFloatArray()
@@ -2899,7 +2904,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                         for (d in 0 until headDim) {
                             dot += qBuf[qOff + d] * kBuf[kOff + d]
                         }
-                        scores[qi * seqKV + ki] = dot * scale
+                        scores[qi * seqKV + ki] = dot * effectiveScale
                     }
                 }
 
