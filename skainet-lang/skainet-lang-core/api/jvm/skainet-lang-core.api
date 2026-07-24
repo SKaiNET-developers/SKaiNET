@@ -989,7 +989,7 @@ public final class sk/ainet/lang/nn/LayerScale : sk/ainet/lang/nn/Module, sk/ain
 	public fun getParams ()Ljava/util/List;
 }
 
-public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
+public class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun <init> (IILjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Z)V
@@ -999,6 +999,7 @@ public final class sk/ainet/lang/nn/Linear : sk/ainet/lang/nn/Module, sk/ainet/l
 	public fun getName ()Ljava/lang/String;
 	public fun getParams ()Ljava/util/List;
 	public final fun getTrainable ()Z
+	protected fun onForward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/lang/nn/Lstm : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {

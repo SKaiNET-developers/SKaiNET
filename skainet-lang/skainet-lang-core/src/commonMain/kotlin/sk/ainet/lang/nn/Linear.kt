@@ -19,6 +19,9 @@ import sk.ainet.lang.nn.topology.weights
  * heads. A bias-less layer registers only the weight parameter, so parameter
  * counts and checkpoints match architectures defined without bias.
  *
+ * The class is `open` so adapter-style layers (e.g. LoRA) can subclass it and
+ * augment [onForward] or [params] while reusing the base projection.
+ *
  * @param inFeatures Number of input features
  * @param outFeatures Number of output features
  * @param name Name of the module
@@ -26,7 +29,7 @@ import sk.ainet.lang.nn.topology.weights
  * @param initBias Initial bias, or `null` for a layer without bias
  */
 
-public class Linear<T : DType, V> @kotlin.jvm.JvmOverloads constructor(
+public open class Linear<T : DType, V> @kotlin.jvm.JvmOverloads constructor(
     inFeatures: Int,
     outFeatures: Int,
     override val name: String = "Linear",
