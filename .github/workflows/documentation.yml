@@ -92,7 +92,7 @@ jobs:
           node-version: '18'
           
       - name: Install serve package
-        run: npm install -g serve
+        run: npm install -g git+https://github.com/vercel/serve.git#f3c702c6bb312c6d6b05315721a6d3ea245d86b8 #v14.2.6
         
       - name: Start preview server
         run: |
