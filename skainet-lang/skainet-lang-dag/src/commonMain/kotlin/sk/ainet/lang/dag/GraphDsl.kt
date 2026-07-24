@@ -173,11 +173,11 @@ public class DagBuilder {
         nodeId: String
     ): List<TensorSpec>? {
         val input = inputs.firstOrNull()?.spec
-        fun spec(shape: List<Int>?): List<TensorSpec> = listOf(
+        fun spec(shape: List<Int>?, dtype: String = input?.dtype ?: "unknown"): List<TensorSpec> = listOf(
             TensorSpec(
                 name = "${nodeId}_out0",
                 shape = shape,
-                dtype = input?.dtype ?: "unknown",
+                dtype = dtype,
                 requiresGrad = input?.requiresGrad ?: false,
             ),
         )
@@ -191,6 +191,17 @@ public class DagBuilder {
             "sum", "mean", "variance" -> {
                 input ?: return null
                 return spec(reductionOutputShape(input.shape, operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int))
+            }
+            "argmax", "argmin" -> {
+                // Index reduction: removes the reduced dim (like sum/mean) AND changes the dtype to an
+                // integer index (i32) — NOT the input's float dtype. Without this the node echoes operand-0's
+                // f32, and the StableHloConverter then emits an int literal for an f32 constant + a final
+                // reduce that doesn't collapse the reduced dim, producing IR iree-compile rejects. (SKaiNET#876)
+                input ?: return null
+                return spec(
+                    reductionOutputShape(input.shape, operation.parameters["dim"] as? Int ?: operation.parameters["axis"] as? Int),
+                    dtype = "Int32",
+                )
             }
             "reshape", "view" -> {
                 val target = reshapeTargetShape(operation) ?: return null
