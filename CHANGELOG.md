@@ -2,6 +2,92 @@
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-07-25
+
+### Added
+
+- **`Lstm` layer.** Single-layer, batch-first LSTM mirroring `Gru`'s unroll-at-trace-time design and
+  built from existing primitives only (matmul/narrow/sigmoid/tanh/multiply) — no new `TensorOps` op,
+  and it traces to StableHLO with no dedicated converter. Gate order `i,f,g,o` and dual biases match
+  `torch.nn.LSTM`. Adds `LstmState(h, c)` with an explicit caller-owned `step(xt, state, ctx)` API —
+  required by transducer prediction networks (RNN-T/TDT) and exactly the shape that lowers to a
+  fixed-shape single-step StableHLO graph — plus an `initialState(batch, ctx, dtype)` helper. (PR #824)
+- **Learning-rate schedules and mutable optimizer `lr`.** `AdamOptimizer` and `SgdOptimizer` expose
+  `lr` as a public `var`, so training loops can adjust it between steps without recreating the
+  optimizer and losing the moment estimates. A stateless `LrSchedule` fun interface plus a
+  `linearWarmupCosineDecay` factory cover the GPT-style pretraining recipe: linear ramp from
+  `initialLr` to `peakLr` over the warmup steps, then cosine decay to `minLr`. (PR #866, issue #865)
+- **Optional bias in `Linear`.** `initBias` is now nullable with a `null` default, creating a
+  bias-less projection (`y = x W^T`) — the equivalent of PyTorch's `nn.Linear(bias=False)`, needed
+  for GPT-style `qkv_bias=false` projections and weight-tied output heads. A bias-less layer
+  registers only its weight parameter, so parameter counts and checkpoints match architectures
+  defined without bias. Adds a `biasOrNull()` helper next to the throwing `bias()` accessor.
+  **Note for Java callers:** the `@JvmOverloads` overload set changes — the 4-arg
+  `(in, out, weights, bias)` convenience overload is replaced by `(in, out, weights)`; Kotlin callers
+  bind the full constructor and are unaffected. (PR #870)
+- **`Linear` is `open`.** Adapter-style layers (LoRA and similar) can subclass it and augment
+  `onForward` or `params` while reusing the base projection. No behavior change — the override points
+  were already open via `Module`. (PR #875)
+- **`androidNative` targets for the IO modules.** `skainet-io-core` gains `androidNativeArm64` and
+  `androidNativeArm32` (via a 64-bit-only `native64Main` source set), and `skainet-io-safetensors`
+  gains the `androidNative` target set; the latter also drops unused `compile-core`/`compile-dag`
+  dependencies. (PRs #836, #842, #845)
+- **OpenSSF Scorecard workflow and badge.** (PR #814)
+
+### Changed
+
+- **`Dropout` now actually drops.** It was an identity placeholder in both phases; it now applies
+  inverted dropout under a training-phase context — each element is zeroed with probability `p` and
+  survivors are scaled by `1/(1-p)`, so the expected activation is preserved and inference needs no
+  rescaling. The mask is a constant tensor combined with an element-wise multiply, so gradients flow
+  to surviving inputs without a dedicated autograd rule; an injectable `Random` enables reproducible
+  masks. Models that relied on `Dropout` being a no-op will see different (correct) training-time
+  activations. (PR #867, issue #861)
+- **Toolchain and dependency bumps.** Kotlin 2.4.10 (JVM plugin and `kotlinx.serialization` plugin
+  aligned), AGP 9.3.1, Shadow 9.6.1, Kover 0.9.9, JUnit Jupiter 6.1.2, and Logback 1.6.0. No public
+  API or behavior changes. (PRs #818, #819, #820, #826, #829, #840, #856, #873, #874, #811)
+- **Supply-chain hardening of CI and the docs image.** All GitHub Actions across every workflow are
+  now pinned to commit hashes, and the documentation `Dockerfile` pins its base image by digest and
+  its npm packages (Antora CLI, site-generator, lunr-extension, mermaid-cli, asciidoctor-kroki) to
+  exact versions from the npm registry, making documentation builds reproducible. (PRs #816, #821,
+  #827, #830, #831, #832, #834, #837, #838, #846, #848, #868)
+- **CI `allTests` split into parallel per-target jobs**, ending the recurring out-of-memory flakes on
+  the combined job. (PR #854)
+- **Docs deployment publishes on release**, and fork PRs no longer fail on the comment step. (PR #850)
+
+### Fixed
+
+- **`scaledDotProductAttention` silently discarded the attention pattern at its default scale.** The
+  op's `scale` parameter defaults to `0f`, documented as meaning `1/sqrt(headDim)`, but the CPU
+  backend applied it literally — every score was multiplied by zero, so the softmax collapsed to a
+  uniform average. The CPU kernel now resolves `scale == 0f` to `1/sqrt(headDim)`. Any model calling
+  SDPA without an explicit scale was producing attention-free output. (PR #880, issue #860)
+- **Three autograd bugs that silently froze or crashed training.** (PR #877, issues #862, #863, #864)
+  - `CrossEntropyLoss`: the index-target path built its result host-side via
+    `tensorDataFactory` + `fromData`, detaching the tape so no gradient reached the predictions, and
+    the soft-target path only recorded when targets lived on the recording context. Both now compute
+    the NLL with differentiable ops dispatched through the predictions' ops (a constant one-hot for
+    the index path), keeping the tape connected.
+  - `softmax`/`logSoftmax` backward: a negative `dim` (e.g. `softmax(dim = -1)`) was passed straight
+    to `broadcastToInput`, which reserves `-1` as a no-unsqueeze sentinel, so the reduced axis was
+    never re-expanded and backward crashed for rank ≥ 3. The dim is now normalized.
+  - `varianceBackward`: the reduced mean and upstream kept the reduced shape, so the
+    subtract/multiply could not broadcast for rank ≥ 2, and `N` used the total volume instead of the
+    axis size. Both are now expanded over the reduced axis and `N` is the axis size.
+- **`argMax` traced through the `dag {}` builder emitted invalid StableHLO.**
+  `GraphDsl.inferDagOutputSpecs` had no `argMax` case, so it echoed operand-0's shape and dtype; the
+  converter then faithfully emitted an integer literal for an `f32` tensor (rejected by
+  `iree-compile`) and a reduce whose result kept the reduced dim. The builder now infers a reduced
+  shape with an `Int32` index dtype, matching the `VoidTensorOps` path that was already correct —
+  which is why only the raw `dag {}` path broke. (PR #878, issue #876)
+- **Legacy `tokenizer.json` files without `model.type` failed to load.** Files such as
+  `openai-community/gpt2` omit the field; `TokenizerFactory.fromTokenizerJson` now infers the type
+  from structure — a `merges` list is unique to BPE — and routes them to
+  `QwenByteLevelBpeTokenizer` instead of throwing. (PR #879, issue #858)
+- **CPU `gather` threw on multi-dimensional indices.** An `[N, L]` index tensor needs one coordinate
+  per dimension for a flat `data[i]` access; indices are now read in row-major order via the
+  contiguous buffer, falling back to unravel. (PR #879, issue #859)
+
 ## [0.36.0] - 2026-07-11
 
 ### Added

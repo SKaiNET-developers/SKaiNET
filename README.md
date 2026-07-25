@@ -43,7 +43,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.36.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.37.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -287,17 +287,20 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.36.0
+## What's New in 0.37.0
 
-- **Kotlin 2.4.0 toolchain** — the framework now builds on Kotlin 2.4.0, with KSP 2.3.10 and Dokka 2.2.0 aligned to the new compiler. No public API changes.
-- **`permute` replay fix (`ComputeGraphExecutor`)** — a traced `permute(t, axes)` now replays with its recorded axes instead of being dispatched as a plain last-two-dims transpose. Rank-3+ permutations (e.g. multi-head attention's heads/sequence swap in full-sequence encoder/prefill traces) previously produced the wrong layout; decode paths were unaffected, which is why the bug hid.
-- **REUSE / SPDX license-compliance setup** — `REUSE.toml` + `LICENSES/`, a CI compliance workflow, and a REUSE status badge, so the repository is machine-verifiable against the [REUSE](https://reuse.software/) specification.
-- **`skainet-data` POM coordinate alignment** — data-module POM coordinates and display names now match their module names (see CHANGELOG for the `skainet-data-simple` artifactId note).
+- **`Lstm` layer** — single-layer, batch-first LSTM built from existing primitives only (no new `TensorOps` op, traces to StableHLO without a dedicated converter), with `torch.nn.LSTM`-compatible gate order and an explicit caller-owned `LstmState` + `step()` API for transducer prediction networks.
+- **Training essentials** — `Dropout` now performs real inverted dropout under a training-phase context (it was an identity placeholder), optimizers expose a mutable `lr` plus a `linearWarmupCosineDecay` LR schedule, `Linear` supports bias-less projections (`nn.Linear(bias=False)` equivalent) and is `open` for LoRA-style adapters.
+- **Attention scale fix** — `scaledDotProductAttention` at its default scale multiplied every score by zero on the CPU backend, collapsing softmax to a uniform average; it now resolves to `1/sqrt(headDim)` as documented.
+- **Autograd correctness** — `CrossEntropyLoss` no longer detaches the tape (gradients reached the predictions in neither target path), and `softmax`/`logSoftmax`/`variance` backward now work for rank ≥ 3.
+- **Android native IO** — `skainet-io-core` and `skainet-io-safetensors` gain `androidNative` targets (arm64 and arm32).
+- **Reproducible, hardened CI** — every GitHub Action pinned to a commit hash, the docs Docker image pinned by digest with exact npm package versions, and `allTests` split into parallel per-target jobs to end OOM flakes.
 
-### Previously, in 0.35.0
+### Previously, in 0.36.0
 
-- **`argMax(dim)` tensor op** — index of the maximum along a dimension (ties → lowest index), lowered to StableHLO as a single op (no new primitive) plus an eager CPU kernel.
-- **URI-backed data sources** — `skainet-data-source` module: `file://`, `https://`, and Hugging Face URIs, raw-format parsers (CSV/TSV/JSON/JSONL), suspendable data pipelines.
+- **Kotlin 2.4.0 toolchain** — KSP 2.3.10 and Dokka 2.2.0 aligned to the new compiler. No public API changes.
+- **`permute` replay fix (`ComputeGraphExecutor`)** — a traced `permute(t, axes)` now replays with its recorded axes instead of being dispatched as a plain last-two-dims transpose.
+- **REUSE / SPDX license-compliance setup** — `REUSE.toml` + `LICENSES/`, a CI compliance workflow, and a REUSE status badge.
 
 See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
@@ -322,6 +325,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.37.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — `Lstm` layer (#824), `Dropout` masking (#867), LR schedules (#866), optional/open `Linear` (#870, #875), SDPA scale fix (#880), autograd fixes (#877), `argMax` DAG spec (#878), tokenizer + `gather` fixes (#879), Android native IO targets (#836, #842, #845)
+- **[@MacOS](https://github.com/MacOS)** — OpenSSF Scorecard workflow and badge (#814), commit-hash pinning across all CI workflows and reproducible docs Docker image (#816, #821, #827, #830–#838, #846, #848, #868)
 
 ### Contributors (0.36.0)
 
