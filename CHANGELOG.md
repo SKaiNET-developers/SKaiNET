@@ -17,14 +17,15 @@
   optimizer and losing the moment estimates. A stateless `LrSchedule` fun interface plus a
   `linearWarmupCosineDecay` factory cover the GPT-style pretraining recipe: linear ramp from
   `initialLr` to `peakLr` over the warmup steps, then cosine decay to `minLr`. (PR #866, issue #865)
-- **Optional bias in `Linear`.** `initBias` is now nullable with a `null` default, creating a
-  bias-less projection (`y = x W^T`) — the equivalent of PyTorch's `nn.Linear(bias=False)`, needed
-  for GPT-style `qkv_bias=false` projections and weight-tied output heads. A bias-less layer
-  registers only its weight parameter, so parameter counts and checkpoints match architectures
-  defined without bias. Adds a `biasOrNull()` helper next to the throwing `bias()` accessor.
-  **Note for Java callers:** the `@JvmOverloads` overload set changes — the 4-arg
-  `(in, out, weights, bias)` convenience overload is replaced by `(in, out, weights)`; Kotlin callers
-  bind the full constructor and are unaffected. (PR #870)
+- **BREAKING (Java callers): optional bias in `Linear`.** `initBias` is now nullable with a `null`
+  default, creating a bias-less projection (`y = x W^T`) — the equivalent of PyTorch's
+  `nn.Linear(bias=False)`, needed for GPT-style `qkv_bias=false` projections and weight-tied output
+  heads. A bias-less layer registers only its weight parameter, so parameter counts and checkpoints
+  match architectures defined without bias. Adds a `biasOrNull()` helper next to the throwing
+  `bias()` accessor. **The `@JvmOverloads` overload set changes:** the 4-arg
+  `(in, out, weights, bias)` convenience overload is replaced by `(in, out, weights)`, so Java code
+  binding the 4-arg overload fails to compile (and breaks binary compatibility) until it moves to the
+  full constructor. Kotlin callers bind the full constructor and are unaffected. (PR #870)
 - **`Linear` is `open`.** Adapter-style layers (LoRA and similar) can subclass it and augment
   `onForward` or `params` while reusing the base projection. No behavior change — the override points
   were already open via `Module`. (PR #875)
