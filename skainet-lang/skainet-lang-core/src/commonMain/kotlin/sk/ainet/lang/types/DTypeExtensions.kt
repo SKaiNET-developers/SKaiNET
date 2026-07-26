@@ -24,36 +24,32 @@ public fun DType.kotlinClass(): KClass<*> = when (this) {
  */
 public fun DType.isConvertibleTo(target: DType): Boolean = when {
     this == target -> true
-    // Floating point conversions
-    this is FP32 && target is FP16 -> true
-    this is FP16 && target is FP32 -> true
+    // Any float width converts to any other — FP32 is a strict superset of both 16-bit
+    // formats, and narrowing is a well-defined (lossy) rounding.
+    this.isFloatingPoint() && target.isFloatingPoint() -> true
     // Integer conversions (with potential precision loss warnings)
     this is Int32 && target is Int8 -> true
     this is Int8 && target is Int32 -> true
     this is Int8 && target is Int4 -> true
     this is Int4 && target is Int8 -> true
     // Mixed float-int conversions
-    this is FP32 && target is Int32 -> true
-    this is FP16 && target is Int32 -> true
-    this is Int32 && target is FP32 -> true
-    this is Int32 && target is FP16 -> true
+    this.isFloatingPoint() && target is Int32 -> true
+    this is Int32 && target.isFloatingPoint() -> true
     // Ternary conversions
     this is Ternary && target is Int8 -> true
     this is Int8 && target is Ternary -> true
     else -> false
 }
 
+/** True for the IEEE-style float types: [FP16], [BF16], [FP32], [FP64]. */
+public fun DType.isFloatingPoint(): Boolean = this is FP16 || this is BF16 || this is FP32 || this is FP64
+
 /**
- * Returns the common precision type for mixed operations
+ * Returns the common precision type for mixed operations.
+ *
+ * Delegates to [DType.promoteTo], which is the exhaustive per-type lattice. This used to be a
+ * second, hand-written lattice that disagreed with it — notably it had no BF16 arm at all, so
+ * `BF16.commonPrecisionWith(Int8)` fell through to FP32 while `BF16.promoteTo(Int8)` said BF16.
+ * One lattice, one answer.
  */
-public fun DType.commonPrecisionWith(other: DType): DType = when {
-    this == other -> this
-    // Floating point takes precedence
-    this is FP32 || other is FP32 -> FP32
-    this is FP16 || other is FP16 -> FP16
-    // Higher precision integer takes precedence
-    this is Int32 || other is Int32 -> Int32
-    this is Int8 || other is Int8 -> Int8
-    this is Int4 || other is Int4 -> Int4
-    else -> FP32 // Default fallback
-}
+public fun DType.commonPrecisionWith(other: DType): DType = promoteTo(other)

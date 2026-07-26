@@ -21,7 +21,9 @@ public object FP16 : DType {
             is Ternary -> FP16  // FP16 + Ternary → FP16
             is Int4 -> FP16     // FP16 + Int4 → FP16
             is Int8 -> FP16     // FP16 + Int8 → FP16
-            is Int32 -> FP16    // FP16 + Int32 → FP16
+            // Int32 needs 32 bits of integer precision; FP16 carries 11 mantissa bits, so
+            // promoting to FP16 would silently drop ~21 of them. Matches Int32.promoteTo(FP16).
+            is Int32 -> FP32    // FP16 + Int32 → FP32
             is FP16 -> FP16     // FP16 + FP16 → FP16
             is FP32 -> FP32     // FP16 + FP32 → FP32
             is FP64 -> FP64     // FP16 + FP64 → FP64

@@ -314,7 +314,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
     @Suppress("UNCHECKED_CAST")
     public fun <T : DType, V> fromFloatArray(data: FloatArray, dtype: T): TensorData<T, V> {
         return when (dtype) {
-            is FP32, FP16 -> {
+            is FP32, is FP16, is BF16 -> {
                 createFloatTensorData(Shape(data.size), data, dtype) as TensorData<T, V>
             }
 
@@ -383,6 +383,12 @@ public class DenseTensorDataFactory: TensorDataFactory {
         }
     }
 
+    /**
+     * The [DType] instance for a 16-bit float tag. Both formats are stored float-backed here; only
+     * the tag differs, and the tag is what the trace and StableHLO export read.
+     */
+    private fun narrowTag(dtype: KClass<*>): DType = if (dtype == BF16::class) BF16 else FP16
+
     override fun <T : DType, V> ones(shape: Shape, dtype: KClass<T>): TensorData<T, V> {
         @Suppress("UNCHECKED_CAST")
         return when (dtype) {
@@ -390,9 +396,11 @@ public class DenseTensorDataFactory: TensorDataFactory {
                 val data = FloatArray(shape.volume) { 1.0f }
                 createFloatTensorData(shape, data, FP32 as T) as TensorData<T, V>
             }
-            FP16::class -> {
+            FP16::class, BF16::class -> {
+                // Float-backed, narrow-tagged (mirrors zeros): the dtype tag is what the DSL
+                // trace / StableHLO export reads to pick the MLIR element type.
                 val data = FloatArray(shape.volume) { 1.0f }
-                createFloatTensorData(shape, data, FP16 as T) as TensorData<T, V>
+                createFloatTensorData(shape, data, narrowTag(dtype) as T) as TensorData<T, V>
             }
             Int32::class -> {
                 val data = IntArray(shape.volume) { 1 }
@@ -414,10 +422,12 @@ public class DenseTensorDataFactory: TensorDataFactory {
                 val data = FloatArray(shape.volume) { floatValue }
                 createFloatTensorData(shape, data, FP32 as T) as TensorData<T, V>
             }
-            FP16::class -> {
+            FP16::class, BF16::class -> {
+                // Float-backed, narrow-tagged (mirrors zeros): the dtype tag is what the DSL
+                // trace / StableHLO export reads to pick the MLIR element type.
                 val floatValue = value.toFloat()
                 val data = FloatArray(shape.volume) { floatValue }
-                createFloatTensorData(shape, data, FP16 as T) as TensorData<T, V>
+                createFloatTensorData(shape, data, narrowTag(dtype) as T) as TensorData<T, V>
             }
             Int32::class -> {
                 val intValue = value.toInt()
@@ -466,7 +476,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
                 }
                 createFloatTensorData(shape, data, FP32 as T) as TensorData<T, V>
             }
-            FP16::class -> {
+            FP16::class, BF16::class -> {
                 val data = FloatArray(shape.volume)
                 var hasSpare = false
                 var spare = 0.0f
@@ -488,7 +498,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
                         hasSpare = true
                     }
                 }
-                createFloatTensorData(shape, data, FP16 as T) as TensorData<T, V>
+                createFloatTensorData(shape, data, narrowTag(dtype) as T) as TensorData<T, V>
             }
             else -> throw IllegalArgumentException("randn only supports floating point types: $dtype")
         }
@@ -631,8 +641,8 @@ public class DenseTensorDataFactory: TensorDataFactory {
             FP32::class -> {
                 createFloatTensorData(shape, data, FP32 as T) as TensorData<T, V>
             }
-            FP16::class -> {
-                createFloatTensorData(shape, data, FP16 as T) as TensorData<T, V>
+            FP16::class, BF16::class -> {
+                createFloatTensorData(shape, data, narrowTag(dtype) as T) as TensorData<T, V>
             }
             else -> throw IllegalArgumentException("fromFloatArray only supports floating point types: $dtype")
         }

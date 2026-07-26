@@ -5807,6 +5807,7 @@ public final class sk/ainet/lang/types/DType$Companion {
 public final class sk/ainet/lang/types/DTypeExtensionsKt {
 	public static final fun commonPrecisionWith (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 	public static final fun isConvertibleTo (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Z
+	public static final fun isFloatingPoint (Lsk/ainet/lang/types/DType;)Z
 	public static final fun kotlinClass (Lsk/ainet/lang/types/DType;)Lkotlin/reflect/KClass;
 }
 

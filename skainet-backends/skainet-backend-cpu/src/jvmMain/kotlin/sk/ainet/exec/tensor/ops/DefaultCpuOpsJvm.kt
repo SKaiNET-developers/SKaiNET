@@ -35,6 +35,7 @@ import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -921,7 +922,12 @@ internal class DefaultCpuOpsJvm(
 
     private fun <T : DType> supportsFloatOps(tensor: Tensor<T, *>): Boolean {
         val dtype = tensor.dtype
-        return (dtype == FP32::class || dtype == FP16::class)
+        // BF16 was excluded here, which left BF16-tagged tensors matmul-only — every elementwise
+        // and unary op fell through to the generic scalar path. All three float tags are backed by
+        // FloatArray when produced by DenseTensorDataFactory, so they can use the vector kernels.
+        // Callers re-check with `data as? FloatArrayTensorData`, so genuinely narrow-storage
+        // tensors (Bf16/Fp16DenseTensorData) still fall through safely rather than being misread.
+        return dtype == FP32::class || dtype == FP16::class || dtype == BF16::class
     }
 
     private fun <T : DType, V> chooseMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {

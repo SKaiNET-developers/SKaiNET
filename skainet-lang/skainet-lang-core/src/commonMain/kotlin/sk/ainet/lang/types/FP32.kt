@@ -6,7 +6,7 @@ public object FP32 : DType {
 
     override fun isCompatible(other: DType): Boolean {
         return when (other) {
-            is Ternary -> false // Ternary can promote to FP32
+            is Ternary -> true  // Ternary can promote to FP32
             is Int4 -> true     // Int4 can promote to FP32
             is Int8 -> true     // Int8 can promote to FP32
             is Int32 -> true    // Int32 can promote to FP32
@@ -18,7 +18,7 @@ public object FP32 : DType {
 
     override fun promoteTo(other: DType): DType {
         return when (other) {
-            is Ternary -> Ternary  // FP32 + Ternary → FP32
+            is Ternary -> FP32  // FP32 + Ternary → FP32
             is Int4 -> FP32     // FP32 + Int4 → FP32
             is Int8 -> FP32     // FP32 + Int8 → FP32
             is Int32 -> FP32    // FP32 + Int32 → FP32
