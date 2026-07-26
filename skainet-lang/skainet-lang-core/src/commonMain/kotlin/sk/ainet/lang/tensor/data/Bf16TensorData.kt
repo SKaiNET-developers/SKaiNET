@@ -1,7 +1,8 @@
 package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
-import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.Bf16Codec
+import sk.ainet.lang.types.NarrowFloatCodec
 
 /**
  * Tensor data interface for **dense BF16** (bfloat16) values.
@@ -37,26 +38,26 @@ import sk.ainet.lang.types.DType
  * For zero-copy access to the packed bytes (e.g. from a SIMD matmul
  * kernel that reads 2 bytes per element directly), use [packedData].
  */
-public interface Bf16TensorData : TensorData<DType, Float> {
+public interface Bf16TensorData : NarrowFloatTensorData {
 
-    /**
-     * Raw packed BF16 bytes — 2 per logical element, little-endian.
-     * Length is `shape.volume * 2`. Safe for direct hand-off to the
-     * native / Panama matmul kernels without an intermediate copy.
-     */
-    public val packedData: ByteArray
+    /** Always [Bf16Codec] — BF16 is the high 16 bits of an FP32 value. */
+    override val codec: NarrowFloatCodec get() = Bf16Codec
 
     public companion object {
         /** Bytes per BF16 element. */
         public const val BYTES_PER_ELEMENT: Int = 2
 
-        /** Convert FP32 → BF16 bits (high 16 bits, zero rounding). */
-        public fun floatToBf16Bits(value: Float): Int =
-            (value.toRawBits() ushr 16) and 0xFFFF
+        /**
+         * Convert FP32 → BF16 bits (high 16 bits, zero rounding).
+         *
+         * Delegates to [Bf16Codec] so there is a single implementation. The truncating (rather
+         * than round-to-nearest) behaviour is contractual — emitted weight archives and the
+         * on-device bf16-vs-f16 A/B depend on it.
+         */
+        public fun floatToBf16Bits(value: Float): Int = Bf16Codec.encode(value)
 
         /** Convert BF16 bits (low 16 bits used) → FP32. */
-        public fun bf16BitsToFloat(bf16Bits: Int): Float =
-            Float.fromBits((bf16Bits and 0xFFFF) shl 16)
+        public fun bf16BitsToFloat(bf16Bits: Int): Float = Bf16Codec.decode(bf16Bits)
     }
 }
 
@@ -71,63 +72,11 @@ public interface Bf16TensorData : TensorData<DType, Float> {
  */
 public class Bf16DenseTensorData(
     initialShape: Shape,
-    private val data: ByteArray,
-) : Bf16TensorData {
+    data: ByteArray,
+) : NarrowFloatDenseTensorData(initialShape, data, Bf16Codec), Bf16TensorData {
 
-    override val shape: Shape = Shape(initialShape.dimensions.copyOf())
-    private val strides: IntArray = shape.computeStrides()
-    override val packedData: ByteArray get() = data
-
-    init {
-        val requiredBytes = shape.volume * Bf16TensorData.BYTES_PER_ELEMENT
-        require(data.size >= requiredBytes) {
-            "Data size ${data.size} is less than required $requiredBytes bytes for ${shape.volume} BF16 elements"
-        }
-    }
-
-    override fun get(vararg indices: Int): Float {
-        val flatIndex = calcFlatIndex(indices)
-        val byteIdx = flatIndex * Bf16TensorData.BYTES_PER_ELEMENT
-        val lo = data[byteIdx].toInt() and 0xFF
-        val hi = data[byteIdx + 1].toInt() and 0xFF
-        val bf16Bits = (hi shl 8) or lo
-        return Float.fromBits(bf16Bits shl 16)
-    }
-
-    override fun set(vararg indices: Int, value: Float) {
-        val flatIndex = calcFlatIndex(indices)
-        val byteIdx = flatIndex * Bf16TensorData.BYTES_PER_ELEMENT
-        val bf16Bits = Bf16TensorData.floatToBf16Bits(value)
-        data[byteIdx] = (bf16Bits and 0xFF).toByte()
-        data[byteIdx + 1] = ((bf16Bits ushr 8) and 0xFF).toByte()
-    }
-
-    override fun copyToFloatArray(): FloatArray {
-        val volume = shape.volume
-        val out = FloatArray(volume)
-        for (i in 0 until volume) {
-            val byteIdx = i * Bf16TensorData.BYTES_PER_ELEMENT
-            val lo = data[byteIdx].toInt() and 0xFF
-            val hi = data[byteIdx + 1].toInt() and 0xFF
-            out[i] = Float.fromBits(((hi shl 8) or lo) shl 16)
-        }
-        return out
-    }
-
-    private fun calcFlatIndex(indices: IntArray): Int {
-        require(indices.size == shape.dimensions.size) {
-            "Number of indices (${indices.size}) must match tensor dimensions (${shape.dimensions.size})"
-        }
-        var flatIndex = 0
-        for (i in indices.indices) {
-            val idx = indices[i]
-            require(idx >= 0 && idx < shape.dimensions[i]) {
-                "Index $idx out of bounds for dimension $i with size ${shape.dimensions[i]}"
-            }
-            flatIndex += idx * strides[i]
-        }
-        return flatIndex
-    }
+    /** Fixed to [Bf16Codec]; resolves the base class / [Bf16TensorData] inheritance. */
+    override val codec: NarrowFloatCodec get() = Bf16Codec
 
     public companion object {
         /**

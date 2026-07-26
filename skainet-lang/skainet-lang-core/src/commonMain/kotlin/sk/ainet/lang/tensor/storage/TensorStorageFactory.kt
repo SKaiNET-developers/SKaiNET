@@ -10,9 +10,12 @@ import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.types.Bf16Codec
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.types.Int32
+import sk.ainet.lang.types.NarrowFloatCodec
 
 /**
  * Factory methods for constructing [TensorStorage] from existing SKaiNET types
@@ -175,8 +178,20 @@ public object TensorStorageFactory {
 
         return when (storage.encoding) {
             is TensorEncoding.Dense -> when (storage.logicalType) {
-                LogicalDType.FLOAT32, LogicalDType.FLOAT16, LogicalDType.BFLOAT16 -> {
+                LogicalDType.FLOAT32 -> {
                     val floats = bytesToFloatArray(bytes)
+                    DenseFloatArrayTensorData<T>(storage.shape, floats) as TensorData<T, V>
+                }
+                // 2 bytes per element, NOT 4. These previously shared the FLOAT32 branch, so
+                // `bytesToFloatArray` produced half the element count with each "float" assembled
+                // from two adjacent narrow elements — silent garbage. Readers already tag these
+                // correctly as `TensorEncoding.Dense(bytesPerElement = 2)`; the decode side simply
+                // ignored it. Widening to f32 here keeps this method's existing contract (it has
+                // always returned float-backed data); preserving 2-byte storage end-to-end is the
+                // loader `KEEP_NATIVE` path, not this one.
+                LogicalDType.FLOAT16, LogicalDType.BFLOAT16 -> {
+                    val codec = if (storage.logicalType == LogicalDType.FLOAT16) Fp16Codec else Bf16Codec
+                    val floats = narrowBytesToFloatArray(bytes, codec)
                     DenseFloatArrayTensorData<T>(storage.shape, floats) as TensorData<T, V>
                 }
                 LogicalDType.INT32 -> {
@@ -212,6 +227,21 @@ public object TensorStorageFactory {
             "Cannot extract bytes from ${b.ownership} buffer. " +
                 "Use a BufferResolver to read FileBacked/DeviceResident handles first."
         )
+    }
+
+    /**
+     * Decode packed little-endian 16-bit floats to FP32 using [codec]. One element per 2 bytes —
+     * the element count is `bytes.size / 2`, which is the whole point of this helper existing
+     * separately from [bytesToFloatArray].
+     */
+    private fun narrowBytesToFloatArray(bytes: ByteArray, codec: NarrowFloatCodec): FloatArray {
+        val count = bytes.size / codec.bytesPerElement
+        return FloatArray(count) { i ->
+            val off = i * 2
+            val lo = bytes[off].toInt() and 0xFF
+            val hi = bytes[off + 1].toInt() and 0xFF
+            codec.decode((hi shl 8) or lo)
+        }
     }
 
     private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
