@@ -5,6 +5,8 @@ import sk.ainet.io.ParametersLoader
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.data.Bf16DenseTensorData
+import sk.ainet.lang.tensor.data.Fp16DenseTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
@@ -33,7 +35,16 @@ import kotlin.reflect.KClass
  */
 public class StreamingGgufParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
-    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> }
+    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+    /**
+     * Keep `F16` source tensors in their on-disk 2-bytes-per-element layout instead of widening
+     * them to FP32 at load. Off by default — flip via `withPolicy(Require(FP16))`.
+     */
+    private val keepF16Native: Boolean = false,
+    /**
+     * Keep `BF16` source tensors packed. Off by default — flip via `withPolicy(Require(BF16))`.
+     */
+    private val keepBf16Native: Boolean = false,
 ) : ParametersLoader {
 
     @Suppress("UNCHECKED_CAST")
@@ -68,20 +79,28 @@ public class StreamingGgufParametersLoader(
                         }
                     }
 
-                    GGMLQuantizationType.F16 -> {
-                        val floats = dequantF16(rawBytes)
-                        when (dtype) {
-                            FP32::class -> ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
-                            else -> null
+                    GGMLQuantizationType.F16 -> when (dtype) {
+                        FP32::class -> if (keepF16Native) {
+                            // Zero-widening path: hand the on-disk bytes straight through as
+                            // packed binary16. Consumers still see Float on read.
+                            @Suppress("UNCHECKED_CAST")
+                            val packed = Fp16DenseTensorData(shape, rawBytes)
+                            ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                        } else {
+                            ctx.fromFloatArray<T, Float>(shape, dtype, dequantF16(rawBytes)) as Tensor<T, V>
                         }
+                        else -> null
                     }
 
-                    GGMLQuantizationType.BF16 -> {
-                        val floats = dequantBF16(rawBytes)
-                        when (dtype) {
-                            FP32::class -> ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
-                            else -> null
+                    GGMLQuantizationType.BF16 -> when (dtype) {
+                        FP32::class -> if (keepBf16Native) {
+                            @Suppress("UNCHECKED_CAST")
+                            val packed = Bf16DenseTensorData(shape, rawBytes)
+                            ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                        } else {
+                            ctx.fromFloatArray<T, Float>(shape, dtype, dequantBF16(rawBytes)) as Tensor<T, V>
                         }
+                        else -> null
                     }
 
                     GGMLQuantizationType.Q4_K -> {
@@ -202,7 +221,25 @@ public class StreamingGgufParametersLoader(
             onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
         ): StreamingGgufParametersLoader {
             validatePolicy(policy)
-            return StreamingGgufParametersLoader(sourceProvider, onProgress)
+            return StreamingGgufParametersLoader(
+                sourceProvider = sourceProvider,
+                onProgress = onProgress,
+                keepF16Native = keepsNative(policy, FP16),
+                keepBf16Native = keepsNative(policy, BF16),
+            )
+        }
+
+        /**
+         * Whether [policy] asks for [native] tensors to stay in their on-disk 16-bit layout.
+         *
+         * Only the format the policy actually names is kept — neither narrow format can be turned
+         * into the other without a lossy re-encode, so `Require(BF16)` must still widen F16 sources.
+         */
+        internal fun keepsNative(policy: DTypePolicy, native: DType): Boolean = when (policy) {
+            DTypePolicy.Any -> false
+            is DTypePolicy.Require -> policy.target == native
+            is DTypePolicy.Prefer -> policy.target == native
+            is DTypePolicy.OneOf -> native in policy.allowed
         }
 
         internal fun validatePolicy(policy: DTypePolicy) {
@@ -211,18 +248,10 @@ public class StreamingGgufParametersLoader(
                 is DTypePolicy.Prefer -> Unit
                 is DTypePolicy.OneOf -> Unit
                 is DTypePolicy.Require -> when (policy.target) {
-                    FP32 -> Unit
-                    BF16 -> throw IllegalArgumentException(
-                        "StreamingGgufParametersLoader: Require(BF16) is not supported — " +
-                            "GGUF BF16 sources are dequanted to FP32 by this loader today (no KEEP_NATIVE " +
-                            "GGUF path yet). Use Any or Prefer(BF16) to accept the dequant fallback, or " +
-                            "wait for the policy-aware GGUF reader to land.",
-                    )
-                    FP16 -> throw IllegalArgumentException(
-                        "StreamingGgufParametersLoader: Require(FP16) is not supported — " +
-                            "GGUF F16 sources are dequanted to FP32 by this loader today (no Fp16DenseTensorData " +
-                            "backing yet). Use Any or Prefer(FP16) to accept the dequant fallback.",
-                    )
+                    // FP16 / BF16 are satisfiable for sources already in that format: the loader
+                    // hands the packed bytes through via Fp16/Bf16DenseTensorData. Sources in any
+                    // other format still widen to FP32 rather than being re-encoded.
+                    FP32, FP16, BF16 -> Unit
                     else -> throw IllegalArgumentException(
                         "StreamingGgufParametersLoader: Require(${policy.target.name}) is not satisfiable — " +
                             "this loader produces FP32 / Int32 / Q4_K / Q8_0 tensors only, and does not cast " +

@@ -27,53 +27,17 @@ import sk.ainet.lang.types.FP32
  * `DefaultCpuOpsJvm.chooseQuantizedMatmul` (Phase 3 follow-up,
  * separately tracked).
  */
-public enum class Bf16LoadPolicy {
-    /**
-     * Default. Dequantise every BFLOAT16 tensor to FP32 at load time
-     * via the existing `dequantBF16` helper, then wrap as a
-     * `FloatArrayTensorData` (same as `FLOAT32` source tensors).
-     *
-     * Memory cost: 2× the on-disk size for each BF16 tensor.
-     * Runtime: zero extra dispatch — every matmul gets FP32 operands.
-     */
-    DEQUANT_TO_FP32,
+public typealias Bf16LoadPolicy = NarrowFloatLoadPolicy
 
-    /**
-     * Keep BFLOAT16 tensors in their on-disk packed-2-bytes-per-element
-     * layout. The loader emits a `Bf16DenseTensorData` (in
-     * `skainet-lang-core`) instead of dequanting; the tensor still
-     * advertises FP32 dtype to consumers (the underlying `get` decodes
-     * on read), but its `tensor.data` is recognisable as
-     * `Bf16TensorData` so a matmul dispatch can route to the SIMD
-     * `Bf16MatmulKernel` SPI.
-     *
-     * Memory cost: identical to the on-disk size — no doubling.
-     * Runtime: matmul dispatch picks up the BF16 SPI kernel when one
-     * is registered; falls back to per-multiply dequant otherwise.
-     *
-     * **Caveat**: any non-matmul op that touches the BF16 tensor pays
-     * a per-element decode cost via `get`. Don't flip this unless the
-     * model's hot path is dominated by matmuls (the typical
-     * transformer case).
-     */
-    KEEP_NATIVE,
-    ;
-
-    /**
-     * Maps this BF16-specific enum onto the generalised
-     * [DTypePolicy] sealed type. [DEQUANT_TO_FP32] becomes
-     * `Require(FP32)` (the loader must hand consumers an FP32
-     * tensor); [KEEP_NATIVE] becomes `Require(BF16)` (consumers
-     * dispatch on the native BF16 dtype).
-     *
-     * Bridge for the RFC's policy-driven loader work
-     * (`rfc.md`, issue #615): existing call sites keep using this
-     * enum verbatim while new code paths can flow through
-     * [DTypePolicy] uniformly. The two are equivalent for BF16 —
-     * this method is the explicit equivalence proof.
-     */
-    public fun toDTypePolicy(): DTypePolicy = when (this) {
-        DEQUANT_TO_FP32 -> DTypePolicy.Require(FP32)
-        KEEP_NATIVE -> DTypePolicy.Require(BF16)
-    }
+/**
+ * Maps this narrow-float policy onto the generalised [DTypePolicy] sealed type.
+ * [NarrowFloatLoadPolicy.DEQUANT_TO_FP32] becomes `Require(FP32)` (the loader must hand consumers
+ * an FP32 tensor); [NarrowFloatLoadPolicy.KEEP_NATIVE] becomes `Require(BF16)`.
+ *
+ * Kept BF16-specific for source compatibility with existing call sites. For FP16, build the
+ * policy directly (`DTypePolicy.Require(FP16)`) — see `SafeTensorsParametersLoader.mapPolicyToFp16`.
+ */
+public fun Bf16LoadPolicy.toDTypePolicy(): DTypePolicy = when (this) {
+    NarrowFloatLoadPolicy.DEQUANT_TO_FP32 -> DTypePolicy.Require(FP32)
+    NarrowFloatLoadPolicy.KEEP_NATIVE -> DTypePolicy.Require(BF16)
 }

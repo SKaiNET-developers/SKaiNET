@@ -30,21 +30,31 @@ class StreamingGgufParametersLoaderPolicyTest {
     }
 
     @Test
-    fun require_bf16_fails_fast_with_clear_message() {
-        val ex = assertFailsWith<IllegalArgumentException> {
-            StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(BF16))
-        }
-        val msg = ex.message ?: ""
-        assertTrue(msg.contains("Require(BF16)"), msg)
-        assertTrue(msg.contains("KEEP_NATIVE"), msg)
+    fun require_bf16_is_now_accepted_and_keeps_bf16_sources_packed() {
+        // Previously rejected: the GGUF loader had no KEEP_NATIVE path and always widened.
+        StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(BF16))
+        assertTrue(StreamingGgufParametersLoader.keepsNative(DTypePolicy.Require(BF16), BF16))
     }
 
     @Test
-    fun require_fp16_fails_fast_with_clear_message() {
-        val ex = assertFailsWith<IllegalArgumentException> {
-            StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(FP16))
-        }
-        assertTrue(ex.message?.contains("Require(FP16)") == true, ex.message ?: "")
+    fun require_fp16_is_now_accepted_and_keeps_f16_sources_packed() {
+        // Previously rejected for want of an Fp16DenseTensorData backing, which now exists.
+        StreamingGgufParametersLoader.validatePolicy(DTypePolicy.Require(FP16))
+        assertTrue(StreamingGgufParametersLoader.keepsNative(DTypePolicy.Require(FP16), FP16))
+    }
+
+    @Test
+    fun neither_narrow_format_is_kept_native_for_the_other() {
+        // Converting between the two is a lossy re-encode, so a policy naming one must widen
+        // sources in the other rather than mis-tagging their bytes.
+        assertTrue(!StreamingGgufParametersLoader.keepsNative(DTypePolicy.Require(BF16), FP16))
+        assertTrue(!StreamingGgufParametersLoader.keepsNative(DTypePolicy.Require(FP16), BF16))
+    }
+
+    @Test
+    fun any_policy_still_widens_both_narrow_formats() {
+        assertTrue(!StreamingGgufParametersLoader.keepsNative(DTypePolicy.Any, BF16))
+        assertTrue(!StreamingGgufParametersLoader.keepsNative(DTypePolicy.Any, FP16))
     }
 
     @Test

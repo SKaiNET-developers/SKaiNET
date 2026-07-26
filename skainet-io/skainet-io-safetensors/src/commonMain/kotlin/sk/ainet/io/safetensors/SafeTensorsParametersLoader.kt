@@ -7,6 +7,7 @@ import sk.ainet.io.model.DataType
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Bf16DenseTensorData
+import sk.ainet.lang.tensor.data.Fp16DenseTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
@@ -46,7 +47,8 @@ import kotlin.reflect.KClass
 class SafeTensorsParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
     private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
-    private val bf16Policy: Bf16LoadPolicy = Bf16LoadPolicy.DEQUANT_TO_FP32,
+    private val bf16Policy: Bf16LoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+    private val fp16Policy: NarrowFloatLoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
 ) : ParametersLoader {
 
     override suspend fun <T : DType, V> load(
@@ -86,10 +88,22 @@ class SafeTensorsParametersLoader(
 
                     DataType.FLOAT16 -> {
                         require(dtype == FP32::class) {
-                            "SafeTensors F16 tensor '${tensorInfo.name}' requires FP32 dtype (dequant), got ${dtype.simpleName}"
+                            "SafeTensors F16 tensor '${tensorInfo.name}' requires FP32 dtype, got ${dtype.simpleName}"
                         }
-                        val floats = dequantF16(bytes)
-                        ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                        when (fp16Policy) {
+                            NarrowFloatLoadPolicy.DEQUANT_TO_FP32 -> {
+                                val floats = dequantF16(bytes)
+                                ctx.wrapFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                            }
+                            NarrowFloatLoadPolicy.KEEP_NATIVE -> {
+                                // Mirrors the BF16 arm below: wrap the on-disk F16 bytes directly.
+                                // dtype stays FP32 from the consumer's POV (the tensor data decodes
+                                // on read); the storage type is what a narrow-float matmul dispatch
+                                // pattern-matches on.
+                                val fp16Data = Fp16DenseTensorData(shape, bytes)
+                                ctx.fromData(fp16Data as TensorData<T, V>, dtype)
+                            }
+                        }
                     }
 
                     DataType.BFLOAT16 -> {
@@ -325,28 +339,37 @@ class SafeTensorsParametersLoader(
             sourceProvider = sourceProvider,
             onProgress = onProgress,
             bf16Policy = mapPolicyToBf16(policy),
+            fp16Policy = mapPolicyToFp16(policy),
         )
 
-        internal fun mapPolicyToBf16(policy: DTypePolicy): Bf16LoadPolicy = when (policy) {
-            DTypePolicy.Any -> Bf16LoadPolicy.DEQUANT_TO_FP32
-            is DTypePolicy.Require -> when (policy.target) {
-                BF16 -> Bf16LoadPolicy.KEEP_NATIVE
-                FP32 -> Bf16LoadPolicy.DEQUANT_TO_FP32
-                FP16 -> throw IllegalArgumentException(
-                    "SafeTensorsParametersLoader: Require(FP16) is not supported — " +
-                        "F16 KEEP_NATIVE has no Fp16DenseTensorData backing yet. " +
-                        "Use Require(FP32) to dequant F16 sources, or Any to inherit the adaptive default.",
-                )
-                else -> throw IllegalArgumentException(
-                    "SafeTensorsParametersLoader: Require(${policy.target.name}) is not satisfiable — " +
-                        "the loader produces FP32 / BF16 / Int32 / Int8 tensors depending on source dtype; " +
-                        "it cannot fabricate ${policy.target.name} from arbitrary sources.",
-                )
+        internal fun mapPolicyToBf16(policy: DTypePolicy): Bf16LoadPolicy =
+            mapPolicyToNarrow(policy, BF16)
+
+        internal fun mapPolicyToFp16(policy: DTypePolicy): NarrowFloatLoadPolicy =
+            mapPolicyToNarrow(policy, FP16)
+
+        /**
+         * Resolve [policy] for one narrow-float source format. A tensor is kept native only when
+         * the policy names *that* format — `Require(BF16)` must not keep F16 tensors packed, and
+         * vice versa, since neither can be converted to the other without a lossy re-encode.
+         */
+        private fun mapPolicyToNarrow(policy: DTypePolicy, native: DType): NarrowFloatLoadPolicy =
+            when (policy) {
+                DTypePolicy.Any -> NarrowFloatLoadPolicy.DEQUANT_TO_FP32
+                is DTypePolicy.Require -> when (policy.target) {
+                    native -> NarrowFloatLoadPolicy.KEEP_NATIVE
+                    // The other narrow format, or FP32: this format still widens.
+                    BF16, FP16, FP32 -> NarrowFloatLoadPolicy.DEQUANT_TO_FP32
+                    else -> throw IllegalArgumentException(
+                        "SafeTensorsParametersLoader: Require(${policy.target.name}) is not satisfiable — " +
+                            "the loader produces FP32 / BF16 / FP16 / Int32 / Int8 tensors depending on " +
+                            "source dtype; it cannot fabricate ${policy.target.name} from arbitrary sources.",
+                    )
+                }
+                is DTypePolicy.Prefer -> if (policy.target == native) NarrowFloatLoadPolicy.KEEP_NATIVE
+                                        else NarrowFloatLoadPolicy.DEQUANT_TO_FP32
+                is DTypePolicy.OneOf -> if (native in policy.allowed) NarrowFloatLoadPolicy.KEEP_NATIVE
+                                       else NarrowFloatLoadPolicy.DEQUANT_TO_FP32
             }
-            is DTypePolicy.Prefer -> if (policy.target == BF16) Bf16LoadPolicy.KEEP_NATIVE
-                                    else Bf16LoadPolicy.DEQUANT_TO_FP32
-            is DTypePolicy.OneOf -> if (BF16 in policy.allowed) Bf16LoadPolicy.KEEP_NATIVE
-                                    else Bf16LoadPolicy.DEQUANT_TO_FP32
-        }
     }
 }
