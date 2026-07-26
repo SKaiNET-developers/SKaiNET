@@ -43,6 +43,13 @@ public final class sk/ainet/context/DirectCpuExecutionContext$Companion {
 
 public final class sk/ainet/exec/kernel/PanamaVectorBf16MatmulKernel : sk/ainet/backend/api/kernel/Bf16MatmulKernel {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorBf16MatmulKernel;
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
+	public fun matmul ([FII[BII[FIIIII)V
+}
+
+public final class sk/ainet/exec/kernel/PanamaVectorFp16MatmulKernel : sk/ainet/backend/api/kernel/Fp16MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorFp16MatmulKernel;
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
 	public fun matmul ([FII[BII[FIIIII)V
 }
 
@@ -52,6 +59,7 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProvider : sk/ainet/ba
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
@@ -69,6 +77,7 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProviderFactory : sk/a
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
@@ -122,6 +131,13 @@ public final class sk/ainet/exec/kernel/PanamaVectorQ8_0MatmulKernel : sk/ainet/
 
 public final class sk/ainet/exec/kernel/ScalarBf16MatmulKernel : sk/ainet/backend/api/kernel/Bf16MatmulKernel {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarBf16MatmulKernel;
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
+	public fun matmul ([FII[BII[FIIIII)V
+}
+
+public final class sk/ainet/exec/kernel/ScalarFp16MatmulKernel : sk/ainet/backend/api/kernel/Fp16MatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarFp16MatmulKernel;
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
 	public fun matmul ([FII[BII[FIIIII)V
 }
 
@@ -131,6 +147,7 @@ public final class sk/ainet/exec/kernel/ScalarKernelProvider : sk/ainet/backend/
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
@@ -148,6 +165,7 @@ public final class sk/ainet/exec/kernel/ScalarKernelProviderFactory : sk/ainet/b
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
+	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;

@@ -1,6 +1,7 @@
 package sk.ainet.exec.kernel
 
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
+import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
@@ -30,6 +31,8 @@ public object ScalarKernelProvider : KernelProvider {
     override fun isAvailable(): Boolean = true
     override fun matmulFp32(): Fp32MatmulKernel = ScalarMatmulKernel
     override fun matmulBf16(): Bf16MatmulKernel = ScalarBf16MatmulKernel
+
+    override fun matmulFp16(): Fp16MatmulKernel = ScalarFp16MatmulKernel
     override fun matmulQ8_0(): Q8_0MatmulKernel = ScalarQ8_0MatmulKernel
     override fun matmulQ4_0(): Q4_0MatmulKernel = ScalarQ4_0MatmulKernel
     override fun matmulQ4K(): Q4KMatmulKernel = ScalarQ4_KMatmulKernel

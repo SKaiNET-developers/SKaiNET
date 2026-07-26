@@ -62,6 +62,12 @@ public interface KernelProvider {
     public fun matmulBf16(): Bf16MatmulKernel? = null
 
     /**
+     * IEEE binary16 weight matmul, or `null` when this provider carries no FP16 kernel.
+     * Callers cascade to a lower-priority provider, ultimately the scalar reference.
+     */
+    public fun matmulFp16(): Fp16MatmulKernel? = null
+
+    /**
      * F32 × Q8_0 matmul kernel exposed by this provider, or `null` if
      * this provider does not specialize Q8_0. Same fall-through pattern.
      */

@@ -1,6 +1,7 @@
 package sk.ainet.exec.kernel
 
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
+import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
@@ -50,6 +51,9 @@ public object PanamaVectorKernelProvider : KernelProvider {
 
     override fun matmulBf16(): Bf16MatmulKernel? =
         if (isAvailable()) PanamaVectorBf16MatmulKernel else null
+
+    override fun matmulFp16(): Fp16MatmulKernel? =
+        if (isAvailable()) PanamaVectorFp16MatmulKernel else null
 
     override fun matmulQ8_0(): Q8_0MatmulKernel? =
         if (isAvailable()) PanamaVectorQ8_0MatmulKernel else null
