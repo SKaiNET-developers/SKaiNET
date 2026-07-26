@@ -844,6 +844,11 @@ public class DefaultGradientTape(
         return listOf(ops.multiply(upstream, expX))
     }
 
+    override fun logBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(ln(x))/dx = 1/x
+        return listOf(upstream.ops.divide(upstream, inputs[0]))
+    }
+
     override fun scaledDotProductAttentionBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // SDPA backward is complex; stub returns null gradients (not differentiable through this path).
         // Full backward would require recomputing attention weights from Q,K,V.

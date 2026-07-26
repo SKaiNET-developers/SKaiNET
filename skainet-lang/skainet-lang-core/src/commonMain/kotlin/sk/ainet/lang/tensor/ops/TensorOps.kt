@@ -249,6 +249,10 @@ public interface TensorOps {
     @ActivationDsl
     public fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V>
 
+    /** Element-wise natural logarithm: ln(x). Differentiable (grad = 1/x). Lowers to `stablehlo.log`. */
+    @Diff
+    public fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V>
+
     // Trigonometric operations
     public fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
         throw NotImplementedError("sin not implemented by this TensorOps backend")

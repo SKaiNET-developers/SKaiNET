@@ -433,6 +433,7 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> = base.indexSelect(input, indices, dim)
     override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> = base.exp(tensor)
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> = base.expm1(tensor)
+    override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> = base.log(tensor)
     override fun <T : DType, V> scaledDotProductAttention(
         query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>,
         mask: Tensor<T, V>?, scale: Float, causal: Boolean

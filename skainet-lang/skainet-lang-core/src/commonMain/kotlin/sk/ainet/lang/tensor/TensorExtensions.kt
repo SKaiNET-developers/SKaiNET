@@ -67,6 +67,8 @@ public fun <T : DType, V> Tensor<T, V>.silu(): Tensor<T, V> = ops.silu(this)
 public fun <T : DType, V> Tensor<T, V>.gelu(): Tensor<T, V> = ops.gelu(this)
 public fun <T : DType, V> Tensor<T, V>.exp(): Tensor<T, V> = ops.exp(this)
 public fun <T : DType, V> Tensor<T, V>.expm1(): Tensor<T, V> = ops.expm1(this)
+/** Element-wise natural logarithm: ln(x). */
+public fun <T : DType, V> Tensor<T, V>.log(): Tensor<T, V> = ops.log(this)
 public fun <T : DType, V> Tensor<T, V>.softmax(dim: Int = -1): Tensor<T, V> = ops.softmax(this, dim)
 public fun <T : DType, V> Tensor<T, V>.logSoftmax(dim: Int = -1): Tensor<T, V> = ops.logSoftmax(this, dim)
 public fun <T : DType, V> Tensor<T, V>.sum(dim: Int? = null): Tensor<T, V> = ops.sum(this, dim)

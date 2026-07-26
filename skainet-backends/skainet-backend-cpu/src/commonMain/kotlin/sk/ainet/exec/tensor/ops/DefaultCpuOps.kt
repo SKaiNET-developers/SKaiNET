@@ -2330,6 +2330,15 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         return newTensor(outData, tensor.dtype, tensor)
     }
 
+    override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> {
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            val x = tensor.data.get(*idx) as Float
+            @Suppress("UNCHECKED_CAST")
+            kotlin.math.ln(x) as V
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
     override fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val x = tensor.data.get(*idx) as Float

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`log` (natural logarithm) tensor op** (`Tensor.log()` / `TensorOps.log`, DARC #882): element-wise `ln(x)`,
+  `@Diff` (gradient `1/x`), lowering to `stablehlo.log`. Unblocks DSL-authoring of learned frontends that use
+  `asinh` compression (`asinh(x) = log(x + √(x²+1))`), e.g. Moonshine v2 — so such models stay fully
+  DSL NN → DAG → StableHLO → IREE. Eager (`DefaultCpuOps`), void, and tracing impls; covered by `LogOpHloTest`.
+
 ## [0.19.1] - 2026-04-21
 
 ### Fixed
