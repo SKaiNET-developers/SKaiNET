@@ -63,6 +63,18 @@ class DimTest {
     }
 
     @Test
+    fun void_reshape_passes_dynamic_target_through() {
+        // A reshape whose target carries a dynamic extent (the cache-as-output-sink `reshape(x, x.shape)`)
+        // passes through unchanged — it must NOT be mistaken for a `-1` = infer slot.
+        val ops = VoidTensorOps()
+        val x = VoidOpsTensor<sk.ainet.lang.types.FP32, Float>(
+            ShapeOnly(Shape(1, 4, Dim.DYNAMIC, 256)), sk.ainet.lang.types.FP32::class,
+        )
+        val r = ops.reshape(x, Shape(1, 4, Dim.DYNAMIC, 256))
+        assertEquals(listOf(1, 4, Dim.DYNAMIC, 256), r.shape.dimensions.toList())
+    }
+
+    @Test
     fun slice_all_is_symbolic_full_axis_over_dynamic() {
         val all = Slice.All<sk.ainet.lang.types.FP32, Float>()
         assertTrue(all.isValid(Dim.DYNAMIC))
