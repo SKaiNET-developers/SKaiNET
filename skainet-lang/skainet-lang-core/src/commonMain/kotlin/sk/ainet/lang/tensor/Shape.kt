@@ -8,10 +8,26 @@ public data class Shape(val dimensions: IntArray) {
     }
 
     val volume: Int
-        get() = dimensions.fold(1) { a, x -> a * x }
+        get() {
+            require(!dimensions.hasDynamic()) {
+                "volume is undefined for a dynamic shape (${dimensions.joinToString(" x ", "[", "]") { Dim.render(it) }}); " +
+                    "a dynamic extent has no materializable element count"
+            }
+            return dimensions.fold(1) { a, x -> a * x }
+        }
 
     val rank: Int
         get() = dimensions.size
+
+    /** True if any extent is [Dim.DYNAMIC] (unknown at compile time). */
+    public fun hasDynamic(): Boolean = dimensions.hasDynamic()
+
+    /** True if the extent on [axis] is [Dim.DYNAMIC]. */
+    public fun isDynamic(axis: Int): Boolean = Dim.isDynamic(dimensions[axis])
+
+    /** Indices of every dynamic axis (empty for a fully-static shape). */
+    public val dynamicAxes: List<Int>
+        get() = dimensions.indices.filter { Dim.isDynamic(dimensions[it]) }
 
     public fun index(indices: IntArray): Int {
         assert(
@@ -41,10 +57,11 @@ public data class Shape(val dimensions: IntArray) {
     }
 
     override fun toString(): String {
-        // Create a string representation of the dimensions array
-        val dimensionsString = dimensions.joinToString(separator = " x ", prefix = "[", postfix = "]")
-        // Return the formatted string including dimensions and volume
-        return "Shape: Dimensions = $dimensionsString, Size (Volume) = $volume"
+        // Render each extent via Dim (a dynamic extent shows as `?`), and omit the volume when it is
+        // undefined (any dynamic extent) rather than computing a corrupt product.
+        val dimensionsString = dimensions.joinToString(separator = " x ", prefix = "[", postfix = "]") { Dim.render(it) }
+        val volumeString = if (dimensions.hasDynamic()) "dynamic" else volume.toString()
+        return "Shape: Dimensions = $dimensionsString, Size (Volume) = $volumeString"
     }
 }
 

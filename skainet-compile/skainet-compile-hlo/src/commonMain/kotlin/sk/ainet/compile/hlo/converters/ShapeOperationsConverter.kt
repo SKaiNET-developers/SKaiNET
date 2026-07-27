@@ -4,6 +4,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.Dim
 import sk.ainet.lang.tensor.ops.TensorSpec
 
 /**
@@ -108,7 +109,10 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
                 axis in inShapes[0].indices
             ) {
                 val outShape = inShapes[0].toMutableList()
-                outShape[axis] = inShapes.sumOf { it[axis] }
+                // A dynamic extent on the concat axis of ANY operand makes the concatenated extent dynamic
+                // too — summing it would emit a bogus static dim (e.g. `? + 1` → `0`, an invalid
+                // `tensor<…x0x…>`). [Dim.concat] matches VoidTensorOps.calculateConcatShape.
+                outShape[axis] = Dim.concat(inShapes.map { it[axis] })
                 context.getTypeMapper().mapTensorType(
                     TensorSpec("${node.id}_out", outShape, outputSpec?.dtype ?: node.inputs[0].dtype),
                 )
@@ -166,6 +170,18 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         val strides = (node.operation.parameters["strides"] as? List<Int>)
             ?: List(rank) { 1 }
 
+        // Elide a full-range (identity) slice: start 0, stride 1, and limit == the full extent on EVERY
+        // axis. This is a no-op copy, and crucially a `stablehlo.slice` cannot express a full-extent bound
+        // on a dynamic axis (the limit would be the `-1`/`?` extent, e.g. `0:-1:1`, which is invalid).
+        // Mirrors the identity-reshape elision (the decode cache is sliced full, then head-expanded).
+        val isIdentitySlice = rank > 0 &&
+            starts.size == rank && limits.size == rank && strides.size == rank &&
+            starts.all { it == 0 } && strides.all { it == 1 } &&
+            (0 until rank).all { limits[it] == inputShape[it] }
+        if (isIdentitySlice) {
+            return ConversionResult.Success(outputValueName = operands[0], emittedOperations = emptyList())
+        }
+
         val resultValue = context.nextTempValue()
         val operation = sliceLine(resultValue, operands[0], starts, limits, strides,
             resolveOperandType(operands[0], node, context), outputType)
@@ -221,6 +237,13 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
         val starts = List(rank) { if (it == dim) start else 0 }
         val limits = List(rank) { if (it == dim) start + length else inputShape[it] }
         val strides = List(rank) { 1 }
+
+        // Full-extent narrow on the target axis (start 0, length == the axis extent) is a no-op copy;
+        // elide it. On a dynamic axis the limit would be `start + (-1)` — invalid as a static bound — so
+        // eliding is both an optimization and the only valid lowering. Mirrors the identity slice/reshape.
+        if (start == 0 && length == inputShape[dim]) {
+            return ConversionResult.Success(outputValueName = operands[0], emittedOperations = emptyList())
+        }
 
         val resultValue = context.nextTempValue()
         val operation = sliceLine(resultValue, operands[0], starts, limits, strides,
@@ -338,6 +361,19 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             )
 
         val inputType = resolveOperandType(operands[0], node, context)
+
+        // Identity reshape (input type == output type): elide it. The KV-cache decode graphs route a cache
+        // tensor through `reshape(x, x.shape)` purely to make it a distinct graph-output sink; emitting
+        // `stablehlo.reshape` with an unchanged result is a no-op, and is outright INVALID when the result
+        // carries a dynamic dim (`?`) — `stablehlo.reshape` requires a statically-shaped result. Pass the
+        // operand through: this node's SSA name resolves to it (and `func.return` may list it more than once).
+        if (inputType == resultType) {
+            return ConversionResult.Success(
+                outputValueName = operands[0],
+                emittedOperations = emptyList(),
+            )
+        }
+
         val resultValue = context.nextTempValue()
         val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $resultType"
         context.emitOperation(operation)

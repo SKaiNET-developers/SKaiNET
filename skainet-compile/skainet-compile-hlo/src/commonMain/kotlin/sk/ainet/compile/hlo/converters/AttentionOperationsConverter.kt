@@ -3,6 +3,8 @@ package sk.ainet.compile.hlo.converters
 import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
+import sk.ainet.lang.tensor.Dim
+import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.graph.GraphNode
 import kotlin.math.sqrt
 
@@ -56,7 +58,9 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val outSpec = node.outputs.firstOrNull()
         val mapper = context.getTypeMapper()
         val elem = outSpec?.let { mapper.mapDType(it.dtype) } ?: "f32"
-        fun typeOf(shape: List<Int>): String = "tensor<${shape.joinToString("x")}x$elem>"
+        // Render a shape's dims, mapping a dynamic extent (DYNAMIC_DIM = -1) to `?`.
+        fun dims(shape: List<Int>): String = shape.joinToString("x") { Dim.render(it) }
+        fun typeOf(shape: List<Int>): String = "tensor<${dims(shape)}x$elem>"
 
         val qType = context.getValueType(operands[0]) ?: typeOf(qShape)
         val kType = context.getValueType(operands[1]) ?: typeOf(kShape)
@@ -77,19 +81,20 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val contractQK = rank - 1                 // contract head_dim of Q and K
         val sdAxis = scoresShape.size - 1         // softmax over key length
         val reducedShape = scoresShape.dropLast(1)
-        val reducedType = if (reducedShape.isEmpty()) "tensor<$elem>" else "tensor<${reducedShape.joinToString("x")}x$elem>"
+        val reducedType = if (reducedShape.isEmpty()) "tensor<$elem>" else typeOf(reducedShape)
         val bcastDims = (scoresShape.indices).filter { it != sdAxis }.joinToString(", ")
         val contractAttn = scoresShape.size - 1   // attn key-length axis
         val contractV = rank - 2                  // V key-length axis
 
         val causal = (node.operation.parameters["causal"] as? Boolean) ?: false
         val qAxis = rank - 2 // query position in scores [.., Sq, Sk]
-        val scoresI32Type = "tensor<${scoresShape.joinToString("x")}xi32>"
-        val scoresI1Type = "tensor<${scoresShape.joinToString("x")}xi1>"
+        val scoresI32Type = "tensor<${dims(scoresShape)}xi32>"
+        val scoresI1Type = "tensor<${dims(scoresShape)}xi1>"
 
-        val scores = context.nextTempValue()
         val scaleC = context.nextTempValue()
-        val scaled = context.nextTempValue()
+        val scaleB = context.nextTempValue()
+        val qScaled = context.nextTempValue()
+        val scores = context.nextTempValue()
         val maxInit = context.nextTempValue(); val maxV = context.nextTempValue(); val maxB = context.nextTempValue()
         val shifted = context.nextTempValue(); val expV = context.nextTempValue()
         val sumInit = context.nextTempValue(); val sumV = context.nextTempValue(); val sumB = context.nextTempValue()
@@ -97,9 +102,15 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val out = context.nextTempValue()
 
         val ops = mutableListOf(
-            "$scores = stablehlo.dot_general ${operands[0]}, ${operands[1]}, ${batchClause}contracting_dims = [$contractQK] x [$contractQK] : ($qType, $kType) -> $scoresType",
-            "$scaleC = stablehlo.constant dense<$scaleVal> : $scoresType",
-            "$scaled = stablehlo.multiply $scores, $scaleC : $scoresType",
+            // Scale is applied to Q *before* the QK dot — scores·s == (q·s)@kᵀ exactly. This keeps the scale
+            // constant at the STATIC query type (`[.., Sq, headDim]`) rather than a splat sized to the scores
+            // shape `[.., Sq, Sk]`, whose Sk (key/cache length) may be dynamic (`?`) in KV-cache decode — a
+            // dynamic-shape splat constant is invalid StableHLO. Also drops a full scores-sized dense constant
+            // from static graphs.
+            "$scaleC = stablehlo.constant dense<$scaleVal> : tensor<$elem>",
+            "$scaleB = stablehlo.broadcast_in_dim $scaleC, dims = [] : (tensor<$elem>) -> $qType",
+            "$qScaled = stablehlo.multiply ${operands[0]}, $scaleB : $qType",
+            "$scores = stablehlo.dot_general $qScaled, ${operands[1]}, ${batchClause}contracting_dims = [$contractQK] x [$contractQK] : ($qType, $kType) -> $scoresType",
         )
 
         // Explicit additive mask (operands[3]) — e.g. a sliding-window+causal
@@ -108,7 +119,7 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         // iota causal path. Broadcast (trailing-aligned) to the scores shape
         // and add. Without this the masked layers run UNMASKED (attend to
         // future tokens) — correct only at position 0.
-        var softmaxIn = scaled
+        var softmaxIn = scores   // scores are already scaled (scale folded into Q above)
         val maskOperand = operands.getOrNull(3)
         if (maskOperand != null) {
             val maskShape = node.inputs.getOrNull(3)?.shape ?: scoresShape
@@ -123,7 +134,7 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
                 mb
             }
             val masked = context.nextTempValue()
-            ops += "$masked = stablehlo.add $scaled, $maskBc : $scoresType"
+            ops += "$masked = stablehlo.add $scores, $maskBc : $scoresType"
             softmaxIn = masked
         } else if (causal) {
             val iotaQ = context.nextTempValue(); val iotaK = context.nextTempValue()
@@ -139,19 +150,49 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
             // masked-fill select, which can trip downstream greedy constant-folding.
             ops += "$ninf = stablehlo.constant dense<-1.000000e+30> : $scoresType"
             ops += "$maskAdd = stablehlo.select $keep, $zeros, $ninf : $scoresI1Type, $scoresType"
-            ops += "$masked = stablehlo.add $scaled, $maskAdd : $scoresType"
+            ops += "$masked = stablehlo.add $scores, $maskAdd : $scoresType"
             softmaxIn = masked
         }
 
-        // softmax(softmaxIn) over the key-length axis
+        // softmax(softmaxIn) over the key-length axis. When the scores shape is dynamic (the `?` key/cache dim
+        // of KV-cache decode), the reduced max/sum must broadcast back to the dynamic scores shape. A static
+        // `stablehlo.broadcast_in_dim` cannot target a dynamic shape, so we use `stablehlo.dynamic_broadcast_in_dim`
+        // with a runtime `output_dimensions` operand (built once from the scores tensor via `get_dimension_size`).
+        // Static graphs keep the original explicit `broadcast_in_dim` path (byte-for-byte unchanged).
+        val dyn = scoresShape.hasDynamic()
+        val shapeType = "tensor<${scoresShape.size}xi32>"
+        val scoresShapeOperand: String = if (!dyn) "" else run {
+            val parts = scoresShape.indices.map { d ->
+                if (Dim.isStatic(scoresShape[d])) {
+                    val c = context.nextTempValue()
+                    ops += "$c = stablehlo.constant dense<${scoresShape[d]}> : tensor<1xi32>"
+                    c
+                } else {
+                    val gd = context.nextTempValue(); val gr = context.nextTempValue()
+                    ops += "$gd = stablehlo.get_dimension_size $scores, dim = $d : ($scoresType) -> tensor<i32>"
+                    ops += "$gr = stablehlo.reshape $gd : (tensor<i32>) -> tensor<1xi32>"
+                    gr
+                }
+            }
+            val sh = context.nextTempValue()
+            ops += "$sh = stablehlo.concatenate ${parts.joinToString(", ")}, dim = 0 : (${parts.joinToString(", ") { "tensor<1xi32>" }}) -> $shapeType"
+            sh
+        }
+        fun broadcastBack(src: String, dst: String) {
+            if (dyn) {
+                ops += "$dst = stablehlo.dynamic_broadcast_in_dim $src, $scoresShapeOperand, dims = [$bcastDims] : ($reducedType, $shapeType) -> $scoresType"
+            } else {
+                ops += "$dst = stablehlo.broadcast_in_dim $src, dims = [$bcastDims] : ($reducedType) -> $scoresType"
+            }
+        }
         ops += "$maxInit = stablehlo.constant dense<${mapper.negInfBits(elem)}> : tensor<$elem>"
         ops += "$maxV = stablehlo.reduce($softmaxIn init: $maxInit) applies stablehlo.maximum across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
-        ops += "$maxB = stablehlo.broadcast_in_dim $maxV, dims = [$bcastDims] : ($reducedType) -> $scoresType"
+        broadcastBack(maxV, maxB)
         ops += "$shifted = stablehlo.subtract $softmaxIn, $maxB : $scoresType"
         ops += "$expV = stablehlo.exponential $shifted : $scoresType"
         ops += "$sumInit = stablehlo.constant dense<0.0> : tensor<$elem>"
         ops += "$sumV = stablehlo.reduce($expV init: $sumInit) applies stablehlo.add across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
-        ops += "$sumB = stablehlo.broadcast_in_dim $sumV, dims = [$bcastDims] : ($reducedType) -> $scoresType"
+        broadcastBack(sumV, sumB)
         ops += "$attn = stablehlo.divide $expV, $sumB : $scoresType"
         ops += "$out = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outputType"
         ops.forEach { context.emitOperation(it) }
