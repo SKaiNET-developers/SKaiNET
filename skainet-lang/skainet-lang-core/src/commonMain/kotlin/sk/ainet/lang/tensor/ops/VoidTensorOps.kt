@@ -2,9 +2,11 @@ package sk.ainet.lang.tensor.ops
 
 import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.InProgress
+import sk.ainet.lang.tensor.Dim
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
+import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.tensor.data.views.UnsqueezedTensorData
@@ -700,8 +702,17 @@ public class VoidTensorOps : TensorOps {
      * Validates that total volume remains the same and no illegal dimensions are provided.
      */
     private fun calculateReshapeTargetShape(originalShape: Shape, target: Shape): Shape {
-        val total = originalShape.volume
         val dims = target.dimensions
+        // A dynamic extent (either in the target or the input) passes through unchanged: volume-based
+        // inference/validation is undefined when an extent is unknown. This is distinct from `-1` = infer,
+        // which the distinct [Dim.DYNAMIC] sentinel keeps separate.
+        if (dims.hasDynamic() || originalShape.dimensions.hasDynamic()) {
+            require(dims.none { it == -1 }) {
+                "reshape cannot infer a `-1` dimension while the shape is dynamic: ${dims.toList()}"
+            }
+            return Shape(dims.copyOf())
+        }
+        val total = originalShape.volume
         var inferIndex = -1
         var product = 1
         for ((i, d) in dims.withIndex()) {
@@ -939,7 +950,8 @@ public class VoidTensorOps : TensorOps {
                 throw IllegalArgumentException("All tensors must have the same number of dimensions for concatenation")
             }
             for (i in shape.dimensions.indices) {
-                if (i != actualDim && shape.dimensions[i] != firstShape.dimensions[i]) {
+                // Off-axis extents must match; a dynamic extent is compatible with any concrete size.
+                if (i != actualDim && !Dim.compatible(shape.dimensions[i], firstShape.dimensions[i])) {
                     throw IllegalArgumentException(
                         "All tensors must have the same shape except in the concatenation dimension. " +
                         "Dimension $i: ${firstShape.dimensions[i]} vs ${shape.dimensions[i]}"
@@ -948,13 +960,12 @@ public class VoidTensorOps : TensorOps {
             }
         }
         
-        // Calculate result shape. A dynamic extent (< 0, the DYNAMIC_DIM convention) in any input's concat
-        // dimension makes the concatenated dim dynamic too — numerically summing it would corrupt the shape
-        // (e.g. a growing KV cache `-1 ++ 1` must stay `-1`, not become `0`), which is exactly what blocked
-        // threading a real dynamic seq dim through a decode trace.
+        // Calculate result shape. [Dim.concat] keeps the concatenated axis dynamic when any input is
+        // dynamic there (a growing KV cache `? ++ 1` stays `?`) instead of numerically summing it, which
+        // would corrupt the shape — exactly what blocked threading a real dynamic seq dim through a decode
+        // trace.
         val resultDims = firstShape.dimensions.copyOf()
-        val concatDimSizes = shapes.map { it.dimensions[actualDim] }
-        resultDims[actualDim] = if (concatDimSizes.any { it < 0 }) -1 else concatDimSizes.sum()
+        resultDims[actualDim] = Dim.concat(shapes.map { it.dimensions[actualDim] })
 
         return Shape(resultDims)
     }

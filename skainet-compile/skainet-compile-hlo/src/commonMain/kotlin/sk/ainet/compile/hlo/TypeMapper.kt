@@ -1,5 +1,6 @@
 package sk.ainet.compile.hlo
 
+import sk.ainet.lang.tensor.Dim
 import sk.ainet.lang.tensor.ops.TensorSpec
 
 /**
@@ -124,7 +125,7 @@ public class TypeMapper {
         return when {
             shape == null -> "?"
             shape.isEmpty() -> ""
-            else -> shape.joinToString("x") { if (it < 0) "?" else it.toString() }
+            else -> shape.joinToString("x") { Dim.render(it) }
         }
     }
 
@@ -141,10 +142,10 @@ public class TypeMapper {
         /**
          * Sentinel extent meaning "dynamic dimension" (`?`) in a [TensorSpec] shape. Threaded from the trace
          * (e.g. a KV-cache seq dim) so the emitter renders `?` and picks dynamic-shape-safe op forms, instead
-         * of the legacy post-emit text substitution. `-1` matches the ONNX/XLA convention and, unlike a large
-         * real-looking sentinel, surfaces obviously if it ever leaks into shape arithmetic.
+         * of the legacy post-emit text substitution. Aliases the canonical [Dim.DYNAMIC] (a reserved sentinel
+         * distinct from reshape's `-1` = infer), so tracer and emitter agree on one value.
          */
-        public const val DYNAMIC_DIM: Int = -1
+        public const val DYNAMIC_DIM: Int = Dim.DYNAMIC
     }
     
     /**
@@ -156,7 +157,3 @@ public class TypeMapper {
         return "tensor<${shapeStr}x${elementType}>"
     }
 }
-
-/** True if any extent is dynamic ([TypeMapper.DYNAMIC_DIM], i.e. negative). Converters use this to pick
- *  dynamic-shape-safe op forms (e.g. dynamic_broadcast_in_dim) only when needed, leaving static graphs untouched. */
-public fun List<Int>.hasDynamic(): Boolean = any { it < 0 }

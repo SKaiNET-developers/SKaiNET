@@ -3,7 +3,8 @@ package sk.ainet.compile.hlo.converters
 import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
-import sk.ainet.compile.hlo.hasDynamic
+import sk.ainet.lang.tensor.Dim
+import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.graph.GraphNode
 
 /**
@@ -140,7 +141,7 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         val reducedType = if (reducedShape.isEmpty()) {
             "tensor<$elementType>"
         } else {
-            "tensor<${reducedShape.joinToString("x") { if (it < 0) "?" else "$it" }}x$elementType>"
+            "tensor<${reducedShape.joinToString("x") { Dim.render(it) }}x$elementType>"
         }
         // Dynamic softmax axis / leading dims (`?`): the reduced max/sum must broadcast back to a dynamic
         // output shape, which `stablehlo.broadcast_in_dim` cannot target — use `stablehlo.dynamic_broadcast_in_dim`
@@ -179,7 +180,7 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
             // Build the runtime output-shape operand once (only needed for dynamic broadcasts).
             val shapeOperand: String = if (!dyn) "" else run {
                 val parts = inputShape.indices.map { d ->
-                    if (inputShape[d] >= 0) {
+                    if (Dim.isStatic(inputShape[d])) {
                         val c = context.nextTempValue()
                         add("$c = stablehlo.constant dense<${inputShape[d]}> : tensor<1xi32>")
                         c

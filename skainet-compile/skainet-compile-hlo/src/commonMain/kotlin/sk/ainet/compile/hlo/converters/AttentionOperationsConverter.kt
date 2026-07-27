@@ -3,7 +3,8 @@ package sk.ainet.compile.hlo.converters
 import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
-import sk.ainet.compile.hlo.hasDynamic
+import sk.ainet.lang.tensor.Dim
+import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.graph.GraphNode
 import kotlin.math.sqrt
 
@@ -58,7 +59,7 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val mapper = context.getTypeMapper()
         val elem = outSpec?.let { mapper.mapDType(it.dtype) } ?: "f32"
         // Render a shape's dims, mapping a dynamic extent (DYNAMIC_DIM = -1) to `?`.
-        fun dims(shape: List<Int>): String = shape.joinToString("x") { if (it < 0) "?" else "$it" }
+        fun dims(shape: List<Int>): String = shape.joinToString("x") { Dim.render(it) }
         fun typeOf(shape: List<Int>): String = "tensor<${dims(shape)}x$elem>"
 
         val qType = context.getValueType(operands[0]) ?: typeOf(qShape)
@@ -162,7 +163,7 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val shapeType = "tensor<${scoresShape.size}xi32>"
         val scoresShapeOperand: String = if (!dyn) "" else run {
             val parts = scoresShape.indices.map { d ->
-                if (scoresShape[d] >= 0) {
+                if (Dim.isStatic(scoresShape[d])) {
                     val c = context.nextTempValue()
                     ops += "$c = stablehlo.constant dense<${scoresShape[d]}> : tensor<1xi32>"
                     c

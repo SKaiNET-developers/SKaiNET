@@ -4,6 +4,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.Dim
 import sk.ainet.lang.tensor.ops.TensorSpec
 
 /**
@@ -108,11 +109,10 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
                 axis in inShapes[0].indices
             ) {
                 val outShape = inShapes[0].toMutableList()
-                // A dynamic extent (< 0, the DYNAMIC_DIM convention) on the concat axis of ANY operand
-                // makes the concatenated extent dynamic too — summing it would emit a bogus static dim
-                // (e.g. `? + 1` → `0`, an invalid `tensor<…x0x…>`). Matches VoidTensorOps.calculateConcatShape.
-                val axisExtents = inShapes.map { it[axis] }
-                outShape[axis] = if (axisExtents.any { it < 0 }) -1 else axisExtents.sum()
+                // A dynamic extent on the concat axis of ANY operand makes the concatenated extent dynamic
+                // too — summing it would emit a bogus static dim (e.g. `? + 1` → `0`, an invalid
+                // `tensor<…x0x…>`). [Dim.concat] matches VoidTensorOps.calculateConcatShape.
+                outShape[axis] = Dim.concat(inShapes.map { it[axis] })
                 context.getTypeMapper().mapTensorType(
                     TensorSpec("${node.id}_out", outShape, outputSpec?.dtype ?: node.inputs[0].dtype),
                 )

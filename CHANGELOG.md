@@ -4,6 +4,15 @@
 
 ### Added
 
+- **First-class dynamic dimensions (`Dim`).** A new `sk.ainet.lang.tensor.Dim` vocabulary makes "dynamic
+  extent" explicit instead of an overloaded `-1`: `Dim.DYNAMIC` is a reserved sentinel (`Int.MIN_VALUE`)
+  **distinct from reshape's `-1` = infer**, with the dynamic-aware shape arithmetic (`concat`, `compatible`,
+  `render`, `isDynamic`/`isStatic`) centralized in one place rather than scattered `extent < 0` guards.
+  `Shape` gains `hasDynamic()`, `isDynamic(axis)`, `dynamicAxes`, and its `volume` now throws on a dynamic
+  shape (an unknown extent has no materializable element count) instead of returning a corrupt product.
+  The slice/range DSL is dynamic-aware too: `all()` over a dynamic axis is a valid symbolic full-axis, and
+  reshape passes a dynamic target through unchanged. The `skainet-compile-hlo` emitter now shares this one
+  sentinel (`TypeMapper.DYNAMIC_DIM` aliases `Dim.DYNAMIC`), so tracer and emitter agree by construction.
 - **Dynamic-shape-safe StableHLO emission (streaming KV-cache decode).** The `skainet-compile-hlo`
   emitter now renders a `-1` tensor extent as an MLIR `?` (dynamic) dimension and emits op forms that
   `iree-compile` accepts under a dynamic dim, so a single compiled vmfb serves every autoregressive
