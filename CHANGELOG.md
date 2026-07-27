@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic-shape-safe StableHLO emission (streaming KV-cache decode).** The `skainet-compile-hlo`
+  emitter now renders a `-1` tensor extent as an MLIR `?` (dynamic) dimension and emits op forms that
+  `iree-compile` accepts under a dynamic dim, so a single compiled vmfb serves every autoregressive
+  decode step (growing KV cache) instead of one fixed cache length. A new `TypeMapper.DYNAMIC_DIM = -1`
+  marker plus a `List<Int>.hasDynamic()` predicate gate the dynamic paths, so every static graph is
+  emitted byte-for-byte unchanged. Verified: one dynamic SDPA vmfb runs at key lengths 3 and 17.
+
+### Changed
+
+- **SDPA scale folded into Q.** `AttentionOperationsConverter` now applies the attention scale as a
+  scalar constant multiplied into Q *before* the QK `dot_general` (`(q·s)@kᵀ ≡ scores·s`, exact),
+  instead of a dense splat constant sized to the full scores shape. This drops a scores-sized constant
+  from every attention graph and, crucially, avoids an invalid dynamic-shape splat when the key/cache
+  dim is `?`.
+- **Softmax broadcasts are dynamic-shape-safe.** When the softmax/scores shape carries a dynamic dim,
+  `AttentionOperationsConverter` and `ActivationOperationsConverter` broadcast the reduced max/sum with
+  `stablehlo.dynamic_broadcast_in_dim` (runtime shape operand built via `get_dimension_size` +
+  `concatenate`) instead of a static `broadcast_in_dim`. Static graphs keep the explicit
+  `broadcast_in_dim` unchanged.
+- **Identity reshapes are elided.** `ShapeOperationsConverter` returns the operand SSA value with no
+  emitted op when a reshape's input and result types are identical (the KV-cache "cache-as-output-sink"
+  pattern), which is otherwise invalid StableHLO under a dynamic result type.
+
 ## [0.37.0] - 2026-07-25
 
 ### Added

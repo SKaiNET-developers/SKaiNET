@@ -117,24 +117,34 @@ public class TypeMapper {
     }
     
     /**
-     * Format tensor shape for MLIR
+     * Format tensor shape for MLIR. A negative extent renders as `?` (a dynamic dimension — see
+     * [DYNAMIC_DIM]); a `null` shape is a fully-dynamic tensor (`?`).
      */
-    private fun formatShape(shape: List<Int>?): String {
+    public fun formatShape(shape: List<Int>?): String {
         return when {
             shape == null -> "?"
             shape.isEmpty() -> ""
             else -> shape.joinToString("x") { if (it < 0) "?" else it.toString() }
         }
     }
-    
+
     /**
-     * Create a tensor type string with explicit shape
+     * Create a tensor type string with explicit shape. Renders negative extents as `?` (dynamic).
      */
     public fun createTensorType(shape: List<Int>, dtype: String): String {
         val elementType = mapDType(dtype)
         if (shape.isEmpty()) return "tensor<$elementType>" // rank-0 scalar
-        val shapeStr = shape.joinToString("x")
-        return "tensor<${shapeStr}x${elementType}>"
+        return "tensor<${formatShape(shape)}x${elementType}>"
+    }
+
+    public companion object {
+        /**
+         * Sentinel extent meaning "dynamic dimension" (`?`) in a [TensorSpec] shape. Threaded from the trace
+         * (e.g. a KV-cache seq dim) so the emitter renders `?` and picks dynamic-shape-safe op forms, instead
+         * of the legacy post-emit text substitution. `-1` matches the ONNX/XLA convention and, unlike a large
+         * real-looking sentinel, surfaces obviously if it ever leaks into shape arithmetic.
+         */
+        public const val DYNAMIC_DIM: Int = -1
     }
     
     /**
@@ -146,3 +156,7 @@ public class TypeMapper {
         return "tensor<${shapeStr}x${elementType}>"
     }
 }
+
+/** True if any extent is dynamic ([TypeMapper.DYNAMIC_DIM], i.e. negative). Converters use this to pick
+ *  dynamic-shape-safe op forms (e.g. dynamic_broadcast_in_dim) only when needed, leaving static graphs untouched. */
+public fun List<Int>.hasDynamic(): Boolean = any { it < 0 }

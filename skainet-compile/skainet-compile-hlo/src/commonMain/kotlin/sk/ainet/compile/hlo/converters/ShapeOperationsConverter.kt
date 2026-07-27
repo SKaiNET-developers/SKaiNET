@@ -338,6 +338,19 @@ public class ShapeOperationsConverter : StableHloOperationConverter {
             )
 
         val inputType = resolveOperandType(operands[0], node, context)
+
+        // Identity reshape (input type == output type): elide it. The KV-cache decode graphs route a cache
+        // tensor through `reshape(x, x.shape)` purely to make it a distinct graph-output sink; emitting
+        // `stablehlo.reshape` with an unchanged result is a no-op, and is outright INVALID when the result
+        // carries a dynamic dim (`?`) — `stablehlo.reshape` requires a statically-shaped result. Pass the
+        // operand through: this node's SSA name resolves to it (and `func.return` may list it more than once).
+        if (inputType == resultType) {
+            return ConversionResult.Success(
+                outputValueName = operands[0],
+                emittedOperations = emptyList(),
+            )
+        }
+
         val resultValue = context.nextTempValue()
         val operation = "$resultValue = stablehlo.reshape ${operands[0]} : ($inputType) -> $resultType"
         context.emitOperation(operation)
