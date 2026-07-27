@@ -7,6 +7,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.hasDynamic
+import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.tensor.data.views.UnsqueezedTensorData
@@ -15,11 +16,11 @@ import kotlin.reflect.KClass
 @Backend(id = "void", displayName = "Shape-only", internal = true)
 public class VoidTensorOps : TensorOps {
 
-    // Shape-only tracing: results carry a Shape but NO backing buffer. Allocating a real buffer
-    // (the old DenseTensorDataFactory.zeros) forbids a dynamic extent — a `-1` dim throws
-    // NegativeArraySizeException — which is exactly what blocked threading a dynamic KV-cache seq
-    // dim through a decode trace. `dataFactory.zeros(shape, dtype)` here returns a ShapeOnlyTensorData,
-    // so every op propagates shapes only and dynamic (`-1`) dims flow through untouched.
+    // Shape-only tracing. A STATIC shape still gets a real (readable) zeros buffer — existing code
+    // creates void tensors and reads their zeros, so that behavior must be preserved. A DYNAMIC shape
+    // (a `Dim.DYNAMIC` extent) cannot be allocated at all (it would throw NegativeArraySizeException),
+    // so it gets an allocation-free ShapeOnlyTensorData that carries only the Shape — which is exactly
+    // what lets a dynamic KV-cache seq dim thread through a decode trace. See ShapeOnlyDataFactory.
     private val dataFactory = ShapeOnlyDataFactory
     
     /**
@@ -1101,9 +1102,11 @@ private class ShapeOnlyTensorData<T : DType, V>(override val shape: Shape) : Ten
     override fun copyToFloatArray(): FloatArray = noData()
 }
 
-/** Drop-in for the fields VoidTensorOps used on DenseTensorDataFactory: only `zeros` is called,
- *  and it returns an allocation-free [ShapeOnlyTensorData] so dynamic (`-1`) dims flow through. */
+/** Drop-in for the one `dataFactory.zeros` call VoidTensorOps makes. A static shape delegates to
+ *  [DenseTensorDataFactory] (real, readable zeros — preserves existing behavior); only a DYNAMIC shape,
+ *  which cannot be allocated, gets the allocation-free [ShapeOnlyTensorData] so its `-1` extent survives. */
 private object ShapeOnlyDataFactory {
-    fun <T : DType, V> zeros(shape: Shape, @Suppress("UNUSED_PARAMETER") dtype: KClass<T>): TensorData<T, V> =
-        ShapeOnlyTensorData(shape)
+    private val dense = DenseTensorDataFactory()
+    fun <T : DType, V> zeros(shape: Shape, dtype: KClass<T>): TensorData<T, V> =
+        if (shape.hasDynamic()) ShapeOnlyTensorData(shape) else dense.zeros(shape, dtype)
 }
