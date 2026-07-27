@@ -9,7 +9,14 @@
   `iree-compile` accepts under a dynamic dim, so a single compiled vmfb serves every autoregressive
   decode step (growing KV cache) instead of one fixed cache length. A new `TypeMapper.DYNAMIC_DIM = -1`
   marker plus a `List<Int>.hasDynamic()` predicate gate the dynamic paths, so every static graph is
-  emitted byte-for-byte unchanged. Verified: one dynamic SDPA vmfb runs at key lengths 3 and 17.
+  emitted byte-for-byte unchanged. Verified: one dynamic SDPA vmfb runs at key lengths 3 and 17, and
+  the full FunctionGemma `with_past` decode graph (real weights, dynamic `1x{nKV}x?x256` cache)
+  self-compiles from the DSL to a CPU vmfb — a graph that could not be compiled before.
+- **Allocation-free shape-only tracing (`VoidTensorOps`).** The trace-time op set now propagates shapes
+  through a `ShapeOnlyTensorData` that carries a `Shape` but allocates no backing buffer, so a dynamic
+  (`-1`) extent flows through a whole decode trace instead of throwing `NegativeArraySizeException` when
+  a real buffer of negative size is allocated. This is what lets a real KV-cache seq dim be traced as
+  dynamic end-to-end (rather than via a sentinel-dimension + post-emit text substitution).
 
 ### Changed
 
@@ -23,9 +30,15 @@
   `stablehlo.dynamic_broadcast_in_dim` (runtime shape operand built via `get_dimension_size` +
   `concatenate`) instead of a static `broadcast_in_dim`. Static graphs keep the explicit
   `broadcast_in_dim` unchanged.
-- **Identity reshapes are elided.** `ShapeOperationsConverter` returns the operand SSA value with no
-  emitted op when a reshape's input and result types are identical (the KV-cache "cache-as-output-sink"
-  pattern), which is otherwise invalid StableHLO under a dynamic result type.
+- **Identity reshapes/slices are elided.** `ShapeOperationsConverter` returns the operand SSA value with
+  no emitted op when a reshape's input and result types are identical, or a `slice`/`narrow` covers the
+  full extent of every axis (the KV-cache "cache-as-output-sink" and full-cache head-expansion patterns).
+  Besides being a no-op, this is the only valid lowering on a dynamic axis — a static `stablehlo.slice`
+  cannot express a full-extent bound on a `?` dim (its limit would be the `-1` extent, e.g. `0:-1:1`).
+- **Concatenate propagates dynamic extents.** Both the trace-time shape inference
+  (`VoidTensorOps.calculateConcatShape`) and the emitter (`ShapeOperationsConverter` concat) now keep the
+  concatenated axis dynamic when any operand's extent there is dynamic, instead of numerically summing it
+  (which turned a growing cache `? ++ 1` into a bogus static `0`).
 
 ## [0.37.0] - 2026-07-25
 
