@@ -368,19 +368,9 @@ public class TraceToGraphBuilder(
             return buffer.copyOf()
         }
         
-        // Fallback for other data types if possible
-        if (tensor.volume > 0) {
-            val result = FloatArray(tensor.volume)
-            // This is slow but generic. Better if we have a way to get values.
-            // But usually weights are FloatArrayTensorData in the contexts we use for export.
-            return try {
-                // We don't have a good way to iterate over all indices generically without recursion
-                // for arbitrary rank. Let's stick to FloatArrayTensorData for now as it's the most common.
-                null
-            } catch (e: Exception) {
-                null
-            }
-        }
+        // Nothing else is materializable here: weights are FloatArrayTensorData in export contexts, and a
+        // dynamic-shaped tensor (e.g. a `?` KV-cache input) has no volume to probe — never call `.volume`
+        // on it (it throws by design). Such tensors are graph inputs, not constants to embed, so return null.
         return null
     }
 

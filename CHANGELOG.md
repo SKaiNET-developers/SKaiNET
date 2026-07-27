@@ -21,6 +21,11 @@
   emitted byte-for-byte unchanged. Verified: one dynamic SDPA vmfb runs at key lengths 3 and 17, and
   the full FunctionGemma `with_past` decode graph (real weights, dynamic `1x{nKV}x?x256` cache)
   self-compiles from the DSL to a CPU vmfb — a graph that could not be compiled before.
+- **Dynamic-shape-safe trace finalization.** `TraceToGraphBuilder.extractFloatArray` no longer probes
+  `Tensor.volume` for non-dense data, so a dynamic-shaped graph input (e.g. a `?` KV-cache tensor) is left
+  as an input instead of tripping the (correctly) throwing `volume` on an unknown extent. This lets a decode
+  graph with dynamic caches finalize to a `ComputeGraph` and compile — verified with the real Moonshine v2
+  `with_past` decoder (dynamic self *and* cross caches, `1x8x?x40`) self-compiling from the DSL to a vmfb.
 - **Allocation-free shape-only tracing (`VoidTensorOps`).** The trace-time op set now propagates shapes
   through a `ShapeOnlyTensorData` that carries a `Shape` but allocates no backing buffer, so a dynamic
   (`-1`) extent flows through a whole decode trace instead of throwing `NegativeArraySizeException` when
