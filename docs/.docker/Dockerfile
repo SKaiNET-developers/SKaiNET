@@ -83,9 +83,9 @@ RUN mkdir -p /opt/antora-ui \
 
 # Pre-download MathJax es5 for offline LaTeX. Copy /opt/mathjax/es5 into a
 # supplemental UI or reference it from your UI template for client-side math.
-# MathJax 0bfa580685ca72e4a3a37657ccd754a65c1a42c6: v4.1.3
+# MathJax 600692ad9d3552cc25f85510d5797bc942ecc9f7: v3.2.2
 RUN mkdir -p /opt/mathjax \
-    && npm pack git+https://github.com/mathjax/MathJax.git#0bfa580685ca72e4a3a37657ccd754a65c1a42c6 --pack-destination /tmp \
+    && npm pack git+https://github.com/mathjax/MathJax.git#600692ad9d3552cc25f85510d5797bc942ecc9f7 --pack-destination /tmp \
     && tar -xzf /tmp/mathjax-*.tgz -C /tmp \
     && cp -r /tmp/package/es5 /opt/mathjax/es5 \
     && rm -rf /tmp/mathjax-* /tmp/package
