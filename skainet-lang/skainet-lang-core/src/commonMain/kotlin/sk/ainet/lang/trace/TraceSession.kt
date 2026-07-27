@@ -18,10 +18,15 @@ public open class TraceSession {
     public open fun refOf(tensor: Tensor<*, *>): TensorRef {
         val key = unwrap(tensor)
         return tensorToRef.getOrPut(key) {
+            // The captured dtype is what the StableHLO converter reads to pick an MLIR element
+            // type, so a missing arm here silently downgrades the emitted graph. BF16 was absent
+            // and fell through to FP32, which is why bf16 weights could only be produced by
+            // rewriting the emitted MLIR text after the fact.
             val dtypeInstance: DType = when (tensor.dtype) {
                 Int32::class -> Int32
                 FP32::class -> FP32
                 FP16::class -> FP16
+                BF16::class -> BF16
                 Int8::class -> Int8
                 Int4::class -> Int4
                 Ternary::class -> Ternary

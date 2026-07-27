@@ -2862,16 +2862,10 @@ public final class sk/ainet/lang/tensor/benchmark/SlicingBenchmarksKt {
 	public static synthetic fun slicingBenchmarkSuite$default (Ljava/lang/String;Lsk/ainet/lang/tensor/benchmark/SlicingBenchmarkConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lsk/ainet/benchmark/BenchmarkSuite;
 }
 
-public final class sk/ainet/lang/tensor/data/Bf16DenseTensorData : sk/ainet/lang/tensor/data/Bf16TensorData {
+public final class sk/ainet/lang/tensor/data/Bf16DenseTensorData : sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData, sk/ainet/lang/tensor/data/Bf16TensorData {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Bf16DenseTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
-	public fun copyToFloatArray ()[F
-	public fun get ([I)Ljava/lang/Float;
-	public synthetic fun get ([I)Ljava/lang/Object;
-	public fun getPackedData ()[B
-	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
-	public fun set ([IF)V
-	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
 }
 
 public final class sk/ainet/lang/tensor/data/Bf16DenseTensorData$Companion {
@@ -2879,10 +2873,10 @@ public final class sk/ainet/lang/tensor/data/Bf16DenseTensorData$Companion {
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Bf16DenseTensorData;
 }
 
-public abstract interface class sk/ainet/lang/tensor/data/Bf16TensorData : sk/ainet/lang/tensor/data/TensorData {
+public abstract interface class sk/ainet/lang/tensor/data/Bf16TensorData : sk/ainet/lang/tensor/data/NarrowFloatTensorData {
 	public static final field BYTES_PER_ELEMENT I
 	public static final field Companion Lsk/ainet/lang/tensor/data/Bf16TensorData$Companion;
-	public abstract fun getPackedData ()[B
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
 }
 
 public final class sk/ainet/lang/tensor/data/Bf16TensorData$Companion {
@@ -2893,6 +2887,7 @@ public final class sk/ainet/lang/tensor/data/Bf16TensorData$Companion {
 
 public final class sk/ainet/lang/tensor/data/Bf16TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Bf16TensorData;)[F
+	public static fun getCodec (Lsk/ainet/lang/tensor/data/Bf16TensorData;)Lsk/ainet/lang/types/NarrowFloatCodec;
 }
 
 public final class sk/ainet/lang/tensor/data/Bf16TensorDataKt {
@@ -2965,6 +2960,16 @@ public abstract interface class sk/ainet/lang/tensor/data/FloatBufferTensorData 
 
 public final class sk/ainet/lang/tensor/data/FloatBufferTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/FloatBufferTensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/Fp16DenseTensorData : sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData {
+	public static final field Companion Lsk/ainet/lang/tensor/data/Fp16DenseTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+}
+
+public final class sk/ainet/lang/tensor/data/Fp16DenseTensorData$Companion {
+	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/data/Fp16DenseTensorData;
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Fp16DenseTensorData;
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/IntArrayTensorData : sk/ainet/lang/tensor/data/TensorData {
@@ -3071,6 +3076,42 @@ public final class sk/ainet/lang/tensor/data/MmapTensorSource : java/lang/AutoCl
 public final class sk/ainet/lang/tensor/data/MmapTensorSource$Companion {
 	public final fun fromChannel (Ljava/nio/channels/FileChannel;JJ)Lsk/ainet/lang/tensor/data/MmapTensorSource;
 	public static synthetic fun fromChannel$default (Lsk/ainet/lang/tensor/data/MmapTensorSource$Companion;Ljava/nio/channels/FileChannel;JJILjava/lang/Object;)Lsk/ainet/lang/tensor/data/MmapTensorSource;
+}
+
+public class sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData : sk/ainet/lang/tensor/data/NarrowFloatTensorData {
+	public static final field Companion Lsk/ainet/lang/tensor/data/NarrowFloatDenseTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/types/NarrowFloatCodec;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
+	public fun getPackedData ()[B
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+}
+
+public final class sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData$Companion {
+	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[FLsk/ainet/lang/types/NarrowFloatCodec;)Lsk/ainet/lang/tensor/data/NarrowFloatDenseTensorData;
+}
+
+public abstract interface class sk/ainet/lang/tensor/data/NarrowFloatTensorData : sk/ainet/lang/tensor/data/TensorData {
+	public static final field BYTES_PER_ELEMENT I
+	public static final field Companion Lsk/ainet/lang/tensor/data/NarrowFloatTensorData$Companion;
+	public abstract fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
+	public abstract fun getPackedData ()[B
+}
+
+public final class sk/ainet/lang/tensor/data/NarrowFloatTensorData$Companion {
+	public static final field BYTES_PER_ELEMENT I
+}
+
+public final class sk/ainet/lang/tensor/data/NarrowFloatTensorData$DefaultImpls {
+	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/NarrowFloatTensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/NarrowFloatTensorDataKt {
+	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/NarrowFloatTensorData;)[F
 }
 
 public final class sk/ainet/lang/tensor/data/PprintKt {
@@ -5714,6 +5755,14 @@ public final class sk/ainet/lang/types/BF16 : sk/ainet/lang/types/DType {
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
+public final class sk/ainet/lang/types/Bf16Codec : sk/ainet/lang/types/NarrowFloatCodec {
+	public static final field INSTANCE Lsk/ainet/lang/types/Bf16Codec;
+	public fun decode (I)F
+	public fun encode (F)I
+	public fun getBytesPerElement ()I
+	public fun getDtype ()Lsk/ainet/lang/types/DType;
+}
+
 public abstract interface class sk/ainet/lang/types/DType {
 	public static final field Companion Lsk/ainet/lang/types/DType$Companion;
 	public static fun bf16 ()Lsk/ainet/lang/types/DType;
@@ -5758,6 +5807,7 @@ public final class sk/ainet/lang/types/DType$Companion {
 public final class sk/ainet/lang/types/DTypeExtensionsKt {
 	public static final fun commonPrecisionWith (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 	public static final fun isConvertibleTo (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Z
+	public static final fun isFloatingPoint (Lsk/ainet/lang/types/DType;)Z
 	public static final fun kotlinClass (Lsk/ainet/lang/types/DType;)Lkotlin/reflect/KClass;
 }
 
@@ -5845,6 +5895,14 @@ public final class sk/ainet/lang/types/FP64 : sk/ainet/lang/types/DType {
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
+public final class sk/ainet/lang/types/Fp16Codec : sk/ainet/lang/types/NarrowFloatCodec {
+	public static final field INSTANCE Lsk/ainet/lang/types/Fp16Codec;
+	public fun decode (I)F
+	public fun encode (F)I
+	public fun getBytesPerElement ()I
+	public fun getDtype ()Lsk/ainet/lang/types/DType;
+}
+
 public final class sk/ainet/lang/types/Int16 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Int16;
 	public fun getName ()Ljava/lang/String;
@@ -5883,6 +5941,17 @@ public final class sk/ainet/lang/types/Int8 : sk/ainet/lang/types/DType {
 	public fun getSizeInBits ()I
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
+}
+
+public abstract interface class sk/ainet/lang/types/NarrowFloatCodec {
+	public abstract fun decode (I)F
+	public abstract fun encode (F)I
+	public fun getBytesPerElement ()I
+	public abstract fun getDtype ()Lsk/ainet/lang/types/DType;
+}
+
+public final class sk/ainet/lang/types/NarrowFloatCodec$DefaultImpls {
+	public static fun getBytesPerElement (Lsk/ainet/lang/types/NarrowFloatCodec;)I
 }
 
 public final class sk/ainet/lang/types/PrecisionValidationKt {

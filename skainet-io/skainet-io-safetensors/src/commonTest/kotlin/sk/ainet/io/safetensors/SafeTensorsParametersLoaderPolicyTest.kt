@@ -43,15 +43,41 @@ class SafeTensorsParametersLoaderPolicyTest {
     }
 
     @Test
-    fun require_fp16_fails_with_explicit_message() {
-        val ex = assertFailsWith<IllegalArgumentException> {
-            SafeTensorsParametersLoader.mapPolicyToBf16(DTypePolicy.Require(FP16))
-        }
-        // The error message must point the operator at the alternative —
-        // RFC says "fail-fast with clear diagnostics," not just throw.
-        val msg = ex.message ?: ""
-        assertEquals(true, msg.contains("Require(FP16)"), "msg: $msg")
-        assertEquals(true, msg.contains("Fp16DenseTensorData"), "msg: $msg")
+    fun require_fp16_now_keeps_f16_sources_native() {
+        // Previously this threw: there was no Fp16DenseTensorData to back a KEEP_NATIVE F16 path.
+        // That backing now exists, so Require(FP16) is satisfiable for F16 sources.
+        assertEquals(
+            NarrowFloatLoadPolicy.KEEP_NATIVE,
+            SafeTensorsParametersLoader.mapPolicyToFp16(DTypePolicy.Require(FP16)),
+        )
+    }
+
+    @Test
+    fun the_two_narrow_formats_do_not_keep_each_other_native() {
+        // Neither format can be produced from the other without a lossy re-encode, so a policy
+        // naming one must widen the other rather than silently mis-tagging it.
+        assertEquals(
+            NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+            SafeTensorsParametersLoader.mapPolicyToFp16(DTypePolicy.Require(BF16)),
+            "Require(BF16) must not keep F16 sources packed",
+        )
+        assertEquals(
+            NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+            SafeTensorsParametersLoader.mapPolicyToBf16(DTypePolicy.Require(FP16)),
+            "Require(FP16) must not keep BF16 sources packed",
+        )
+    }
+
+    @Test
+    fun require_fp16_still_keeps_bf16_behaviour_intact() {
+        assertEquals(
+            NarrowFloatLoadPolicy.KEEP_NATIVE,
+            SafeTensorsParametersLoader.mapPolicyToBf16(DTypePolicy.Require(BF16)),
+        )
+        assertEquals(
+            NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+            SafeTensorsParametersLoader.mapPolicyToBf16(DTypePolicy.Require(FP32)),
+        )
     }
 
     @Test

@@ -29,7 +29,9 @@ public object Int8 : DType {
             is UInt32 -> Int64  // Int8 + UInt32 → Int64
             is UInt64 -> FP64   // Int8 + UInt64 → FP64 (no integer type covers both)
             is FP16 -> FP16     // Int8 + FP16 → FP16
-            is BF16 -> FP32     // Int8 + BF16 → FP32
+            // bf16 carries 8 significand bits, so it represents every Int8 value (-128..127)
+            // exactly — same reason Int8 + FP16 stays FP16. Matches BF16.promoteTo(Int8).
+            is BF16 -> BF16     // Int8 + BF16 → BF16
             is FP32 -> FP32     // Int8 + FP32 → FP32
             is FP64 -> FP64     // Int8 + FP64 → FP64
         }

@@ -4,6 +4,7 @@ import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorSpecies
 import jdk.incubator.vector.VectorOperators
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
+import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelServiceLoader
@@ -12,6 +13,7 @@ import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
+import sk.ainet.exec.kernel.ScalarFp16MatmulKernel
 import sk.ainet.exec.kernel.ScalarMatmulKernel
 import sk.ainet.exec.kernel.ScalarQ4_0MatmulKernel
 import sk.ainet.lang.tensor.Shape
@@ -23,6 +25,9 @@ import sk.ainet.lang.tensor.data.MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Bf16TensorData
+import sk.ainet.lang.tensor.data.NarrowFloatTensorData
+import sk.ainet.lang.types.Bf16Codec
+import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.tensor.data.Q4_0TensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
@@ -30,6 +35,7 @@ import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -124,6 +130,17 @@ internal class DefaultCpuOpsJvm(
             .firstOrNull { it.isAvailable() && it.matmulBf16() != null }
             ?.matmulBf16()
             ?: ScalarBf16MatmulKernel
+    }
+
+    /** FP16 matmul kernel resolved via [KernelRegistry]; mirrors [bf16MatmulKernel]. */
+    private val fp16MatmulKernel: Fp16MatmulKernel by lazy {
+        if (KernelRegistry.providers().isEmpty()) {
+            KernelServiceLoader.installAll()
+        }
+        KernelRegistry.providers()
+            .firstOrNull { it.isAvailable() && it.matmulFp16() != null }
+            ?.matmulFp16()
+            ?: ScalarFp16MatmulKernel
     }
 
     /**
@@ -588,20 +605,32 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 CpuTensor(outData as TensorData<T, V>, this, a.dtype)
             }
-            is Bf16TensorData -> {
-                // BF16 is dense (not block-quantized) and the kernel SPI is a
+            is NarrowFloatTensorData -> {
+                // Narrow floats are dense (not block-quantized) and the kernel SPI is a
                 // full SGEMM with `(m, n, k)` strides — no per-batch loop needed,
                 // unlike the matvec-shaped Q4_K / Q8_0 / Q6_K branches.
-                val outBuffer = FloatArray(batchSize * outputDim)
-                bf16MatmulKernel.matmul(
-                    inputBuffer, 0, inputDim,
-                    bData.packedData, 0, outputDim * Bf16TensorData.BYTES_PER_ELEMENT,
-                    outBuffer, 0, outputDim,
-                    batchSize, outputDim, inputDim,
-                )
-                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                //
+                // The codec selects the kernel: the two formats have different bit layouts,
+                // so decoding F16 bytes with the BF16 kernel would yield silent garbage.
+                val kernel = when (bData.codec) {
+                    Bf16Codec -> bf16MatmulKernel
+                    Fp16Codec -> fp16MatmulKernel
+                    else -> null
+                }
+                if (kernel == null) {
+                    null
+                } else {
+                    val outBuffer = FloatArray(batchSize * outputDim)
+                    kernel.matmul(
+                        inputBuffer, 0, inputDim,
+                        bData.packedData, 0, outputDim * NarrowFloatTensorData.BYTES_PER_ELEMENT,
+                        outBuffer, 0, outputDim,
+                        batchSize, outputDim, inputDim,
+                    )
+                    val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
+                    @Suppress("UNCHECKED_CAST")
+                    CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                }
             }
             // Q6_K / Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
             // registry (block-major, shared with Native); not intercepted here.
@@ -893,7 +922,12 @@ internal class DefaultCpuOpsJvm(
 
     private fun <T : DType> supportsFloatOps(tensor: Tensor<T, *>): Boolean {
         val dtype = tensor.dtype
-        return (dtype == FP32::class || dtype == FP16::class)
+        // BF16 was excluded here, which left BF16-tagged tensors matmul-only — every elementwise
+        // and unary op fell through to the generic scalar path. All three float tags are backed by
+        // FloatArray when produced by DenseTensorDataFactory, so they can use the vector kernels.
+        // Callers re-check with `data as? FloatArrayTensorData`, so genuinely narrow-storage
+        // tensors (Bf16/Fp16DenseTensorData) still fall through safely rather than being misread.
+        return dtype == FP32::class || dtype == FP16::class || dtype == BF16::class
     }
 
     private fun <T : DType, V> chooseMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {

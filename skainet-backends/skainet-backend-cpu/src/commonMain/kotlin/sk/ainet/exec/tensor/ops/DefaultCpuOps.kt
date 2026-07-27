@@ -30,8 +30,11 @@ import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.UpsampleMode
+import sk.ainet.lang.types.BF16
+import sk.ainet.lang.types.Bf16Codec
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.types.Int32
 import sk.ainet.lang.types.Int8
 import kotlin.math.floor
@@ -2685,18 +2688,34 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
         @Suppress("UNCHECKED_CAST")
         val outData = when (targetClass) {
-            FP32::class, FP16::class -> dataFactory.fromFloatArray<TTo, Float>(
+            FP32::class -> dataFactory.fromFloatArray<TTo, Float>(
                 tensor.shape,
                 targetClass,
                 copyTensorValuesAsFloatArray(tensor)
             ) as TensorData<TTo, V>
+            // Narrowing to 16 bits must actually ROUND. This previously shared the FP32 branch,
+            // so `convert(x, FP16)` only re-tagged the dtype and kept full FP32 precision — the
+            // resulting tensor claimed to be FP16 while holding values no FP16 can represent, with
+            // no rounding, no overflow-to-Inf past the format's range, and no NaN handling.
+            // Storage stays float-backed (matching DenseTensorDataFactory's narrow tags); it is
+            // the VALUES that now reflect the target format.
+            FP16::class, BF16::class -> {
+                val codec = if (targetClass == BF16::class) Bf16Codec else Fp16Codec
+                val src = copyTensorValuesAsFloatArray(tensor)
+                val rounded = FloatArray(src.size) { codec.decode(codec.encode(src[it])) }
+                dataFactory.fromFloatArray<TTo, Float>(
+                    tensor.shape,
+                    targetClass,
+                    rounded
+                ) as TensorData<TTo, V>
+            }
             Int32::class, Int8::class -> dataFactory.fromIntArray<TTo, Int>(
                 tensor.shape,
                 targetClass,
                 copyTensorValuesAsIntArray(tensor)
             ) as TensorData<TTo, V>
             else -> throw IllegalArgumentException(
-                "convert supports FP32, FP16, Int32, and Int8 targets, got ${targetType.name}"
+                "convert supports FP32, FP16, BF16, Int32, and Int8 targets, got ${targetType.name}"
             )
         }
         return CpuTensor(outData, this, targetClass, GradState(requiresGrad = tensor.requiresGrad))

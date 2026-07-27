@@ -1,5 +1,8 @@
 package sk.ainet.backend.api.kernel
 
+import sk.ainet.lang.types.Bf16Codec
+import sk.ainet.lang.types.NarrowFloatCodec
+
 /**
  * FP32 input × BF16-packed weight matrix multiplication:
  *
@@ -43,7 +46,10 @@ package sk.ainet.backend.api.kernel
  * and byte-stride accessors on the same `ByteArray`. For a contiguous
  * `(k, n)` BF16 matrix `bByteStride == n * 2`.
  */
-public interface Bf16MatmulKernel {
+public interface Bf16MatmulKernel : NarrowFloatMatmulKernel {
+
+    override val codec: NarrowFloatCodec get() = Bf16Codec
+
     /**
      * @param a left operand `(m, k)`, row-major FP32, stride [aStride]
      *   floats per row.
@@ -64,7 +70,7 @@ public interface Bf16MatmulKernel {
      * @param k contraction dimension (cols of A == rows of B). `k == 0`
      *   zeros the `m × n` output block.
      */
-    public fun matmul(
+    override fun matmul(
         a: FloatArray, aOffset: Int, aStride: Int,
         b: ByteArray, bByteOffset: Int, bByteStride: Int,
         out: FloatArray, outOffset: Int, outStride: Int,
