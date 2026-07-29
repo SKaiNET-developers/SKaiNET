@@ -59,6 +59,60 @@ class Fp16CodecIntrinsicParityTest {
         assertEquals(2 * 30 * 1024, normals)
     }
 
+    /**
+     * The pre-#887 [Fp16Codec.decode], kept verbatim, so the scope of the behaviour change can be
+     * asserted rather than described.
+     *
+     * This lives in the JVM test rather than beside the portable one in `NarrowFloatCodecTest`
+     * because it is the only target that can observe the difference: Kotlin/JS quiets a signaling
+     * NaN itself whenever a Float crosses float32/double, so there the old implementation and the
+     * new one produce identical bits and the count below would be 0.
+     */
+    private fun decodeByRenormalizationLoop(bits: Int): Float {
+        val h = bits and 0xFFFF
+        val sign = (h and 0x8000) shl 16
+        val exp = (h ushr 10) and 0x1F
+        val mant = h and 0x03FF
+
+        return when (exp) {
+            0 -> {
+                if (mant == 0) {
+                    Float.fromBits(sign)
+                } else {
+                    var m = mant
+                    var e = -1
+                    do {
+                        m = m shl 1
+                        e++
+                    } while (m and 0x0400 == 0)
+                    Float.fromBits(sign or ((127 - 15 - e) shl 23) or ((m and 0x03FF) shl 13))
+                }
+            }
+            0x1F -> Float.fromBits(sign or 0x7F80_0000 or (mant shl 13))
+            else -> Float.fromBits(sign or ((exp - 15 + 127) shl 23) or (mant shl 13))
+        }
+    }
+
+    @Test
+    fun exactly_the_signaling_nans_changed_relative_to_the_old_decode() {
+        // 1022 patterns — mantissas 1..0x1FF, both signs — and nothing else. A change anywhere
+        // outside that set would be a regression, not the intended quieting.
+        var changed = 0
+        for (bits in 0..0xFFFF) {
+            if (decodeByRenormalizationLoop(bits).toRawBits() == Fp16Codec.decode(bits).toRawBits()) {
+                continue
+            }
+            changed++
+            val exp = (bits ushr 10) and 0x1F
+            val mant = bits and 0x03FF
+            assertTrue(
+                exp == 0x1F && mant != 0 && mant < 0x0200,
+                "0x${bits.toString(16)} changed but is not a signaling NaN",
+            )
+        }
+        assertEquals(2 * 511, changed, "only the signaling NaNs may differ from the old decode")
+    }
+
     @Test
     fun the_intrinsic_round_trips_the_codecs_own_encode() {
         // Cross-check the other direction too: whatever encode produces must decode identically

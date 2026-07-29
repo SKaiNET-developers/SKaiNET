@@ -298,7 +298,12 @@ class NarrowFloatCodecTest {
         // Quieting is the deliberate divergence from the old decode (#887): it makes the codec
         // agree with the hardware/JDK conversion the JVM kernel now uses, so no target disagrees.
         // The payload below the quiet bit must still survive, or a NaN could decode as Inf.
-        var quietened = 0
+        //
+        // How many patterns this *changed* relative to the old decode is deliberately not asserted
+        // here. Kotlin/JS quiets a signaling NaN itself when a Float crosses float32/double, so on
+        // that target the old implementation is observationally identical to this one and the
+        // count is 0 rather than 1022. The count is pinned in `Fp16CodecIntrinsicParityTest`,
+        // where no platform sits in between. Everything below is portable and holds everywhere.
         for (bits in 0..0xFFFF) {
             if (!isNaNPattern(bits)) continue
             val decoded = Fp16Codec.decode(bits)
@@ -316,10 +321,7 @@ class NarrowFloatCodecTest {
                 (bits and 0x8000) shl 16, raw and 0x8000_0000.toInt(),
                 "sign must be preserved for 0x${bits.toString(16)}",
             )
-            if (decodeByRenormalizationLoop(bits).toRawBits() != raw) quietened++
         }
-        // Exactly the signaling half changes: mantissas 1..0x1FF, both signs.
-        assertEquals(2 * 511, quietened, "only signaling NaNs may differ from the old decode")
     }
 
     @Test
