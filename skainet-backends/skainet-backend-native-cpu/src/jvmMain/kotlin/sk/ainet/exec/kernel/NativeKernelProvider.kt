@@ -1,6 +1,7 @@
 package sk.ainet.exec.kernel
 
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
+import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.MemSegKernelProvider
@@ -75,6 +76,10 @@ import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
  *  - PR 3: MemSeg-input zero-copy sibling.
  *  - PR 5: native FP32 matmul wired into [matmulFp32].
  *  - Now: native `matmulQ5K`, `matmulQ6K`, `matmulQ8_0`, `matmulQ4_0` all wired.
+ *  - Now: native `matmulFp16`, closing the gap against `matmulBf16` (#887).
+ *    Every narrow-float accessor the SPI declares is wired here; a format
+ *    served natively on one side and by the JVM fallback on the other looks
+ *    like a slow kernel rather than a missing one.
  */
 public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
     override val name: String = "native-ffm"
@@ -93,6 +98,9 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun matmulBf16(): Bf16MatmulKernel? =
         if (NativeBf16MatmulKernel.isAvailable()) NativeBf16MatmulKernel else null
+
+    override fun matmulFp16(): Fp16MatmulKernel? =
+        if (NativeFp16MatmulKernel.isAvailable()) NativeFp16MatmulKernel else null
 
     override fun matmulQ8_0(): Q8_0MatmulKernel? =
         if (NativeQ8_0MatmulKernel.isAvailable()) NativeQ8_0MatmulKernel else null

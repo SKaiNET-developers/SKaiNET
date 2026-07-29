@@ -148,6 +148,23 @@ SKAINET_API void skainet_bf16_matmul(
 );
 
 /*
+ * Row-major FP32 × FP16 matmul: C(m, n) = A(m, k) * B(k, n).
+ *
+ * Identical contract to skainet_bf16_matmul, with B packed as IEEE
+ * binary16 little-endian (2 bytes per element) instead of BF16.
+ *
+ * FP16 → FP32 needs exponent rebiasing and gradual-underflow handling
+ * rather than BF16's single shift; it is done branch-free so the inner
+ * loop still vectorizes. See src/fp16_matmul.c.
+ */
+SKAINET_API void skainet_fp16_matmul(
+    const float* a, int32_t a_offset, int32_t a_stride,
+    const uint8_t* b, int32_t b_byte_offset, int32_t b_byte_stride,
+    float* c, int32_t c_offset, int32_t c_stride,
+    int32_t m, int32_t n, int32_t k
+);
+
+/*
  * Q8_0 matrix-vector multiply.
  *
  *   output[output_offset + o] = sum_j input[input_offset + j] *

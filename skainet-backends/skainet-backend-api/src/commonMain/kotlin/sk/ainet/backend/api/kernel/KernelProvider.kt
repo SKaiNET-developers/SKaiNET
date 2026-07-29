@@ -134,6 +134,7 @@ public interface KernelProvider {
         return when (weight) {
             "Float32" -> matmulFp32() != null
             "BFloat16" -> matmulBf16() != null
+            "Float16" -> matmulFp16() != null
             "Q4_K" -> matmulQ4K() != null
             "Q8_0" -> matmulQ8_0() != null
             "Q4_0" -> matmulQ4_0() != null
