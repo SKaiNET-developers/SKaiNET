@@ -111,6 +111,87 @@ class NativeFp16MatmulKernelParityTest {
     }
 
     @Test
+    fun decode_matches_the_codec_on_every_bit_pattern_through_the_tiled_path() {
+        // The sweep above uses m = 1, which takes the straight i-p-j path. At
+        // m > 1 the kernel tiles j and decodes through a different loop, so
+        // sweep the domain again with a second row to cover it. Row 1's a is 0,
+        // so row 0 still reads out as the decoded weight exactly.
+        val n = 0x1_0000
+        val b = ByteArray(n * 2)
+        for (bits in 0 until n) {
+            b[bits * 2] = (bits and 0xFF).toByte()
+            b[bits * 2 + 1] = ((bits ushr 8) and 0xFF).toByte()
+        }
+        val out = FloatArray(2 * n)
+        NativeFp16MatmulKernel.matmul(
+            floatArrayOf(1f, 0f), 0, 1,
+            b, 0, n * 2,
+            out, 0, n,
+            2, n, 1,
+        )
+
+        for (bits in 0 until n) {
+            val expected = Fp16Codec.decode(bits)
+            val actual = out[bits]
+            when {
+                expected.isNaN() -> assertTrue(actual.isNaN(), "expected NaN at 0x${bits.toString(16)}")
+                expected == 0f -> assertTrue(actual == 0f, "expected zero at 0x${bits.toString(16)}")
+                else -> assertEquals(
+                    expected.toRawBits(), actual.toRawBits(),
+                    "tiled decode diverged at 0x${bits.toString(16)}: codec=$expected native=$actual",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun multi_tile_n_with_partial_last_tile_matches_panama() {
+        // At m > 1 the kernel tiles j at 512 columns. The other shapes here are
+        // either m == 1 or n <= 256, so without this case the tiled path runs as
+        // a single full tile and the tile-boundary arithmetic is never
+        // exercised. n = 1100 is two full tiles plus a 76-column remainder.
+        val rng = Random(7)
+        val m = 3; val n = 1100; val k = 17
+        val a = FloatArray(m * k) { rng.nextFloat() - 0.5f }
+        val bFloats = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        val b = fp16Bytes(bFloats)
+        assertParity(
+            m = m, n = n, k = k,
+            a = a, aOffset = 0, aStride = k,
+            b = b, bByteOffset = 0, bByteStride = n * 2,
+            outStride = n,
+        )
+    }
+
+    @Test
+    fun tiled_and_single_row_paths_agree_on_the_same_weights() {
+        // m == 1 and m > 1 take different loop orders. Accumulation stays p
+        // ascending in both, so row 0 of a multi-row call must be bit-identical
+        // to the same row computed on its own — not merely within tolerance.
+        val rng = Random(31)
+        val n = 700; val k = 9
+        val bFloats = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        val b = fp16Bytes(bFloats)
+        val aRow = FloatArray(k) { rng.nextFloat() - 0.5f }
+
+        val single = FloatArray(n)
+        NativeFp16MatmulKernel.matmul(aRow, 0, k, b, 0, n * 2, single, 0, n, 1, n, k)
+
+        val a2 = FloatArray(2 * k)
+        aRow.copyInto(a2, 0)
+        aRow.copyInto(a2, k)
+        val pair = FloatArray(2 * n)
+        NativeFp16MatmulKernel.matmul(a2, 0, k, b, 0, n * 2, pair, 0, n, 2, n, k)
+
+        for (j in 0 until n) {
+            assertEquals(
+                single[j].toRawBits(), pair[j].toRawBits(),
+                "tiled path diverged from the single-row path at column $j",
+            )
+        }
+    }
+
+    @Test
     fun small_2x3x4_contiguous_matches_panama() {
         val a = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f, 7f, 8f) // [2, 4]
         val bFloats = FloatArray(4 * 3) { it.toFloat() }    // [4, 3]

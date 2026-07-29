@@ -32,22 +32,23 @@
  * handful of integer ops. Runtime ISA dispatch is the place for that, if it
  * ever pays for itself.
  *
- * Iteration order is NOT i-p-j like skainet_bf16_matmul. That order re-decodes
- * every B element once per row of A, which BF16 can afford at one shift per
- * element and this kernel cannot. Instead j is tiled, and within a tile each B
- * row is decoded once into a small stack buffer and then multiplied into all m
- * rows of C. Total decodes drop from m*k*n to k*n while B traffic is unchanged
- * — each element is still read once per tile pass, and the tiles partition n.
- * The tile is sized so that the decoded row plus the m*C rows it touches stay
- * in L1/L2.
+ * Iteration order depends on m.
  *
- * Accumulation order into any given C element is still p ascending, so this is
- * bit-identical to the i-p-j formulation, not merely close.
+ * At m == 1 it is plain i-p-j: each B element is used exactly once, so there
+ * is nothing to reuse and the best thing to do is stream B sequentially.
+ * Tiling here is pure overhead — measured 15% slower on ffn_up 8B — and m == 1
+ * is the decode step of inference.
  *
- * The same amortization would very likely help skainet_bf16_matmul at m > 1.
- * It is deliberately not applied there in this change: BF16 is the format
- * currently recommended for speed, and changing its measured behaviour belongs
- * in its own change with its own numbers.
+ * At m > 1, i-p-j would walk the whole of B once per row of A: for ffn_up 8B
+ * at m=16 that is 16 passes over 90 MiB. Instead j is tiled, and within a tile
+ * each B row is decoded once into a small stack buffer and multiplied into all
+ * m rows of C. B is then read once in total rather than m times, and the
+ * decode count drops from m*k*n to k*n. The tile is sized so the decoded row
+ * and the m C rows it feeds stay resident together.
+ *
+ * Accumulation order into any given C element is p ascending on both paths, so
+ * the two are bit-identical to each other and to the original i-p-j
+ * formulation, not merely close.
  *
  * Caller contract (mirrors skainet_bf16_matmul):
  *  - C is FULLY OVERWRITTEN in the m×n block.
@@ -126,6 +127,24 @@ SKAINET_API void skainet_fp16_matmul(
         }
     }
     if (k <= 0) return;
+
+    if (m == 1) {
+        const float* SKAINET_RESTRICT a_row = a + a_offset;
+        float* SKAINET_RESTRICT c_row = c + c_offset;
+        for (int32_t p = 0; p < k; ++p) {
+            const float a_ip = a_row[p];
+            const uint8_t* SKAINET_RESTRICT b_row =
+                b + b_byte_offset + (size_t) p * b_byte_stride;
+            for (int32_t j = 0; j < n; ++j) {
+                /* Read 2 bytes LE. memcpy is strict-aliasing safe and the
+                 * compiler folds it to a single 16-bit load. */
+                uint16_t bits;
+                memcpy(&bits, b_row + (size_t) j * 2, sizeof(uint16_t));
+                c_row[j] += a_ip * skainet_fp16_to_float(bits);
+            }
+        }
+        return;
+    }
 
     float decoded[SKAINET_FP16_TILE];
 
