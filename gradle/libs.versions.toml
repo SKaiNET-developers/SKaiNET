@@ -27,6 +27,15 @@ kotlinxIo = "0.9.1"
 pbandk = "0.16.0"
 kotest = "6.2.2"
 
+# --- npm pins -----------------------------------------------------------------
+# Every `npm-<package>` entry is forced into BOTH kotlin-js-store lockfiles by the
+# sk.ainet.npm-pins convention plugin, via Yarn resolutions. Adding a line here is
+# the whole job; then regenerate and commit the lockfiles with
+#   ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock
+# Never edit kotlin-js-store/**/yarn.lock by hand — it is generated and will be
+# overwritten (see PR #894).
+npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
+
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
@@ -41,6 +50,9 @@ kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.re
 
 
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+# Consumed only by build-logic (compileOnly) so convention plugins can use the KGP/AGP types.
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 kotlinx-cli = { module = "org.jetbrains.kotlinx:kotlinx-cli", version.ref = "kotlinxCli" }
 kotlinx-benchmark-runtime = { module = "org.jetbrains.kotlinx:kotlinx-benchmark-runtime", version.ref = "kotlinxBenchmark" }
@@ -91,5 +103,7 @@ asciidoctorPdf = { id = "org.asciidoctor.jvm.pdf", version = "4.0.5" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 
 skainet-docs = { id = "sk.ainet.documentation" }
+skainet-multiplatform = { id = "sk.ainet.multiplatform" }
+skainet-npmPins = { id = "sk.ainet.npm-pins" }
 kotlinx-benchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinxBenchmark" }
 shadow = { id = "com.gradleup.shadow", version = "9.6.1" }

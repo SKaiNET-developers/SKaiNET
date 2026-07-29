@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.asciidoctorJvm) apply false
     alias(libs.plugins.dokka)
     alias(libs.plugins.skainet.docs)
+    alias(libs.plugins.skainet.npmPins)
     id("org.jetbrains.kotlinx.benchmark") version "0.4.17" apply false
 }
 
