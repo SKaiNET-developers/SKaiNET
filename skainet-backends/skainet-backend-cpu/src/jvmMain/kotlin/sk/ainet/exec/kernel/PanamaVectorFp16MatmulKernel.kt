@@ -15,10 +15,19 @@ import sk.ainet.lang.types.Fp16Codec
  * its dequant. Binary16 needs exponent rebiasing and gradual-underflow handling, and mainstream
  * JDKs expose no FP16 vector species, so each element is decoded scalar into a lane-width scratch
  * buffer before the vectorized multiply-accumulate. The FMA over `n` is still fully vectorized —
- * only the widening is not. Expect this kernel to trail the BF16 one; that is inherent to the
- * format on this platform, not a defect in this implementation.
+ * only the widening is not.
  *
- * Numerical parity vs [ScalarFp16MatmulKernel] is asserted by
+ * **Why not [Fp16Codec] (#887).** The codec is portable integer bit math, and calling it once per
+ * weight element made this kernel run at a flat ~0.5 GFLOP/s — 2-18x *slower* than the FP32 SGEMM
+ * it replaces, while the structurally identical BF16 kernel was 1.5-2.1x faster. `float16ToFloat`
+ * is a HotSpot intrinsic (JDK 20+) that lowers to a single `vcvtph2ps` on F16C hardware and to a
+ * compact branch-free sequence elsewhere, so the scratch fill stops dominating the inner loop.
+ * The kernel is JVM-only and this provider already gates on JDK 21+, so the intrinsic is always
+ * available where this code runs.
+ *
+ * Results are unchanged: the JDK conversion and [Fp16Codec.decode] agree bit-for-bit on all 65536
+ * inputs, which `Fp16CodecIntrinsicParityTest` asserts exhaustively. Numerical parity vs
+ * [ScalarFp16MatmulKernel] — which still goes through the codec — is asserted by
  * `PanamaVectorFp16MatmulKernelParityTest`.
  */
 public object PanamaVectorFp16MatmulKernel : Fp16MatmulKernel {
@@ -66,7 +75,7 @@ public object PanamaVectorFp16MatmulKernel : Fp16MatmulKernel {
                     for (lane in 0 until laneCount) {
                         val lo = b[byteBase + lane * 2].toInt() and 0xFF
                         val hi = b[byteBase + lane * 2 + 1].toInt() and 0xFF
-                        scratch[lane] = Fp16Codec.decode((hi shl 8) or lo)
+                        scratch[lane] = halfToFloat(lo, hi)
                     }
                     val bVec = FloatVector.fromArray(floatSpecies, scratch, 0)
                     val outVec = FloatVector.fromArray(floatSpecies, out, outRowOff + j)
@@ -78,10 +87,19 @@ public object PanamaVectorFp16MatmulKernel : Fp16MatmulKernel {
                     val bByteIdx = bRowByteOff + j * 2
                     val lo = b[bByteIdx].toInt() and 0xFF
                     val hi = b[bByteIdx + 1].toInt() and 0xFF
-                    out[outRowOff + j] += aIp * Fp16Codec.decode((hi shl 8) or lo)
+                    out[outRowOff + j] += aIp * halfToFloat(lo, hi)
                     j++
                 }
             }
         }
     }
+
+    /**
+     * Widen one little-endian binary16 element to FP32.
+     *
+     * `toShort()` keeps the low 16 bits, which is exactly the packed element; the sign extension
+     * that produces is what `float16ToFloat` expects.
+     */
+    private fun halfToFloat(lo: Int, hi: Int): Float =
+        java.lang.Float.float16ToFloat((((hi shl 8) or lo).toShort()))
 }

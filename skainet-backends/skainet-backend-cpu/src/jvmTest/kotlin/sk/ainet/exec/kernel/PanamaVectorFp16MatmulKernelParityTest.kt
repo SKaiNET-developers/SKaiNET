@@ -4,6 +4,7 @@ import sk.ainet.lang.types.Fp16Codec
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -93,6 +94,49 @@ class PanamaVectorFp16MatmulKernelParityTest {
     fun both_kernels_report_the_fp16_codec() {
         assertTrue(ScalarFp16MatmulKernel.codec === Fp16Codec)
         assertTrue(PanamaVectorFp16MatmulKernel.codec === Fp16Codec)
+    }
+
+    @Test
+    fun panama_decode_matches_the_codec_on_every_bit_pattern() {
+        // The Panama kernel widens through Float.float16ToFloat while the scalar kernel goes
+        // through Fp16Codec (#887). A 1xN matmul with a = [1] and a zeroed accumulator makes
+        // out[j] the decoded weight exactly — 1*x + 0 is exact — so this compares the two decode
+        // paths directly over the whole domain rather than sampling.
+        //
+        // Chunked at 999 columns so every chunk has a vectorized body plus a scalar tail for any
+        // lane count in {2, 4, 8, 16}, and the tail lands on different patterns in each chunk.
+        val chunk = 999
+        val a = floatArrayOf(1f)
+        var base = 0
+        while (base <= 0xFFFF) {
+            val n = minOf(chunk, 0x1_0000 - base)
+            val b = ByteArray(n * 2)
+            for (j in 0 until n) {
+                val bits = base + j
+                b[j * 2] = (bits and 0xFF).toByte()
+                b[j * 2 + 1] = ((bits ushr 8) and 0xFF).toByte()
+            }
+            val out = FloatArray(n)
+            PanamaVectorFp16MatmulKernel.matmul(a, 0, 1, b, 0, n * 2, out, 0, n, 1, n, 1)
+
+            for (j in 0 until n) {
+                val bits = base + j
+                val expected = Fp16Codec.decode(bits)
+                val actual = out[j]
+                when {
+                    // FMA quiets signaling NaNs and may rewrite the payload, so only NaN-ness is
+                    // meaningful here; the payload itself is pinned by Fp16CodecIntrinsicParityTest.
+                    expected.isNaN() -> assertTrue(actual.isNaN(), "expected NaN at 0x${bits.toString(16)}")
+                    // Accumulating -0 into +0 yields +0, so the sign of zero cannot survive a matmul.
+                    expected == 0f -> assertTrue(actual == 0f, "expected zero at 0x${bits.toString(16)}")
+                    else -> assertEquals(
+                        expected.toRawBits(), actual.toRawBits(),
+                        "decode diverged at 0x${bits.toString(16)}: codec=$expected panama=$actual",
+                    )
+                }
+            }
+            base += n
+        }
     }
 
     @Test
