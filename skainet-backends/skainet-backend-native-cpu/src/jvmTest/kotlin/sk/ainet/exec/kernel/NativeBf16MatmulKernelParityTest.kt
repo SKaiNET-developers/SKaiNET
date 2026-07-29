@@ -144,6 +144,53 @@ class NativeBf16MatmulKernelParityTest {
     }
 
     @Test
+    fun multi_tile_n_with_partial_last_tile_matches_panama() {
+        // At m > 1 the kernel tiles j at 512 columns. Every other shape here is
+        // either m == 1 or n <= 256, so without this case the tiled path runs
+        // as a single full tile and the tile-boundary arithmetic is never
+        // exercised. n = 1100 is two full tiles plus a 76-column remainder.
+        val rng = Random(7)
+        val m = 3; val n = 1100; val k = 17
+        val a = FloatArray(m * k) { rng.nextFloat() - 0.5f }
+        val bFloats = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        val b = bf16Bytes(bFloats)
+        assertParity(
+            m = m, n = n, k = k,
+            a = a, aOffset = 0, aStride = k,
+            b = b, bByteOffset = 0, bByteStride = n * 2,
+            outStride = n,
+        )
+    }
+
+    @Test
+    fun tiled_and_single_row_paths_agree_on_the_same_weights() {
+        // m == 1 and m > 1 take different loop orders. Accumulation stays p
+        // ascending in both, so row 0 of a multi-row call must be bit-identical
+        // to the same row computed on its own — not merely within tolerance.
+        val rng = Random(31)
+        val n = 700; val k = 9
+        val bFloats = FloatArray(k * n) { rng.nextFloat() - 0.5f }
+        val b = bf16Bytes(bFloats)
+        val aRow = FloatArray(k) { rng.nextFloat() - 0.5f }
+
+        val single = FloatArray(n)
+        NativeBf16MatmulKernel.matmul(aRow, 0, k, b, 0, n * 2, single, 0, n, 1, n, k)
+
+        val a2 = FloatArray(2 * k)
+        aRow.copyInto(a2, 0)
+        aRow.copyInto(a2, k)
+        val pair = FloatArray(2 * n)
+        NativeBf16MatmulKernel.matmul(a2, 0, k, b, 0, n * 2, pair, 0, n, 2, n, k)
+
+        for (j in 0 until n) {
+            assertEquals(
+                single[j].toRawBits(), pair[j].toRawBits(),
+                "tiled path diverged from the single-row path at column $j",
+            )
+        }
+    }
+
+    @Test
     fun zero_m_or_n_no_op() {
         val out = FloatArray(5) { 7f }
         NativeBf16MatmulKernel.matmul(
