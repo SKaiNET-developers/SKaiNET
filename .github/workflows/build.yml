@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Set all permissions to none
+permissions: {}
+
 jobs:
   # `allTests` used to run in a single job alongside `assemble`. On a 7 GB
   # ubuntu-latest runner the combined peak RSS (Gradle JVM + Kotlin daemon +
