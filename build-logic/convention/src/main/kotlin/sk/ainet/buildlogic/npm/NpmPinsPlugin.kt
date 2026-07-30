@@ -2,8 +2,6 @@ package sk.ainet.buildlogic.npm
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.artifacts.VersionCatalog
-import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockStoreTask
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin
@@ -11,6 +9,7 @@ import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension
 import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnPlugin
 import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnRootExtension
 import org.jetbrains.kotlin.gradle.targets.web.yarn.BaseYarnRootExtension
+import sk.ainet.buildlogic.root.SkainetRootExtension
 
 /**
  * Pins selected npm packages to an audited version across every Kotlin/JS and
@@ -32,10 +31,19 @@ import org.jetbrains.kotlin.gradle.targets.web.yarn.BaseYarnRootExtension
  *
  * ## Declaring a pin
  *
- * Add one line to `[versions]` in `gradle/libs.versions.toml`, prefixed with `npm-`:
+ * Put the version in `[versions]` of `gradle/libs.versions.toml` and name the package
+ * in the root build script:
  *
  * ```toml
  * npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
+ * ```
+ *
+ * ```kotlin
+ * skainet {
+ *     npmPins {
+ *         pin("ws", libs.versions.npm.ws)
+ *     }
+ * }
  * ```
  *
  * Then regenerate and commit the lockfiles:
@@ -47,7 +55,8 @@ import org.jetbrains.kotlin.gradle.targets.web.yarn.BaseYarnRootExtension
  * `verifyNpmPins` (wired into `check`) fails if a lockfile later drifts off a pin.
  *
  * Must be applied to the root project: the Yarn root extensions assert that they
- * belong to `rootProject`.
+ * belong to `rootProject`, and pins must be declared while the root script is
+ * evaluated, before any module configures a web target.
  */
 class NpmPinsPlugin : Plugin<Project> {
 
@@ -57,15 +66,16 @@ class NpmPinsPlugin : Plugin<Project> {
                     "Yarn roots are root-project scoped, but it was applied to ${project.path}"
         }
 
-        val extension = project.extensions.create("npmPins", NpmPinsExtension::class.java).apply {
-            catalogName.convention("libs")
-            aliasPrefix.convention("npm")
-            packageNameOverrides.convention(emptyMap())
+        val extension = SkainetRootExtension.findOrCreate(project).npmPins.apply {
             failOnMissingPackage.convention(false)
         }
 
-        // Resolved lazily so overrides declared later in the root build script are seen.
-        val pinsProvider: Provider<Map<String, String>> = project.provider { readPins(project, extension) }
+        // Lets web-targeted modules assert that pins are in force; see NpmPinsMarker.
+        NpmPinsMarker.register(project)
+
+        // Resolved lazily: pins are declared in the root script body, which runs after
+        // the plugins block that applies this plugin.
+        val pinsProvider: Provider<Map<String, String>> = extension.pins
 
         // The Yarn plugins are applied by KGP only once a js/wasmJs target is configured,
         // which happens well after this plugin is applied — hence the reactive hooks.
@@ -81,7 +91,7 @@ class NpmPinsPlugin : Plugin<Project> {
 
         val verify = project.tasks.register("verifyNpmPins", VerifyNpmPinsTask::class.java) {
             group = "verification"
-            description = "Check the committed Yarn lockfiles against the npm-* pins in the version catalog"
+            description = "Check the committed Yarn lockfiles against the pins declared in skainet { npmPins { } }"
             pins.set(pinsProvider)
             failOnMissingPackage.set(extension.failOnMissingPackage)
             rootDirectory.set(project.layout.projectDirectory)
@@ -103,43 +113,4 @@ class NpmPinsPlugin : Plugin<Project> {
     private fun BaseYarnRootExtension.applyPins(pins: Map<String, String>) {
         pins.forEach { (packageName, version) -> resolution(packageName, version) }
     }
-
-    private fun readPins(project: Project, extension: NpmPinsExtension): Map<String, String> {
-        val catalogName = extension.catalogName.get()
-        val catalog: VersionCatalog = project.extensions
-            .getByType(VersionCatalogsExtension::class.java)
-            .find(catalogName)
-            .orElseThrow {
-                IllegalStateException("[npm-pins] Version catalog '$catalogName' not found")
-            }
-
-        val prefix = extension.aliasPrefix.get()
-        val overrides = extension.packageNameOverrides.get()
-
-        return catalog.versionAliases
-            .filter { it.normalizeSeparators().startsWith("$prefix.") }
-            .associate { alias ->
-                val packageName = overrides[alias.normalizeSeparators()] ?: alias.toPackageName(prefix)
-                val version = catalog.findVersion(alias)
-                    .orElseThrow { IllegalStateException("[npm-pins] Version alias '$alias' disappeared from '$catalogName'") }
-                    .requiredVersion
-                require(version.isNotEmpty()) {
-                    "[npm-pins] Catalog alias '$alias' must declare an exact version (e.g. npm-ws = \"8.21.1\")"
-                }
-                packageName to version
-            }
-    }
-
-    /**
-     * `npm-webpack-dev-server` reaches us as `npm.webpack.dev.server`; strip the prefix
-     * and turn the remaining separators back into dashes.
-     *
-     * Package names that genuinely contain a dot (`socket.io`) or a scope
-     * (`@types/node`) cannot be expressed as a catalog alias and need an entry in
-     * [NpmPinsExtension.packageNameOverrides].
-     */
-    private fun String.toPackageName(prefix: String): String =
-        normalizeSeparators().removePrefix("$prefix.").replace('.', '-')
-
-    private fun String.normalizeSeparators(): String = replace('-', '.').replace('_', '.')
 }

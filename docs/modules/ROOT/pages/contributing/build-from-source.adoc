@@ -138,6 +138,23 @@ This split is not cosmetic. Kotlin targets must exist *before* the module's own 
 
 A `skainet ++{++ ++}++` block is part of the build script, so anything declared there is only known once it is too late to create targets. Gradle properties are readable while the plugin is being applied. Everything non-structural — `namespace`, `androidJvmTarget`, `explicitApi`, `expectActualClasses`, `kotlinTestInCommonTest` — stays in the `skainet ++{++ ++}++` DSL.
 
+==== The two `skainet ++{++ ++}++` blocks
+
+The name appears in two places, deliberately: there is one SKaiNET namespace to look for wherever you are. The types behind it differ, because the concerns do.
+
+[cols="1,3"]
+|===
+| Where | What it configures
+
+| module `build.gradle.kts`
+| That module's own compilation — `namespace`, `androidJvmTarget`, `explicitApi`, `expectActualClasses`, `kotlinTestInCommonTest`. Created by `sk.ainet.multiplatform`.
+
+| root `build.gradle.kts`
+| Conventions global to the build, which have nowhere else to live — currently `npmPins ++{++ ++}++`. Created by whichever root convention plugin is applied first; each nests its own sub-block.
+|===
+
+Applying `sk.ainet.multiplatform` to the *root* project is not supported and fails with a message saying so: the root project is not a library module, and its `skainet ++{++ ++}++` block means something else.
+
 ==== Migrating a module
 
 [arabic]
@@ -152,14 +169,25 @@ A `skainet ++{++ ++}++` block is part of the build script, so anything declared 
 
 Kotlin/JS and Kotlin/Wasm dependencies are locked in `kotlin-js-store/yarn.lock` and `kotlin-js-store/wasm/yarn.lock`. Both files are *generated*. Editing them by hand does not survive the next lockfile refresh — see https://github.com/SKaiNET-developers/SKaiNET/pull/894[PR #894], where a hand-applied `ws` security bump was reverted by `kotlinWasmUpgradeYarnLock` in the same pull request.
 
-To pin a package, add one line to `++[++versions++]++` in `gradle/libs.versions.toml` with an `npm-` prefix:
+Pinning a package takes two edits. The version goes in `++[++versions++]++` of `gradle/libs.versions.toml`:
 
 [source,toml]
 ----
 npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
 ----
 
-`sk.ainet.npm-pins` (applied on the root project) turns every such entry into a Yarn `resolutions` entry in *both* generated root `package.json` files, so one declaration covers the JS and Wasm dependency graphs. Then regenerate and commit the lockfiles:
+and the root build script names the package it belongs to:
+
+[source,kotlin]
+----
+skainet {
+    npmPins {
+        pin("ws", libs.versions.npm.ws)
+    }
+}
+----
+
+`sk.ainet.npm-pins` (applied on the root project) turns each `pin` into a Yarn `resolutions` entry in *both* generated root `package.json` files, so one declaration covers the JS and Wasm dependency graphs. Then regenerate and commit the lockfiles:
 
 [source,bash]
 ----
@@ -168,4 +196,6 @@ npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
 
 `verifyNpmPins` re-reads the committed lockfiles and fails if any pinned package resolved elsewhere. It is wired into `check` and runs on the `js-wasm` leg of `.github/workflows/build.yml`.
 
-Package names containing a dot (`socket.io`) or a scope (`++@++types/node`) cannot be spelled as a catalog alias; they need an entry in `npmPins ++{++ packageNameOverrides ++}++` in the root build script.
+The root plugin is not optional for web modules: `sk.ainet.multiplatform` fails at configuration time if a module builds `js`/`wasmJs` while the root project does not apply `sk.ainet.npm-pins`. Without it no `resolutions` are written *and* `verifyNpmPins` does not exist to notice — a silent security regression rather than a build error.
+
+The package name is written out rather than derived from the catalog alias, so names a catalog alias cannot spell need nothing special — `pin("socket.io", …)`, `pin("++@++types/node", …)`. Versions must be exact: a range such as `++^++8.21.1` is rejected at configuration time, because `verifyNpmPins` compares the lockfile's resolved version for equality and a range could never match.

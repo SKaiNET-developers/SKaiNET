@@ -10,6 +10,7 @@ import org.gradle.api.plugins.ExtensionAware
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsSubTargetDsl
+import sk.ainet.buildlogic.npm.NpmPinsMarker
 
 private const val ANDROID_KMP_PLUGIN_ID = "com.android.kotlin.multiplatform.library"
 private const val NPM_PINS_PLUGIN_ID = "sk.ainet.npm-pins"
@@ -43,17 +44,15 @@ class SkainetMultiplatformPlugin : Plugin<Project> {
         val extension = project.extensions.create("skainet", SkainetMultiplatformExtension::class.java)
         val targets = SkainetTargets.from(project)
 
+        // Checked before anything is configured, so a misconfigured build fails on the
+        // reason rather than on a symptom further down.
+        if (targets.web) requireNpmPins(project)
+
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
 
         // Eager: targets must exist before the module's own `kotlin { }` block runs.
         configureTargets(project, kotlin, targets)
-
-        if (targets.web) {
-            // Yarn resolutions are root-project scoped; applying is idempotent, so every
-            // web-enabled module can ask for them without coordinating.
-            project.rootProject.pluginManager.apply(NPM_PINS_PLUGIN_ID)
-        }
 
         // Deferred: needs the values the build script sets in `skainet { }`.
         project.afterEvaluate { applyExtension(this, kotlin, extension) }
@@ -86,6 +85,29 @@ class SkainetMultiplatformPlugin : Plugin<Project> {
         }
 
         configureAndroid(project, kotlin, extension)
+    }
+
+    /**
+     * Fails a `js`/`wasmJs` module when the root project does not apply
+     * `sk.ainet.npm-pins`.
+     *
+     * Without the root plugin the npm pins are simply absent: no Yarn `resolutions` are
+     * written, the lockfiles drift back to whatever the transitive ranges resolve to, and
+     * `verifyNpmPins` does not exist to catch it. That is a silent security regression,
+     * so it fails loudly at configuration time instead.
+     *
+     * The check reads a build-scoped service rather than `rootProject.pluginManager`, so
+     * it stays legal under isolated projects — see [NpmPinsMarker].
+     */
+    private fun requireNpmPins(project: Project) {
+        if (NpmPinsMarker.isRegistered(project)) return
+
+        throw GradleException(
+            "[skainet-multiplatform] ${project.path} builds js/wasmJs targets, but " +
+                    "$NPM_PINS_PLUGIN_ID is not applied to the root project, so npm pins " +
+                    "are not in force. Add it to the root build.gradle.kts:\n" +
+                    "    plugins { alias(libs.plugins.skainet.npmPins) }"
+        )
     }
 
     /**

@@ -28,9 +28,11 @@ pbandk = "0.16.0"
 kotest = "6.2.2"
 
 # --- npm pins -----------------------------------------------------------------
-# Every `npm-<package>` entry is forced into BOTH kotlin-js-store lockfiles by the
-# sk.ainet.npm-pins convention plugin, via Yarn resolutions. Adding a line here is
-# the whole job; then regenerate and commit the lockfiles with
+# Versions for npm packages forced into BOTH kotlin-js-store lockfiles via Yarn
+# resolutions. A version here does nothing on its own — it takes effect once the
+# root build script names the package:
+#   skainet { npmPins { pin("ws", libs.versions.npm.ws) } }
+# Then regenerate and commit the lockfiles with
 #   ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock
 # Never edit kotlin-js-store/**/yarn.lock by hand — it is generated and will be
 # overwritten (see PR #894).
