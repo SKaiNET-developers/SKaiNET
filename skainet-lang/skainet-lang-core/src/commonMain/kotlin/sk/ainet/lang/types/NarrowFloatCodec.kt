@@ -36,7 +36,11 @@ public interface NarrowFloatCodec {
      */
     public fun encode(value: Float): Int
 
-    /** Decode a 16-bit pattern (low 16 bits used) back to FP32. Always exact — f32 is a superset. */
+    /**
+     * Decode a 16-bit pattern (low 16 bits used) back to FP32. Exact for every finite value and
+     * for the infinities — f32 is a superset of both formats. NaN handling is per-implementation:
+     * [Bf16Codec] reproduces the pattern verbatim, [Fp16Codec] forces it quiet.
+     */
     public fun decode(bits: Int): Float
 }
 
@@ -123,30 +127,48 @@ public object Fp16Codec : NarrowFloatCodec {
         return sign or (q + if (roundUp) 1 else 0)
     }
 
-    /** FP16 → FP32 — always exact, including subnormals (which renormalize into FP32 normals). */
+    /**
+     * FP16 → FP32 — always exact, including subnormals (which renormalize into FP32 normals).
+     *
+     * Straight-line: the magnitude is computed by a three-way select on the exponent field with no
+     * data-dependent loop. This runs once per weight element inside `ScalarFp16MatmulKernel`, so a
+     * renormalization loop in the subnormal arm would sit on the hot path of every FP16 matmul on
+     * targets without an intrinsic (see #887; the JVM kernel calls `Float.float16ToFloat` instead).
+     *
+     * Subnormals need no loop because binary16 defines them as `mant * 2⁻²⁴` for `mant` in
+     * `[1, 1023]`. Both factors are exact in FP32 and the product is a normal FP32 (the smallest,
+     * `2⁻²⁴`, is far above FP32's `2⁻¹²⁶` normal floor), so the multiply is exact and the hardware
+     * does the renormalization. `mant == 0` falls out of the same expression as ±0.
+     *
+     * A NaN is **quieted**, keeping its payload — matching [encode], which never emits a signaling
+     * binary16 NaN either, and matching the hardware conversion (`vcvtph2ps` quiets, so the JVM
+     * intrinsic does too). Preserving the signaling bit instead would buy nothing, since the first
+     * arithmetic use quiets it anyway, and would make the JVM and non-JVM kernels disagree on those
+     * 1022 patterns. Infinities are untouched — quieting is applied only when the mantissa is
+     * non-zero, or ±Inf would decode as NaN.
+     *
+     * With that, this is bit-for-bit identical to the JDK's `Float.float16ToFloat` across all 65536
+     * inputs; `Fp16CodecIntrinsicParityTest` asserts that exhaustively.
+     */
     override fun decode(bits: Int): Float {
         val h = bits and 0xFFFF
         val sign = (h and 0x8000) shl 16
         val exp = (h ushr 10) and 0x1F
         val mant = h and 0x03FF
 
-        return when (exp) {
-            0 -> {
-                if (mant == 0) {
-                    Float.fromBits(sign)                       // ±0
-                } else {
-                    // Subnormal: renormalize until the implicit bit position is set.
-                    var m = mant
-                    var e = -1
-                    do {
-                        m = m shl 1
-                        e++
-                    } while (m and 0x0400 == 0)
-                    Float.fromBits(sign or ((127 - 15 - e) shl 23) or ((m and 0x03FF) shl 13))
-                }
-            }
-            0x1F -> Float.fromBits(sign or 0x7F80_0000 or (mant shl 13))   // ±Inf / NaN
-            else -> Float.fromBits(sign or ((exp - 15 + 127) shl 23) or (mant shl 13))
+        val magnitude = when {
+            exp == 0 -> (mant * TWO_POW_MINUS_24).toRawBits()           // ±0 and subnormals
+            exp != 0x1F -> ((exp - 15 + 127) shl 23) or (mant shl 13)   // normals
+            mant == 0 -> 0x7F80_0000                                    // ±Inf
+            else -> 0x7FC0_0000 or (mant shl 13)                        // NaN, forced quiet
         }
+        return Float.fromBits(sign or magnitude)
     }
+
+    /**
+     * 2⁻²⁴ — the value of binary16's smallest subnormal, and the scale that turns a subnormal
+     * mantissa into its FP32 value. Written as a bit pattern rather than a decimal literal so the
+     * constant is exactly the power of two the multiply relies on.
+     */
+    private val TWO_POW_MINUS_24: Float = Float.fromBits(0x3380_0000)
 }

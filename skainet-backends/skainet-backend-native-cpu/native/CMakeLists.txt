@@ -16,6 +16,7 @@ set(SKAINET_KERNEL_SOURCES
     src/q6k_matmul.c
     src/fp32_matmul.c
     src/bf16_matmul.c
+    src/fp16_matmul.c
     src/q8_0_matmul.c
     src/q4_0_matmul.c
 )
