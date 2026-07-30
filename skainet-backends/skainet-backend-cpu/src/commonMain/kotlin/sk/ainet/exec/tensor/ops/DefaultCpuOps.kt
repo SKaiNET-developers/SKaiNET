@@ -13,6 +13,7 @@ import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.lang.tensor.data.RowDequantSource
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
+import sk.ainet.lang.tensor.data.NarrowFloatInputMajorTensorData
 import sk.ainet.lang.tensor.data.Q4_0TensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
@@ -624,6 +625,17 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 // packed type that can be a matmul weight. See transformers #178.
                 is Q8_0TensorData -> return newTensor(Q8_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
                 is Q4_0TensorData -> return newTensor(Q4_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                // Narrow floats (FP16/BF16) relaid input-major at load: the transpose is the
+                // same buffer read with the other shape's strides, so hand back an ordinary
+                // dense narrow tensor over it. This is what lets a KEEP_NATIVE weight survive
+                // `Linear.onForward`'s `weight.t()` and reach the narrow matmul kernel — see
+                // issue #888. Note the asymmetry with the block-quant arms above: only the
+                // *input-major* type is safe to reinterpret. A row-major narrow buffer falls
+                // through to the generic path on purpose, because swapping its shape would
+                // silently yield a different matrix rather than the transpose.
+                // Lives only here: DefaultCpuOpsJvm.transpose intercepts nothing that would
+                // shadow this case, so the JVM falls through to this arm too.
+                is NarrowFloatInputMajorTensorData -> return newTensor(d.transposedView() as TensorData<T, V>, tensor.dtype, tensor)
                 else -> {}
             }
         }

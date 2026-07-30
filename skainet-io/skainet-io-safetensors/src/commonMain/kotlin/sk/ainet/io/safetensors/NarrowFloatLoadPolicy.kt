@@ -35,6 +35,15 @@ public enum class NarrowFloatLoadPolicy {
      *
      * **Caveat**: any non-matmul op touching the tensor pays a per-element decode via `get`. Worth
      * it when the hot path is matmul-dominated (the typical transformer case), not otherwise.
+     *
+     * **Layout caveat (issue #888).** This loader emits row-major bytes, matching the file. But
+     * projections are stored `[out, in]` while the narrow matmul dispatch needs `[in, out]`, so a
+     * consumer that goes through `Linear` — which transposes the weight on every forward — will
+     * see that transpose fall to the generic elementwise path and widen the tensor anyway, at a
+     * cost far exceeding what KEEP_NATIVE saves. Consumers running such a hot path should relay
+     * the bytes once with `NarrowFloatInputMajorTensorData.fromRowMajor`, which makes the
+     * transpose a zero-copy view. Tensors that are gathered rather than multiplied — embedding
+     * tables above all — should stay row-major, since input-major storage strides their row reads.
      */
     KEEP_NATIVE,
 }

@@ -3095,6 +3095,24 @@ public final class sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData$Companio
 	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[FLsk/ainet/lang/types/NarrowFloatCodec;)Lsk/ainet/lang/tensor/data/NarrowFloatDenseTensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/NarrowFloatInputMajorTensorData : sk/ainet/lang/tensor/data/NarrowFloatTensorData {
+	public static final field Companion Lsk/ainet/lang/tensor/data/NarrowFloatInputMajorTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/types/NarrowFloatCodec;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
+	public fun getPackedData ()[B
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public final fun transposedView ()Lsk/ainet/lang/tensor/data/NarrowFloatDenseTensorData;
+}
+
+public final class sk/ainet/lang/tensor/data/NarrowFloatInputMajorTensorData$Companion {
+	public final fun fromRowMajor (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/types/NarrowFloatCodec;)Lsk/ainet/lang/tensor/data/NarrowFloatInputMajorTensorData;
+}
+
 public abstract interface class sk/ainet/lang/tensor/data/NarrowFloatTensorData : sk/ainet/lang/tensor/data/TensorData {
 	public static final field BYTES_PER_ELEMENT I
 	public static final field Companion Lsk/ainet/lang/tensor/data/NarrowFloatTensorData$Companion;

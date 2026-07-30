@@ -239,6 +239,8 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
+            // Narrow-float input-major lazy transpose is handled in DefaultCpuOpsBase too —
+            // nothing above intercepts it, so it falls through. Issue #888.
             // Q6_K / Q5_1 / Q5_0 lazy transpose is handled in DefaultCpuOpsBase
             // (block-major, shared with Native); the JVM ops don't intercept them here.
             // MemorySegment FP32 fast path: physical transpose via SIMD.
