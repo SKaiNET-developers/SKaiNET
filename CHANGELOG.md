@@ -2,7 +2,22 @@
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-07-30
+
 ### Added
+
+- **Narrow-float (BF16 + FP16) weights kept packed.** A shared `NarrowFloatCodec` layer
+  (`Bf16Codec`/`Fp16Codec`) plus `NarrowFloatDenseTensorData`/`Fp16DenseTensorData` let SafeTensors F16
+  and GGUF F16/BF16 weights load `KEEP_NATIVE` — two bytes per element at rest instead of widening to
+  FP32 at load. `DefaultCpuOpsJvm` dispatches to format-specific matmul kernels by codec, so the packed
+  weight reaches the kernel rather than a widened copy. Narrow floats are a *storage* width only:
+  kernels widen to f32 lanes, accumulate in f32, and narrow on store.
+- **Native (FFM) FP16 matmul kernel.** `skainet_fp16_matmul` joins the existing BF16 kernel in
+  `skainet-backend-native-cpu`, wired through `NativeKernelProvider.matmulFp16()`. Until now the
+  provider carried `matmulBf16` but no FP16 counterpart, so BF16 resolved to the native kernel at
+  priority 100 while FP16 silently cascaded to the JVM Panama kernel at 50 — which read as a slow
+  kernel and was a missing one. `KernelProvider.supports` gains the matching `"Float16"` arm, absent
+  while every other matmul dtype was present.
 
 - **First-class dynamic dimensions (`Dim`).** A new `sk.ainet.lang.tensor.Dim` vocabulary makes "dynamic
   extent" explicit instead of an overloaded `-1`: `Dim.DYNAMIC` is a reserved sentinel (`Int.MIN_VALUE`)
@@ -53,6 +68,49 @@
   (`VoidTensorOps.calculateConcatShape`) and the emitter (`ShapeOperationsConverter` concat) now keep the
   concatenated axis dynamic when any operand's extent there is dynamic, instead of numerically summing it
   (which turned a growing cache `? ++ 1` into a bogus static `0`).
+- **Narrow-float weights transpose for free.** `NarrowFloatInputMajorTensorData` stores a rank-2 narrow
+  weight input-major, so the `[out, in]` → `[in, out]` transpose that `Linear.onForward` performs on
+  every call is a zero-copy reinterpretation of the same buffer. Projections are stored `[out, in]` but
+  the narrow matmul dispatch needs `[in, out]`, and transposing a row-major narrow tensor previously
+  walked it elementwise through boxed `get()` and widened to FP32 — 4.4 s for a 4096x11008 projection,
+  per weight, per token, which made `KEEP_NATIVE` slower than not using it. A row-major narrow buffer
+  deliberately still takes the generic path: swapping its shape would silently yield a different matrix
+  rather than the transpose.
+- **Native narrow-float kernels read the weight once per matmul.** Both the BF16 and FP16 kernels tile
+  the `j` dimension at `m > 1` and widen each weight row once per tile, instead of walking the whole
+  weight matrix once per row of the input. Accumulation into any output element stays `p` ascending, so
+  results are bit-identical to the previous formulation. At `m == 1` both keep the straight pass — there
+  is nothing to amortize and tiling costs ~15% there.
+- **`Fp16Codec.decode` is straight-line.** The subnormal arm no longer renormalizes in a data-dependent
+  loop; binary16 subnormals are `mant * 2⁻²⁴` with both factors exact in FP32, so one multiply lets the
+  hardware renormalize. A NaN now decodes **quiet**, matching `encode` (which already never emitted a
+  signaling binary16 NaN) and the hardware conversion the JVM kernel uses. This changes 1022 patterns —
+  the signaling NaNs — and nothing else; without it the JVM and every other target would disagree on
+  them.
+
+### Fixed
+
+- **FP16 matmul was 2–18x slower than the FP32 SGEMM it replaces.** The cause was dispatch, not
+  arithmetic: `NativeKernelProvider` had no `matmulFp16()`, so FP16 fell through to the JVM kernel while
+  BF16 ran natively. Head to head the two JVM kernels are within ~15% of each other. FP16 is now
+  1.5–1.7x *faster* than FP32.
+- **CI and supply-chain hardening.** Least-privilege permissions on the build workflow, the docs MathJax
+  npm install pinned by version, and a `logback-classic` bump.
+
+### Performance
+
+Measured on an i7-9750H (AVX2), OpenJDK 21, median ms per call, `4096x11008` projection:
+
+| | batch 1 | batch 16 |
+|---|---|---|
+| FP32 SGEMM | 108.7 | 271.1 |
+| BF16 | 57.4 | 143.5 |
+| FP16 | 71.2 | 159.3 |
+
+Both narrow formats now beat the FP32 SGEMM — BF16 by 1.8–1.9x, FP16 by 1.5–1.7x. Note these kernels
+are compute-bound on the FMA chain at batch 16, not bandwidth-bound: cutting weight traffic 16x bought
+only 9–19%, so the next win is a blocked microkernel or `bfdot`/`bfmmla` on ARMv8.6-A+, not more layout
+work.
 
 ## [0.37.0] - 2026-07-25
 

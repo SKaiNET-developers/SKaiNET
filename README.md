@@ -43,7 +43,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.37.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.38.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -287,20 +287,19 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.37.0
+## What's New in 0.38.0
 
-- **`Lstm` layer** — single-layer, batch-first LSTM built from existing primitives only (no new `TensorOps` op, traces to StableHLO without a dedicated converter), with `torch.nn.LSTM`-compatible gate order and an explicit caller-owned `LstmState` + `step()` API for transducer prediction networks.
-- **Training essentials** — `Dropout` now performs real inverted dropout under a training-phase context (it was an identity placeholder), optimizers expose a mutable `lr` plus a `linearWarmupCosineDecay` LR schedule, `Linear` supports bias-less projections (`nn.Linear(bias=False)` equivalent) and is `open` for LoRA-style adapters.
-- **Attention scale fix** — `scaledDotProductAttention` at its default scale multiplied every score by zero on the CPU backend, collapsing softmax to a uniform average; it now resolves to `1/sqrt(headDim)` as documented.
-- **Autograd correctness** — `CrossEntropyLoss` no longer detaches the tape (gradients reached the predictions in neither target path), and `softmax`/`logSoftmax`/`variance` backward now work for rank ≥ 3.
-- **Android native IO** — `skainet-io-core` and `skainet-io-safetensors` gain `androidNative` targets (arm64 and arm32).
-- **Reproducible, hardened CI** — every GitHub Action pinned to a commit hash, the docs Docker image pinned by digest with exact npm package versions, and `allTests` split into parallel per-target jobs to end OOM flakes.
+- **Streaming KV-cache decode (dynamic dimensions)** — a first-class `Dim` vocabulary makes "dynamic extent" explicit instead of an overloaded `-1`, and the StableHLO emitter renders it as an MLIR `?`. One compiled vmfb now serves every autoregressive decode step with a growing cache, instead of one fixed cache length. Verified end-to-end: the full FunctionGemma `with_past` decode graph and the Moonshine v2 decoder (dynamic self *and* cross caches) self-compile from the DSL to a CPU vmfb — graphs that could not be compiled before. Static graphs are emitted byte-for-byte unchanged.
+- **Narrow-float (BF16 + FP16) weights kept packed** — SafeTensors F16 and GGUF F16/BF16 weights load `KEEP_NATIVE`, two bytes per element at rest instead of widening to FP32, and reach format-specific matmul kernels still packed. Narrow floats are a storage width only: kernels widen to f32 lanes and accumulate in f32.
+- **Both narrow formats now beat the FP32 SGEMM** — BF16 by 1.8–1.9x, FP16 by 1.5–1.7x on a 4096x11008 projection. Getting there took a zero-copy transpose for input-major weights (the per-token transpose previously widened the tensor elementwise, 4.4 s per projection), a native FFM FP16 kernel to match the existing BF16 one, and tiling both kernels so the weight is read once per matmul rather than once per input row.
+- **Allocation-free shape-only tracing** — `VoidTensorOps` propagates shapes through a `ShapeOnlyTensorData` that allocates no backing buffer, so a dynamic extent flows through a whole decode trace instead of throwing on a negative-size allocation.
 
-### Previously, in 0.36.0
+### Previously, in 0.37.0
 
-- **Kotlin 2.4.0 toolchain** — KSP 2.3.10 and Dokka 2.2.0 aligned to the new compiler. No public API changes.
-- **`permute` replay fix (`ComputeGraphExecutor`)** — a traced `permute(t, axes)` now replays with its recorded axes instead of being dispatched as a plain last-two-dims transpose.
-- **REUSE / SPDX license-compliance setup** — `REUSE.toml` + `LICENSES/`, a CI compliance workflow, and a REUSE status badge.
+- **`Lstm` layer** — single-layer, batch-first LSTM built from existing primitives only, with `torch.nn.LSTM`-compatible gate order and a caller-owned `LstmState` + `step()` API.
+- **Training essentials** — real inverted `Dropout`, mutable optimizer `lr` plus `linearWarmupCosineDecay`, bias-less and `open` `Linear`.
+- **Attention scale fix** — `scaledDotProductAttention` at its default scale multiplied every score by zero on the CPU backend; it now resolves to `1/sqrt(headDim)` as documented.
+- **Autograd correctness** — `CrossEntropyLoss` no longer detaches the tape, and `softmax`/`logSoftmax`/`variance` backward now work for rank ≥ 3.
 
 See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
@@ -325,6 +324,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.38.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — dynamic tensor dimensions for streaming KV-cache decode (#891), shared narrow-float BF16/FP16 layer (#886), zero-copy transpose for input-major narrow weights (#895), native FP16 matmul kernel (#896), read-once weight tiling in the native narrow kernels (#897)
+- **[@MacOS](https://github.com/MacOS)** — least-privilege permissions on the build workflow (#899), MathJax npm install pinned by version (#889)
 
 ### Contributors (0.37.0)
 
