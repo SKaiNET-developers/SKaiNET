@@ -130,11 +130,25 @@ public sealed class Slice<T : DType, V> {
      * @return true if the slice is valid for the given dimension size
      */
     public fun isValid(dimensionSize: Int): Boolean {
-        require(dimensionSize >= 0) { "Dimension size must be non-negative: $dimensionSize" }
-        
+        require(dimensionSize >= 0 || Dim.isDynamic(dimensionSize)) {
+            "Dimension size must be non-negative or dynamic: $dimensionSize"
+        }
+
+        // Dynamic (unknown-extent) axis: `all()` is the symbolic full axis and is always valid; a partial
+        // Range/At/Step can't be bounds-checked against an unknown size, so only its own self-consistent,
+        // non-negative (never from-end) bounds are validated.
+        if (Dim.isDynamic(dimensionSize)) {
+            return when (this) {
+                is Range -> start >= 0 && end >= start
+                is At -> index >= 0
+                is All -> true
+                is Step -> start >= 0 && end >= start && step > 0
+            }
+        }
+
         return when (this) {
             is Range -> start < dimensionSize && end <= dimensionSize
-            is At -> index < dimensionSize  
+            is At -> index < dimensionSize
             is All -> true // Always valid
             is Step -> start < dimensionSize && end <= dimensionSize
         }
@@ -218,8 +232,21 @@ public sealed class Slice<T : DType, V> {
      * @return a normalized slice equivalent to this slice
      */
     public fun normalize(dimensionSize: Int): Slice<T, V> {
-        require(dimensionSize >= 0) { "Dimension size must be non-negative: $dimensionSize" }
-        
+        require(dimensionSize >= 0 || Dim.isDynamic(dimensionSize)) {
+            "Dimension size must be non-negative or dynamic: $dimensionSize"
+        }
+
+        // A dynamic axis has no known size to resolve from-end (negative) indices against, so those are
+        // rejected; the full-axis `all()` stays symbolic and explicit non-negative bounds pass through.
+        if (Dim.isDynamic(dimensionSize)) {
+            return when (this) {
+                is All -> this
+                is Range -> { require(start >= 0 && end >= 0) { "dynamic-axis Range needs non-negative bounds: $this" }; this }
+                is At -> { require(index >= 0) { "dynamic-axis At needs a non-negative index: $this" }; this }
+                is Step -> { require(start >= 0 && end >= 0) { "dynamic-axis Step needs non-negative bounds: $this" }; this }
+            }
+        }
+
         return when (this) {
             is Range -> {
                 val normStart = if (start < 0) maxOf(0, dimensionSize + start) else minOf(start, dimensionSize)

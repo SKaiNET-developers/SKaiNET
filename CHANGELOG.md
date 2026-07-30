@@ -2,6 +2,58 @@
 
 ## [Unreleased]
 
+### Added
+
+- **First-class dynamic dimensions (`Dim`).** A new `sk.ainet.lang.tensor.Dim` vocabulary makes "dynamic
+  extent" explicit instead of an overloaded `-1`: `Dim.DYNAMIC` is a reserved sentinel (`Int.MIN_VALUE`)
+  **distinct from reshape's `-1` = infer**, with the dynamic-aware shape arithmetic (`concat`, `compatible`,
+  `render`, `isDynamic`/`isStatic`) centralized in one place rather than scattered `extent < 0` guards.
+  `Shape` gains `hasDynamic()`, `isDynamic(axis)`, `dynamicAxes`, and its `volume` now throws on a dynamic
+  shape (an unknown extent has no materializable element count) instead of returning a corrupt product.
+  The slice/range DSL is dynamic-aware too: `all()` over a dynamic axis is a valid symbolic full-axis, and
+  reshape passes a dynamic target through unchanged. The `skainet-compile-hlo` emitter now shares this one
+  sentinel (`TypeMapper.DYNAMIC_DIM` aliases `Dim.DYNAMIC`), so tracer and emitter agree by construction.
+- **Dynamic-shape-safe StableHLO emission (streaming KV-cache decode).** The `skainet-compile-hlo`
+  emitter now renders a `-1` tensor extent as an MLIR `?` (dynamic) dimension and emits op forms that
+  `iree-compile` accepts under a dynamic dim, so a single compiled vmfb serves every autoregressive
+  decode step (growing KV cache) instead of one fixed cache length. A new `TypeMapper.DYNAMIC_DIM = -1`
+  marker plus a `List<Int>.hasDynamic()` predicate gate the dynamic paths, so every static graph is
+  emitted byte-for-byte unchanged. Verified: one dynamic SDPA vmfb runs at key lengths 3 and 17, and
+  the full FunctionGemma `with_past` decode graph (real weights, dynamic `1x{nKV}x?x256` cache)
+  self-compiles from the DSL to a CPU vmfb — a graph that could not be compiled before.
+- **Dynamic-shape-safe trace finalization.** `TraceToGraphBuilder.extractFloatArray` no longer probes
+  `Tensor.volume` for non-dense data, so a dynamic-shaped graph input (e.g. a `?` KV-cache tensor) is left
+  as an input instead of tripping the (correctly) throwing `volume` on an unknown extent. This lets a decode
+  graph with dynamic caches finalize to a `ComputeGraph` and compile — verified with the real Moonshine v2
+  `with_past` decoder (dynamic self *and* cross caches, `1x8x?x40`) self-compiling from the DSL to a vmfb.
+- **Allocation-free shape-only tracing (`VoidTensorOps`).** The trace-time op set now propagates shapes
+  through a `ShapeOnlyTensorData` that carries a `Shape` but allocates no backing buffer, so a dynamic
+  (`-1`) extent flows through a whole decode trace instead of throwing `NegativeArraySizeException` when
+  a real buffer of negative size is allocated. This is what lets a real KV-cache seq dim be traced as
+  dynamic end-to-end (rather than via a sentinel-dimension + post-emit text substitution).
+
+### Changed
+
+- **SDPA scale folded into Q.** `AttentionOperationsConverter` now applies the attention scale as a
+  scalar constant multiplied into Q *before* the QK `dot_general` (`(q·s)@kᵀ ≡ scores·s`, exact),
+  instead of a dense splat constant sized to the full scores shape. This drops a scores-sized constant
+  from every attention graph and, crucially, avoids an invalid dynamic-shape splat when the key/cache
+  dim is `?`.
+- **Softmax broadcasts are dynamic-shape-safe.** When the softmax/scores shape carries a dynamic dim,
+  `AttentionOperationsConverter` and `ActivationOperationsConverter` broadcast the reduced max/sum with
+  `stablehlo.dynamic_broadcast_in_dim` (runtime shape operand built via `get_dimension_size` +
+  `concatenate`) instead of a static `broadcast_in_dim`. Static graphs keep the explicit
+  `broadcast_in_dim` unchanged.
+- **Identity reshapes/slices are elided.** `ShapeOperationsConverter` returns the operand SSA value with
+  no emitted op when a reshape's input and result types are identical, or a `slice`/`narrow` covers the
+  full extent of every axis (the KV-cache "cache-as-output-sink" and full-cache head-expansion patterns).
+  Besides being a no-op, this is the only valid lowering on a dynamic axis — a static `stablehlo.slice`
+  cannot express a full-extent bound on a `?` dim (its limit would be the `-1` extent, e.g. `0:-1:1`).
+- **Concatenate propagates dynamic extents.** Both the trace-time shape inference
+  (`VoidTensorOps.calculateConcatShape`) and the emitter (`ShapeOperationsConverter` concat) now keep the
+  concatenated axis dynamic when any operand's extent there is dynamic, instead of numerically summing it
+  (which turned a growing cache `? ++ 1` into a bogus static `0`).
+
 ## [0.37.0] - 2026-07-25
 
 ### Added

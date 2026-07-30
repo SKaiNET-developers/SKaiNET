@@ -3,6 +3,8 @@ package sk.ainet.compile.hlo.converters
 import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
+import sk.ainet.lang.tensor.Dim
+import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.graph.GraphNode
 
 /**
@@ -139,8 +141,14 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         val reducedType = if (reducedShape.isEmpty()) {
             "tensor<$elementType>"
         } else {
-            "tensor<${reducedShape.joinToString("x")}x$elementType>"
+            "tensor<${reducedShape.joinToString("x") { Dim.render(it) }}x$elementType>"
         }
+        // Dynamic softmax axis / leading dims (`?`): the reduced max/sum must broadcast back to a dynamic
+        // output shape, which `stablehlo.broadcast_in_dim` cannot target — use `stablehlo.dynamic_broadcast_in_dim`
+        // with a runtime `output_dimensions` operand built from the input via `get_dimension_size` (IREE's
+        // stablehlo pipeline rejects CHLO implicit-broadcast ops as illegal).
+        val dyn = inputShape.hasDynamic()
+        val shapeType = "tensor<${rank}xi32>"
 
         // Dimensions kept for broadcast_in_dim: every input dim except `axis`,
         // mapped to its position in the reduced tensor.
@@ -161,36 +169,54 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         // constant is out of range).
         val maxIdentity = context.getTypeMapper().negInfBits(elementType)
 
-        val operations = listOf(
+        val operations = buildList {
             // Reduce-max along the softmax axis (for numerical stability).
-            "$maxInit = stablehlo.constant dense<$maxIdentity> : tensor<$elementType>",
-            "$maxValue = stablehlo.reduce(${operands[0]} init: $maxInit) " +
-                "applies stablehlo.maximum across dimensions = [$axis] : " +
-                "($outputType, tensor<$elementType>) -> $reducedType",
-
-            // Broadcast reduced max back to the input shape.
-            "$maxBroadcast = stablehlo.broadcast_in_dim $maxValue, " +
-                "dims = [$broadcastDims] : ($reducedType) -> $outputType",
-
-            // Subtract the max for numerical stability.
-            "$shiftedValue = stablehlo.subtract ${operands[0]}, $maxBroadcast : $outputType",
-
-            // Elementwise exponential.
-            "$expValue = stablehlo.exponential $shiftedValue : $outputType",
-
-            // Reduce-sum along the softmax axis.
-            "$sumInit = stablehlo.constant dense<0.0> : tensor<$elementType>",
-            "$sumValue = stablehlo.reduce($expValue init: $sumInit) " +
-                "applies stablehlo.add across dimensions = [$axis] : " +
-                "($outputType, tensor<$elementType>) -> $reducedType",
-
-            // Broadcast the sum back to the input shape.
-            "$sumBroadcast = stablehlo.broadcast_in_dim $sumValue, " +
-                "dims = [$broadcastDims] : ($reducedType) -> $outputType",
-
-            // Normalize.
-            "$resultValue = stablehlo.divide $expValue, $sumBroadcast : $outputType"
-        )
+            add("$maxInit = stablehlo.constant dense<$maxIdentity> : tensor<$elementType>")
+            add(
+                "$maxValue = stablehlo.reduce(${operands[0]} init: $maxInit) " +
+                    "applies stablehlo.maximum across dimensions = [$axis] : " +
+                    "($outputType, tensor<$elementType>) -> $reducedType",
+            )
+            // Build the runtime output-shape operand once (only needed for dynamic broadcasts).
+            val shapeOperand: String = if (!dyn) "" else run {
+                val parts = inputShape.indices.map { d ->
+                    if (Dim.isStatic(inputShape[d])) {
+                        val c = context.nextTempValue()
+                        add("$c = stablehlo.constant dense<${inputShape[d]}> : tensor<1xi32>")
+                        c
+                    } else {
+                        val gd = context.nextTempValue(); val gr = context.nextTempValue()
+                        add("$gd = stablehlo.get_dimension_size ${operands[0]}, dim = $d : ($outputType) -> tensor<i32>")
+                        add("$gr = stablehlo.reshape $gd : (tensor<i32>) -> tensor<1xi32>")
+                        gr
+                    }
+                }
+                val sh = context.nextTempValue()
+                add("$sh = stablehlo.concatenate ${parts.joinToString(", ")}, dim = 0 : (${parts.joinToString(", ") { "tensor<1xi32>" }}) -> $shapeType")
+                sh
+            }
+            // Subtract the max: static → explicit broadcast_in_dim; dynamic → runtime dynamic_broadcast_in_dim.
+            if (dyn) {
+                add("$maxBroadcast = stablehlo.dynamic_broadcast_in_dim $maxValue, $shapeOperand, dims = [$broadcastDims] : ($reducedType, $shapeType) -> $outputType")
+            } else {
+                add("$maxBroadcast = stablehlo.broadcast_in_dim $maxValue, dims = [$broadcastDims] : ($reducedType) -> $outputType")
+            }
+            add("$shiftedValue = stablehlo.subtract ${operands[0]}, $maxBroadcast : $outputType")
+            add("$expValue = stablehlo.exponential $shiftedValue : $outputType")
+            add("$sumInit = stablehlo.constant dense<0.0> : tensor<$elementType>")
+            add(
+                "$sumValue = stablehlo.reduce($expValue init: $sumInit) " +
+                    "applies stablehlo.add across dimensions = [$axis] : " +
+                    "($outputType, tensor<$elementType>) -> $reducedType",
+            )
+            // Normalize: static → broadcast_in_dim; dynamic → runtime dynamic_broadcast_in_dim.
+            if (dyn) {
+                add("$sumBroadcast = stablehlo.dynamic_broadcast_in_dim $sumValue, $shapeOperand, dims = [$broadcastDims] : ($reducedType, $shapeType) -> $outputType")
+            } else {
+                add("$sumBroadcast = stablehlo.broadcast_in_dim $sumValue, dims = [$broadcastDims] : ($reducedType) -> $outputType")
+            }
+            add("$resultValue = stablehlo.divide $expValue, $sumBroadcast : $outputType")
+        }
 
         operations.forEach { context.emitOperation(it) }
 

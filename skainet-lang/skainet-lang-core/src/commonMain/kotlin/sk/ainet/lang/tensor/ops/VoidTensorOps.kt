@@ -2,17 +2,26 @@ package sk.ainet.lang.tensor.ops
 
 import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.InProgress
+import sk.ainet.lang.tensor.Dim
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
+import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
+import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.tensor.data.views.UnsqueezedTensorData
+import kotlin.reflect.KClass
 
 @Backend(id = "void", displayName = "Shape-only", internal = true)
 public class VoidTensorOps : TensorOps {
-    
-    private val dataFactory = DenseTensorDataFactory()
+
+    // Shape-only tracing. A STATIC shape still gets a real (readable) zeros buffer — existing code
+    // creates void tensors and reads their zeros, so that behavior must be preserved. A DYNAMIC shape
+    // (a `Dim.DYNAMIC` extent) cannot be allocated at all (it would throw NegativeArraySizeException),
+    // so it gets an allocation-free ShapeOnlyTensorData that carries only the Shape — which is exactly
+    // what lets a dynamic KV-cache seq dim thread through a decode trace. See ShapeOnlyDataFactory.
+    private val dataFactory = ShapeOnlyDataFactory
     
     /**
      * Validates that two shapes are compatible for element-wise operations.
@@ -694,8 +703,17 @@ public class VoidTensorOps : TensorOps {
      * Validates that total volume remains the same and no illegal dimensions are provided.
      */
     private fun calculateReshapeTargetShape(originalShape: Shape, target: Shape): Shape {
-        val total = originalShape.volume
         val dims = target.dimensions
+        // A dynamic extent (either in the target or the input) passes through unchanged: volume-based
+        // inference/validation is undefined when an extent is unknown. This is distinct from `-1` = infer,
+        // which the distinct [Dim.DYNAMIC] sentinel keeps separate.
+        if (dims.hasDynamic() || originalShape.dimensions.hasDynamic()) {
+            require(dims.none { it == -1 }) {
+                "reshape cannot infer a `-1` dimension while the shape is dynamic: ${dims.toList()}"
+            }
+            return Shape(dims.copyOf())
+        }
+        val total = originalShape.volume
         var inferIndex = -1
         var product = 1
         for ((i, d) in dims.withIndex()) {
@@ -933,7 +951,8 @@ public class VoidTensorOps : TensorOps {
                 throw IllegalArgumentException("All tensors must have the same number of dimensions for concatenation")
             }
             for (i in shape.dimensions.indices) {
-                if (i != actualDim && shape.dimensions[i] != firstShape.dimensions[i]) {
+                // Off-axis extents must match; a dynamic extent is compatible with any concrete size.
+                if (i != actualDim && !Dim.compatible(shape.dimensions[i], firstShape.dimensions[i])) {
                     throw IllegalArgumentException(
                         "All tensors must have the same shape except in the concatenation dimension. " +
                         "Dimension $i: ${firstShape.dimensions[i]} vs ${shape.dimensions[i]}"
@@ -942,10 +961,13 @@ public class VoidTensorOps : TensorOps {
             }
         }
         
-        // Calculate result shape
+        // Calculate result shape. [Dim.concat] keeps the concatenated axis dynamic when any input is
+        // dynamic there (a growing KV cache `? ++ 1` stays `?`) instead of numerically summing it, which
+        // would corrupt the shape — exactly what blocked threading a real dynamic seq dim through a decode
+        // trace.
         val resultDims = firstShape.dimensions.copyOf()
-        resultDims[actualDim] = shapes.sumOf { it.dimensions[actualDim] }
-        
+        resultDims[actualDim] = Dim.concat(shapes.map { it.dimensions[actualDim] })
+
         return Shape(resultDims)
     }
 
@@ -1065,4 +1087,26 @@ public class VoidTensorOps : TensorOps {
         }
         return actualDim
     }
+}
+
+/**
+ * A [TensorData] that carries only a [Shape] and allocates NO backing buffer. Used by
+ * [VoidTensorOps] for shape-only tracing: element access is never valid (nothing to read/write),
+ * but crucially the shape may contain a dynamic extent (`-1`) that a real allocation would reject.
+ */
+private class ShapeOnlyTensorData<T : DType, V>(override val shape: Shape) : TensorData<T, V> {
+    private fun noData(): Nothing =
+        error("shape-only (void) tensor carries no data — tracing propagates shapes only")
+    override fun get(vararg indices: Int): V = noData()
+    override fun set(vararg indices: Int, value: V): Unit = noData()
+    override fun copyToFloatArray(): FloatArray = noData()
+}
+
+/** Drop-in for the one `dataFactory.zeros` call VoidTensorOps makes. A static shape delegates to
+ *  [DenseTensorDataFactory] (real, readable zeros — preserves existing behavior); only a DYNAMIC shape,
+ *  which cannot be allocated, gets the allocation-free [ShapeOnlyTensorData] so its `-1` extent survives. */
+private object ShapeOnlyDataFactory {
+    private val dense = DenseTensorDataFactory()
+    fun <T : DType, V> zeros(shape: Shape, dtype: KClass<T>): TensorData<T, V> =
+        if (shape.hasDynamic()) ShapeOnlyTensorData(shape) else dense.zeros(shape, dtype)
 }
