@@ -31,30 +31,48 @@ import org.gradle.api.provider.Provider
  * pin("socket.io", libs.versions.npm.socketio)
  * pin("@types/node", libs.versions.npm.typesNode)
  * ```
+ *
+ * ## Scoping a pin to one lockfile
+ *
+ * A pin applies to both Yarn roots unless told otherwise. Pass [NpmPinTarget] values
+ * when the package lives in only one graph, so the other lockfile does not acquire an
+ * entry — and a whole transitive tree — for a package it never resolves:
+ *
+ * ```kotlin
+ * pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)
+ * ```
  */
 abstract class NpmPinsExtension {
 
     /**
-     * Package name -> exact version, as declared by [pin]. Consumed by
+     * Package name -> exact version for `kotlin-js-store/yarn.lock`. Consumed by
      * [NpmPinsPlugin] and [VerifyNpmPinsTask]; declare pins through [pin] rather than
      * mutating this directly, which skips validation and duplicate detection.
      */
-    abstract val pins: MapProperty<String, String>
+    abstract val jsPins: MapProperty<String, String>
+
+    /** Package name -> exact version for `kotlin-js-store/wasm/yarn.lock`. See [jsPins]. */
+    abstract val wasmPins: MapProperty<String, String>
 
     /**
-     * Whether `verifyNpmPins` fails when a pinned package is absent from every
-     * lockfile. Defaults to `false`: a pin that outlives its package (because the
-     * Kotlin toolchain dropped the dependency) is stale rather than broken, and
+     * Whether `verifyNpmPins` fails when a pinned package is absent from the lockfile
+     * it is scoped to. Defaults to `false`: a pin that outlives its package (because
+     * the Kotlin toolchain dropped the dependency) is stale rather than broken, and
      * should be reported without breaking the build.
      */
     abstract val failOnMissingPackage: Property<Boolean>
 
     private val declared = mutableSetOf<String>()
 
-    /** Pins [packageName] to a version held in the version catalog. */
-    fun pin(packageName: String, version: Provider<String>) {
+    /**
+     * Pins [packageName] to a version held in the version catalog.
+     *
+     * With no [targets] the pin applies to every lockfile; name them to restrict it.
+     */
+    fun pin(packageName: String, version: Provider<String>, vararg targets: NpmPinTarget) {
         val name = validatePackageName(packageName)
-        pins.put(name, version.map { validateVersion(name, it) })
+        val checked = version.map { validateVersion(name, it) }
+        scopeOf(targets).forEach { target -> mapFor(target).put(name, checked) }
     }
 
     /**
@@ -63,9 +81,18 @@ abstract class NpmPinsExtension {
      * Prefer the [Provider] overload — a number in `libs.versions.toml` is visible to
      * dependency-update tooling, a number in the build script is not.
      */
-    fun pin(packageName: String, version: String) {
+    fun pin(packageName: String, version: String, vararg targets: NpmPinTarget) {
         val name = validatePackageName(packageName)
-        pins.put(name, validateVersion(name, version))
+        val checked = validateVersion(name, version)
+        scopeOf(targets).forEach { target -> mapFor(target).put(name, checked) }
+    }
+
+    private fun scopeOf(targets: Array<out NpmPinTarget>): Set<NpmPinTarget> =
+        if (targets.isEmpty()) NpmPinTarget.ALL else targets.toSet()
+
+    private fun mapFor(target: NpmPinTarget): MapProperty<String, String> = when (target) {
+        NpmPinTarget.JS -> jsPins
+        NpmPinTarget.WASM -> wasmPins
     }
 
     private fun validatePackageName(packageName: String): String {
@@ -75,8 +102,9 @@ abstract class NpmPinsExtension {
             "[npm-pins] Package name '$packageName' must not contain whitespace"
         }
         require(declared.add(name)) {
-            "[npm-pins] '$name' is pinned twice — a Yarn resolution is global, so the " +
-                    "second declaration would silently win"
+            "[npm-pins] '$name' is pinned twice — a Yarn resolution is global within a " +
+                    "Yarn root, so the second declaration would silently win. Declare it " +
+                    "once and pass both targets, or scope each pin to a different target."
         }
         return name
     }
