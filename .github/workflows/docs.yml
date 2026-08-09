@@ -36,15 +36,17 @@ concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Set default permission for all jobs to none. The Pages write grants live on
+# deploy-docs alone — build-docs only reads the repo and uploads an artifact.
+permissions: {}
 
 jobs:
   build-docs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -135,6 +137,12 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
+    # actions/deploy-pages needs pages:write to publish and id-token:write for
+    # the OIDC token it exchanges. It does not check the repository out.
+    permissions:
+      pages: write
+      id-token: write
 
     steps:
       - name: Deploy to GitHub Pages

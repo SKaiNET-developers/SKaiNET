@@ -10,10 +10,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Set default permission for all jobs to none
+permissions: {}
+
 jobs:
   java-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout

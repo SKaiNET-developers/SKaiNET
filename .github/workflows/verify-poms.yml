@@ -10,11 +10,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Set default permission for all jobs to none
+permissions: {}
+
 jobs:
   verify-poms:
     name: Publish to Maven local and validate POM coordinates
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout

@@ -31,6 +31,11 @@ on:
     tags:
       - '**'
 
+# Set default permission for all jobs to none. Publishing authenticates to Maven
+# Central and signs with GPG through repository secrets, which are independent of
+# GITHUB_TOKEN — nothing here needs write access to the repository itself.
+permissions: {}
+
 jobs:
   build-native:
     name: native ${{ matrix.arch_label }}
@@ -49,6 +54,10 @@ jobs:
             lib_name: skainet_kernels.dll
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,6 +100,10 @@ jobs:
     name: Release build and publish
     needs: build-native
     runs-on: macOS-latest
+
+    permissions:
+      contents: read
+
     steps:
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -30,6 +30,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Set default permission for all jobs to none
+permissions: {}
+
 jobs:
   native-build-test:
     name: ${{ matrix.arch_label }}
@@ -52,6 +55,9 @@ jobs:
             lib_name: skainet_kernels.dll
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout

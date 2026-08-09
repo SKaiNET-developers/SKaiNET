@@ -34,6 +34,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Set default permission for all jobs to none
+permissions: {}
+
 jobs:
   smoke-ubuntu-latest:
     # Smoke pack on the default GitHub runner. Goal: prove the harness +
@@ -42,6 +45,10 @@ jobs:
     # runner, shared tenancy, no warmup steady-state.
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -92,6 +99,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     runs-on: [self-hosted, linux, x86_64, skainet-bench-linux-x86]
     timeout-minutes: 120
+
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
