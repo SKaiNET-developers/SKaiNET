@@ -24,6 +24,11 @@ allprojects {
 skainet {
     npmPins {
         pin("ws", libs.versions.npm.ws)
+        pin("js-yaml", libs.versions.npm.js.yaml)
+        pin("socket.io-parser", libs.versions.npm.socketio.parser)
+        pin("fast-uri", libs.versions.npm.fast.uri)
+        pin("serialize-javascript", libs.versions.npm.serialize.javascript)
+        pin("brace-expansion", libs.versions.npm.brace.expansion)
     }
 }
 

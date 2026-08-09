@@ -36,7 +36,21 @@ kotest = "6.2.2"
 #   ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock
 # Never edit kotlin-js-store/**/yarn.lock by hand — it is generated and will be
 # overwritten (see PR #894).
+#
+# Expect a pin to show up in BOTH lockfiles even when only one graph uses the
+# package: Yarn writes an entry for every `resolutions` key, matched or not. That
+# is why kotlin-js-store/wasm/yarn.lock lists packages the wasm build never
+# imports. Harmless, and the price of a single pin covering both targets.
 npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
+npm-js-yaml = "4.3.1"              # GHSA-5p4m-2wfm-xmqj
+npm-socketio-parser = "4.2.7"      # GHSA-2m8v-j782-fhvr
+npm-fast-uri = "3.1.5"             # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx
+npm-serialize-javascript = "7.0.5" # GHSA-5c6j-r48x-rmvq, GHSA-qj8w-gfj5-8c6v
+# One pin covers both major lines in the graph: minimatch 3.x asks for ^1.1.7 and
+# minimatch 9.x for ^2.0.2, and a Yarn resolution is global. 2.1.4 clears the fixed
+# set of both advisories (<1.1.18 and >=2.0.0 <2.1.4); the exported API is unchanged
+# between the two majors, so the 3.x consumer is unaffected.
+npm-brace-expansion = "2.1.4"      # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg
 
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }
