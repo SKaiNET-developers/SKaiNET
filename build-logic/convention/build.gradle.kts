@@ -5,6 +5,7 @@ plugins {
 }
 
 repositories {
+    google()
     gradlePluginPortal()
     mavenCentral()
 }
@@ -17,6 +18,13 @@ dependencies {
     implementation(libs.asciidoctorj.core)
     implementation("org.jetbrains.dokka:dokka-gradle-plugin:2.2.0")
     implementation(gradleApi())
+
+    // compileOnly, never implementation: build-logic is an included build, so putting these
+    // on the plugin's runtime classpath would load a second copy of KGP/AGP in a different
+    // classloader and turn every `getByType(SomeKgpType::class)` into a ClassCastException.
+    // compileOnly gives us the types while deferring to the classes the consuming build loads.
+    compileOnly(libs.kotlin.gradlePlugin)
+    compileOnly(libs.android.gradlePlugin)
 }
 
 kotlin {
@@ -38,6 +46,14 @@ gradlePlugin {
         register("SKaiNetBomCoverage") {
             id = "sk.ainet.transformers.bom-coverage"
             implementationClass = "sk.ainet.buildlogic.bom.BomCoveragePlugin"
+        }
+        register("SKaiNetMultiplatform") {
+            id = "sk.ainet.multiplatform"
+            implementationClass = "sk.ainet.buildlogic.kmp.SkainetMultiplatformPlugin"
+        }
+        register("SKaiNetNpmPins") {
+            id = "sk.ainet.npm-pins"
+            implementationClass = "sk.ainet.buildlogic.npm.NpmPinsPlugin"
         }
     }
 }

@@ -35,8 +35,10 @@ jobs:
         include:
           - name: jvm
             tasks: jvmTest
+          # verifyNpmPins guards the npm-* pins in gradle/libs.versions.toml against
+          # lockfile drift; it belongs on the leg that already has the JS toolchain.
           - name: js-wasm
-            tasks: jsTest wasmJsTest wasmWasiTest
+            tasks: verifyNpmPins jsTest wasmJsTest wasmWasiTest
           - name: native
             tasks: linuxX64Test
 

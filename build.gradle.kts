@@ -10,12 +10,21 @@ plugins {
     alias(libs.plugins.asciidoctorJvm) apply false
     alias(libs.plugins.dokka)
     alias(libs.plugins.skainet.docs)
+    alias(libs.plugins.skainet.npmPins)
     id("org.jetbrains.kotlinx.benchmark") version "0.4.17" apply false
 }
 
 allprojects {
     group = "sk.ainet.core"
     version = providers.gradleProperty("VERSION_NAME").getOrElse("unspecified")
+}
+
+// Root-project SKaiNET conventions. npm pins are forced onto both kotlin-js-store
+// lockfiles via Yarn resolutions; see docs "Pinning npm Packages".
+skainet {
+    npmPins {
+        pin("ws", libs.versions.npm.ws)
+    }
 }
 
 // Require JDK 21+ but allow any newer version (produces Java 21 bytecode via --release / jvmTarget)
