@@ -1,46 +1,18 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    alias(libs.plugins.kotlinMultiplatform)
+    id("sk.ainet.multiplatform")
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
     id("sk.ainet.dokka")
 }
 
+// Targets come from skainet.targets in this module's gradle.properties. The previous
+// hand-wired native source-set tree carried no source files and is gone — the default
+// hierarchy template covers this module.
+skainet {
+    namespace = "sk.ainet.backend.api"
+}
+
 kotlin {
-    explicitApi()
-    android {
-        namespace = "sk.ainet.backend.api"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
-        }
-    }
-
-    iosArm64()
-    iosSimulatorArm64()
-    macosArm64()
-    linuxX64()
-    linuxArm64()
-
-    jvm()
-
-    js {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmWasi {
-        nodejs()
-    }
-
     sourceSets {
         commonMain.dependencies {
             // Neutral backend API is an `api` re-export of the tensor op and
@@ -49,52 +21,6 @@ kotlin {
             // this module instead of pulling in skainet-backend-cpu just to
             // reach TensorOps / TensorDataFactory / TensorData.
             api(project(":skainet-lang:skainet-lang-core"))
-        }
-
-        val jvmMain by getting
-        val androidMain by getting
-        val wasmJsMain by getting
-
-        val commonMain by getting
-
-        val nativeMain by creating {
-            dependsOn(commonMain)
-        }
-
-        val appleMain by creating {
-            dependsOn(nativeMain)
-        }
-
-        val linuxMain by creating {
-            dependsOn(nativeMain)
-        }
-
-        val iosMain by creating {
-            dependsOn(appleMain)
-        }
-
-        val macosMain by creating {
-            dependsOn(appleMain)
-        }
-
-        val iosArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val iosSimulatorArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val macosArm64Main by getting {
-            dependsOn(macosMain)
-        }
-
-        val linuxX64Main by getting {
-            dependsOn(linuxMain)
-        }
-
-        val linuxArm64Main by getting {
-            dependsOn(linuxMain)
         }
     }
 }

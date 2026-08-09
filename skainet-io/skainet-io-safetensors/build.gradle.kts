@@ -1,79 +1,39 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    alias(libs.plugins.kotlinMultiplatform)
+    id("sk.ainet.multiplatform")
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
     id("sk.ainet.dokka")
 }
 
+// Targets come from skainet.targets in this module's gradle.properties. mingw is safe
+// here without extra source: io-safetensors has no posix in its own nativeMain —
+// createRandomAccessSource / readTextFile are stubs and currentTimeMillis uses a monotonic
+// TimeSource — so there is no bit-width metadata issue (unlike io-core, whose posix pread
+// needed the native64Main split). File-backed reads route through io-core's RandomAccessSource.
+skainet {
+    namespace = "sk.ainet.io.safetensors"
+    androidJvmTarget = JvmTarget.JVM_1_8
+    expectActualClasses = true
+    // Pre-migration behavior: this module never enabled explicit API mode; turning it on
+    // is a separate cleanup from the #911 target work.
+    explicitApi = false
+}
+
 kotlin {
-    targets.configureEach {
-        compilations.configureEach {
-            compileTaskProvider.get().compilerOptions {
-                freeCompilerArgs.add("-Xexpect-actual-classes")
-            }
-        }
-    }
-
-    jvm()
-    android {
-        namespace = "sk.ainet.io.safetensors"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
-        }
-    }
-
-    iosArm64()
-    iosSimulatorArm64()
-    macosArm64()
-    linuxX64()
-    linuxArm64()
-    // androidNative (edge NPU / phone). io-safetensors has no posix in its own nativeMain —
-    // createRandomAccessSource / readTextFile are stubs and currentTimeMillis uses a monotonic
-    // TimeSource — so there is no bit-width metadata issue here (unlike io-core, whose posix pread
-    // needed the native64Main split). File-backed reads route through io-core's RandomAccessSource.
-    androidNativeArm32()
-    androidNativeArm64()
-
-    js {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmWasi {
-        nodejs()
-    }
-
     sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(libs.kotlinx.io.core)
-                implementation(libs.kotlinx.coroutines)
-                implementation(project(":skainet-lang:skainet-lang-core"))
-                implementation(project(":skainet-io:skainet-io-core"))
-            }
+        commonMain.dependencies {
+            implementation(libs.kotlinx.io.core)
+            implementation(libs.kotlinx.coroutines)
+            implementation(project(":skainet-lang:skainet-lang-core"))
+            implementation(project(":skainet-io:skainet-io-core"))
         }
-        val commonTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
-            }
-        }
-        val jvmTest by getting {
-            dependencies {
-                implementation(libs.junit)
-                implementation(libs.kotlinx.coroutines)
-                implementation(libs.kotlinx.coroutines.test)
-                implementation(project(":skainet-backends:skainet-backend-cpu"))
-            }
+        jvmTest.dependencies {
+            implementation(libs.junit)
+            implementation(libs.kotlinx.coroutines)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(project(":skainet-backends:skainet-backend-cpu"))
         }
     }
 }

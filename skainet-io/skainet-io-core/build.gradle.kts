@@ -1,11 +1,8 @@
-@file:OptIn(ExperimentalWasmDsl::class)
-
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 
 plugins {
-    alias(libs.plugins.kotlinMultiplatform)
+    id("sk.ainet.multiplatform")
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
 
@@ -13,57 +10,28 @@ plugins {
     id("sk.ainet.dokka")
 }
 
+// Targets come from skainet.targets in this module's gradle.properties (androidNative for
+// on-device consumers; mingw per #911). explicitApi(), kotlin-test in commonTest and
+// -Xexpect-actual-classes come from sk.ainet.multiplatform.
+skainet {
+    namespace = "sk.ainet.io.core"
+    androidJvmTarget = JvmTarget.JVM_1_8
+    expectActualClasses = true
+    // Pre-migration behavior: this module never enabled explicit API mode; turning it on
+    // is a separate cleanup from the #911 target work.
+    explicitApi = false
+}
+
 kotlin {
-
-    targets.configureEach {
-        compilations.configureEach {
-            compileTaskProvider.get().compilerOptions {
-                freeCompilerArgs.add("-Xexpect-actual-classes")
-            }
-        }
-    }
-
-    jvm()
-
-    android {
-        namespace = "sk.ainet.io.core"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
-        }
-    }
-
-    iosArm64()
-    iosSimulatorArm64()
-    macosArm64 ()
-    linuxX64 ()
-    linuxArm64 ()
-    androidNativeArm64()
     // androidNativeArm32 is 32-bit: posix ssize_t/size_t are Int here vs Long on every other
-    // native target. PosixPreadRandomAccessSource therefore lives in the 64-bit-only `native64Main`
-    // source set (wired below), NOT in the shared `nativeMain` — otherwise the shared native
-    // metadata compile fails ("numbers with different bit widths"). arm32 gets the rest of
-    // io-core (tokenizers etc.); on-device file I/O for arm32 is a separate concern.
-    androidNativeArm32()
-
-    js {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmWasi {
-        nodejs()
-    }
-
-    // 64-bit-only intermediate source sets: hold the posix `pread` RandomAccessSource, whose
-    // ssize_t/size_t widths are uniform (Long) across every native target EXCEPT androidNativeArm32.
-    // Keeping it out of the all-native `nativeMain` avoids the mixed-width metadata compile error.
+    // POSIX native target. PosixPreadRandomAccessSource therefore lives in the 64-bit-only
+    // `native64Main` source set (wired below), NOT in the shared `nativeMain` — otherwise the
+    // shared native metadata compile fails ("numbers with different bit widths"). arm32 gets
+    // the rest of io-core (tokenizers etc.).
+    //
+    // mingwX64 is 64-bit but LLP64 and has no posix `pread` — it stays OUT of native64Main
+    // too and carries its own leaf implementation (WindowsRandomAccessSource, Win32
+    // ReadFile+OVERLAPPED) in src/mingwX64Main. See #911.
     applyDefaultHierarchyTemplate()
     val native64Targets = listOf("iosArm64", "iosSimulatorArm64", "macosArm64", "linuxX64", "linuxArm64", "androidNativeArm64")
 
@@ -84,12 +52,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines)
 
                 implementation(libs.kotlinx.serialization.json)
-            }
-        }
-
-        val commonTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
             }
         }
 
