@@ -9,9 +9,15 @@ on:
       - 'skainet-lang/**'
       - '.github/workflows/schema-validation.yml'
 
+# Set default permission for all jobs to none
+permissions: {}
+
 jobs:
   validate-schema:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout code
