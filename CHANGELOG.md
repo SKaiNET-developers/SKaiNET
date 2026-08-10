@@ -37,6 +37,18 @@
   silently corrupted every memory report and compression ratio. All seven quant formats now
   map to their encodings, and genuinely unknown types carry the tensor's real byte count in
   `Opaque`. (#928)
+- **`TensorStorageFactory` ownership labels are now truthful.** `borrowFloatArray` re-encoded
+  the floats into a private byte copy and labeled it `Borrowed` despite its "(zero-copy)" doc —
+  it is now deprecated (delegating to `fromFloatArray`) and honestly returns `Owned`;
+  `fromTensorData`'s doc claimed "borrowed (not copied)" while its dense branches copy — the
+  contract is now documented per branch (packed Q4_K/Q8_0 genuinely borrow zero-copy, dense
+  arrays convert to owned bytes) and pinned by ownership + mutation-visibility tests. (#927)
+- **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
+  threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
+  the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
+  storage to the heap, the one transfer the storage layer was designed around. Both methods
+  gain a `BufferResolver` overload that reads file-backed regions through a configured
+  resolver; `DeviceResident` remains unsupported with an error that says why. (#929)
 - **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
   code.** The static kernel archive was attached via project-local `linkerOpts`, which does
   not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`

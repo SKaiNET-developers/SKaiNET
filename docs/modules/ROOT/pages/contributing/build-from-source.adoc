@@ -194,6 +194,35 @@ skainet {
 ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock
 ----
 
+==== Scoping a pin to one lockfile
+
+Yarn writes a lockfile entry for *every* `resolutions` key, whether or not that dependency graph actually requests the package. An unscoped pin for a package that only the JS graph uses therefore adds it — and everything it depends on — to `kotlin-js-store/wasm/yarn.lock`, where nothing imports it. For `webpack` that is roughly 76 extra packages the Wasm build would download and install for nothing, and which Dependabot would then report against a lockfile that never uses them.
+
+Pass an `NpmPinTarget` when a package lives in only one graph:
+
+[source,kotlin]
+----
+import sk.ainet.buildlogic.npm.NpmPinTarget
+
+skainet {
+    npmPins {
+        pin("ws", libs.versions.npm.ws)                                  // <1>
+        pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)       // <2>
+    }
+}
+----
+<1> No target: applies to both lockfiles. Correct for `ws`, which both graphs resolve.
+<2> `NpmPinTarget.JS`: only `kotlin-js-store/yarn.lock` gets the resolution.
+
+Check which graph holds a package before deciding:
+
+[source,bash]
+----
+grep -c '^webpack@' kotlin-js-store/yarn.lock kotlin-js-store/wasm/yarn.lock
+----
+
+`verifyNpmPins` checks each lockfile against its own pin map, so a scoped pin is never reported as missing from the lockfile it was never meant to reach.
+
 `verifyNpmPins` re-reads the committed lockfiles and fails if any pinned package resolved elsewhere. It is wired into `check` and runs on the `js-wasm` leg of `.github/workflows/build.yml`.
 
 The root plugin is not optional for web modules: `sk.ainet.multiplatform` fails at configuration time if a module builds `js`/`wasmJs` while the root project does not apply `sk.ainet.npm-pins`. Without it no `resolutions` are written *and* `verifyNpmPins` does not exist to notice — a silent security regression rather than a build error.
