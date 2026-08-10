@@ -2,3 +2,4 @@
 * xref:skeep:index.adoc[About SKEEP]
 * Proposals
 ** xref:skeep:001-tensor-collection-literals.adoc[SKEEP-001: Tensor collection literals]
+** xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003: Unifying the tensor storage model]
