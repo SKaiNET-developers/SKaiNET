@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
+  iterate a single flat index into the vararg `get`, tripping every implementation's
+  one-index-per-dimension arity check — a latent trap for any implementation that didn't
+  override it. The default now unravels flat positions into per-dimension indices (row-major);
+  a contract test exercises the default at ranks 1–3. (#930)
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
