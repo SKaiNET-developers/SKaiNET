@@ -82,6 +82,13 @@ Android:
   `FallbackMappedMemoryChunk` (heap copy). Until
   https://github.com/SKaiNET-developers/SKaiNET/pull/924[PR #924],
   `skainet-io-core` had no `androidMain` source set at all.
+* *Both streaming readers copy to heap arrays.* `StreamingGGUFReader` and
+  `StreamingSafeTensorsReader` each know every tensor's byte range in the
+  file (GGUF `absoluteDataOffset`/`nBytes`, SafeTensors `data_offsets`), and
+  both expose only `loadTensorData(...): ByteArray` — the region is always
+  copied onto the heap even when the caller could consume it in place. The
+  ONNX reader is different in kind: tensors are embedded in protobuf, so
+  contiguous region mapping does not apply there today.
 * *The kernel SPI is array-shaped.* `Q8_0MatmulKernel` and friends take
   `ByteArray` / `FloatArray` — an intentional lowest common denominator that
   every target satisfies, but one that forces mapped memory to be copied
@@ -131,22 +138,39 @@ public sealed interface BufferAccess {
   `TensorStorageFactory` for Android that produces `FileBacked` handles over
   an `AndroidMappedMemoryChunk`.
 
-=== Phase 3 — mapped loading in the GGUF path
+=== Phase 3 — mapped loading in the streaming readers (format-agnostic core, per-format adoption)
 
-`StreamingGGUFReader` already knows every tensor's `absoluteDataOffset` and
-`nBytes`; today `loadTensorData` copies that range into a fresh `ByteArray`.
-Add a mapped variant:
+The capability is defined once at the `skainet-io-core` level and adopted per
+format — it is *not* a GGUF feature. Both streaming readers already know every
+tensor's byte range in the file; today both only copy it out.
 
-* `loadTensorDataMapped(info): MappedMemoryChunk` returning a view over the
-  file region — no bytes move;
-* a placement knob on `StreamingGgufParametersLoader` (defaulting to today's
-  heap behavior) that wraps packed quant tensors in buffer-backed `TensorData`
-  views instead of `ByteArray`-backed ones. GGUF's on-disk block layout *is*
-  the packed layout the eager kernels consume for Q8_0/Q4_K, so a mapped
-  region is directly usable — no repack, hence no copy;
-* dense F32/I32 tensors and any path that must repack (block-major
-  conversions, dequant-to-FP32) keep materializing — mapping only helps when
-  the bytes are consumed as-is.
+Core addition (io-core):
+
+* `loadTensorDataMapped(offset, length): MappedMemoryChunk` on the shared
+  reader infrastructure — a view over the file region, no bytes move — plus a
+  placement knob on the parameter loaders (defaulting to today's heap
+  behavior) that wraps pass-through tensors in buffer-backed `TensorData`
+  views instead of `ByteArray`-backed ones.
+
+Per-format adoption, in order:
+
+* *GGUF* (reference implementation — the measured mobile LLM path):
+  `StreamingGGUFReader` maps `absoluteDataOffset`/`nBytes` ranges. The
+  on-disk block layout *is* the packed layout the eager kernels consume for
+  Q8_0/Q4_K, so a mapped region is directly usable — no repack, hence no
+  copy.
+* *SafeTensors* (structurally the easiest case): `StreamingSafeTensorsReader`
+  maps `data_offsets` ranges. Payloads are raw dense little-endian tensors
+  (F32/F16/BF16) with no block structure at all, and the KEEP_NATIVE narrow-
+  float path already wraps on-disk bytes verbatim (`Fp16DenseTensorData`,
+  `Bf16DenseTensorData`) — mapping slots straight under it.
+* *ONNX* (out of scope here): tensor data is embedded inside protobuf
+  messages, so contiguous region mapping does not apply; ONNX joins if/when
+  it gains an external-data or offset-indexed path.
+
+In every format, tensors that must be rewritten at load (dequant-to-FP32,
+block-major repacks, endian/layout conversions) keep materializing — mapping
+only helps when bytes are consumed as-is.
 
 === Phase 4 — buffer-aware kernel dispatch
 
@@ -178,7 +202,9 @@ keeps working unchanged and the overload is purely opt-in. Expected consumers:
 
 1. Phase 1 + 2 land together behind tests (host-side `androidHostTest`, the
    lane introduced in https://github.com/SKaiNET-developers/SKaiNET/pull/924[PR #924]).
-2. Phase 3 lands default-off; the PromptPong-style field test
+2. Phase 3 lands default-off, GGUF first (the measured mobile path), with the
+   SafeTensors adoption as an immediate follow-up on the same core API; the
+   PromptPong-style field test
    (https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/272[transformers#272]
    reproducer) validates resident-memory numbers on a physical device.
 3. Phase 4 can land any time (the defaulted SPI overload is inert on its
@@ -202,6 +228,9 @@ keeps working unchanged and the overload is purely opt-in. Expected consumers:
 * No regression in JVM/native test suites; `androidHostTest` covers chunk
   windowing (>2 GiB logic can be tested with small synthetic window sizes),
   `FileBacked` materialization, and mapped-vs-heap tensor parity.
+* Mapped-vs-heap parity holds for both adopted formats: a synthesized GGUF
+  (packed quant blocks) and a synthesized SafeTensors file (dense
+  F32/F16/BF16) produce bit-identical tensors under either placement.
 
 == Risks
 
