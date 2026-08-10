@@ -27,8 +27,16 @@ import java.io.File
  */
 public object JniKernels {
 
-    /** Loaded library variant, or `null` when no variant could be loaded. */
-    public val variant: Variant? by lazy { loadVariant() }
+    /**
+     * Loaded library variant, or `null` when no variant could be loaded.
+     *
+     * Initialized EAGERLY in object init, not lazily: Kotlin object
+     * initialization runs on first access to ANY member, so a direct call
+     * to an `external` function is guaranteed to find the library loaded.
+     * (A lazy property would only load when `variant` itself is read —
+     * calling `smoke(...)` first would hit `UnsatisfiedLinkError`.)
+     */
+    public val variant: Variant? = loadVariant()
 
     public enum class Variant(public val libName: String) {
         /** armv8-a baseline — every AArch64 device, plus x86_64 emulators. */
