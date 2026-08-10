@@ -1,8 +1,13 @@
 # Kotlin/Native cinterop binding for the hand-written C matmul kernels
-# (skainet_kernels.h). Generates Kotlin bindings for skainet_q5k_matmul etc.;
-# the static archive libskainet_kernels.a (built by CMake) is linked into the
-# consuming K/N binary via linkerOpts (see build.gradle.kts). includeDirs for
-# the header are supplied from the Gradle cinterop block.
+# (skainet_kernels.h). Generates Kotlin bindings for skainet_q5k_matmul etc.
+#
+# The static archive libskainet_kernels.a (built by CMake) is EMBEDDED into
+# the klib via cinterop `-staticLibrary`/`-libraryPath`, passed per target
+# from build.gradle.kts (the archive paths are machine-specific, so they do
+# not belong in this file). Embedding — rather than project-local linkerOpts —
+# is what lets downstream consumers of the published klib link without
+# supplying the archive themselves (#941). includeDirs for the header are
+# supplied from the Gradle cinterop block.
 headers = skainet_kernels.h
 headerFilter = skainet_kernels.h
 package = sk.ainet.kernels.cinterop
