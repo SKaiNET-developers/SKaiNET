@@ -7,7 +7,10 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Bf16DenseTensorData
 import sk.ainet.lang.tensor.data.Fp16DenseTensorData
+import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
 import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
@@ -25,13 +28,19 @@ import kotlin.reflect.KClass
  * Unlike [GgufParametersLoader] (which uses the legacy [GGUFReader] and rejects
  * quantized types), this loader:
  * - Uses [StreamingGGUFReader] for memory-efficient parsing
- * - Supports quantized types (Q4_K, Q8_0) as packed [TensorData]
+ * - Supports quantized types ([SUPPORTED_TENSOR_TYPES]) as packed [TensorData]
  * - Loads tensor data on-demand without heap-loading the full file
  * - Preserves quantized layout through the loading pipeline
  *
  * For F32 and I32 tensors, data is returned as standard dense arrays.
  * For quantized tensors, data is returned as packed block storage
  * (e.g., [Q4_KBlockTensorData], [Q8_0BlockTensorData]).
+ *
+ * A file containing tensors outside [SUPPORTED_TENSOR_TYPES] (e.g. Q4_1)
+ * fails fast: [load] throws before any tensor is delivered, naming the
+ * offending tensors and the supported set, instead of silently skipping
+ * them and letting the missing weights crash the forward pass later
+ * (#919).
  */
 public class StreamingGgufParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
@@ -55,6 +64,7 @@ public class StreamingGgufParametersLoader(
     ) {
         StreamingGGUFReader.open(sourceProvider()).use { reader ->
             val tensors = reader.tensors
+            failFastOnUnsupportedTensorTypes(tensors)
             val total = tensors.size.toLong()
             var current = 0L
 
@@ -127,10 +137,30 @@ public class StreamingGgufParametersLoader(
                         ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                     }
 
-                    else -> {
-                        onProgress(current, total, "SKIP: ${tensorInfo.name} (unsupported type ${tensorInfo.tensorType})")
-                        null
+                    GGMLQuantizationType.Q4_0 -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val packed = Q4_0BlockTensorData.fromRawBytes(shape, rawBytes)
+                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                     }
+
+                    GGMLQuantizationType.Q5_0 -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val packed = Q5_0BlockTensorData.fromRawBytes(shape, rawBytes)
+                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                    }
+
+                    GGMLQuantizationType.Q5_1 -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val packed = Q5_1BlockTensorData.fromRawBytes(shape, rawBytes)
+                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                    }
+
+                    else -> throw IllegalStateException(
+                        "StreamingGgufParametersLoader: tensor '${tensorInfo.name}' of type " +
+                            "${tensorInfo.tensorType} passed the load-time pre-scan but has no load " +
+                            "branch — SUPPORTED_TENSOR_TYPES and this when-expression have drifted. " +
+                            "Please report this as a bug."
+                    )
                 }
 
                 if (tensor != null) {
@@ -190,6 +220,56 @@ public class StreamingGgufParametersLoader(
     public companion object {
 
         /**
+         * The tensor types [load] can materialize. The when-expression in [load]
+         * and the eager pre-scan both derive from this set, so a type added to
+         * one place cannot silently drift from the other.
+         */
+        public val SUPPORTED_TENSOR_TYPES: Set<GGMLQuantizationType> = setOf(
+            GGMLQuantizationType.F32,
+            GGMLQuantizationType.I32,
+            GGMLQuantizationType.F16,
+            GGMLQuantizationType.BF16,
+            GGMLQuantizationType.Q4_0,
+            GGMLQuantizationType.Q5_0,
+            GGMLQuantizationType.Q5_1,
+            GGMLQuantizationType.Q4_K,
+            GGMLQuantizationType.Q5_K,
+            GGMLQuantizationType.Q6_K,
+            GGMLQuantizationType.Q8_0,
+        )
+
+        private const val MAX_LISTED_TENSORS = 8
+
+        /**
+         * Eager pre-scan over the file's tensor directory: throws before any
+         * tensor is delivered if the file contains types this loader cannot
+         * materialize. This follows the RFC's "fail before execution" rule
+         * (see [withPolicy]) — the alternative, skipping the tensor, produces
+         * a model with silently missing weights whose failure surfaces far
+         * away in the forward pass (#919).
+         */
+        internal fun failFastOnUnsupportedTensorTypes(tensors: List<StreamingTensorInfo>) {
+            val unsupported = tensors.filter { it.tensorType !in SUPPORTED_TENSOR_TYPES }
+            if (unsupported.isEmpty()) return
+
+            val listed = unsupported.take(MAX_LISTED_TENSORS).joinToString(", ") {
+                val type = if (it.isUnknownType) "unknown type value ${it.rawTypeValue}" else it.tensorType.name
+                "'${it.name}' ($type)"
+            }
+            val more = if (unsupported.size > MAX_LISTED_TENSORS) {
+                " and ${unsupported.size - MAX_LISTED_TENSORS} more"
+            } else {
+                ""
+            }
+            throw IllegalArgumentException(
+                "GGUF contains ${unsupported.size} tensor(s) with quantization types this loader " +
+                    "does not support: $listed$more. Supported types: " +
+                    "${SUPPORTED_TENSOR_TYPES.joinToString(", ") { it.name }}. " +
+                    "Re-quantize the model to a supported format (e.g. Q8_0, Q4_0, Q4_K or F16).",
+            )
+        }
+
+        /**
          * Convenience constructor that takes a [DTypePolicy] and
          * validates it against the dtypes the GGUF loader supports
          * today. The validator runs eagerly — if the requested
@@ -214,6 +294,9 @@ public class StreamingGgufParametersLoader(
          * policy that's satisfiable in principle but happens to
          * conflict with the specific file's tensors will surface at
          * iteration time via the `null`-return path in [load].
+         * Tensor *types* outside [SUPPORTED_TENSOR_TYPES], by
+         * contrast, fail eagerly once the file is opened — see
+         * [failFastOnUnsupportedTensorTypes].
          */
         public fun withPolicy(
             sourceProvider: () -> RandomAccessSource,
@@ -254,9 +337,9 @@ public class StreamingGgufParametersLoader(
                     FP32, FP16, BF16 -> Unit
                     else -> throw IllegalArgumentException(
                         "StreamingGgufParametersLoader: Require(${policy.target.name}) is not satisfiable — " +
-                            "this loader produces FP32 / Int32 / Q4_K / Q8_0 tensors only, and does not cast " +
-                            "between source dtypes. Use Any to inherit the source dtype, or open a follow-up " +
-                            "to add a ${policy.target.name} cast path.",
+                            "this loader preserves source tensors (dense FP32/Int32 or packed quantized " +
+                            "blocks) and does not cast between dtypes. Use Any to inherit the source dtype, " +
+                            "or open a follow-up to add a ${policy.target.name} cast path.",
                     )
                 }
             }
