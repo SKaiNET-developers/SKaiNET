@@ -1,0 +1,284 @@
+= SKEEP-002: Off-heap tensor storage on Android
+:description: SKaiNET proposal for file-backed (mmap) and direct-buffer tensor storage on Android, removing the ART managed-heap cap as the model-size ceiling.
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors +
+Created: 2026-08-10 +
+Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]
+
+== Summary
+
+On Android, every SKaiNET tensor lives on the ART managed heap as a Kotlin
+`ByteArray` / `FloatArray`. The managed heap is hard-capped per app — 256 MB by
+default, 512 MB with `android:largeHeap="true"` — so the practical model-size
+ceiling on Android is a couple hundred megabytes regardless of how good the
+kernels get. llama.cpp, ONNX Runtime, TFLite and MediaPipe load 1 GB+ models on
+the same phones because their weights live in the native heap or in file-backed
+mapped pages, neither of which counts against the ART cap.
+
+This proposal makes weight storage on Android *file-backed by default and
+opt-in explicit*: model weights stay in `mmap`-ed pages (`FileChannel.map`,
+available since API 1), the storage layer's existing-but-inert
+`BufferHandle.FileBacked` becomes readable, and the loaders gain a placement
+mode that hands tensors through as mapped views instead of heap copies. The
+kernel SPI is extended so packed matmul can consume buffer-backed memory
+without a per-call copy.
+
+This SKEEP is self-contained: every phase works with the kernels SKaiNET has
+today (the SPI extension defaults to copy-and-delegate, so existing providers
+are untouched). It also composes with the separately proposed native kernel
+work for mobile
+(https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920]): a native
+(JNI) kernel can read a mapped region zero-copy via
+`GetDirectBufferAddress`, which is where file-backed weights and fast kernels
+compound — but nothing here depends on that work landing.
+
+Measured context (SmolLM2-135M-Instruct, Q8_0, 138 MiB GGUF, engine 0.38.0):
+loading packed costs ~145 MB resident managed heap today; with file-backed
+weights the managed-heap cost of the same load drops to tokenizer + activations
++ KV cache, and the weights become reclaimable page cache.
+
+== Motivation
+
+* The heap cap is the binding constraint on Android, ahead of kernel speed.
+  Even after https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920]
+  delivers NEON-class kernels, a 512 MB heap cannot hold a 1 GB model — and a
+  4-bit 1.1 B-parameter model is ~600 MB.
+* Loading currently costs roughly 2x the model size transiently (raw bytes plus
+  built tensors; see
+  https://github.com/SKaiNET-developers/SKaiNET/issues/782[#782] for the FP32
+  dequant variant of the same problem). File-backed weights make load cost
+  independent of model size on the managed heap.
+* Every comparable mobile inference stack made this move; developers arriving
+  from llama.cpp or TFLite assume a 138 MiB file is trivially loadable and are
+  surprised when it OOMs
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922]).
+* Mapped pages are shared and evictable: the OS reclaims cold weight pages
+  under memory pressure instead of the app being killed, and a re-launch warms
+  from page cache instead of re-reading the file.
+
+== Current State
+
+The pieces this proposal builds on already exist, but none of them reach
+Android:
+
+* *Off-heap storage is `jvmMain`-only.* `MemorySegmentTensorData`
+  (Arena/FFM, 64-byte aligned), `MmapTensorData` / `FloatBufferTensorData`
+  (`MappedByteBuffer`), and `Q4MemorySegmentTensorData` /
+  `Q8MemorySegmentTensorData` all live in
+  `skainet-lang/skainet-lang-core/src/jvmMain/`. Android cannot use FFM at
+  all (`java.lang.foreign` is absent on ART).
+* *Every common `TensorData` implementation is heap-bound.* The packed quant
+  family (`Q4_0BlockTensorData`, `Q8_0BlockTensorData`, …) exposes
+  `packedData: ByteArray`; the dense family wraps Kotlin arrays.
+* *`BufferHandle.FileBacked` is inert metadata.* The `TensorStorage` layer
+  models the right concepts — `BufferHandle.FileBacked(path, fileOffset,
+  size)`, `Placement` / `MemoryDomain.MMAP_FILE` — but no common-code accessor
+  reads mapped pages, and `copyMaterialize()` throws
+  `UnsupportedOperationException` for anything other than `Owned` /
+  `Borrowed` (`TensorStorage.kt`).
+* *`MappedMemoryChunk` has no Android implementation.* `skainet-io-core`
+  declares the interface with `JvmMappedMemoryChunk` (jvmMain) and
+  `FallbackMappedMemoryChunk` (heap copy). Until
+  https://github.com/SKaiNET-developers/SKaiNET/pull/924[PR #924],
+  `skainet-io-core` had no `androidMain` source set at all.
+* *Both streaming readers copy to heap arrays.* `StreamingGGUFReader` and
+  `StreamingSafeTensorsReader` each know every tensor's byte range in the
+  file (GGUF `absoluteDataOffset`/`nBytes`, SafeTensors `data_offsets`), and
+  both expose only `loadTensorData(...): ByteArray` — the region is always
+  copied onto the heap even when the caller could consume it in place. The
+  ONNX reader is different in kind: tensors are embedded in protobuf, so
+  contiguous region mapping does not apply there today.
+* *The kernel SPI is array-shaped.* `Q8_0MatmulKernel` and friends take
+  `ByteArray` / `FloatArray` — an intentional lowest common denominator that
+  every target satisfies, but one that forces mapped memory to be copied
+  before a kernel can touch it.
+
+== Proposed Design
+
+The design is four phases, each independently shippable and testable. Phases 1
+and 2 are pure additions; phase 3 changes loader behavior behind an explicit
+placement opt-in; phase 4 extends the kernel SPI in a way that stands on its
+own but pays off most once a native Android kernel implementation exists.
+
+=== Phase 1 — `AndroidMappedMemoryChunk`
+
+An `androidMain` implementation of `MappedMemoryChunk` in `skainet-io-core`
+over `FileChannel.map(READ_ONLY, offset, size)`, following the
+`AndroidRandomAccessSource` precedent from
+https://github.com/SKaiNET-developers/SKaiNET/pull/924[PR #924]:
+
+* one mapping per requested region, not per file — GGUF tensor data offsets
+  and sizes are known from the streaming reader, so each tensor (or the whole
+  data section) maps independently;
+* regions larger than 2 GiB split into multiple `MappedByteBuffer` windows
+  (`FileChannel.map` is `Int`-limited per mapping); the chunk presents one
+  logical `Long`-indexed region over the windows;
+* `AutoCloseable` lifecycle; unmapping is left to the platform (no supported
+  explicit-unmap API on Android — see Risks).
+
+=== Phase 2 — readable `BufferHandle.FileBacked`
+
+Give the storage layer a real accessor path so `FileBacked` stops being
+metadata-only:
+
+[source,kotlin]
+----
+public sealed interface BufferAccess {
+    /** Zero-copy view when the platform can map; a heap copy otherwise. */
+    public fun asReadOnlyBuffer(): PlatformBuffer   // expect/actual
+    public fun readInto(dest: ByteArray, destOffset: Int, srcOffset: Long, length: Int): Int
+}
+----
+
+* `copyMaterialize()` gains a `FileBacked` arm (via `readInto`) instead of
+  throwing, so any existing consumer that insists on heap bytes still works —
+  it pays the copy explicitly rather than being unable to proceed.
+* `Placement` / `MemoryDomain.MMAP_FILE` becomes reachable: a
+  `TensorStorageFactory` for Android that produces `FileBacked` handles over
+  an `AndroidMappedMemoryChunk`.
+
+=== Phase 3 — mapped loading in the streaming readers (format-agnostic core, per-format adoption)
+
+The capability is defined once at the `skainet-io-core` level and adopted per
+format — it is *not* a GGUF feature. Both streaming readers already know every
+tensor's byte range in the file; today both only copy it out.
+
+Core addition (io-core):
+
+* `loadTensorDataMapped(offset, length): MappedMemoryChunk` on the shared
+  reader infrastructure — a view over the file region, no bytes move — plus a
+  placement knob on the parameter loaders (defaulting to today's heap
+  behavior) that wraps pass-through tensors in buffer-backed `TensorData`
+  views instead of `ByteArray`-backed ones.
+
+Per-format adoption, in order:
+
+* *GGUF* (reference implementation — the measured mobile LLM path):
+  `StreamingGGUFReader` maps `absoluteDataOffset`/`nBytes` ranges. The
+  on-disk block layout *is* the packed layout the eager kernels consume for
+  Q8_0/Q4_K, so a mapped region is directly usable — no repack, hence no
+  copy.
+* *SafeTensors* (structurally the easiest case): `StreamingSafeTensorsReader`
+  maps `data_offsets` ranges. Payloads are raw dense little-endian tensors
+  (F32/F16/BF16) with no block structure at all, and the KEEP_NATIVE narrow-
+  float path already wraps on-disk bytes verbatim (`Fp16DenseTensorData`,
+  `Bf16DenseTensorData`) — mapping slots straight under it.
+* *ONNX* (out of scope here): tensor data is embedded inside protobuf
+  messages, so contiguous region mapping does not apply; ONNX joins if/when
+  it gains an external-data or offset-indexed path.
+
+In every format, tensors that must be rewritten at load (dequant-to-FP32,
+block-major repacks, endian/layout conversions) keep materializing — mapping
+only helps when bytes are consumed as-is.
+
+=== Phase 4 — buffer-aware kernel dispatch
+
+A `ByteBuffer`-capable overload on the packed matmul SPI. The default
+implementation copies to `ByteArray` and delegates, so every existing provider
+keeps working unchanged and the overload is purely opt-in. Expected consumers:
+
+* a future native (JNI) kernel implementation on Android reads the mapped
+  address zero-copy via `GetDirectBufferAddress` — this is where file-backed
+  weights and fast kernels compound
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920] proposes
+  such kernels; this SKEEP only defines the SPI surface they would use);
+* the scalar Kotlin fallback reads through the buffer directly; per-element
+  `MappedByteBuffer.get` is slower than array access, so the scalar path may
+  choose the copy-once default instead — measured, not assumed (see
+  Acceptance criteria).
+
+== Compatibility and Migration
+
+* All phases are additive. Default behavior on every platform is unchanged:
+  heap-backed `TensorData`, `loadTensorData` as today.
+* The JVM keeps its `MemorySegment` / FFM path untouched; this proposal is the
+  Android counterpart, not a replacement.
+* The kernel SPI change is a defaulted interface addition — binary-compatible
+  for existing providers (the BCV dumps gain the default methods).
+* No serialized formats change; GGUF files are consumed in place.
+
+== Rollout Plan
+
+1. Phase 1 + 2 land together behind tests (host-side `androidHostTest`, the
+   lane introduced in https://github.com/SKaiNET-developers/SKaiNET/pull/924[PR #924]).
+2. Phase 3 lands default-off, GGUF first (the measured mobile path), with the
+   SafeTensors adoption as an immediate follow-up on the same core API; the
+   PromptPong-style field test
+   (https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/272[transformers#272]
+   reproducer) validates resident-memory numbers on a physical device.
+3. Phase 4 can land any time (the defaulted SPI overload is inert on its
+   own); scheduling it alongside the first native Android kernel, if
+   https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920] proceeds,
+   is when the zero-copy benefit becomes measurable.
+4. Docs: a "Memory on Android" page documenting the placement knob, the
+   FP32-fallback trap (do not use `DEQUANTIZE_TO_FP32` as OOM recovery — it
+   costs ~4x packed), and the model-size guidance per heap configuration.
+
+== Acceptance Criteria
+
+* Loading SmolLM2-135M Q8_0 on a physical Android device with mapped placement
+  adds less than 40 MB to the managed heap (vs ~145 MB today), verified with
+  `Debug.getMemoryInfo` in the reproducer app.
+* A ~600 MB Q4_K model (1.1 B params) loads and generates on a device with the
+  default 256 MB heap — impossible today by construction.
+* Decode throughput with mapped weights is within 10% of heap-backed weights
+  on the same device once pages are warm (scalar kernels), and not slower with
+  JNI kernels (phase 4).
+* No regression in JVM/native test suites; `androidHostTest` covers chunk
+  windowing (>2 GiB logic can be tested with small synthetic window sizes),
+  `FileBacked` materialization, and mapped-vs-heap tensor parity.
+* Mapped-vs-heap parity holds for both adopted formats: a synthesized GGUF
+  (packed quant blocks) and a synthesized SafeTensors file (dense
+  F32/F16/BF16) produce bit-identical tensors under either placement.
+
+== Risks
+
+* *Page-fault latency.* First-touch of cold pages during decode adds jitter.
+  Mitigation: optional eager warm-up read of the mapped region at load time
+  (sequential touch), which restores today's latency profile while keeping
+  pages evictable. Java exposes no `madvise`; a JNI `madvise(WILLNEED)` can
+  ride along with #920's bridge later.
+* *No explicit unmap.* Android/JVM unmap mapped buffers only when the buffer
+  is garbage-collected. Model reload cycles could accumulate address-space
+  usage until GC runs. Mitigation: document lifecycle, hold mappings in a
+  closeable model handle, and reuse mappings across reloads of the same file.
+* *2 GiB per-mapping limit.* Handled by design (windowed chunk), but the
+  windowing seam is a correctness-sensitive spot; it gets dedicated tests.
+* *32-bit devices.* `armeabi-v7a` has a ~3 GiB address space; mapping a large
+  model may fail there even though the heap math works. Scope: 64-bit devices
+  are the target; 32-bit falls back to heap loading with the existing error
+  behavior.
+* *Repacked layouts lose the benefit.* Any policy that rewrites bytes at load
+  (dequant, block-major repack) must materialize; the design keeps those
+  paths on-heap and only maps pass-through layouts. This is a documented
+  limitation, not a silent performance cliff.
+
+== Open Questions
+
+* Should the buffer-aware SPI use `java.nio.ByteBuffer` in `androidMain` +
+  `jvmMain` only, or a small `expect` `PlatformBuffer` so Kotlin/Native
+  (posix `mmap` in `native64Main`, e.g. for iOS) can join later? The posix
+  side already has precedent (`PosixPreadRandomAccessSource`); an
+  `mmap`-backed chunk for Apple/Linux native would generalize this SKEEP
+  beyond Android.
+* Map the whole GGUF data section once vs per-tensor mappings: one mapping is
+  simpler and shares pages across tensors; per-tensor mappings give tighter
+  address-space usage on 32-bit. Current lean: one windowed mapping of the
+  data section.
+* Should mapped placement eventually become the Android *default* once JNI
+  kernels consume buffers natively, with heap placement as the opt-out?
+
+== References
+
+* Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]
+* Android OOM report and fix that unblocked streaming reads:
+  https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922],
+  https://github.com/SKaiNET-developers/SKaiNET/pull/924[PR #924]
+* Native mobile kernels (JNI bridge that makes zero-copy real):
+  https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920]
+* Dequant over-allocation: https://github.com/SKaiNET-developers/SKaiNET/issues/782[#782]
+* Cross-target reproducer used for the memory measurements:
+  https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/272[transformers#272]
+* Prior art: llama.cpp `--mmap` (default-on) weight mapping; ONNX Runtime and
+  TFLite native-heap weight storage.
