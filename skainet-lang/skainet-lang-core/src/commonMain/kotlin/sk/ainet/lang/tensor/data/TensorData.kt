@@ -78,12 +78,23 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
      * The default implementation iterates over all elements, which may be slow for backends
      * where individual element access is expensive (e.g., GPU tensors).
      *
+     * The default unravels each flat position into per-dimension indices, because [get]
+     * requires exactly one index per dimension — a single flat index would trip every
+     * implementation's arity check for rank >= 2 tensors.
+     *
      * @return a new FloatArray containing all tensor values in row-major order
      */
     public fun copyToFloatArray(): FloatArray {
+        val dims = shape.dimensions
         val volume = shape.volume
-        return FloatArray(volume) { idx ->
-            (get(idx) as Number).toFloat()
+        val indices = IntArray(dims.size)
+        return FloatArray(volume) { flat ->
+            var remaining = flat
+            for (d in dims.indices.reversed()) {
+                indices[d] = remaining % dims[d]
+                remaining /= dims[d]
+            }
+            (get(*indices) as Number).toFloat()
         }
     }
 }
