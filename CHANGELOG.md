@@ -30,6 +30,12 @@
 
 ### Fixed
 
+- **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
+  threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
+  the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
+  storage to the heap, the one transfer the storage layer was designed around. Both methods
+  gain a `BufferResolver` overload that reads file-backed regions through a configured
+  resolver; `DeviceResident` remains unsupported with an error that says why. (#929)
 - **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
   code.** The static kernel archive was attached via project-local `linkerOpts`, which does
   not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`
@@ -40,7 +46,6 @@
   linux static archives, and the macOS publish job injects them, so released klibs embed real
   code. In-repo K/N test binaries link purely from the embedded klib — the consumer-link
   scenario is what the test suite now exercises. (#941)
-
 - **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
   iterate a single flat index into the vararg `get`, tripping every implementation's
   one-index-per-dimension arity check — a latent trap for any implementation that didn't
