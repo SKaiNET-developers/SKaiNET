@@ -96,6 +96,31 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # K/N klib embedding (#941): the linux ELF static archives are produced
+      # only on the ubuntu leg — x64 from the host CMake build above, arm64 via
+      # the -PcrossArm64 cross build — and injected into the publish job so the
+      # linux klibs carry their machine code (the publish host is macOS, whose
+      # CMake build emits Mach-O and must not be embedded into linux klibs).
+      - name: Cross-build aarch64 static archive (Linux only)
+        if: matrix.arch_label == 'linux-x86_64'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q gcc-aarch64-linux-gnu
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache -PcrossArm64=true \
+            :skainet-backends:skainet-backend-native-cpu:buildNativeKernelsArm64
+
+      - name: Upload K/N static archives (Linux only)
+        if: matrix.arch_label == 'linux-x86_64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-static-linux
+          path: |
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build/libskainet_kernels.a
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build-arm64/libskainet_kernels.a
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Release build and publish
     needs: build-native
@@ -147,8 +172,27 @@ jobs:
           echo "--- Staged tree ---"
           find "$DEST" -type f
 
+      # K/N klib embedding (#941): resolve the linux ELF static archive dirs
+      # from the ubuntu leg's artifact and hand them to Gradle, so the
+      # linuxX64/linuxArm64 klibs embed real machine code even though the
+      # publish host is macOS. Fail loudly if the archives are missing —
+      # publishing bindings-only klibs is the bug this step exists to prevent.
+      - name: Resolve K/N static archive paths
+        run: |
+          set -euo pipefail
+          BASE="$PWD/native-artifacts/native-static-linux"
+          X64_DIR="$BASE/cmake-build"
+          ARM64_DIR="$BASE/cmake-build-arm64"
+          test -f "$X64_DIR/libskainet_kernels.a" || { echo "Missing linux-x64 static archive" >&2; exit 1; }
+          test -f "$ARM64_DIR/libskainet_kernels.a" || { echo "Missing linux-arm64 static archive" >&2; exit 1; }
+          echo "SKAINET_KERNELS_X64_DIR=$X64_DIR" >> "$GITHUB_ENV"
+          echo "SKAINET_KERNELS_ARM64_DIR=$ARM64_DIR" >> "$GITHUB_ENV"
+
       - name: Publish to MavenCentral
-        run: ./gradlew publish --no-configuration-cache --stacktrace
+        run: |
+          ./gradlew publish --no-configuration-cache --stacktrace \
+            -PskainetKernelsX64Dir="$SKAINET_KERNELS_X64_DIR" \
+            -PskainetKernelsArm64Dir="$SKAINET_KERNELS_ARM64_DIR"
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

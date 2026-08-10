@@ -4,6 +4,17 @@
 
 ### Fixed
 
+- **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
+  code.** The static kernel archive was attached via project-local `linkerOpts`, which does
+  not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`
+  artifacts could not link (unresolved `skainet_*` symbols). The archive is now EMBEDDED into
+  the cinterop klib (`-staticLibrary`/`-libraryPath`), conditional on a correct-architecture
+  ELF archive being available; bindings-only builds (e.g. macOS dev hosts) warn loudly instead
+  of staying silent. The release workflow's ubuntu leg now also cross-builds and uploads both
+  linux static archives, and the macOS publish job injects them, so released klibs embed real
+  code. In-repo K/N test binaries link purely from the embedded klib — the consumer-link
+  scenario is what the test suite now exercises. (#941)
+
 - **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
   iterate a single flat index into the vararg `get`, tripping every implementation's
   one-index-per-dimension arity check — a latent trap for any implementation that didn't
