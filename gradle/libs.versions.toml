@@ -10,6 +10,10 @@ kotlinxCoroutines = "1.11.0"
 kotlinBrowser = "0.5.0"
 android-minSdk = "24"
 android-compileSdk = "36"
+# NDK for skainet-backend-jni-cpu's externalNativeBuild. Pinned so the AAR's
+# .so's build reproducibly on dev machines and the release runner. r28+ links
+# 16 KB-page-aligned .so's by default (Android 15+ requirement).
+android-ndk = "28.2.13676358"
 kotlinxSerializationJson = "1.11.0"
 ktorClientCore = "3.5.2"
 ktorClientPlugins = "3.1.1"

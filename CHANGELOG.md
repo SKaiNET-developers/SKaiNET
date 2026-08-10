@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### CI
+
+- **Release workflow publishes the `skainet-backend-jni-cpu` AAR.** `./gradlew publish` now
+  includes the Android JNI kernel module, whose AAR carries NDK-cross-built `.so`s; the publish
+  job gains Android SDK + a pinned NDK setup so the native build succeeds on the release runner
+  (previously the release would ship no JNI artifact, or fail). The NDK version is pinned in
+  `gradle/libs.versions.toml` (`android-ndk`) and referenced by the module's `ndkVersion` and the
+  workflow, so local and CI builds are reproducible. (#946)
+
 ### Added
 
 - **NEON body for the Q4_0 matmul kernel.** `skainet_q4_0_matmul` was the only priority
