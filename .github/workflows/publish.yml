@@ -21,6 +21,12 @@ name: release
 #     resources.srcDir(nativeResourcesRoot) on jvmMain picks them all
 #     up into the published JAR.
 #
+# The publish job also builds and publishes the skainet-backend-jni-cpu AAR
+# (Android JNI kernel provider). Its native .so's are cross-compiled by the
+# NDK during `./gradlew publish`, so the publish runner sets up the Android
+# SDK + a pinned NDK (see the publish job) — independent of the build-native
+# matrix above, which only produces the FFM shared libs.
+#
 # Linux ARM64 is intentionally absent: Kotlin/Native plugin 2.3.21
 # doesn't support `linux aarch64` as a HOST target ("Unknown host
 # target" — see SKaiNET PR #577). Linux ARM64 consumers fall back
@@ -138,6 +144,22 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: 25
+
+      # `./gradlew publish` now includes skainet-backend-jni-cpu (an Android
+      # library whose AAR carries NDK-built .so's). The publish runner therefore
+      # needs the Android SDK + a pinned NDK; without it the AAR's native build
+      # fails and the release ships no JNI artifact. The NDK version must match
+      # gradle/libs.versions.toml `android-ndk`.
+      - name: Set up Android SDK
+        # NOTE (maintainer): pin to a commit SHA per repo convention before merge —
+        # this tag is used only because the SHA can't be verified from the dev box.
+        uses: android-actions/setup-android@v3
+
+      - name: Install pinned NDK
+        run: |
+          NDK_VERSION="$(grep -E '^android-ndk[[:space:]]*=' gradle/libs.versions.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "Installing NDK ${NDK_VERSION}"
+          yes | sdkmanager "ndk;${NDK_VERSION}" >/dev/null
 
       - name: Validate signing configuration
         run: |

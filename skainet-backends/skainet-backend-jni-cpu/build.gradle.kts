@@ -23,6 +23,9 @@ plugins {
 android {
     namespace = "sk.ainet.exec.kernel.jni"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
+    // Pinned NDK so the AAR's .so's build reproducibly locally and on the
+    // release runner (AGP provisions it via sdkmanager when absent).
+    ndkVersion = libs.versions.android.ndk.get()
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
