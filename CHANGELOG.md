@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Streaming GGUF loads fail fast on unsupported tensor types instead of silently skipping them.**
+  `StreamingGgufParametersLoader` used to emit a `SKIP` progress string for any tensor type outside
+  its `when` and deliver a model with silently missing weights — the failure then surfaced far away
+  in the forward pass (the load-time half of the Q4_1 report in
+  [#654](https://github.com/SKaiNET-developers/SKaiNET/issues/654)). An eager pre-scan of the tensor
+  directory now throws `IllegalArgumentException` before any tensor is delivered, naming every
+  offending tensor, its type (including raw values for unknown types), and the supported set; the
+  per-tensor `else` is a hard error guarding against drift from the new
+  `SUPPORTED_TENSOR_TYPES` companion set. **Behavior change:** files that previously "loaded" with
+  skipped tensors now fail at load — the legacy `GgufParametersLoader` already behaved this way.
+  Q4_0 / Q5_0 / Q5_1 — which had packed `TensorData` and matmul kernels but were missing from the
+  loader — now load as packed blocks instead of being skipped. Closes
+  [#919](https://github.com/SKaiNET-developers/SKaiNET/issues/919).
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
