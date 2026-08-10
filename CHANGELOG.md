@@ -10,6 +10,11 @@
   report's text form, sorted by volume). `ActiveMemoryTracker.current` is now `@Volatile`
   with an honest thread-safety contract in its docs; making the tracker per-execution-context
   instead of a process-wide hook is part of the SKEEP-003 storage-model discussion. (#931)
+- **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
+  iterate a single flat index into the vararg `get`, tripping every implementation's
+  one-index-per-dimension arity check — a latent trap for any implementation that didn't
+  override it. The default now unravels flat positions into per-dimension indices (row-major);
+  a contract test exercises the default at ranks 1–3. (#930)
 - **Streaming GGUF loads fail fast on unsupported tensor types instead of silently skipping them.**
   `StreamingGgufParametersLoader` used to emit a `SKIP` progress string for any tensor type outside
   its `when` and deliver a model with silently missing weights — the failure then surfaced far away
