@@ -35,6 +35,34 @@ class JniKernelParityTest {
     }
 
     /**
+     * The two-tier loader must pick the dotprod library on hardware that
+     * advertises it and the baseline elsewhere — the core of the #920
+     * runtime-dispatch design. Expectation is derived from the same
+     * `/proc/cpuinfo` signal the loader uses, so this passes on a dotprod
+     * arm64 device (→ V82_DOTPROD) and on an x86_64 emulator (→ BASELINE)
+     * without hard-coding either.
+     */
+    @Test
+    fun loader_selects_tier_matching_cpu_features() {
+        val features = runCatching {
+            java.io.File("/proc/cpuinfo").useLines { lines ->
+                lines.firstOrNull { it.startsWith("Features") }
+            }
+        }.getOrNull().orEmpty()
+        val expectsDotprod = "asimddp" in features && ("asimdhp" in features || "fphp" in features)
+        val expected = if (expectsDotprod) {
+            JniKernels.Variant.V82_DOTPROD
+        } else {
+            JniKernels.Variant.BASELINE
+        }
+        assertEquals(
+            "loader tier must match CPU features (Features='$features')",
+            expected,
+            JniKernels.variant,
+        )
+    }
+
+    /**
      * Random block bytes with the FP16 scale slots pinned to 1.0 per format,
      * mirroring the NativeKn* parity generators EXACTLY. The inner 6-bit
      * sub-block scale bytes stay random on purpose: pinning them to fixed
