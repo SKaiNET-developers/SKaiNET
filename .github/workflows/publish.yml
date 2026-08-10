@@ -151,9 +151,7 @@ jobs:
       # fails and the release ships no JNI artifact. The NDK version must match
       # gradle/libs.versions.toml `android-ndk`.
       - name: Set up Android SDK
-        # NOTE (maintainer): pin to a commit SHA per repo convention before merge —
-        # this tag is used only because the SHA can't be verified from the dev box.
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
 
       - name: Install pinned NDK
         run: |
