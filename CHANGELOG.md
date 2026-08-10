@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
+  threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
+  the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
+  storage to the heap, the one transfer the storage layer was designed around. Both methods
+  gain a `BufferResolver` overload that reads file-backed regions through a configured
+  resolver; `DeviceResident` remains unsupported with an error that says why. (#929)
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
