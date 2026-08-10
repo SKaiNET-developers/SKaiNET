@@ -41,6 +41,7 @@ include("skainet-compile:skainet-compile-minerva")
 include("skainet-backends:skainet-backend-api")
 include("skainet-backends:skainet-backend-cpu")
 include("skainet-backends:skainet-backend-native-cpu")
+include("skainet-backends:skainet-backend-jni-cpu")
 
 // ====== BENCHMARKS
 include("skainet-backends:benchmarks:jvm-cpu-jmh")
