@@ -119,7 +119,7 @@ public class StreamingGGUFReader private constructor(
         return TensorStorage(
             shape = shape,
             logicalType = ggmlTypeToLogical(tensor.tensorType),
-            encoding = ggmlTypeToEncoding(tensor.tensorType),
+            encoding = ggmlTypeToEncoding(tensor.tensorType, tensor.nBytes),
             buffer = BufferHandle.Borrowed(bytes, isMutable = false),
             placement = Placement.CPU_HEAP
         )
@@ -149,7 +149,7 @@ public class StreamingGGUFReader private constructor(
         return TensorStorage(
             shape = shape,
             logicalType = ggmlTypeToLogical(tensor.tensorType),
-            encoding = ggmlTypeToEncoding(tensor.tensorType),
+            encoding = ggmlTypeToEncoding(tensor.tensorType, tensor.nBytes),
             buffer = BufferHandle.FileBacked(
                 path = filePath,
                 fileOffset = tensor.absoluteDataOffset,
@@ -172,7 +172,7 @@ public class StreamingGGUFReader private constructor(
         else -> LogicalDType.FLOAT32
     }
 
-    private fun ggmlTypeToEncoding(type: GGMLQuantizationType): TensorEncoding = when (type) {
+    private fun ggmlTypeToEncoding(type: GGMLQuantizationType, nBytes: Long): TensorEncoding = when (type) {
         GGMLQuantizationType.F32 -> TensorEncoding.Dense(4)
         GGMLQuantizationType.F16 -> TensorEncoding.Dense(2)
         GGMLQuantizationType.BF16 -> TensorEncoding.Dense(2)
@@ -181,17 +181,19 @@ public class StreamingGGUFReader private constructor(
         GGMLQuantizationType.I16 -> TensorEncoding.Dense(2)
         GGMLQuantizationType.I32 -> TensorEncoding.Dense(4)
         GGMLQuantizationType.I64 -> TensorEncoding.Dense(8)
-        GGMLQuantizationType.Q4_K -> TensorEncoding.Q4_K
+        GGMLQuantizationType.Q4_0 -> TensorEncoding.Q4_0
+        GGMLQuantizationType.Q5_0 -> TensorEncoding.Q5_0
+        GGMLQuantizationType.Q5_1 -> TensorEncoding.Q5_1
         GGMLQuantizationType.Q8_0 -> TensorEncoding.Q8_0
-        else -> {
-            // For other quantized types, use Opaque with raw byte count
-            val quantInfo = GGML_QUANT_SIZES[type]
-            if (quantInfo != null) {
-                TensorEncoding.Opaque(type.name, 0) // size computed from tensor info
-            } else {
-                TensorEncoding.Opaque(type.name, 0)
-            }
-        }
+        GGMLQuantizationType.Q4_K -> TensorEncoding.Q4_K
+        GGMLQuantizationType.Q5_K -> TensorEncoding.Q5_K
+        GGMLQuantizationType.Q6_K -> TensorEncoding.Q6_K
+        // Types without a dedicated TensorEncoding carry their real byte count,
+        // so TensorStorage.physicalBytes (which prefers encoding.physicalBytes
+        // over buffer.sizeInBytes) stays truthful. The previous Opaque(name, 0)
+        // made every such tensor report 0 physical bytes and silently corrupted
+        // memory reports and compression ratios.
+        else -> TensorEncoding.Opaque(type.name, nBytes)
     }
 
     // ========== Parsing Implementation ==========

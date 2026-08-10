@@ -4,6 +4,16 @@
 
 ### Added
 
+- **NEON body for the Q4_0 matmul kernel.** `skainet_q4_0_matmul` was the only priority
+  quant format without a SIMD path (scalar C only, while q8_0/q4k/q5k/q6k had NEON).
+  It now unpacks the split-layout nibbles with `vand`/`vshr`, re-centres in the signed
+  int8 domain, and widens to f32 FMA lanes — plain NEON with no dotprod/i8mm requirement,
+  so it runs on every AArch64 core, and the same block-outer/row-inner loop order as
+  q8_0 (sequential weight reads; per-row accumulation order unchanged). Verified: 27/27
+  kernel tests green under qemu-aarch64 (cross-built `-march=armv8.2-a+fp16+dotprod`,
+  K/N-bundled gcc 8.3), `fmla` confirmed in the archive's disassembly; a new
+  Kotlin/Native Q4_0 parity test closes the gap where the aarch64 lane had no Q4_0
+  coverage at all. Part of the mobile-kernels effort (#920).
 - **`skainet-backend-jni-cpu`: Android JNI bridge for the native NEON kernels.** ART has no
   `java.lang.foreign`, so the priority-100 FFM provider can never run on Android — until now
   Android inference ran on the priority-0 scalar floor. The new AAR ships the same C kernel
@@ -20,6 +30,41 @@
 
 ### Fixed
 
+- **GGUF tensors report their real encodings and sizes in `TensorStorage`.**
+  `StreamingGGUFReader` mapped only Q4_K/Q8_0 to dedicated `TensorEncoding`s; Q4_0, Q5_0,
+  Q5_1, Q5_K and Q6_K — all of which have encoding objects and CPU kernels — fell through to
+  `Opaque(name, 0)`, whose zero byte count short-circuits `TensorStorage.physicalBytes` and
+  silently corrupted every memory report and compression ratio. All seven quant formats now
+  map to their encodings, and genuinely unknown types carry the tensor's real byte count in
+  `Opaque`. (#928)
+- **Memory-copy diagnostics attribute copies to their source.** `MemoryTracker.recordCopy`
+  discarded the `sourceName` every instrumented call site passes; reports now carry a
+  per-source breakdown (`copiesBySource: Map<String, CopySourceStat>`, included in the
+  report's text form, sorted by volume). `ActiveMemoryTracker.current` is now `@Volatile`
+  with an honest thread-safety contract in its docs; making the tracker per-execution-context
+  instead of a process-wide hook is part of the SKEEP-003 storage-model discussion. (#931)
+- **`TensorStorageFactory` ownership labels are now truthful.** `borrowFloatArray` re-encoded
+  the floats into a private byte copy and labeled it `Borrowed` despite its "(zero-copy)" doc —
+  it is now deprecated (delegating to `fromFloatArray`) and honestly returns `Owned`;
+  `fromTensorData`'s doc claimed "borrowed (not copied)" while its dense branches copy — the
+  contract is now documented per branch (packed Q4_K/Q8_0 genuinely borrow zero-copy, dense
+  arrays convert to owned bytes) and pinned by ownership + mutation-visibility tests. (#927)
+- **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
+  threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
+  the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
+  storage to the heap, the one transfer the storage layer was designed around. Both methods
+  gain a `BufferResolver` overload that reads file-backed regions through a configured
+  resolver; `DeviceResident` remains unsupported with an error that says why. (#929)
+- **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
+  code.** The static kernel archive was attached via project-local `linkerOpts`, which does
+  not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`
+  artifacts could not link (unresolved `skainet_*` symbols). The archive is now EMBEDDED into
+  the cinterop klib (`-staticLibrary`/`-libraryPath`), conditional on a correct-architecture
+  ELF archive being available; bindings-only builds (e.g. macOS dev hosts) warn loudly instead
+  of staying silent. The release workflow's ubuntu leg now also cross-builds and uploads both
+  linux static archives, and the macOS publish job injects them, so released klibs embed real
+  code. In-repo K/N test binaries link purely from the embedded klib — the consumer-link
+  scenario is what the test suite now exercises. (#941)
 - **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
   iterate a single flat index into the vararg `get`, tripping every implementation's
   one-index-per-dimension arity check — a latent trap for any implementation that didn't

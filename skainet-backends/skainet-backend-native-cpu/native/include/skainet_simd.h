@@ -22,8 +22,12 @@
  *     `/proc/cpuinfo` confirmed asimddp + fphp/asimdhp present and i8mm
  *     absent, matching the chosen -march (no +i8mm).
  * The linked archive was confirmed to contain udot/sdot + fmla, i.e. the
- * SIMD paths — not the scalar fallback — executed. bf16 and q4_0 have no
+ * SIMD paths — not the scalar fallback — executed. bf16 and fp16 have no
  * NEON path (scalar only).
+ *
+ * q4_0 gained a plain-NEON body (nibble unpack + widen + vfmaq_f32, no
+ * dotprod requirement) later — parity-checked under qemu-aarch64 via the
+ * same linuxArm64Test lane (#920).
  */
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)

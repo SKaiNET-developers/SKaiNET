@@ -161,6 +161,9 @@ class TensorStorageFactoryTest {
         assertEquals(TensorEncoding.Dense(4), storage.encoding)
         assertEquals(3L, storage.elementCount)
         assertEquals(12L, storage.physicalBytes)
+        // Dense float bridges convert (copy) — a FloatArray has no byte-view
+        // in common Kotlin — so the honest label is OWNED (#927).
+        assertEquals(Ownership.OWNED, storage.ownership)
     }
 
     @Test
@@ -170,6 +173,7 @@ class TensorStorageFactoryTest {
 
         assertEquals(LogicalDType.INT32, storage.logicalType)
         assertEquals(TensorEncoding.Dense(4), storage.encoding)
+        assertEquals(Ownership.OWNED, storage.ownership)
     }
 
     @Test
@@ -182,6 +186,19 @@ class TensorStorageFactoryTest {
         assertEquals(TensorEncoding.Q4_K, storage.encoding)
         assertEquals(Ownership.BORROWED, storage.ownership)
         assertEquals(144L, storage.physicalBytes)
+    }
+
+    @Test
+    fun fromTensorDataPackedBridgeIsZeroCopy() {
+        // The packed branch borrows the source packedData: a mutation through
+        // the source must be visible through the storage handle.
+        val packedData = ByteArray(144)
+        val tensorData = Q4_KBlockTensorData.fromRawBytes(Shape(256), packedData)
+        val storage = TensorStorageFactory.fromTensorData(tensorData)
+
+        packedData[7] = 99
+        val handle = storage.buffer as BufferHandle.Borrowed
+        assertEquals(99, handle.data[7])
     }
 
     @Test

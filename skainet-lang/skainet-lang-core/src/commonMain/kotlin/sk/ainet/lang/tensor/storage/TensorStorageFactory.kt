@@ -35,25 +35,25 @@ public object TensorStorageFactory {
         )
 
     /**
-     * Borrow a FloatArray as dense FLOAT32 storage (zero-copy).
+     * Convert a FloatArray to dense FLOAT32 storage.
+     *
+     * Despite the historical name, this CANNOT borrow: a `FloatArray` has no
+     * byte-view in common Kotlin, so the floats are re-encoded into a fresh
+     * little-endian `ByteArray`. The result is therefore an [BufferHandle.Owned]
+     * buffer — labeling the private copy `Borrowed` (as this method previously
+     * did) misrepresented ownership to every consumer of
+     * [TensorStorage.ownership] and to [MemoryTracker] reports.
+     *
+     * For genuine zero-copy borrowing, start from bytes: [fromRawBytes] borrows
+     * the given `ByteArray` without copying.
      */
-    public fun borrowFloatArray(shape: Shape, data: FloatArray): TensorStorage {
-        val bytes = ByteArray(data.size * 4)
-        for (i in data.indices) {
-            val bits = data[i].toRawBits()
-            val off = i * 4
-            bytes[off] = (bits and 0xFF).toByte()
-            bytes[off + 1] = ((bits shr 8) and 0xFF).toByte()
-            bytes[off + 2] = ((bits shr 16) and 0xFF).toByte()
-            bytes[off + 3] = ((bits shr 24) and 0xFF).toByte()
-        }
-        return TensorStorage(
-            shape = shape,
-            logicalType = LogicalDType.FLOAT32,
-            encoding = TensorEncoding.Dense(bytesPerElement = 4),
-            buffer = BufferHandleFactory.borrow(bytes)
-        )
-    }
+    @Deprecated(
+        message = "A FloatArray cannot be borrowed as byte storage; this method always copies. " +
+            "Use fromFloatArray (same behavior, honest name) or fromRawBytes for real borrowing.",
+        replaceWith = ReplaceWith("fromFloatArray(shape, data)"),
+    )
+    public fun borrowFloatArray(shape: Shape, data: FloatArray): TensorStorage =
+        fromFloatArray(shape, data)
 
     /**
      * Wrap an IntArray as owned dense INT32 storage (copies the array).
@@ -123,7 +123,19 @@ public object TensorStorageFactory {
      * Bridge: create a [TensorStorage] descriptor from an existing [TensorData].
      *
      * This inspects the concrete TensorData type and builds the appropriate
-     * storage descriptor. The underlying data is borrowed (not copied).
+     * storage descriptor. Ownership of the result depends on what the source
+     * can share:
+     *
+     * - **Packed quant data (Q4_K, Q8_0): borrowed, zero-copy.** The
+     *   `packedData` `ByteArray` is shared with the source; mutations are
+     *   visible through both.
+     * - **Dense float/int data: owned, converted (a copy).** A `FloatArray` /
+     *   `IntArray` has no byte-view in common Kotlin, so the values are
+     *   re-encoded into a fresh little-endian `ByteArray`.
+     * - **Anything else: owned, materialized (copies).** The tensor is read
+     *   out via [TensorData.copyToFloatArray] and re-encoded.
+     *
+     * Check [TensorStorage.ownership] on the result rather than assuming.
      */
     public fun <T : DType, V> fromTensorData(data: TensorData<T, V>): TensorStorage {
         return when (data) {
