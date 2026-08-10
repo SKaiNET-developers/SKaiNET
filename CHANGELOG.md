@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Random file access on Android: streaming model loads instead of full-file heap loads.**
+  `createRandomAccessSource` unconditionally returned `null` on Android in `skainet-io-gguf`,
+  `skainet-io-safetensors` and `skainet-io-onnx`, forcing every load through the legacy
+  materialise-the-whole-file path — on a real device a 138 MiB GGUF then OOMs the ART heap
+  (capped at 256/512 MB) before tensors are even built. A new `AndroidRandomAccessSource` in
+  `skainet-io-core` (androidMain, positional `FileChannel` reads — thread-safe, API 1+) now backs
+  all three actuals, making `StreamingGGUFReader`/streaming loaders reachable on Android; this
+  also un-breaks `TokenizerFactory.fromGguf`, which needs `StreamingGGUFReader.fields`. Android
+  host-side unit tests (`withHostTest {}`, a first in the repo) cover the read contract including
+  concurrent positional reads. Closes [#922](https://github.com/SKaiNET-developers/SKaiNET/issues/922).
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
