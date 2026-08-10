@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-08-10
+
+Headline: **on-device AI on Android becomes real.** A JNI NEON kernel backend
+(`skainet-backend-jni-cpu`) brings hand-tuned ARM matmul to Android — where the
+FFM provider can never run — measured at ~24 tok/s SmolLM2-135M Q8_0 decode on a
+Pixel 8a versus ~3.8 scalar (6.4x), clearing the on-device usability bar. The
+release also hardens the GGUF load path on Android (streaming instead of
+full-file heap loads), makes published Kotlin/Native kernel klibs linkable, and
+lands a batch of tensor-storage correctness fixes.
+
 ### CI
 
 - **Release workflow publishes the `skainet-backend-jni-cpu` AAR.** `./gradlew publish` now
