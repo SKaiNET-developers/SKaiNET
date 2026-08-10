@@ -14,8 +14,32 @@
   K/N-bundled gcc 8.3), `fmla` confirmed in the archive's disassembly; a new
   Kotlin/Native Q4_0 parity test closes the gap where the aarch64 lane had no Q4_0
   coverage at all. Part of the mobile-kernels effort (#920).
+- **`skainet-backend-jni-cpu`: Android JNI bridge for the native NEON kernels.** ART has no
+  `java.lang.foreign`, so the priority-100 FFM provider can never run on Android — until now
+  Android inference ran on the priority-0 scalar floor. The new AAR ships the same C kernel
+  sources via NDK/CMake with thin JNI shims (`GetPrimitiveArrayCritical`, zero-copy pins) and
+  a priority-100 `JniKernelProvider` discovered via `ServiceLoader` (which ART supports; the
+  Android ops factory now installs discovered providers exactly like the JVM does). Two `.so`
+  tiers are built from the same sources and selected at load time from `/proc/cpuinfo`:
+  baseline `armv8-a` (NEON, runs on every arm64 core — 0 dot-product instructions, verified by
+  disassembly) and `armv8.2-a+fp16+dotprod` (enables the `vdotq_s32` q4k/q6k paths — would
+  SIGILL on Cortex-A53-class cores, hence the gate). Q8_0/Q4_0/Q4_K/Q5_K/Q6_K bridged;
+  16 KB-page-aligned `.so`s (Android 15+); consumer R8 rules keep the ServiceLoader entry in
+  release builds. On-device parity tests included (`androidTest`, vs the scalar references).
+  Part of the mobile-kernels effort (#920).
 
 ### Fixed
+
+- **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
+  code.** The static kernel archive was attached via project-local `linkerOpts`, which does
+  not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`
+  artifacts could not link (unresolved `skainet_*` symbols). The archive is now EMBEDDED into
+  the cinterop klib (`-staticLibrary`/`-libraryPath`), conditional on a correct-architecture
+  ELF archive being available; bindings-only builds (e.g. macOS dev hosts) warn loudly instead
+  of staying silent. The release workflow's ubuntu leg now also cross-builds and uploads both
+  linux static archives, and the macOS publish job injects them, so released klibs embed real
+  code. In-repo K/N test binaries link purely from the embedded klib — the consumer-link
+  scenario is what the test suite now exercises. (#941)
 
 - **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
   iterate a single flat index into the vararg `get`, tripping every implementation's
