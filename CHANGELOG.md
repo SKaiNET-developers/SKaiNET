@@ -15,6 +15,37 @@
   Kotlin/Native Q4_0 parity test closes the gap where the aarch64 lane had no Q4_0
   coverage at all. Part of the mobile-kernels effort (#920).
 
+### Fixed
+
+- **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
+  iterate a single flat index into the vararg `get`, tripping every implementation's
+  one-index-per-dimension arity check — a latent trap for any implementation that didn't
+  override it. The default now unravels flat positions into per-dimension indices (row-major);
+  a contract test exercises the default at ranks 1–3. (#930)
+- **Streaming GGUF loads fail fast on unsupported tensor types instead of silently skipping them.**
+  `StreamingGgufParametersLoader` used to emit a `SKIP` progress string for any tensor type outside
+  its `when` and deliver a model with silently missing weights — the failure then surfaced far away
+  in the forward pass (the load-time half of the Q4_1 report in
+  [#654](https://github.com/SKaiNET-developers/SKaiNET/issues/654)). An eager pre-scan of the tensor
+  directory now throws `IllegalArgumentException` before any tensor is delivered, naming every
+  offending tensor, its type (including raw values for unknown types), and the supported set; the
+  per-tensor `else` is a hard error guarding against drift from the new
+  `SUPPORTED_TENSOR_TYPES` companion set. **Behavior change:** files that previously "loaded" with
+  skipped tensors now fail at load — the legacy `GgufParametersLoader` already behaved this way.
+  Q4_0 / Q5_0 / Q5_1 — which had packed `TensorData` and matmul kernels but were missing from the
+  loader — now load as packed blocks instead of being skipped. Closes
+  [#919](https://github.com/SKaiNET-developers/SKaiNET/issues/919).
+- **Random file access on Android: streaming model loads instead of full-file heap loads.**
+  `createRandomAccessSource` unconditionally returned `null` on Android in `skainet-io-gguf`,
+  `skainet-io-safetensors` and `skainet-io-onnx`, forcing every load through the legacy
+  materialise-the-whole-file path — on a real device a 138 MiB GGUF then OOMs the ART heap
+  (capped at 256/512 MB) before tensors are even built. A new `AndroidRandomAccessSource` in
+  `skainet-io-core` (androidMain, positional `FileChannel` reads — thread-safe, API 1+) now backs
+  all three actuals, making `StreamingGGUFReader`/streaming loaders reachable on Android; this
+  also un-breaks `TokenizerFactory.fromGguf`, which needs `StreamingGGUFReader.fields`. Android
+  host-side unit tests (`withHostTest {}`, a first in the repo) cover the read contract including
+  concurrent positional reads. Closes [#922](https://github.com/SKaiNET-developers/SKaiNET/issues/922).
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
