@@ -43,6 +43,7 @@ kotlin {
         macosArm64Main { dependsOn(macosMain.get()) }
         linuxX64Main { dependsOn(linuxMain.get()) }
         linuxArm64Main { dependsOn(linuxMain.get()) }
+        mingwX64Main { dependsOn(nativeMain.get()) }
     }
 }
 

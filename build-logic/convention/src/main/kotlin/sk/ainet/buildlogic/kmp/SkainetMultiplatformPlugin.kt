@@ -176,6 +176,10 @@ class SkainetMultiplatformPlugin : Plugin<Project> {
             kotlin.androidNativeArm32()
             kotlin.androidNativeArm64()
         }
+
+        if (targets.mingw) {
+            kotlin.mingwX64()
+        }
     }
 
     /**

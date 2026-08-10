@@ -1,8 +1,5 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    alias(libs.plugins.kotlinMultiplatform)
+    id("sk.ainet.multiplatform")
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.binary.compatibility.validator)
@@ -10,40 +7,13 @@ plugins {
     id("sk.ainet.dokka")
 }
 
+// Targets come from skainet.targets in this module's gradle.properties;
+// explicitApi() and kotlin-test in commonTest come from sk.ainet.multiplatform.
+skainet {
+    namespace = "sk.ainet.lang.dag"
+}
+
 kotlin {
-    explicitApi()
-
-    android {
-        namespace = "sk.ainet.lang.dag"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
-        }
-    }
-
-    iosArm64()
-    iosSimulatorArm64()
-    macosArm64()
-    linuxX64()
-    linuxArm64()
-
-    jvm()
-
-    js {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmWasi {
-        nodejs()
-    }
-
     sourceSets {
         commonMain {
             kotlin.srcDir("build/generated/ksp/metadata/commonMain/kotlin")
@@ -54,7 +24,6 @@ kotlin {
         }
 
         commonTest.dependencies {
-            implementation(libs.kotlin.test)
             implementation(project(":skainet-backends:skainet-backend-cpu"))
         }
     }

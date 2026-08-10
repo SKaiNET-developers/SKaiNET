@@ -46,6 +46,8 @@ internal data class SkainetTargets(
     val linux: Boolean,
     /** `androidNativeArm32`, `androidNativeArm64` — vendor backends linking device libraries. */
     val androidNative: Boolean,
+    /** `mingwX64` — Windows. Opt-in (not in the default set); see issue #911. */
+    val mingw: Boolean,
     val wasmJsExecutable: Boolean,
 ) {
     val web: Boolean get() = js || wasmJs
@@ -55,7 +57,7 @@ internal data class SkainetTargets(
         const val WASM_JS_EXECUTABLE_PROPERTY = "skainet.wasmJs.executable"
 
         private val DEFAULT = setOf("jvm", "js", "wasmJs", "wasmWasi", "apple", "linux")
-        private val KNOWN = DEFAULT + setOf("androidNative")
+        private val KNOWN = DEFAULT + setOf("androidNative", "mingw")
 
         fun from(project: Project): SkainetTargets {
             // findProperty, not providers.gradleProperty: as of Gradle 9 the provider API
@@ -83,6 +85,7 @@ internal data class SkainetTargets(
                 apple = "apple" in selected,
                 linux = "linux" in selected,
                 androidNative = "androidNative" in selected,
+                mingw = "mingw" in selected,
                 wasmJsExecutable = project.findProperty(WASM_JS_EXECUTABLE_PROPERTY)?.toString().toBoolean(),
             )
         }
