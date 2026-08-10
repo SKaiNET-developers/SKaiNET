@@ -27,7 +27,8 @@ import sk.ainet.buildlogic.root.SkainetRootExtension
  *
  * There are two such extensions — one for JS, one for Wasm — each with its own
  * lockfile, so a pin has to be applied twice. This plugin does that from a single
- * declaration.
+ * declaration, and lets a pin opt out of one of them via [NpmPinTarget] when the
+ * package exists in only one graph.
  *
  * ## Declaring a pin
  *
@@ -42,6 +43,9 @@ import sk.ainet.buildlogic.root.SkainetRootExtension
  * skainet {
  *     npmPins {
  *         pin("ws", libs.versions.npm.ws)
+ *         // Only the JS graph bundles with webpack; scoping keeps webpack's ~76
+ *         // transitive packages out of kotlin-js-store/wasm/yarn.lock.
+ *         pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)
  *     }
  * }
  * ```
@@ -75,30 +79,31 @@ class NpmPinsPlugin : Plugin<Project> {
 
         // Resolved lazily: pins are declared in the root script body, which runs after
         // the plugins block that applies this plugin.
-        val pinsProvider: Provider<Map<String, String>> = extension.pins
+        val jsPins: Provider<Map<String, String>> = extension.jsPins
+        val wasmPins: Provider<Map<String, String>> = extension.wasmPins
 
         // The Yarn plugins are applied by KGP only once a js/wasmJs target is configured,
         // which happens well after this plugin is applied — hence the reactive hooks.
+        // Each root gets only the pins scoped to it; see NpmPinTarget for why that matters.
         project.plugins.withType(YarnPlugin::class.java) {
-            project.extensions.getByType(YarnRootExtension::class.java).applyPins(pinsProvider.get())
+            project.extensions.getByType(YarnRootExtension::class.java).applyPins(jsPins.get())
         }
         project.plugins.withType(WasmYarnPlugin::class.java) {
             // getByName rather than WasmYarnRootExtension[project]: the latter applies
             // WasmYarnPlugin as a side effect, dragging wasm Yarn setup into js-only builds.
             val wasmYarn = project.extensions.getByName(WasmYarnRootExtension.YARN) as WasmYarnRootExtension
-            wasmYarn.applyPins(pinsProvider.get())
+            wasmYarn.applyPins(wasmPins.get())
         }
 
         val verify = project.tasks.register("verifyNpmPins", VerifyNpmPinsTask::class.java) {
             group = "verification"
             description = "Check the committed Yarn lockfiles against the pins declared in skainet { npmPins { } }"
-            pins.set(pinsProvider)
+            this.jsPins.set(jsPins)
+            this.wasmPins.set(wasmPins)
             failOnMissingPackage.set(extension.failOnMissingPackage)
             rootDirectory.set(project.layout.projectDirectory)
-            lockFiles.from(
-                project.layout.projectDirectory.file("kotlin-js-store/yarn.lock"),
-                project.layout.projectDirectory.file("kotlin-js-store/wasm/yarn.lock"),
-            )
+            jsLockFile.from(project.layout.projectDirectory.file("kotlin-js-store/yarn.lock"))
+            wasmLockFile.from(project.layout.projectDirectory.file("kotlin-js-store/wasm/yarn.lock"))
             // The lockfiles are outputs of the store tasks. Order after them rather than
             // depending on them, so `verifyNpmPins` stays a cheap file check on its own but
             // still sees the current state when a full build refreshes the lockfiles.

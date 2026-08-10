@@ -72,14 +72,33 @@ public data class TensorStorage(
     /**
      * Create a new [TensorStorage] with an owned copy of this storage's data.
      * The returned storage is independent of the original buffer.
+     *
+     * Handles [BufferHandle.Owned], [BufferHandle.Borrowed] and
+     * [BufferHandle.Aliased] directly. [BufferHandle.FileBacked] needs a
+     * platform reader — use the [copyMaterialize] overload that takes a
+     * [BufferResolver] with a file-backed resolver configured.
      */
-    public fun copyMaterialize(): TensorStorage {
+    public fun copyMaterialize(): TensorStorage = copyMaterialize(DefaultBufferResolver())
+
+    /**
+     * Create a new [TensorStorage] with an owned copy of this storage's data,
+     * reading through [resolver] for handles that need platform support
+     * ([BufferHandle.Aliased] chains, [BufferHandle.FileBacked]).
+     *
+     * [BufferHandle.DeviceResident] remains unsupported until a device
+     * backend exists.
+     */
+    public fun copyMaterialize(resolver: BufferResolver): TensorStorage {
         val srcBytes = when (val b = buffer) {
             is BufferHandle.Owned -> b.data.copyOfRange(b.offset, b.offset + sizeBytes())
             is BufferHandle.Borrowed -> b.data.copyOfRange(b.offset, b.offset + sizeBytes())
-            else -> throw UnsupportedOperationException(
-                "copyMaterialize not yet supported for ${buffer.ownership} buffers"
+            is BufferHandle.DeviceResident -> throw UnsupportedOperationException(
+                "copyMaterialize cannot read device-resident buffer '${b.deviceId}' on the host — " +
+                    "no device backend exists yet"
             )
+            // Aliased and FileBacked: the resolver knows how to read them.
+            // readBytes always copies, so the result is a genuinely owned buffer.
+            else -> resolver.resolve(b).use { it.readBytes(0, sizeBytes()) }
         }
         return copy(
             buffer = BufferHandle.Owned(srcBytes),
@@ -90,10 +109,20 @@ public data class TensorStorage(
     /**
      * Ensure this storage resides on the host (CPU heap).
      * If already on host, returns `this`. Otherwise copies to host.
+     *
+     * For [BufferHandle.FileBacked] storage (e.g. [Placement.MMAP_WEIGHTS]),
+     * use the overload that takes a [BufferResolver] with a file-backed
+     * resolver configured.
      */
-    public fun copyToHost(): TensorStorage {
+    public fun copyToHost(): TensorStorage = copyToHost(DefaultBufferResolver())
+
+    /**
+     * Ensure this storage resides on the host (CPU heap), reading through
+     * [resolver] for handles that need platform support.
+     */
+    public fun copyToHost(resolver: BufferResolver): TensorStorage {
         if (placement.device == DeviceKind.CPU && placement.domain == MemoryDomain.HOST_HEAP) return this
-        return copyMaterialize()
+        return copyMaterialize(resolver)
     }
 
     /**

@@ -1,0 +1,339 @@
+= SKEEP-003: Unifying the tensor storage model — one byte-owner, enforced ownership, coherent dtype/encoding
+:description: SKaiNET proposal to converge the TensorData and TensorStorage layers into one storage model with real ownership, a single view mechanism, and dtype/encoding coherence.
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors +
+Created: 2026-08-10 +
+Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932]
+
+== Summary
+
+SKaiNET carries two tensor-storage abstractions. `TensorData`
+(`skainet-lang-core`, package `sk.ainet.lang.tensor.data`) is the live one:
+every `Tensor` holds one, and backends dispatch by downcasting to concrete
+classes. `TensorStorage` (package `sk.ainet.lang.tensor.storage`, 20 files) is
+a designed descriptor layer — buffer handles with ownership variants,
+placement, encodings, a memory planner — whose own KDoc directs new code to
+target it, but which no `Tensor` ever holds and most of which has no
+production consumer.
+
+This proposal lays out the analysis of that split and **two candidate
+end-states**, deliberately without a recommendation — the trade-off is a
+maintainer decision this document is meant to anchor:
+
+* **Storage-first**: `TensorStorage` becomes the single owner of bytes,
+  placement and lifetime; `TensorData` becomes a typed *view protocol* over
+  it; op dispatch keys on (logical dtype, encoding) instead of concrete
+  classes.
+* **Data-first**: `TensorData` stays primary and absorbs the buffer-handle
+  and placement vocabulary; the parallel descriptor layer is retired, keeping
+  only the pieces with live consumers.
+
+Under either end-state, the proposal names four cross-cutting improvements —
+enforced ownership with scoped lifetimes, a single view mechanism, dtype/
+encoding coherence, and IO/staging as a first-class pipeline (including a
+feasibility assessment of a multiplatform userland file-system layer) — and
+one hard constraint: SKaiNET's packed-encoding system is ahead of comparable
+frameworks and must survive any refactor with bit-identical behavior.
+
+== Motivation
+
+The split is not cosmetic; it produces recurring, measurable costs:
+
+* **Ownership is recorded but never enforced.** `BufferHandle.Ownership`
+  exists, yet nothing consults it to free, borrow-check, or prevent
+  use-after-close. Lifetime management retreated to the garbage collector
+  (`Arena.ofAuto()`) after two documented failures with explicit arenas: a
+  shared arena pinned every op-output tensor ("tens of GB … monotonically",
+  `MemorySegmentTensorData.kt`), and per-call confined arenas leaked tens of
+  MB per matmul across a 35-layer forward pass (`DefaultCpuOpsJvm.kt`). Both
+  failures share one root cause: *weights and activations were given the same
+  lifetime*. The vocabulary to distinguish them
+  (`Placement.Residency { PERSISTENT, TRANSIENT }`) already exists — unused.
+* **Two disconnected view systems.** `SlicedTensorView` (index remap over a
+  parent tensor, zero-copy, shares grad state) and `BufferHandle.Aliased`
+  (bounds-checked byte-range view whose mutability delegates to its parent)
+  express the same concept and do not know about each other; `Aliased` is
+  never produced by production code. Transpose implements a third ad-hoc
+  variant: rebuilding a packed wrapper around the same byte array.
+* **Three type representations.** The generic `DType` (a `KClass<T>`
+  witness), the storage-layer `LogicalDType` enum (bridged one-way —
+  `fromDType` exists, `toDType` does not), and `TensorEncoding`. Packed
+  tensors erase their logical type entirely: `Q4_KTensorData :
+  TensorData<DType, Byte>` — a logically-FP32 weight is not typed as such,
+  and ops locate it by class check while type-checking only the other
+  operand.
+* **Placement machinery that is never consulted.** `ExecutionContext.
+  memoryPlanner` constructs a fresh `MemoryPlanner` on every property read
+  and no allocation path calls it; `StorageSpec` — written to carry
+  (dtype, encoding, ownership, placement) into factory routing — has zero
+  consumers; the `@Place`/`@Weights` annotations are runtime-retained and
+  read by nothing.
+* **Placement work keeps landing at the edges.** Off-heap and mmap efforts
+  (issues https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921],
+  https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922], proposal
+  SKEEP-002) integrate at the IO boundary because the middle — tensor
+  construction and op dispatch — has no placement seam to plug into.
+
+For calibration, ZML (a Zig/MLIR inference stack) builds its memory story on
+four strictly separated types — shape metadata; host bytes that are
+*explicitly owned or borrowed*; device buffers; and purely symbolic tensors —
+with placement, memory and IO as first-class parameters. SKaiNET's storage
+package is structurally the same design; the difference is that ZML's is
+wired through and SKaiNET's is not. In the other direction, SKaiNET's
+first-class packed encodings have no ZML equivalent — the goal is wiring, not
+imitation.
+
+== Current State
+
+The live path and the designed path, side by side:
+
+[cols="1,2,2",options="header"]
+|===
+| Concern | Live path (`tensor.data`) | Designed path (`tensor.storage`)
+
+| Byte ownership
+| implicit in whichever `TensorData` subclass holds the array
+| `BufferHandle.{Owned, Borrowed, Aliased, FileBacked, DeviceResident}` — semantics correct, diagnostic-only
+
+| Op dispatch
+| `is`-ladder over concrete classes (`DefaultCpuOps.kt:357-390`; JVM MemorySegment arms in `DefaultCpuOpsJvm.kt`)
+| `TensorEncoding` — consulted only by the StableHLO exporter
+
+| Views
+| `SlicedTensorView` (index remap); ad-hoc packed-transpose rewraps
+| `BufferHandle.Aliased` — never produced
+
+| File-backed weights
+| none in common code (heap arrays; `jvmMain` has `MmapTensorData`)
+| `FileBacked` + `MemoryDomain.MMAP_FILE` — `copyMaterialize()` throws for it
+
+| Device memory
+| none
+| `DeviceResident` + `DEVICE_LOCAL/UNIFIED/HOST_PINNED` — every consumer throws
+
+| Type identity
+| `KClass<T>` witness; packed tensors typed `<DType, Byte>`
+| `LogicalDType` enum; bridge from `DType` is one-way
+
+| Creation routing
+| `TensorDataFactory` keyed on dtype alone
+| `StorageSpec` — zero consumers
+|===
+
+What *is* real and worth keeping from each side: the data side's zero-copy
+packed transposes, `LazyZeroFloatArrayTensorData` placeholders,
+`RowDequantSource` for embedding-scale tensors, and the genuinely zero-copy
+`TensorView` family; the storage side's `TensorEncoding` →
+`TensorSpec.metadata` → StableHLO `skainet.tensor_encodings` export seam,
+which works end-to-end today.
+
+== Proposed Design
+
+=== The decision: two end-states
+
+**End-state A — storage-first.** `TensorStorage` becomes the sole byte owner.
+`TensorData` survives as a typed view protocol (element access + dtype
+witness) constructed *from* a storage; every constructor of bytes goes
+through a storage factory that takes a `StorageSpec`. Op dispatch keys on
+(logical dtype, encoding, placement) triples instead of concrete classes.
+
+* Pros: one source of truth; ownership, placement and lifetime enforceable in
+  a single place; resolves the dtype-erasure problem structurally; the device
+  story (when it arrives) has a home instead of a placeholder.
+* Cons: touches every `TensorData` implementor and the entire dispatch
+  ladder; needs a long compatibility-façade phase; hot element-access paths
+  gain an indirection that must be proven flat (inline classes / JIT) before
+  commitment.
+
+**End-state B — data-first.** `TensorData` stays primary. Each implementation
+exposes its `BufferHandle` and `Placement` as properties; the descriptor
+class, `StorageSpec`, `MemoryPlanner` and the annotations are deleted unless
+they acquire a consumer during this SKEEP's discussion; `TensorEncoding` and
+the StableHLO seam are kept as-is.
+
+* Pros: incremental; no dispatch rewrite; zero migration risk for existing
+  consumers; honest about what is actually used.
+* Cons: marker-downcast dispatch and the erased packed dtype remain; a
+  future device backend will re-need a descriptor layer; ownership stays
+  advisory unless every implementation is retrofitted individually.
+
+**Shared prerequisites, either way** (small, and worth doing first):
+
+1. Make the type bridge two-way: `LogicalDType.toDType()` alongside
+   `fromDType` — without it, nothing that enters the storage layer can
+   produce the `KClass<T>` a `Tensor` requires.
+2. Decide `StorageSpec`'s fate explicitly: it becomes the factory-routing
+   input (A), or it is removed (B). The current zero-consumer limbo is the
+   worst option.
+
+=== Cross-cutting improvement 1 — ownership as behavior, scoped lifetimes
+
+Introduce exactly two allocation scopes: a *model scope* (weights, KV-cache
+backing; closed on model unload) and a *forward scope* (op outputs and
+activations; closed — or recycled as a ring — per forward pass), keyed off
+the existing `Residency`. Op-output allocation goes through the active scope;
+unscoped use falls back to today's GC behavior, so the change is additive.
+This addresses both documented arena failures directly: the shared arena
+failed because activations don't belong in a model-lifetime arena; the
+per-call arena failed because op outputs escape a single call but not a
+forward pass. On the JVM the scopes ride on `Arena.ofShared()`; other targets
+map to their allocators as they gain off-heap paths.
+
+=== Cross-cutting improvement 2 — one view mechanism
+
+Define *view* once: same underlying buffer + (shape, strides, offset), with
+mutability delegated to the parent, produced by slicing, transpose and
+unsqueeze alike. A view is explicitly **not-owned**; materializing it into an
+owned copy is the existing `MaterializationStrategy` escape hatch, made the
+only copy point. `isContiguous` stays queryable so kernels reject or
+gather-copy strided views deliberately. This subsumes `SlicedTensorView`,
+`BufferHandle.Aliased` and the transpose rewrap idiom.
+
+=== Cross-cutting improvement 3 — dtype/encoding coherence
+
+One rule: *logical dtype is what a tensor means; encoding is how its bytes
+are laid out; both are always explicit and never inferred from the Kotlin
+class.* A Q4_K-quantized weight is logically FP32 with encoding `Q4_K` — not
+a `TensorData<DType, Byte>`. Dispatch keys on the (dtype, encoding) pair.
+This is the highest-leverage coherence fix; it is a prerequisite for
+end-state A and independently valuable under B. It also removes the current
+inconsistency where `DenseTensorDataFactory` widens FP16 to FP32 in some
+entry points and keeps it narrow in others.
+
+=== Cross-cutting improvement 4 — IO and staging as one pipeline
+
+Weight loading becomes source × staging × destination-placement:
+
+* *Source*: local file today. A **userland file-system layer is feasible in
+  Kotlin Multiplatform** — assessed as part of this proposal:
+  `RandomAccessSource` (`skainet-io-core`, commonMain: positional reads,
+  thread-safe, closeable) is already the exact read contract such a layer
+  needs, and both streaming readers consume it. HTTP(S) range-request
+  sources, S3 request signing, model-hub resolution and an LRU block cache
+  are all implementable in common code (an HTTP client dependency would be
+  net-new — it belongs in an optional module, keeping `skainet-io-core`
+  dependency-free). One real API decision: `RandomAccessSource` is
+  synchronous, and JS/Wasm targets cannot block — remote sources on web
+  targets need a `suspend` variant of the interface with adapters, or a
+  preload-to-memory mode.
+* *Staging*: heap copy (today), mapped view (SKEEP-002's subject — the
+  mobile slice of this pipeline), and later direct/staged reads for cold
+  loads. Direct IO is a per-platform capability, not common code: the JVM
+  has `ExtendedOpenOption.DIRECT` (alignment-constrained), Android has
+  `O_DIRECT` via `android.system.Os`, Linux native has `open(2)` flags —
+  and Apple platforms have no `O_DIRECT` at all (`fcntl(F_NOCACHE)` is the
+  nearest analog). OS-pinned DMA-visible staging memory has **no portable
+  Kotlin Multiplatform form** and is explicitly deferred until a device
+  backend exists; the staging interface should merely leave room for such an
+  allocator.
+* *Destination*: the placement/scope vocabulary from the improvements above.
+
+The readers' existing `loadTensorStorage` / `loadTensorStorageMapped` entry
+points are the natural anchor for this pipeline.
+
+=== Cross-cutting improvement 5 — placement consulted at creation
+
+One `MemoryPlanner` per execution context (not per property read), consulted
+by the tensor-creation path via whatever routing object survives the
+end-state decision. The placement annotations are either wired to it or
+removed. Optionally, while touching `Shape`: allow attaching axis labels
+(batch/sequence/head-dim), purely additive, for attention-code readability.
+
+== Design Constraint — preserve the encoding system
+
+The packed-encoding capability must survive any outcome bit-identically:
+seven GGML block formats plus ternary and TurboQuant as first-class storage
+types with block-level accessors; kernel-registry dispatch per encoding;
+zero-copy packed transposes; `RowDequantSource`; and the encoding metadata
+export into StableHLO. These are ahead of comparable frameworks and are the
+reason this proposal reworks the plumbing *around* them, not them.
+
+== Compatibility and Migration
+
+* Shared prerequisites (type bridge, `StorageSpec` decision) are additive or
+  deletion-of-dead-code respectively.
+* End-state A requires a compatibility façade phase in which `TensorData`
+  implementations delegate to storage-backed equivalents; public signatures
+  (`Tensor.data`, factory entry points) remain source-compatible until a
+  major release.
+* End-state B is a sequence of small PRs with no behavioral change intended;
+  BCV dumps track the additive properties.
+* The scoped-lifetime improvement is opt-in per context; unscoped use keeps
+  GC semantics.
+
+== Rollout Plan
+
+1. Maintainer discussion on this SKEEP settles the end-state (or rejects
+   both with rationale — also a valid outcome that ends the limbo).
+2. Shared prerequisites land first, small PRs.
+3. Cross-cutting improvements land in the order 3 → 2 → 1 → 5 → 4 (coherence
+   first, since views and scopes want the (dtype, encoding) pair in place);
+   each phase independently shippable and benchmarked.
+4. Mechanical bugs found during the audit that motivated this SKEEP are
+   already filed and fixable under either end-state:
+   https://github.com/SKaiNET-developers/SKaiNET/issues/927[#927],
+   https://github.com/SKaiNET-developers/SKaiNET/issues/928[#928],
+   https://github.com/SKaiNET-developers/SKaiNET/issues/929[#929],
+   https://github.com/SKaiNET-developers/SKaiNET/issues/930[#930],
+   https://github.com/SKaiNET-developers/SKaiNET/issues/931[#931].
+
+== Acceptance Criteria
+
+* Exactly one abstraction owns bytes, and its ownership field is enforced
+  (a borrowed or view buffer cannot be freed or resized through the view; a
+  scoped buffer is unusable after scope close — verified by tests).
+* One view mechanism: slicing, transpose and unsqueeze produce the same view
+  type; packed-transpose behavior remains zero-copy and bit-identical.
+* A packed tensor's logical dtype is queryable and correct (a Q4_K weight
+  reports FP32 + encoding Q4_K); no dispatch site downcasts to a concrete
+  `TensorData` class outside the storage/data package itself.
+* Kernel benchmarks (existing `StorageBenchmarks`, matmul microbenches) show
+  no regression beyond noise on the hot paths.
+* A model load under a transient forward scope shows flat direct-memory use
+  across repeated forward passes on the JVM (the failure mode that forced
+  the GC retreat, now prevented by construction).
+
+== Risks
+
+* **Indirection cost on element access** (end-state A): must be measured
+  early with a spike, not assumed; inline/value-class layering is the
+  mitigation, JIT behavior the risk.
+* **Migration fatigue**: end-state A touches everything; the façade phase
+  must keep `develop` green throughout, or the effort stalls mid-way and
+  produces a *third* layer.
+* **Scope misuse**: a tensor allocated in a forward scope that escapes into
+  model state is a use-after-free. Debug-mode scope tagging + a leak-check
+  test mirror how the Arena experiments were validated.
+* **Encoding regressions**: the preserve-list is guarded by golden parity
+  tests (packed matmul outputs and StableHLO encoding attributes before vs
+  after each phase).
+
+== Open Questions
+
+* Which end-state — or a deliberate "B now, A when a device backend is
+  scheduled" sequencing?
+* Should the `suspend` source variant (required for remote weights on
+  JS/Wasm) live in `skainet-io-core` or in the optional remote-IO module?
+* Are axis labels on `Shape` wanted at all, or noise?
+* Does `LogicalDType` survive (as the storage-layer type) once the bridge is
+  two-way, or should the storage layer use `DType` directly and delete the
+  enum?
+
+== References
+
+* Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932]
+* Sibling proposal: SKEEP-002 (off-heap tensor storage on Android) — the
+  mobile/mmap slice of improvement 4
+* Related issues: https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]
+  (Android off-heap), https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922]
+  (Android load OOM), https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920]
+  (native mobile kernels)
+* ZML memory concepts: https://docs.zml.ai/learn/concepts/ and
+  https://zml.ai/posts/zml-v2/ (explicit allocators, pinned staging, userland
+  VFS)
+* Audit evidence with file references: key sites named inline above —
+  `TensorData.kt`, `TensorStorage.kt`, `BufferHandle.kt`, `Placement.kt`,
+  `TensorEncoding.kt`, `LogicalDType.kt`, `StorageSpec.kt`,
+  `DefaultCpuOps.kt`, `DefaultCpuOpsJvm.kt`, `MemorySegmentTensorData.kt`,
+  `ExecutionContext.kt`, `DenseTensorDataFactory.kt`
