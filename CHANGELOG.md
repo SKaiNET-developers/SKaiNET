@@ -4,6 +4,16 @@
 
 ### Added
 
+- **NEON body for the Q4_0 matmul kernel.** `skainet_q4_0_matmul` was the only priority
+  quant format without a SIMD path (scalar C only, while q8_0/q4k/q5k/q6k had NEON).
+  It now unpacks the split-layout nibbles with `vand`/`vshr`, re-centres in the signed
+  int8 domain, and widens to f32 FMA lanes — plain NEON with no dotprod/i8mm requirement,
+  so it runs on every AArch64 core, and the same block-outer/row-inner loop order as
+  q8_0 (sequential weight reads; per-row accumulation order unchanged). Verified: 27/27
+  kernel tests green under qemu-aarch64 (cross-built `-march=armv8.2-a+fp16+dotprod`,
+  K/N-bundled gcc 8.3), `fmla` confirmed in the archive's disassembly; a new
+  Kotlin/Native Q4_0 parity test closes the gap where the aarch64 lane had no Q4_0
+  coverage at all. Part of the mobile-kernels effort (#920).
 - **`skainet-backend-jni-cpu`: Android JNI bridge for the native NEON kernels.** ART has no
   `java.lang.foreign`, so the priority-100 FFM provider can never run on Android — until now
   Android inference ran on the priority-0 scalar floor. The new AAR ships the same C kernel
@@ -26,6 +36,12 @@
   report's text form, sorted by volume). `ActiveMemoryTracker.current` is now `@Volatile`
   with an honest thread-safety contract in its docs; making the tracker per-execution-context
   instead of a process-wide hook is part of the SKEEP-003 storage-model discussion. (#931)
+- **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
+  threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
+  the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
+  storage to the heap, the one transfer the storage layer was designed around. Both methods
+  gain a `BufferResolver` overload that reads file-backed regions through a configured
+  resolver; `DeviceResident` remains unsupported with an error that says why. (#929)
 - **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
   code.** The static kernel archive was attached via project-local `linkerOpts`, which does
   not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`
