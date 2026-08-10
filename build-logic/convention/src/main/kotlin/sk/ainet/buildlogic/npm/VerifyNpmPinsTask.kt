@@ -13,6 +13,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
+import java.io.File
 
 /**
  * Fails when a committed Yarn lockfile disagrees with a declared npm pin.
@@ -20,21 +21,33 @@ import org.gradle.work.DisableCachingByDefault
  * Yarn `resolutions` make the pin take effect, but only the next time the lockfile
  * is regenerated. Without this check a stale or hand-edited lockfile silently wins
  * — which is exactly how PR #894's `ws` bump ended up as a zero-line diff.
+ *
+ * Each lockfile is checked against its own pin map, so a pin scoped to one
+ * [NpmPinTarget] is never reported as missing from the other lockfile.
  */
 @DisableCachingByDefault(because = "Reads two small lockfiles; caching costs more than it saves")
 abstract class VerifyNpmPinsTask : DefaultTask() {
 
-    /** Package name -> pinned version, sourced from the `npm-*` catalog aliases. */
+    /** Package name -> pinned version for the Kotlin/JS lockfile. */
     @get:Input
-    abstract val pins: MapProperty<String, String>
+    abstract val jsPins: MapProperty<String, String>
+
+    /** Package name -> pinned version for the Kotlin/Wasm lockfile. */
+    @get:Input
+    abstract val wasmPins: MapProperty<String, String>
 
     @get:Input
     abstract val failOnMissingPackage: Property<Boolean>
 
-    /** The committed lockfiles under `kotlin-js-store/`. Missing files are skipped. */
+    /** `kotlin-js-store/yarn.lock`. Missing file is skipped. */
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val lockFiles: ConfigurableFileCollection
+    abstract val jsLockFile: ConfigurableFileCollection
+
+    /** `kotlin-js-store/wasm/yarn.lock`. Missing file is skipped. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val wasmLockFile: ConfigurableFileCollection
 
     /** Only used to render lockfile paths relative to the repository root in messages. */
     @get:Internal
@@ -42,31 +55,49 @@ abstract class VerifyNpmPinsTask : DefaultTask() {
 
     @TaskAction
     fun verify() {
-        val expected = pins.get()
-        if (expected.isEmpty()) {
+        val lanes = listOf(
+            Lane("Kotlin/JS", jsPins.get(), jsLockFile.files),
+            Lane("Kotlin/Wasm", wasmPins.get(), wasmLockFile.files),
+        )
+
+        val pinnedPackages = lanes.flatMap { it.pins.keys }.toSortedSet()
+        if (pinnedPackages.isEmpty()) {
             logger.lifecycle("[npm-pins] No npm pins declared; nothing to verify.")
             return
         }
 
-        val mismatches = mutableListOf<String>()
-        val seen = mutableSetOf<String>()
         val rootDir = rootDirectory.get().asFile
+        val mismatches = mutableListOf<String>()
+        val missing = mutableListOf<String>()
+        var checkedLockFiles = 0
 
-        lockFiles.files.filter { it.isFile }.sortedBy { it.path }.forEach { lockFile ->
+        for (lane in lanes) {
+            if (lane.pins.isEmpty()) continue
+            val lockFile = lane.lockFiles.firstOrNull { it.isFile } ?: continue
+            checkedLockFiles++
+
             val relative = lockFile.relativeToOrSelf(rootDir).path
+            val seen = mutableSetOf<String>()
             YarnLockParser.parse(lockFile.readText()).forEach { (packageName, version) ->
-                val pinned = expected[packageName] ?: return@forEach
+                val pinned = lane.pins[packageName] ?: return@forEach
                 seen += packageName
                 if (version != pinned) {
                     mismatches += "$relative: $packageName resolved to $version, pinned to $pinned"
                 }
             }
+            (lane.pins.keys - seen).sorted().forEach { missing += "$relative (${lane.label}): $it" }
         }
 
-        val missing = expected.keys - seen
         if (missing.isNotEmpty()) {
-            val message = "[npm-pins] Pinned but absent from every lockfile: ${missing.sorted().joinToString(", ")}. " +
-                    "The pin may be stale — drop it from gradle/libs.versions.toml if the package is gone for good."
+            val message = buildString {
+                appendLine("[npm-pins] Pinned but absent from the lockfile the pin is scoped to:")
+                missing.sorted().forEach { appendLine("  - $it") }
+                append(
+                    "The pin may be stale — drop it from gradle/libs.versions.toml if the " +
+                            "package is gone for good, or narrow its NpmPinTarget if it only ever " +
+                            "existed in the other graph."
+                )
+            }
             if (failOnMissingPackage.get()) throw GradleException(message)
             logger.warn(message)
         }
@@ -84,6 +115,10 @@ abstract class VerifyNpmPinsTask : DefaultTask() {
             )
         }
 
-        logger.lifecycle("[npm-pins] ${expected.size} pin(s) verified against ${lockFiles.files.count { it.isFile }} lockfile(s).")
+        logger.lifecycle(
+            "[npm-pins] ${pinnedPackages.size} pin(s) verified against $checkedLockFiles lockfile(s)."
+        )
     }
+
+    private data class Lane(val label: String, val pins: Map<String, String>, val lockFiles: Set<File>)
 }

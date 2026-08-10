@@ -36,6 +36,12 @@
   report's text form, sorted by volume). `ActiveMemoryTracker.current` is now `@Volatile`
   with an honest thread-safety contract in its docs; making the tracker per-execution-context
   instead of a process-wide hook is part of the SKEEP-003 storage-model discussion. (#931)
+- **`TensorStorageFactory` ownership labels are now truthful.** `borrowFloatArray` re-encoded
+  the floats into a private byte copy and labeled it `Borrowed` despite its "(zero-copy)" doc —
+  it is now deprecated (delegating to `fromFloatArray`) and honestly returns `Owned`;
+  `fromTensorData`'s doc claimed "borrowed (not copied)" while its dense branches copy — the
+  contract is now documented per branch (packed Q4_K/Q8_0 genuinely borrow zero-copy, dense
+  arrays convert to owned bytes) and pinned by ownership + mutation-visibility tests. (#927)
 - **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
   threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
   the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
