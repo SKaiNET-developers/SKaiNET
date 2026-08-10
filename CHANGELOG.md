@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Memory-copy diagnostics attribute copies to their source.** `MemoryTracker.recordCopy`
+  discarded the `sourceName` every instrumented call site passes; reports now carry a
+  per-source breakdown (`copiesBySource: Map<String, CopySourceStat>`, included in the
+  report's text form, sorted by volume). `ActiveMemoryTracker.current` is now `@Volatile`
+  with an honest thread-safety contract in its docs; making the tracker per-execution-context
+  instead of a process-wide hook is part of the SKEEP-003 storage-model discussion. (#931)
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
