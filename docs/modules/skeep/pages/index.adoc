@@ -61,4 +61,8 @@ Every proposal should include:
 | xref:skeep:001-tensor-collection-literals.adoc[SKEEP-001]
 | Draft
 | Tensor collection literals
+
+| xref:skeep:002-android-offheap-tensor-storage.adoc[SKEEP-002]
+| Draft
+| Off-heap tensor storage on Android
 |===
