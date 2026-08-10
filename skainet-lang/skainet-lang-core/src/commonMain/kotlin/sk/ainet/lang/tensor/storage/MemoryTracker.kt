@@ -13,16 +13,27 @@ public class MemoryTracker {
     private val entries = mutableListOf<TrackedEntry>()
     private var copyCount: Long = 0
     private var copyBytes: Long = 0
+    private val copiesBySource = mutableMapOf<String, CopySourceStat>()
 
     /** Record a tensor storage allocation. */
     public fun record(name: String, storage: TensorStorage) {
         entries.add(TrackedEntry(name, storage.memoryReport()))
     }
 
-    /** Record an explicit copy event (for copy-tracing). */
+    /**
+     * Record an explicit copy event (for copy-tracing).
+     *
+     * [sourceName] is aggregated per source, so reports can attribute copy
+     * volume to the code path that produced it (e.g. which factory or
+     * materialization strategy) — previously the label was discarded.
+     */
     public fun recordCopy(sourceName: String, bytes: Long) {
         copyCount++
         copyBytes += bytes
+        val prev = copiesBySource[sourceName]
+        copiesBySource[sourceName] =
+            if (prev == null) CopySourceStat(count = 1, bytes = bytes)
+            else CopySourceStat(count = prev.count + 1, bytes = prev.bytes + bytes)
     }
 
     /** Reset all tracked entries. */
@@ -30,6 +41,7 @@ public class MemoryTracker {
         entries.clear()
         copyCount = 0
         copyBytes = 0
+        copiesBySource.clear()
     }
 
     /** Generate an aggregate memory report. */
@@ -69,10 +81,17 @@ public class MemoryTracker {
             fileBackedCount = fileBackedCount,
             copyCount = copyCount,
             copyBytes = copyBytes,
-            entries = entries.toList()
+            entries = entries.toList(),
+            copiesBySource = copiesBySource.toMap()
         )
     }
 }
+
+/** Per-source copy statistics: how many copies a code path produced and their total volume. */
+public data class CopySourceStat(
+    val count: Long,
+    val bytes: Long
+)
 
 public data class TrackedEntry(
     val name: String,
@@ -90,7 +109,8 @@ public data class AggregateMemoryReport(
     val fileBackedCount: Int,
     val copyCount: Long,
     val copyBytes: Long,
-    val entries: List<TrackedEntry>
+    val entries: List<TrackedEntry>,
+    val copiesBySource: Map<String, CopySourceStat> = emptyMap()
 ) {
     val overallCompressionRatio: Double
         get() = if (totalPhysicalBytes > 0) totalLogicalBytes.toDouble() / totalPhysicalBytes else 1.0
@@ -103,6 +123,12 @@ public data class AggregateMemoryReport(
         appendLine("File-backed: $fileBackedCount ($fileBackedBytes bytes)")
         appendLine("Owned: $ownedCount, Borrowed: $borrowedCount, Aliased: $aliasedCount")
         appendLine("Copies: $copyCount ($copyBytes bytes)")
+        if (copiesBySource.isNotEmpty()) {
+            appendLine("--- Copies by source ---")
+            for ((source, stat) in copiesBySource.entries.sortedByDescending { it.value.bytes }) {
+                appendLine("  $source: ${stat.count} (${stat.bytes} bytes)")
+            }
+        }
         if (entries.isNotEmpty()) {
             appendLine("--- Per-tensor ---")
             for (e in entries) {

@@ -28,6 +28,45 @@ class ActiveMemoryTrackerTest {
     }
 
     @Test
+    fun recordCopy_attributesPerSource() {
+        // The source label used to be discarded (#931) — every call site
+        // passes a meaningful one, and reports must break copies down by it.
+        val tracker = MemoryTracker()
+        ActiveMemoryTracker.current = tracker
+
+        ActiveMemoryTracker.recordCopy("factory", 100)
+        ActiveMemoryTracker.recordCopy("factory", 50)
+        ActiveMemoryTracker.recordCopy("materialize", 200)
+
+        val report = tracker.report()
+        assertEquals(3L, report.copyCount)
+        assertEquals(350L, report.copyBytes)
+        assertEquals(CopySourceStat(count = 2, bytes = 150), report.copiesBySource["factory"])
+        assertEquals(CopySourceStat(count = 1, bytes = 200), report.copiesBySource["materialize"])
+    }
+
+    @Test
+    fun clear_resetsPerSourceAttribution() {
+        val tracker = MemoryTracker()
+        tracker.recordCopy("a", 10)
+        tracker.clear()
+        tracker.recordCopy("b", 20)
+
+        val report = tracker.report()
+        assertEquals(1L, report.copyCount)
+        assertEquals(mapOf("b" to CopySourceStat(1, 20)), report.copiesBySource)
+    }
+
+    @Test
+    fun report_toString_includesPerSourceBreakdown() {
+        val tracker = MemoryTracker()
+        tracker.recordCopy("DenseTensorDataFactory.createFloatTensorData", 4096)
+        val text = tracker.report().toString()
+        kotlin.test.assertTrue("DenseTensorDataFactory.createFloatTensorData" in text, text)
+        kotlin.test.assertTrue("4096" in text, text)
+    }
+
+    @Test
     fun recordCopy_withNullTracker_noOp() {
         ActiveMemoryTracker.current = null
         // Should not crash
