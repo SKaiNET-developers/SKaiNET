@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **GGUF tensors report their real encodings and sizes in `TensorStorage`.**
+  `StreamingGGUFReader` mapped only Q4_K/Q8_0 to dedicated `TensorEncoding`s; Q4_0, Q5_0,
+  Q5_1, Q5_K and Q6_K — all of which have encoding objects and CPU kernels — fell through to
+  `Opaque(name, 0)`, whose zero byte count short-circuits `TensorStorage.physicalBytes` and
+  silently corrupted every memory report and compression ratio. All seven quant formats now
+  map to their encodings, and genuinely unknown types carry the tensor's real byte count in
+  `Opaque`. (#928)
+
 ## [0.38.0] - 2026-07-30
 
 ### Added
