@@ -2385,6 +2385,21 @@ public class sk/ainet/lang/tensor/DequantizationBenchmark {
 	public final fun setup ()V
 }
 
+public final class sk/ainet/lang/tensor/Dim {
+	public static final field DYNAMIC I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/Dim;
+	public final fun compatible (II)Z
+	public final fun concat (Ljava/util/List;)I
+	public final fun isDynamic (I)Z
+	public final fun isStatic (I)Z
+	public final fun render (I)Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/DimKt {
+	public static final fun hasDynamic (Ljava/util/List;)Z
+	public static final fun hasDynamic ([I)Z
+}
+
 public final class sk/ainet/lang/tensor/GradState {
 	public fun <init> ()V
 	public fun <init> (ZLsk/ainet/lang/tensor/Tensor;)V
@@ -2521,10 +2536,13 @@ public final class sk/ainet/lang/tensor/Shape {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun get (I)I
 	public final fun getDimensions ()[I
+	public final fun getDynamicAxes ()Ljava/util/List;
 	public final fun getRank ()I
 	public final fun getVolume ()I
+	public final fun hasDynamic ()Z
 	public fun hashCode ()I
 	public final fun index ([I)I
+	public final fun isDynamic (I)Z
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -4929,10 +4947,12 @@ public final class sk/ainet/lang/tensor/storage/ActiveMemoryTracker {
 }
 
 public final class sk/ainet/lang/tensor/storage/AggregateMemoryReport {
-	public fun <init> (IJJJIIIIJJLjava/util/List;)V
+	public fun <init> (IJJJIIIIJJLjava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (IJJJIIIIJJLjava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component10 ()J
 	public final fun component11 ()Ljava/util/List;
+	public final fun component12 ()Ljava/util/Map;
 	public final fun component2 ()J
 	public final fun component3 ()J
 	public final fun component4 ()J
@@ -4941,11 +4961,12 @@ public final class sk/ainet/lang/tensor/storage/AggregateMemoryReport {
 	public final fun component7 ()I
 	public final fun component8 ()I
 	public final fun component9 ()J
-	public final fun copy (IJJJIIIIJJLjava/util/List;)Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;IJJJIIIIJJLjava/util/List;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
+	public final fun copy (IJJJIIIIJJLjava/util/List;Ljava/util/Map;)Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;IJJJIIIIJJLjava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAliasedCount ()I
 	public final fun getBorrowedCount ()I
+	public final fun getCopiesBySource ()Ljava/util/Map;
 	public final fun getCopyBytes ()J
 	public final fun getCopyCount ()J
 	public final fun getEntries ()Ljava/util/List;
@@ -5074,6 +5095,19 @@ public final class sk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStr
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;
 	public static fun values ()[Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;
+}
+
+public final class sk/ainet/lang/tensor/storage/CopySourceStat {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Lsk/ainet/lang/tensor/storage/CopySourceStat;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/CopySourceStat;JJILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/CopySourceStat;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getCount ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class sk/ainet/lang/tensor/storage/DefaultBufferResolver : sk/ainet/lang/tensor/storage/BufferResolver {
@@ -5625,8 +5659,10 @@ public final class sk/ainet/lang/tensor/storage/TensorStorage {
 	public final fun copy (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZ)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/TensorStorage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun copyMaterialize ()Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun copyMaterialize (Lsk/ainet/lang/tensor/storage/BufferResolver;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun copyToDevice (Lsk/ainet/lang/tensor/storage/DeviceKind;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun copyToHost ()Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun copyToHost (Lsk/ainet/lang/tensor/storage/BufferResolver;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBuffer ()Lsk/ainet/lang/tensor/storage/BufferHandle;
 	public final fun getByteOffset ()J
