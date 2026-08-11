@@ -43,6 +43,29 @@
 #  define SKAINET_HAVE_I8MM 1
 #endif
 
+/*
+ * Apple arm64 runtime dotprod dispatch (#920). Apple archives are compiled at
+ * the SDK-default baseline: a Kotlin/Native klib embeds exactly ONE static
+ * archive, and Apple A12 (iPhone XS/XR, still iOS-supported) lacks
+ * FEAT_DotProd while A13+/M-series have it — so `-march=...+dotprod` at the
+ * TU level is not shippable there. Instead the dotprod hot bodies in
+ * q4k/q6k are compiled twice: a baseline copy and a copy carrying
+ * `__attribute__((target("dotprod")))` (which is what gates vdotq_s32
+ * codegen in clang; attributed functions are never inlined into baseline
+ * callers, keeping sdot out of the baseline path). Selection happens once
+ * per matmul call via the cached sysctl probe in skainet_cpu_features.h.
+ *
+ * Non-Apple builds keep the compile-time guard as the ONLY mechanism:
+ * SKAINET_DOTPROD_DISPATCH stays undefined and the TU-level -march carries
+ * the feature, so Linux codegen is unchanged.
+ */
+#if defined(__APPLE__) && defined(SKAINET_HAVE_NEON) && !defined(SKAINET_HAVE_DOTPROD)
+#  define SKAINET_DOTPROD_DISPATCH 1
+#  define SKAINET_DOTPROD_TARGET __attribute__((target("dotprod")))
+#else
+#  define SKAINET_DOTPROD_TARGET /* TU-level -march carries the feature */
+#endif
+
 #ifdef SKAINET_HAVE_NEON
 /* Horizontal sum of a float32x4 lane vector. AArch64 has vaddvq_f32
  * natively; this wrapper keeps call sites readable. */

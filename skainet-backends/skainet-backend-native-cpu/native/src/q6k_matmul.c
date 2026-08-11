@@ -1,5 +1,6 @@
 #include "skainet_kernels.h"
 #include "skainet_simd.h"
+#include "skainet_cpu_features.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -109,30 +110,46 @@ static inline void skainet_q6k_unpack_codes(const uint8_t* SKAINET_RESTRICT bloc
  * scale sc[half*8 + is + 2*k]. On AArch64 with dotprod each 16-element dot is a
  * single vdotq_s32; otherwise a scalar fallback (auto-vectorizes under -O3).
  */
-static inline int64_t skainet_q6k_weighted_dot(const int8_t* SKAINET_RESTRICT q8,
-                                               const int8_t* SKAINET_RESTRICT codes,
-                                               const int8_t* SKAINET_RESTRICT sc) {
+#if defined(SKAINET_HAVE_DOTPROD) || defined(SKAINET_DOTPROD_DISPATCH)
+SKAINET_DOTPROD_TARGET
+static int64_t skainet_q6k_weighted_dot_dp(const int8_t* SKAINET_RESTRICT q8,
+                                           const int8_t* SKAINET_RESTRICT codes,
+                                           const int8_t* SKAINET_RESTRICT sc) {
     int64_t sum = 0;
     for (int half = 0; half < 2; ++half) {
         for (int k = 0; k < 4; ++k) {
             for (int is = 0; is < 2; ++is) {
                 const int start = half * 128 + 32 * k + is * 16;
                 const int gs = half * 8 + is + 2 * k;
-                int32_t dot;
-#ifdef SKAINET_HAVE_DOTPROD
                 const int32x4_t acc = vdotq_s32(vdupq_n_s32(0),
                     vld1q_s8(codes + start), vld1q_s8(q8 + start));
-                dot = vaddvq_s32(acc);
-#else
-                dot = 0;
-                for (int j = 0; j < 16; ++j) dot += (int) q8[start + j] * (int) codes[start + j];
+                sum += (int64_t) sc[gs] * vaddvq_s32(acc);
+            }
+        }
+    }
+    return sum;
+}
 #endif
+
+#if !defined(SKAINET_HAVE_DOTPROD) || defined(SKAINET_DOTPROD_DISPATCH)
+static int64_t skainet_q6k_weighted_dot_generic(const int8_t* SKAINET_RESTRICT q8,
+                                                const int8_t* SKAINET_RESTRICT codes,
+                                                const int8_t* SKAINET_RESTRICT sc) {
+    int64_t sum = 0;
+    for (int half = 0; half < 2; ++half) {
+        for (int k = 0; k < 4; ++k) {
+            for (int is = 0; is < 2; ++is) {
+                const int start = half * 128 + 32 * k + is * 16;
+                const int gs = half * 8 + is + 2 * k;
+                int32_t dot = 0;
+                for (int j = 0; j < 16; ++j) dot += (int) q8[start + j] * (int) codes[start + j];
                 sum += (int64_t) sc[gs] * dot;
             }
         }
     }
     return sum;
 }
+#endif
 
 /*
  * Native Q6_K matrix-vector multiply matching the
@@ -157,6 +174,11 @@ SKAINET_API void skainet_q6k_matmul(
     int32_t output_offset
 ) {
     if (output_dim <= 0 || input_dim <= 0) return;
+
+#ifdef SKAINET_DOTPROD_DISPATCH
+    /* One probe per matmul call; cached in skainet_cpu_has_dotprod. */
+    const int use_dp = skainet_cpu_has_dotprod();
+#endif
 
     const int32_t blocks_per_input_dim = input_dim / Q6K_BLOCK_SIZE;
     const float* in_base = input + input_offset;
@@ -196,7 +218,15 @@ SKAINET_API void skainet_q6k_matmul(
             const int8_t* sc = (const int8_t*)(block + Q6K_SCALES_OFFSET);
 
             skainet_q6k_unpack_codes(block, codes);
-            const int64_t wdot = skainet_q6k_weighted_dot(q8_block, codes, sc);
+#if defined(SKAINET_HAVE_DOTPROD)
+            const int64_t wdot = skainet_q6k_weighted_dot_dp(q8_block, codes, sc);
+#elif defined(SKAINET_DOTPROD_DISPATCH)
+            const int64_t wdot = use_dp
+                ? skainet_q6k_weighted_dot_dp(q8_block, codes, sc)
+                : skainet_q6k_weighted_dot_generic(q8_block, codes, sc);
+#else
+            const int64_t wdot = skainet_q6k_weighted_dot_generic(q8_block, codes, sc);
+#endif
 
             out_base[o] += d * di * (float) wdot;
         }

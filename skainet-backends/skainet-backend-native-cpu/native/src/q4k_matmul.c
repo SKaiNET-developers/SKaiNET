@@ -1,5 +1,6 @@
 #include "skainet_kernels.h"
 #include "skainet_simd.h"
+#include "skainet_cpu_features.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -90,6 +91,91 @@ static inline float skainet_q8_quantize_block(const float* SKAINET_RESTRICT in, 
 }
 
 /*
+ * One Q4_K block × one output row: the four 64-byte groups, each covering a
+ * lo/hi sub-block pair. Extracted so the dotprod body can be compiled twice
+ * for the Apple runtime dispatch (see SKAINET_DOTPROD_DISPATCH in
+ * skainet_simd.h) — one call per block × output row, so the call overhead is
+ * amortized over 128 weight bytes + 64 int8 dots.
+ */
+#if defined(SKAINET_HAVE_DOTPROD) || defined(SKAINET_DOTPROD_DISPATCH)
+SKAINET_DOTPROD_TARGET
+static void skainet_q4k_block_dot_dp(
+    const uint8_t* SKAINET_RESTRICT qs,
+    const int8_t* SKAINET_RESTRICT q8_block,
+    const int* SKAINET_RESTRICT scale_idx,
+    const int* SKAINET_RESTRICT min_idx,
+    int64_t* SKAINET_RESTRICT block_scale_dot,
+    int64_t* SKAINET_RESTRICT block_min_sum
+) {
+    for (int group_j = 0; group_j < 4; ++group_j) {
+        const uint8_t* qs_group = qs + group_j * Q4K_SUB_BLOCK_SIZE;
+        const int sb_lo = 2 * group_j;
+        const int sb_hi = sb_lo + 1;
+        const int8_t* q8_lo = q8_block + sb_lo * Q4K_SUB_BLOCK_SIZE;
+        const int8_t* q8_hi = q8_block + sb_hi * Q4K_SUB_BLOCK_SIZE;
+
+        int32x4_t acc_dot_lo = vdupq_n_s32(0), acc_dot_hi = vdupq_n_s32(0);
+        int32_t acc_sum_lo = 0, acc_sum_hi = 0;
+        for (int off = 0; off < Q4K_SUB_BLOCK_SIZE; off += 16) {
+            const uint8x16_t packed = vld1q_u8(qs_group + off);
+            const int8x16_t code_lo = vreinterpretq_s8_u8(vandq_u8(packed, vdupq_n_u8(0x0F)));
+            const int8x16_t code_hi = vreinterpretq_s8_u8(vshrq_n_u8(packed, 4));
+            const int8x16_t a_lo = vld1q_s8(q8_lo + off);
+            const int8x16_t a_hi = vld1q_s8(q8_hi + off);
+            acc_dot_lo = vdotq_s32(acc_dot_lo, code_lo, a_lo);
+            acc_dot_hi = vdotq_s32(acc_dot_hi, code_hi, a_hi);
+            acc_sum_lo += vaddlvq_s8(a_lo);
+            acc_sum_hi += vaddlvq_s8(a_hi);
+        }
+        const int32_t dot_lo = vaddvq_s32(acc_dot_lo);
+        const int32_t dot_hi = vaddvq_s32(acc_dot_hi);
+
+        *block_scale_dot += (int64_t) scale_idx[sb_lo] * dot_lo
+                          + (int64_t) scale_idx[sb_hi] * dot_hi;
+        *block_min_sum   += (int64_t) min_idx[sb_lo] * acc_sum_lo
+                          + (int64_t) min_idx[sb_hi] * acc_sum_hi;
+    }
+}
+#endif
+
+#if !defined(SKAINET_HAVE_DOTPROD) || defined(SKAINET_DOTPROD_DISPATCH)
+static void skainet_q4k_block_dot_generic(
+    const uint8_t* SKAINET_RESTRICT qs,
+    const int8_t* SKAINET_RESTRICT q8_block,
+    const int* SKAINET_RESTRICT scale_idx,
+    const int* SKAINET_RESTRICT min_idx,
+    int64_t* SKAINET_RESTRICT block_scale_dot,
+    int64_t* SKAINET_RESTRICT block_min_sum
+) {
+    for (int group_j = 0; group_j < 4; ++group_j) {
+        const uint8_t* qs_group = qs + group_j * Q4K_SUB_BLOCK_SIZE;
+        const int sb_lo = 2 * group_j;
+        const int sb_hi = sb_lo + 1;
+        const int8_t* q8_lo = q8_block + sb_lo * Q4K_SUB_BLOCK_SIZE;
+        const int8_t* q8_hi = q8_block + sb_hi * Q4K_SUB_BLOCK_SIZE;
+
+        int32_t dot_lo = 0, sum_lo = 0, dot_hi = 0, sum_hi = 0;
+        for (int i = 0; i < Q4K_SUB_BLOCK_SIZE; ++i) {
+            const uint8_t pb = qs_group[i];
+            const int code_lo = (int)(pb & 0x0F);
+            const int code_hi = (int)(pb >> 4);
+            const int a_lo = (int) q8_lo[i];
+            const int a_hi = (int) q8_hi[i];
+            dot_lo += a_lo * code_lo;
+            sum_lo += a_lo;
+            dot_hi += a_hi * code_hi;
+            sum_hi += a_hi;
+        }
+
+        *block_scale_dot += (int64_t) scale_idx[sb_lo] * dot_lo
+                          + (int64_t) scale_idx[sb_hi] * dot_hi;
+        *block_min_sum   += (int64_t) min_idx[sb_lo] * sum_lo
+                          + (int64_t) min_idx[sb_hi] * sum_hi;
+    }
+}
+#endif
+
+/*
  * Native Q4_K matrix-vector multiply matching the
  * sk.ainet.backend.api.kernel.Q4KMatmulKernel SPI contract. Single input row
  * times an `outputDim x inputDim` Q4_K-packed weight laid out
@@ -116,6 +202,11 @@ SKAINET_API void skainet_q4k_matmul(
     int32_t output_offset
 ) {
     if (output_dim <= 0 || input_dim <= 0) return;
+
+#ifdef SKAINET_DOTPROD_DISPATCH
+    /* One probe per matmul call; cached in skainet_cpu_has_dotprod. */
+    const int use_dp = skainet_cpu_has_dotprod();
+#endif
 
     const int32_t blocks_per_input_dim = input_dim / Q4K_BLOCK_SIZE;
     const float* in_base = input + input_offset;
@@ -166,52 +257,21 @@ SKAINET_API void skainet_q4k_matmul(
             int64_t block_scale_dot = 0;
             int64_t block_min_sum = 0;
 
-            for (int group_j = 0; group_j < 4; ++group_j) {
-                const uint8_t* qs_group = qs + group_j * Q4K_SUB_BLOCK_SIZE;
-                const int sb_lo = 2 * group_j;
-                const int sb_hi = sb_lo + 1;
-                const int8_t* q8_lo = q8_block + sb_lo * Q4K_SUB_BLOCK_SIZE;
-                const int8_t* q8_hi = q8_block + sb_hi * Q4K_SUB_BLOCK_SIZE;
-
-                int32_t dot_lo = 0, sum_lo = 0, dot_hi = 0, sum_hi = 0;
-
-#ifdef SKAINET_HAVE_DOTPROD
-                int32x4_t acc_dot_lo = vdupq_n_s32(0), acc_dot_hi = vdupq_n_s32(0);
-                int32_t acc_sum_lo = 0, acc_sum_hi = 0;
-                for (int off = 0; off < Q4K_SUB_BLOCK_SIZE; off += 16) {
-                    const uint8x16_t packed = vld1q_u8(qs_group + off);
-                    const int8x16_t code_lo = vreinterpretq_s8_u8(vandq_u8(packed, vdupq_n_u8(0x0F)));
-                    const int8x16_t code_hi = vreinterpretq_s8_u8(vshrq_n_u8(packed, 4));
-                    const int8x16_t a_lo = vld1q_s8(q8_lo + off);
-                    const int8x16_t a_hi = vld1q_s8(q8_hi + off);
-                    acc_dot_lo = vdotq_s32(acc_dot_lo, code_lo, a_lo);
-                    acc_dot_hi = vdotq_s32(acc_dot_hi, code_hi, a_hi);
-                    acc_sum_lo += vaddlvq_s8(a_lo);
-                    acc_sum_hi += vaddlvq_s8(a_hi);
-                }
-                dot_lo = vaddvq_s32(acc_dot_lo);
-                dot_hi = vaddvq_s32(acc_dot_hi);
-                sum_lo = acc_sum_lo;
-                sum_hi = acc_sum_hi;
-#else
-                for (int i = 0; i < Q4K_SUB_BLOCK_SIZE; ++i) {
-                    const uint8_t pb = qs_group[i];
-                    const int code_lo = (int)(pb & 0x0F);
-                    const int code_hi = (int)(pb >> 4);
-                    const int a_lo = (int) q8_lo[i];
-                    const int a_hi = (int) q8_hi[i];
-                    dot_lo += a_lo * code_lo;
-                    sum_lo += a_lo;
-                    dot_hi += a_hi * code_hi;
-                    sum_hi += a_hi;
-                }
-#endif
-
-                block_scale_dot += (int64_t) scale_idx[sb_lo] * dot_lo
-                                 + (int64_t) scale_idx[sb_hi] * dot_hi;
-                block_min_sum   += (int64_t) min_idx[sb_lo] * sum_lo
-                                 + (int64_t) min_idx[sb_hi] * sum_hi;
+#if defined(SKAINET_HAVE_DOTPROD)
+            skainet_q4k_block_dot_dp(qs, q8_block, scale_idx, min_idx,
+                                     &block_scale_dot, &block_min_sum);
+#elif defined(SKAINET_DOTPROD_DISPATCH)
+            if (use_dp) {
+                skainet_q4k_block_dot_dp(qs, q8_block, scale_idx, min_idx,
+                                         &block_scale_dot, &block_min_sum);
+            } else {
+                skainet_q4k_block_dot_generic(qs, q8_block, scale_idx, min_idx,
+                                              &block_scale_dot, &block_min_sum);
             }
+#else
+            skainet_q4k_block_dot_generic(qs, q8_block, scale_idx, min_idx,
+                                          &block_scale_dot, &block_min_sum);
+#endif
 
             out_base[o] += di * (d * (float) block_scale_dot - d_min * (float) block_min_sum);
         }
