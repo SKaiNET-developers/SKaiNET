@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-08-11
+
+Headline: **eager overhead off the JVM is gone.** The eager CPU ops gain
+primitive FP32 fast paths, removing the per-element allocation/boxing overhead
+that dominated on-device LLM decode (83% of end-to-end time on a Pixel 8a even
+with NEON matmul), and `DirectCpuExecutionContext.ops` is cached instead of
+rebuilt per access. The README now points LLM users to SKaiNET-transformers.
+
 ### Documentation
 
 - **README points LLM users to SKaiNET-transformers**
