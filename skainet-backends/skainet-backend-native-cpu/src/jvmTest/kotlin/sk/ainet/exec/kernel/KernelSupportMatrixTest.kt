@@ -43,6 +43,14 @@ class KernelSupportMatrixTest {
             setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q5_1", "Q5_0")),
         Tier("native-jni", 100, setOf("Android"),
             setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
+        // native-cinterop: NativeKnKernelProvider (nativeMain) — the same C
+        // kernels statically embedded into the K/N klibs (#941/#942). Linux
+        // since 0.39.x; Apple (iosArm64/iosSimulatorArm64/macosArm64) since
+        // #959, with runtime FEAT_DotProd dispatch on Apple (#958: A13+/
+        // M-series fast path, A12 scalar-int fallback). Registration is
+        // manual via installNativeKernels() — no ServiceLoader on K/N.
+        Tier("native-cinterop", 100, setOf("Native·linux", "Native·apple"),
+            setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
     )
 
     private fun best(fmt: String, platform: String, tiers: List<Tier>): String? =

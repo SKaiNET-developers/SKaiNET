@@ -120,6 +120,24 @@ rebuilt per access. The README now points LLM users to SKaiNET-transformers.
   on K/N remains manual via `installNativeKernels()` — Apple consumers call it once at startup,
   same as Linux.
 
+### CI
+
+- **Releases embed the Apple kernel archives** ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959)):
+  publish.yml's macos leg builds the three Mach-O static archives (with an `nm`/`objdump`
+  `sdot` assertion guarding the #958 dispatch body against clang's silent unknown-feature
+  ignore), uploads them fail-loud, and the publish job verifies and injects them via the
+  `-PskainetKernels{IosArm64,IosSimulatorArm64,MacosArm64}Dir` properties — the same
+  verified-artifact-or-fail contract as the Linux ELF archives.
+
+### Documentation
+
+- **Kernel support matrix gains the `native-cinterop` tier** (Native·linux + Native·apple,
+  the 7 packed-quant formats) — the Native·linux column was under-reported as `scalar`
+  before; both native columns now reflect `NativeKnKernelProvider`
+  ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959)). The eager-backends
+  mindmap and the `installNativeKernels()` KDoc document the manual-registration contract
+  and the Apple A12 dispatch fallback.
+
 ## [0.39.0] - 2026-08-10
 
 Headline: **on-device AI on Android becomes real.** A JNI NEON kernel backend
