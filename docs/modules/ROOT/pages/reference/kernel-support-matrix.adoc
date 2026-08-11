@@ -1,7 +1,7 @@
 = Kernel × platform support matrix
 :description: Which compute-kernel provider serves each weight format on each KMP target.
 
-Generated from `kernel-support.json` (version `0.31.2`) by `KernelSupportMatrixTest` — registry introspection of the registered `KernelProvider` implementations. Do not edit by hand; run `./gradlew generateKernelMatrix` to refresh.
+Generated from `kernel-support.json` (version `0.39.0`) by `KernelSupportMatrixTest` — registry introspection of the registered `KernelProvider` implementations. Do not edit by hand; run `./gradlew generateKernelMatrix` to refresh.
 
 Each cell is the best (highest-priority) provider that serves `Float32 × format` `matmul` on that platform: *native-ffm* (100) → *panama-vector* (50) → *scalar* (0). An empty cell (`—`) means no provider carries a kernel there (the format is dequant-to-FP32 only).
 
@@ -11,11 +11,11 @@ Each cell is the best (highest-priority) provider that serves `Float32 × format
 
 | `Float32` | native-ffm | panama-vector | scalar | scalar | scalar 
 | `BFloat16` | native-ffm | panama-vector | scalar | scalar | scalar 
-| `Q8_0` | native-ffm | panama-vector | scalar | scalar | scalar 
-| `Q4_0` | native-ffm | panama-vector | scalar | scalar | scalar 
-| `Q4_K` | native-ffm | panama-vector | scalar | scalar | scalar 
-| `Q6_K` | panama-vector | panama-vector | scalar | scalar | scalar 
-| `Q5_K` | native-ffm | panama-vector | scalar | scalar | scalar 
+| `Q8_0` | native-ffm | native-jni | scalar | scalar | scalar 
+| `Q4_0` | native-ffm | native-jni | scalar | scalar | scalar 
+| `Q4_K` | native-ffm | native-jni | scalar | scalar | scalar 
+| `Q6_K` | panama-vector | native-jni | scalar | scalar | scalar 
+| `Q5_K` | native-ffm | native-jni | scalar | scalar | scalar 
 | `Q5_1` | panama-vector | panama-vector | scalar | scalar | scalar 
 | `Q5_0` | panama-vector | panama-vector | scalar | scalar | scalar 
 |===
