@@ -62,6 +62,19 @@ kotlin {
             implementation(libs.kotlinx.benchmark.runtime)
         }
 
+        // java.nio-based mmap tensor storage (MmapTensorData.kt), shared source
+        // between the JVM and Android compilations (#921): FileChannel.map /
+        // MappedByteBuffer are available on Android since API 1, so the same
+        // implementation serves both targets. A plain shared directory (not an
+        // intermediate source set) keeps each compilation against its full
+        // platform classpath.
+        jvmMain {
+            kotlin.srcDir("src/jvmAndroidMain/kotlin")
+        }
+        getByName("androidMain") {
+            kotlin.srcDir("src/jvmAndroidMain/kotlin")
+        }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

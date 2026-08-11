@@ -124,11 +124,13 @@ public class MmapTensorSource(
             "Tensor region [${byteOffset}, ${byteOffset + byteSize}) exceeds buffer capacity ${mappedBuffer.capacity()}"
         }
 
-        // Create a slice view of the mapped buffer
-        val slice = mappedBuffer.duplicate()
-            .position(byteOffset.toInt())
-            .limit((byteOffset + byteSize).toInt())
-            .slice()
+        // Create a slice view of the mapped buffer. Deliberately not chained:
+        // on the Android SDK (pre-Java-9 nio API) position/limit return
+        // Buffer, not ByteBuffer, so chaining does not compile there.
+        val dup = mappedBuffer.duplicate()
+        dup.position(byteOffset.toInt())
+        dup.limit((byteOffset + byteSize).toInt())
+        val slice = dup.slice()
 
         return MmapFloatTensorData(shape, slice)
     }

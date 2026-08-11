@@ -25,6 +25,9 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_1_8)
         }
+        // Host-side (JVM) unit tests for the Android compilation — exercises
+        // the mmap-backed weight path (MappedGgufWeights) without a device (#921).
+        withHostTest {}
     }
 
     iosArm64()
@@ -63,6 +66,19 @@ kotlin {
                 implementation(libs.kotlin.test)
             }
         }
+
+        // Memory-mapped GGUF weight access (MappedGgufWeights), shared source
+        // between the JVM and Android compilations (#921): pure java.nio
+        // (FileChannel.map — API 1 on Android). Shared directory rather than an
+        // intermediate source set — each compilation builds against its full
+        // platform classpath.
+        getByName("jvmMain") {
+            kotlin.srcDir("src/jvmAndroidMain/kotlin")
+        }
+        getByName("androidMain") {
+            kotlin.srcDir("src/jvmAndroidMain/kotlin")
+        }
+
         val jvmTest by getting {
             dependencies {
                 implementation(libs.junit)

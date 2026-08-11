@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Off-heap / mmap tensor storage on Android**
+  ([#921](https://github.com/SKaiNET-developers/SKaiNET/issues/921), SKEEP-002/SKEEP-003
+  slice): the java.nio memory-mapped storage that existed jvmMain-only is now shared
+  source between the JVM and Android compilations (`FileChannel.map` is API 1 — no JNI):
+  `MmapFloatTensorData`/`MmapTensorSource` (skainet-lang-core), `JvmMappedMemoryChunk`,
+  `MappedRandomAccessSource` and the `BufferHandle.FileBacked` resolver
+  `JvmFileBackedResolver` (skainet-io-core). New `MappedGgufWeights` (skainet-io-gguf,
+  JVM+Android) opens a GGUF once, maps it read-only, and serves dense F32 tensors as
+  zero-heap mapped views, any tensor as a `FileBacked` `TensorStorage` descriptor, and
+  packed payloads as heap bytes for the existing kernels. Weight bytes live in file-backed
+  pages the OS pages in/out — outside the hard ART heap cap that limited practical model
+  size on Android. Verified host-side (no device required): a 640 MB dense model loads and
+  reads through mapped views with **1.4 MB** of managed-heap allocation (0.0022x of the
+  dense size; per-thread allocation counters), and the Android compilation is exercised by
+  new `androidHostTest` suites (96 MB payload, ~240 KB used-heap growth). Files over 2 GB
+  are rejected fast (single-region mapping); windowed mapping is a follow-up under
+  SKEEP-003's IO pipeline improvement.
+
 ### Documentation
 
 - **README points LLM users to SKaiNET-transformers**

@@ -90,6 +90,19 @@ kotlin {
             }
         }
 
+        // Memory-mapped IO (JvmMappedMemoryChunk, JvmFileBackedResolver,
+        // MappedRandomAccessSource), shared source between the JVM and Android
+        // compilations (#921): pure java.nio (FileChannel.map — API 1 on
+        // Android), so model weights can live in file-backed pages outside the
+        // ART heap. Shared directory rather than an intermediate source set —
+        // each compilation builds against its full platform classpath.
+        getByName("jvmMain") {
+            kotlin.srcDir("src/jvmAndroidMain/kotlin")
+        }
+        getByName("androidMain") {
+            kotlin.srcDir("src/jvmAndroidMain/kotlin")
+        }
+
         val commonTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
