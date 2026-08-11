@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- **README points LLM users to SKaiNET-transformers**
+  ([#923](https://github.com/SKaiNET-developers/SKaiNET/issues/923)): a callout under
+  "Start in 5 minutes" says plainly that LLM inference lives in the
+  SKaiNET-transformers repository — this repo is the engine underneath — and names
+  the `sk.ainet.transformers` artifacts and BOM to depend on.
+
 ### Performance
 
 - **Primitive FP32 fast paths for the eager CPU ops** (`skainet-backend-cpu`,
