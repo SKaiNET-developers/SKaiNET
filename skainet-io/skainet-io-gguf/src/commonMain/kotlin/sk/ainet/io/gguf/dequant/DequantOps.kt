@@ -576,16 +576,22 @@ public object DequantOps {
         return out
     }
 
-    private fun getScaleMinK4(j: Int, scales: ByteArray): Pair<Int, Int> {
+    /**
+     * ggml `get_scale_min_k4` reading straight from the packed buffer at
+     * `scalesBase` — no per-block scratch copies (#782): the K-quant kernels
+     * index into the source array directly so the only allocation a full-tensor
+     * dequant makes is the destination `FloatArray`.
+     */
+    private fun getScaleMinK4(j: Int, bytes: ByteArray, scalesBase: Int): Pair<Int, Int> {
         return if (j < 4) {
-            val sc = scales[j].toInt() and 0x3F
-            val m = scales[j + 4].toInt() and 0x3F
+            val sc = bytes[scalesBase + j].toInt() and 0x3F
+            val m = bytes[scalesBase + j + 4].toInt() and 0x3F
             sc to m
         } else {
-            val sc = ((scales[j + 4].toInt() and 0x0F) or
-                     (((scales[j - 4].toInt() and 0xFF) shr 6) shl 4))
-            val m = (((scales[j + 4].toInt() and 0xFF) shr 4) or
-                    (((scales[j].toInt() and 0xFF) shr 6) shl 4))
+            val sc = ((bytes[scalesBase + j + 4].toInt() and 0x0F) or
+                     (((bytes[scalesBase + j - 4].toInt() and 0xFF) shr 6) shl 4))
+            val m = (((bytes[scalesBase + j + 4].toInt() and 0xFF) shr 4) or
+                    (((bytes[scalesBase + j].toInt() and 0xFF) shr 6) shl 4))
             sc to m
         }
     }
@@ -606,27 +612,27 @@ public object DequantOps {
                 (bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF)
             )
             offset += 4
-            val scales = bytes.copyOfRange(offset, offset + 12)
+            val scalesBase = offset
             offset += 12
-            val qs = bytes.copyOfRange(offset, offset + 128)
+            val qsBase = offset
             offset += 128
 
             var qOffset = 0
             var scaleIdx = 0
             repeat(4) {
-                val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
-                val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
+                val (sc1, m1) = getScaleMinK4(scaleIdx, bytes, scalesBase)
+                val (sc2, m2) = getScaleMinK4(scaleIdx + 1, bytes, scalesBase)
                 val d1 = d * sc1
                 val min1 = dMin * m1
                 val d2 = d * sc2
                 val min2 = dMin * m2
 
                 for (l in 0 until 32) {
-                    val q = qs[qOffset + l].toInt() and 0x0F
+                    val q = bytes[qsBase + qOffset + l].toInt() and 0x0F
                     out[outOff++] = d1 * q - min1
                 }
                 for (l in 0 until 32) {
-                    val q = (qs[qOffset + l].toInt() and 0xFF) shr 4
+                    val q = (bytes[qsBase + qOffset + l].toInt() and 0xFF) shr 4
                     out[outOff++] = d2 * q - min2
                 }
                 qOffset += 32
@@ -652,11 +658,11 @@ public object DequantOps {
                 (bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF)
             )
             offset += 4
-            val scales = bytes.copyOfRange(offset, offset + 12)
+            val scalesBase = offset
             offset += 12
-            val qh = bytes.copyOfRange(offset, offset + 32)
+            val qhBase = offset
             offset += 32
-            val qs = bytes.copyOfRange(offset, offset + 128)
+            val qsBase = offset
             offset += 128
 
             // Per ggml-quants.c `dequantize_row_q5_K`: the 32-byte qh is indexed
@@ -676,8 +682,8 @@ public object DequantOps {
             var scaleIdx = 0
             var outIdx = 0
             for (outer in 0 until 4) {
-                val (sc1, m1) = getScaleMinK4(scaleIdx, scales)
-                val (sc2, m2) = getScaleMinK4(scaleIdx + 1, scales)
+                val (sc1, m1) = getScaleMinK4(scaleIdx, bytes, scalesBase)
+                val (sc2, m2) = getScaleMinK4(scaleIdx + 1, bytes, scalesBase)
                 val d1 = d * sc1
                 val min1 = dMin * m1
                 val d2 = d * sc2
@@ -686,14 +692,14 @@ public object DequantOps {
                 val bitHi = 2 * outer + 1
 
                 for (l in 0 until 32) {
-                    val qLow = qs[qOffset + l].toInt() and 0x0F
-                    val qHigh = ((qh[l].toInt() and 0xFF) ushr bitLow) and 0x01
+                    val qLow = bytes[qsBase + qOffset + l].toInt() and 0x0F
+                    val qHigh = ((bytes[qhBase + l].toInt() and 0xFF) ushr bitLow) and 0x01
                     val q = qLow or (qHigh shl 4)
                     out[outOff + outIdx + l] = d1 * q - min1
                 }
                 for (l in 0 until 32) {
-                    val qLow = (qs[qOffset + l].toInt() and 0xFF) ushr 4
-                    val qHigh = ((qh[l].toInt() and 0xFF) ushr bitHi) and 0x01
+                    val qLow = (bytes[qsBase + qOffset + l].toInt() and 0xFF) ushr 4
+                    val qHigh = ((bytes[qhBase + l].toInt() and 0xFF) ushr bitHi) and 0x01
                     val q = qLow or (qHigh shl 4)
                     out[outOff + outIdx + 32 + l] = d2 * q - min2
                 }
@@ -715,11 +721,11 @@ public object DequantOps {
         var offset = 0
         var outOff = 0
         repeat(blockCount) {
-            val ql = bytes.copyOfRange(offset, offset + 128)
+            val qlStart = offset
             offset += 128
-            val qh = bytes.copyOfRange(offset, offset + 64)
+            val qhStart = offset
             offset += 64
-            val scales = bytes.copyOfRange(offset, offset + 16)
+            val scalesStart = offset
             offset += 16
             val d = halfToFloat(
                 (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
@@ -727,33 +733,33 @@ public object DequantOps {
             offset += 2
 
             repeat(2) { half ->
-                val qlBase = half * 64
-                val qhBase = half * 32
-                val scBase = half * 8
+                val qlBase = qlStart + half * 64
+                val qhBase = qhStart + half * 32
+                val scBase = scalesStart + half * 8
 
                 for (l in 0 until 32) {
                     val isIdx = l / 16
 
-                    val q1Low = ql[qlBase + l].toInt() and 0x0F
-                    val q1High = (qh[qhBase + l].toInt() shr 0) and 0x03
+                    val q1Low = bytes[qlBase + l].toInt() and 0x0F
+                    val q1High = (bytes[qhBase + l].toInt() shr 0) and 0x03
                     val q1 = (q1Low or (q1High shl 4)) - 32
 
-                    val q2Low = ql[qlBase + l + 32].toInt() and 0x0F
-                    val q2High = (qh[qhBase + l].toInt() shr 2) and 0x03
+                    val q2Low = bytes[qlBase + l + 32].toInt() and 0x0F
+                    val q2High = (bytes[qhBase + l].toInt() shr 2) and 0x03
                     val q2 = (q2Low or (q2High shl 4)) - 32
 
-                    val q3Low = (ql[qlBase + l].toInt() and 0xFF) shr 4
-                    val q3High = (qh[qhBase + l].toInt() shr 4) and 0x03
+                    val q3Low = (bytes[qlBase + l].toInt() and 0xFF) shr 4
+                    val q3High = (bytes[qhBase + l].toInt() shr 4) and 0x03
                     val q3 = (q3Low or (q3High shl 4)) - 32
 
-                    val q4Low = (ql[qlBase + l + 32].toInt() and 0xFF) shr 4
-                    val q4High = (qh[qhBase + l].toInt() shr 6) and 0x03
+                    val q4Low = (bytes[qlBase + l + 32].toInt() and 0xFF) shr 4
+                    val q4High = (bytes[qhBase + l].toInt() shr 6) and 0x03
                     val q4 = (q4Low or (q4High shl 4)) - 32
 
-                    val sc1 = scales[scBase + isIdx + 0].toInt()
-                    val sc2 = scales[scBase + isIdx + 2].toInt()
-                    val sc3 = scales[scBase + isIdx + 4].toInt()
-                    val sc4 = scales[scBase + isIdx + 6].toInt()
+                    val sc1 = bytes[scBase + isIdx + 0].toInt()
+                    val sc2 = bytes[scBase + isIdx + 2].toInt()
+                    val sc3 = bytes[scBase + isIdx + 4].toInt()
+                    val sc4 = bytes[scBase + isIdx + 6].toInt()
 
                     out[outOff + half * 128 + l + 0] = d * sc1 * q1
                     out[outOff + half * 128 + l + 32] = d * sc2 * q2

@@ -122,7 +122,14 @@ class GGUFReader(
         function()
     }
 
-    // Internal: materialize raw tensor payload based on ggml type
+    // Internal: materialize raw tensor payload based on ggml type.
+    //
+    // Payloads are returned as *lazy views* over the file buffer (#782): elements
+    // are decoded on access instead of being boxed into an eagerly-built list.
+    // The previous eager materialization stored one boxed object per element for
+    // every tensor in the file at parse time — for a 1.1B-parameter Q4_K_M GGUF
+    // that alone was >10 GB of transient heap. The returned lists have identical
+    // size, contents and element types; only the storage strategy changed.
     private fun materializeTensorData(
         ggmlType: GGMLQuantizationType,
         dataOffs: Int,
@@ -130,21 +137,59 @@ class GGUFReader(
         nBytes: Int
     ): List<Any> {
         return when (ggmlType) {
-            GGMLQuantizationType.F16 -> data.readDataByType<UShort>(dataOffs, nElems).let { halfs ->
-                if (decodeF16ToFloat) halfs.map { halfToFloat(it) } else halfs
-            }
-            GGMLQuantizationType.BF16 -> data.readDataByType<UShort>(dataOffs, nElems).let { bf16s ->
-                if (decodeBF16ToFloat) bf16s.map { bfloat16ToFloat(it) } else bf16s
-            }
-            GGMLQuantizationType.F32 -> data.readDataByType<Float>(dataOffs, nElems)
-            GGMLQuantizationType.F64 -> data.readDataByType<Double>(dataOffs, nElems)
-            GGMLQuantizationType.I8 -> data.readDataByType<Byte>(dataOffs, nElems)
-            GGMLQuantizationType.I16 -> data.readDataByType<Short>(dataOffs, nElems)
-            GGMLQuantizationType.I32 -> data.readDataByType<Int>(dataOffs, nElems)
-            GGMLQuantizationType.I64 -> data.readDataByType<Long>(dataOffs, nElems)
-            else -> data.readDataByType<UByte>(dataOffs, nBytes)
+            GGMLQuantizationType.F16 ->
+                if (decodeF16ToFloat) LazyPayloadList(nElems) { halfToFloat(readUShortLE(dataOffs + it * 2)) }
+                else LazyPayloadList(nElems) { readUShortLE(dataOffs + it * 2) }
+            GGMLQuantizationType.BF16 ->
+                if (decodeBF16ToFloat) LazyPayloadList(nElems) { bfloat16ToFloat(readUShortLE(dataOffs + it * 2)) }
+                else LazyPayloadList(nElems) { readUShortLE(dataOffs + it * 2) }
+            GGMLQuantizationType.F32 -> LazyPayloadList(nElems) { Float.fromBits(readIntLE(dataOffs + it * 4)) }
+            GGMLQuantizationType.F64 -> LazyPayloadList(nElems) { Double.fromBits(readLongLE(dataOffs + it * 8)) }
+            GGMLQuantizationType.I8 -> LazyPayloadList(nElems) { data[dataOffs + it] }
+            GGMLQuantizationType.I16 -> LazyPayloadList(nElems) { readUShortLE(dataOffs + it * 2).toShort() }
+            GGMLQuantizationType.I32 -> LazyPayloadList(nElems) { readIntLE(dataOffs + it * 4) }
+            GGMLQuantizationType.I64 -> LazyPayloadList(nElems) { readLongLE(dataOffs + it * 8) }
+            else -> LazyPayloadList(nBytes) { data[dataOffs + it].toUByte() }
         }
     }
+
+    /**
+     * Constant-space `List<Any>` view over the file buffer: decodes one element
+     * per [get] call instead of storing boxed elements. Equality/hashCode follow
+     * the [AbstractList] contract, so it compares equal to an eagerly-built list
+     * with the same contents.
+     */
+    private class LazyPayloadList(
+        override val size: Int,
+        private val element: (Int) -> Any,
+    ) : AbstractList<Any>() {
+        override fun get(index: Int): Any {
+            if (index < 0 || index >= size) {
+                throw IndexOutOfBoundsException("index: $index, size: $size")
+            }
+            return element(index)
+        }
+    }
+
+    private fun readUShortLE(offset: Int): UShort =
+        (((data[offset].toInt() and 0xFF)) or
+            ((data[offset + 1].toInt() and 0xFF) shl 8)).toUShort()
+
+    private fun readIntLE(offset: Int): Int =
+        (data[offset].toInt() and 0xFF) or
+            ((data[offset + 1].toInt() and 0xFF) shl 8) or
+            ((data[offset + 2].toInt() and 0xFF) shl 16) or
+            ((data[offset + 3].toInt() and 0xFF) shl 24)
+
+    private fun readLongLE(offset: Int): Long =
+        (data[offset].toLong() and 0xFF) or
+            ((data[offset + 1].toLong() and 0xFF) shl 8) or
+            ((data[offset + 2].toLong() and 0xFF) shl 16) or
+            ((data[offset + 3].toLong() and 0xFF) shl 24) or
+            ((data[offset + 4].toLong() and 0xFF) shl 32) or
+            ((data[offset + 5].toLong() and 0xFF) shl 40) or
+            ((data[offset + 6].toLong() and 0xFF) shl 48) or
+            ((data[offset + 7].toLong() and 0xFF) shl 56)
 
     private fun buildTensorInfoFields() {
         // Build tensor info fields
