@@ -34,13 +34,17 @@ public class DirectCpuExecutionContext @kotlin.jvm.JvmOverloads constructor(
         usagePercentage = 0.0
     )
     private val opsFactory = platformDefaultCpuOpsFactory()
+    // Cached: the getter used to build a fresh ops instance per access, which
+    // re-ran the per-instance lazy kernel resolution and allocated on every
+    // `ctx.ops` touch in the eager hot loop (#949).
+    private val cachedOps: TensorOps by lazy { opsFactory(tensorDataFactory) }
     override val memoryInfo: MemoryInfo
         get() = _memoryInfo
     override val observers: ExecutionObserverRegistry
         get() = observerRegistry
 
     override val ops: TensorOps
-        get() = opsFactory(tensorDataFactory)
+        get() = cachedOps
 
     override val hooks: sk.ainet.lang.nn.hooks.ForwardHooks?
         get() = _hooks
