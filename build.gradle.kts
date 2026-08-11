@@ -1,3 +1,5 @@
+import sk.ainet.buildlogic.npm.NpmPinTarget
+
 plugins {
     alias(libs.plugins.androidLibrary) apply false
     alias(libs.plugins.kotlinMultiplatform) apply  false
@@ -10,12 +12,34 @@ plugins {
     alias(libs.plugins.asciidoctorJvm) apply false
     alias(libs.plugins.dokka)
     alias(libs.plugins.skainet.docs)
+    alias(libs.plugins.skainet.npmPins)
     id("org.jetbrains.kotlinx.benchmark") version "0.4.17" apply false
 }
 
 allprojects {
     group = "sk.ainet.core"
     version = providers.gradleProperty("VERSION_NAME").getOrElse("unspecified")
+}
+
+// Root-project SKaiNET conventions. npm pins are forced onto the kotlin-js-store
+// lockfiles via Yarn resolutions; see docs "Pinning npm Packages".
+//
+// `ws` is the only pinned package present in both dependency graphs, so it is the only
+// unscoped pin. Everything else lives solely in the Kotlin/JS graph and is scoped to it:
+// Yarn writes a lockfile entry for every resolutions key whether or not that graph
+// requests the package, so an unscoped pin would add the package — and, for webpack, its
+// ~76 transitive dependencies — to kotlin-js-store/wasm/yarn.lock for nothing.
+skainet {
+    npmPins {
+        pin("ws", libs.versions.npm.ws)
+        pin("js-yaml", libs.versions.npm.js.yaml, NpmPinTarget.JS)
+        pin("socket.io-parser", libs.versions.npm.socketio.parser, NpmPinTarget.JS)
+        pin("fast-uri", libs.versions.npm.fast.uri, NpmPinTarget.JS)
+        pin("serialize-javascript", libs.versions.npm.serialize.javascript, NpmPinTarget.JS)
+        pin("brace-expansion", libs.versions.npm.brace.expansion, NpmPinTarget.JS)
+        pin("diff", libs.versions.npm.diff, NpmPinTarget.JS)
+        pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)
+    }
 }
 
 // Require JDK 21+ but allow any newer version (produces Java 21 bytecode via --release / jvmTarget)

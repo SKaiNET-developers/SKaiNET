@@ -32,6 +32,9 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_1_8)
         }
+        // Host-side (JVM) unit tests for androidMain — exercises
+        // AndroidRandomAccessSource without a device (#922).
+        withHostTest {}
     }
 
     iosArm64()

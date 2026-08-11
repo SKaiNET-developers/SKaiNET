@@ -21,6 +21,12 @@ name: release
 #     resources.srcDir(nativeResourcesRoot) on jvmMain picks them all
 #     up into the published JAR.
 #
+# The publish job also builds and publishes the skainet-backend-jni-cpu AAR
+# (Android JNI kernel provider). Its native .so's are cross-compiled by the
+# NDK during `./gradlew publish`, so the publish runner sets up the Android
+# SDK + a pinned NDK (see the publish job) — independent of the build-native
+# matrix above, which only produces the FFM shared libs.
+#
 # Linux ARM64 is intentionally absent: Kotlin/Native plugin 2.3.21
 # doesn't support `linux aarch64` as a HOST target ("Unknown host
 # target" — see SKaiNET PR #577). Linux ARM64 consumers fall back
@@ -30,6 +36,11 @@ on:
   push:
     tags:
       - '**'
+
+# Set default permission for all jobs to none. Publishing authenticates to Maven
+# Central and signs with GPG through repository secrets, which are independent of
+# GITHUB_TOKEN — nothing here needs write access to the repository itself.
+permissions: {}
 
 jobs:
   build-native:
@@ -49,12 +60,16 @@ jobs:
             lib_name: skainet_kernels.dll
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 25
-        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'zulu'
           java-version: 25
@@ -87,19 +102,62 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # K/N klib embedding (#941): the linux ELF static archives are produced
+      # only on the ubuntu leg — x64 from the host CMake build above, arm64 via
+      # the -PcrossArm64 cross build — and injected into the publish job so the
+      # linux klibs carry their machine code (the publish host is macOS, whose
+      # CMake build emits Mach-O and must not be embedded into linux klibs).
+      - name: Cross-build aarch64 static archive (Linux only)
+        if: matrix.arch_label == 'linux-x86_64'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q gcc-aarch64-linux-gnu
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache -PcrossArm64=true \
+            :skainet-backends:skainet-backend-native-cpu:buildNativeKernelsArm64
+
+      - name: Upload K/N static archives (Linux only)
+        if: matrix.arch_label == 'linux-x86_64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-static-linux
+          path: |
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build/libskainet_kernels.a
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build-arm64/libskainet_kernels.a
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Release build and publish
     needs: build-native
     runs-on: macOS-latest
+
+    permissions:
+      contents: read
+
     steps:
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 25
-        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'zulu'
           java-version: 25
+
+      # `./gradlew publish` now includes skainet-backend-jni-cpu (an Android
+      # library whose AAR carries NDK-built .so's). The publish runner therefore
+      # needs the Android SDK + a pinned NDK; without it the AAR's native build
+      # fails and the release ships no JNI artifact. The NDK version must match
+      # gradle/libs.versions.toml `android-ndk`.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+
+      - name: Install pinned NDK
+        run: |
+          NDK_VERSION="$(grep -E '^android-ndk[[:space:]]*=' gradle/libs.versions.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "Installing NDK ${NDK_VERSION}"
+          yes | sdkmanager "ndk;${NDK_VERSION}" >/dev/null
 
       - name: Validate signing configuration
         run: |
@@ -134,8 +192,27 @@ jobs:
           echo "--- Staged tree ---"
           find "$DEST" -type f
 
+      # K/N klib embedding (#941): resolve the linux ELF static archive dirs
+      # from the ubuntu leg's artifact and hand them to Gradle, so the
+      # linuxX64/linuxArm64 klibs embed real machine code even though the
+      # publish host is macOS. Fail loudly if the archives are missing —
+      # publishing bindings-only klibs is the bug this step exists to prevent.
+      - name: Resolve K/N static archive paths
+        run: |
+          set -euo pipefail
+          BASE="$PWD/native-artifacts/native-static-linux"
+          X64_DIR="$BASE/cmake-build"
+          ARM64_DIR="$BASE/cmake-build-arm64"
+          test -f "$X64_DIR/libskainet_kernels.a" || { echo "Missing linux-x64 static archive" >&2; exit 1; }
+          test -f "$ARM64_DIR/libskainet_kernels.a" || { echo "Missing linux-arm64 static archive" >&2; exit 1; }
+          echo "SKAINET_KERNELS_X64_DIR=$X64_DIR" >> "$GITHUB_ENV"
+          echo "SKAINET_KERNELS_ARM64_DIR=$ARM64_DIR" >> "$GITHUB_ENV"
+
       - name: Publish to MavenCentral
-        run: ./gradlew publish --no-configuration-cache --stacktrace
+        run: |
+          ./gradlew publish --no-configuration-cache --stacktrace \
+            -PskainetKernelsX64Dir="$SKAINET_KERNELS_X64_DIR" \
+            -PskainetKernelsArm64Dir="$SKAINET_KERNELS_ARM64_DIR"
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

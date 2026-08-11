@@ -4,6 +4,7 @@
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-View%20Docs-blue?logo=readthedocs&logoColor=white)](https://deepwiki.com/SKaiNET-developers/SKaiNET)
 [![REUSE status](https://api.reuse.software/badge/github.com/SKaiNET-developers/SKaiNET)](https://api.reuse.software/badge/github.com/SKaiNET-developers/SKaiNET)
 [![OpenSSF Scorecard Score](https://api.scorecard.dev/projects/github.com/SKaiNET-developers/SKaiNET/badge)](https://scorecard.dev/viewer/?uri=github.com/SKaiNET-developers/SKaiNET)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14004/badge)](https://www.bestpractices.dev/projects/14004)
 
 
 <img src="docs/modules/ROOT/images/SKaiNET-logo.png" alt="SKaiNET logo" width="150">
@@ -31,6 +32,15 @@ matches what you want to try first.
 Working in Java? SKaiNET ships first-class Java support — see the
 [Java getting-started guide](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc).
 
+> [!NOTE]
+> **Looking for LLM inference?** Llama, Qwen, Gemma, Apertus, BERT embeddings and
+> GGUF chat models live in
+> [**SKaiNET-transformers**](https://github.com/SKaiNET-developers/SKaiNET-transformers) —
+> this repository is the engine underneath it (tensors, NN DSL, compiler, CPU/native
+> backends, GGUF/SafeTensors IO). Depend on the `sk.ainet.transformers` artifacts,
+> pinned together by the
+> [transformers BOM](https://central.sonatype.com/artifact/sk.ainet.transformers/skainet-transformers-bom).
+
 Use the version shown in this README as the source of truth for first-run snippets.
 If another page shows a different version, please open an issue or PR.
 
@@ -43,7 +53,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.37.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.39.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -287,20 +297,26 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.37.0
+## What's New in 0.39.0
 
-- **`Lstm` layer** — single-layer, batch-first LSTM built from existing primitives only (no new `TensorOps` op, traces to StableHLO without a dedicated converter), with `torch.nn.LSTM`-compatible gate order and an explicit caller-owned `LstmState` + `step()` API for transducer prediction networks.
-- **Training essentials** — `Dropout` now performs real inverted dropout under a training-phase context (it was an identity placeholder), optimizers expose a mutable `lr` plus a `linearWarmupCosineDecay` LR schedule, `Linear` supports bias-less projections (`nn.Linear(bias=False)` equivalent) and is `open` for LoRA-style adapters.
-- **Attention scale fix** — `scaledDotProductAttention` at its default scale multiplied every score by zero on the CPU backend, collapsing softmax to a uniform average; it now resolves to `1/sqrt(headDim)` as documented.
-- **Autograd correctness** — `CrossEntropyLoss` no longer detaches the tape (gradients reached the predictions in neither target path), and `softmax`/`logSoftmax`/`variance` backward now work for rank ≥ 3.
-- **Android native IO** — `skainet-io-core` and `skainet-io-safetensors` gain `androidNative` targets (arm64 and arm32).
-- **Reproducible, hardened CI** — every GitHub Action pinned to a commit hash, the docs Docker image pinned by digest with exact npm package versions, and `allTests` split into parallel per-target jobs to end OOM flakes.
+- **On-device AI on Android — a NEON kernel backend.** New `skainet-backend-jni-cpu` module: the hand-tuned ARM matmul kernels reach Android through a JNI bridge (ART has no `java.lang.foreign`, so the FFM provider can never run there). Two `.so` tiers are built from the same sources and selected at load time from `/proc/cpuinfo` — a baseline `armv8-a` build that runs on every 64-bit core, and an `armv8.2-a+dotprod` build for the `vdotq_s32` Q4_K/Q6_K paths — so a single artifact is safe from Cortex-A53 up. Measured on a Pixel 8a: **~24 tok/s** SmolLM2-135M Q8_0 decode versus ~3.8 scalar (6.4x), clearing the on-device usability bar. The provider auto-registers via `ServiceLoader`; an app just adds the AAR.
+- **Android GGUF loading no longer OOMs.** `createRandomAccessSource` returned `null` on Android, forcing every model load through a full-file heap read that exhausted the ART heap on real devices. It now streams via positional `FileChannel` reads across `skainet-io-gguf` / `-safetensors` / `-onnx`.
+- **Published Kotlin/Native kernel klibs are linkable.** The static kernel archive is now embedded into the cinterop klib, so downstream K/N consumers of `skainet-backend-native-cpu` (`-linuxx64` / `-linuxarm64`, and the path future Apple targets will use) link with no manual setup. A NEON body was also added for the Q4_0 matmul kernel.
+- **Tensor-storage correctness pass.** Fail-fast on unsupported GGUF quant types instead of silently dropping weights; truthful ownership labels and real byte counts in the storage layer; a materializable `FileBacked`/`Aliased` transfer path; and a rank-safe default `copyToFloatArray`.
 
-### Previously, in 0.36.0
+### Previously, in 0.38.0
 
-- **Kotlin 2.4.0 toolchain** — KSP 2.3.10 and Dokka 2.2.0 aligned to the new compiler. No public API changes.
-- **`permute` replay fix (`ComputeGraphExecutor`)** — a traced `permute(t, axes)` now replays with its recorded axes instead of being dispatched as a plain last-two-dims transpose.
-- **REUSE / SPDX license-compliance setup** — `REUSE.toml` + `LICENSES/`, a CI compliance workflow, and a REUSE status badge.
+- **Streaming KV-cache decode (dynamic dimensions)** — a first-class `Dim` vocabulary makes "dynamic extent" explicit instead of an overloaded `-1`, and the StableHLO emitter renders it as an MLIR `?`. One compiled vmfb now serves every autoregressive decode step with a growing cache, instead of one fixed cache length. Verified end-to-end: the full FunctionGemma `with_past` decode graph and the Moonshine v2 decoder (dynamic self *and* cross caches) self-compile from the DSL to a CPU vmfb — graphs that could not be compiled before. Static graphs are emitted byte-for-byte unchanged.
+- **Narrow-float (BF16 + FP16) weights kept packed** — SafeTensors F16 and GGUF F16/BF16 weights load `KEEP_NATIVE`, two bytes per element at rest instead of widening to FP32, and reach format-specific matmul kernels still packed. Narrow floats are a storage width only: kernels widen to f32 lanes and accumulate in f32.
+- **Both narrow formats now beat the FP32 SGEMM** — BF16 by 1.8–1.9x, FP16 by 1.5–1.7x on a 4096x11008 projection. Getting there took a zero-copy transpose for input-major weights (the per-token transpose previously widened the tensor elementwise, 4.4 s per projection), a native FFM FP16 kernel to match the existing BF16 one, and tiling both kernels so the weight is read once per matmul rather than once per input row.
+- **Allocation-free shape-only tracing** — `VoidTensorOps` propagates shapes through a `ShapeOnlyTensorData` that allocates no backing buffer, so a dynamic extent flows through a whole decode trace instead of throwing on a negative-size allocation.
+
+### Previously, in 0.37.0
+
+- **`Lstm` layer** — single-layer, batch-first LSTM built from existing primitives only, with `torch.nn.LSTM`-compatible gate order and a caller-owned `LstmState` + `step()` API.
+- **Training essentials** — real inverted `Dropout`, mutable optimizer `lr` plus `linearWarmupCosineDecay`, bias-less and `open` `Linear`.
+- **Attention scale fix** — `scaledDotProductAttention` at its default scale multiplied every score by zero on the CPU backend; it now resolves to `1/sqrt(headDim)` as documented.
+- **Autograd correctness** — `CrossEntropyLoss` no longer detaches the tape, and `softmax`/`logSoftmax`/`variance` backward now work for rank ≥ 3.
 
 See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
@@ -325,6 +341,15 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.39.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — Android JNI NEON kernel backend with runtime dotprod dispatch (#943, #945), Android `createRandomAccessSource` streaming loads (#922), cinterop klib archive embedding (#942), Q4_0 NEON kernel (#939), GGUF loader fail-fast (#919), tensor-storage correctness fixes (#927, #928, #929, #930, #931), AAR release publishing (#947)
+
+### Contributors (0.38.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — dynamic tensor dimensions for streaming KV-cache decode (#891), shared narrow-float BF16/FP16 layer (#886), zero-copy transpose for input-major narrow weights (#895), native FP16 matmul kernel (#896), read-once weight tiling in the native narrow kernels (#897)
+- **[@MacOS](https://github.com/MacOS)** — least-privilege permissions on the build workflow (#899), MathJax npm install pinned by version (#889)
 
 ### Contributors (0.37.0)
 

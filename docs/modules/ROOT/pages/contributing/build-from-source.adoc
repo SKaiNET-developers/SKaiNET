@@ -95,3 +95,136 @@ The workflow `.github/workflows/dokka-pages.yml` runs on push to `main` (and man
 ==== Operator docs (unchanged)
 
 The existing operator documentation pipeline (`./gradlew generateDocs`) is unrelated to Dokka and continues to work as before.
+
+=== Multiplatform Convention Plugin
+
+`sk.ainet.multiplatform` (`build-logic/convention/src/main/kotlin/sk/ainet/buildlogic/kmp/`) carries the Kotlin Multiplatform setup that every SKaiNET library module would otherwise copy: the target list, the `android ++{++ ++}++` body, `explicitApi()`, `kotlin-test` in `commonTest`, and the shared Karma configuration.
+
+==== Using it
+
+[source,kotlin]
+----
+plugins {
+    id("sk.ainet.multiplatform")
+    alias(libs.plugins.androidMultiplatformLibrary)   // opt in to Android
+    alias(libs.plugins.vanniktech.mavenPublish)
+    id("sk.ainet.dokka")
+}
+
+skainet {
+    namespace = "sk.ainet.pipeline"
+}
+----
+
+The default target set is `jvm`, `js`, `wasmJs`, `wasmWasi`, `apple` (`iosArm64`, `iosSimulatorArm64`, `macosArm64`) and `linux` (`linuxX64`, `linuxArm64`). Android is *not* a flag — the AGP plugin has to be applied in `plugins ++{++ ++}++`, and the convention plugin fills in its body once it sees it.
+
+==== Where each setting lives
+
+Which platforms a module builds comes from the *`skainet.targets` Gradle property*, not from `skainet ++{++ ++}++`:
+
+[source,properties]
+----
+# skainet-data/skainet-data-source/gradle.properties
+skainet.targets=jvm
+----
+
+Accepted values are `jvm`, `js`, `wasmJs`, `wasmWasi`, `apple`, `linux`, `androidNative`, or `none`. There is also `skainet.wasmJs.executable=true`.
+
+This split is not cosmetic. Kotlin targets must exist *before* the module's own `kotlin ++{++ ++}++` block runs, because the source-set convention accessors (`jvmMain`, `iosArm64Main`, …) create source sets on access and KGP then refuses to attach a compilation to a source set that already exists:
+
+----
+⛔ The compilation 'main' cannot be created after the source set 'jvmMain'
+----
+
+A `skainet ++{++ ++}++` block is part of the build script, so anything declared there is only known once it is too late to create targets. Gradle properties are readable while the plugin is being applied. Everything non-structural — `namespace`, `androidJvmTarget`, `explicitApi`, `expectActualClasses`, `kotlinTestInCommonTest` — stays in the `skainet ++{++ ++}++` DSL.
+
+==== The two `skainet ++{++ ++}++` blocks
+
+The name appears in two places, deliberately: there is one SKaiNET namespace to look for wherever you are. The types behind it differ, because the concerns do.
+
+[cols="1,3"]
+|===
+| Where | What it configures
+
+| module `build.gradle.kts`
+| That module's own compilation — `namespace`, `androidJvmTarget`, `explicitApi`, `expectActualClasses`, `kotlinTestInCommonTest`. Created by `sk.ainet.multiplatform`.
+
+| root `build.gradle.kts`
+| Conventions global to the build, which have nowhere else to live — currently `npmPins ++{++ ++}++`. Created by whichever root convention plugin is applied first; each nests its own sub-block.
+|===
+
+Applying `sk.ainet.multiplatform` to the *root* project is not supported and fails with a message saying so: the root project is not a library module, and its `skainet ++{++ ++}++` block means something else.
+
+==== Migrating a module
+
+[arabic]
+. Replace `alias(libs.plugins.kotlinMultiplatform)` with `id("sk.ainet.multiplatform")`.
+. Delete the target declarations, `explicitApi()`, the `android ++{++ ++}++` block and `commonTest`'s `kotlin-test`; move the namespace into `skainet ++{++ ++}++`.
+. If the module does not build the full default set, add `skainet.targets` to its `gradle.properties`.
+. Delete its `karma.config.d/` directory — the shared config at `gradle/karma.config.d/` is applied automatically.
+. Rewrite any `val someSourceSet by getting ++{++ ++}++` to the convention accessors (`jvmMain ++{++ ++}++`, `iosArm64Main ++{++ ++}++`). The `by getting` form resolves eagerly and fails now that targets are created by the plugin.
+. Confirm nothing moved: `./gradlew :module:tasks --all` before and after must be identical, and `./gradlew apiCheck` must pass without a new dump.
+
+=== Pinning npm Packages
+
+Kotlin/JS and Kotlin/Wasm dependencies are locked in `kotlin-js-store/yarn.lock` and `kotlin-js-store/wasm/yarn.lock`. Both files are *generated*. Editing them by hand does not survive the next lockfile refresh — see https://github.com/SKaiNET-developers/SKaiNET/pull/894[PR #894], where a hand-applied `ws` security bump was reverted by `kotlinWasmUpgradeYarnLock` in the same pull request.
+
+Pinning a package takes two edits. The version goes in `++[++versions++]++` of `gradle/libs.versions.toml`:
+
+[source,toml]
+----
+npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
+----
+
+and the root build script names the package it belongs to:
+
+[source,kotlin]
+----
+skainet {
+    npmPins {
+        pin("ws", libs.versions.npm.ws)
+    }
+}
+----
+
+`sk.ainet.npm-pins` (applied on the root project) turns each `pin` into a Yarn `resolutions` entry in *both* generated root `package.json` files, so one declaration covers the JS and Wasm dependency graphs. Then regenerate and commit the lockfiles:
+
+[source,bash]
+----
+./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock
+----
+
+==== Scoping a pin to one lockfile
+
+Yarn writes a lockfile entry for *every* `resolutions` key, whether or not that dependency graph actually requests the package. An unscoped pin for a package that only the JS graph uses therefore adds it — and everything it depends on — to `kotlin-js-store/wasm/yarn.lock`, where nothing imports it. For `webpack` that is roughly 76 extra packages the Wasm build would download and install for nothing, and which Dependabot would then report against a lockfile that never uses them.
+
+Pass an `NpmPinTarget` when a package lives in only one graph:
+
+[source,kotlin]
+----
+import sk.ainet.buildlogic.npm.NpmPinTarget
+
+skainet {
+    npmPins {
+        pin("ws", libs.versions.npm.ws)                                  // <1>
+        pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)       // <2>
+    }
+}
+----
+<1> No target: applies to both lockfiles. Correct for `ws`, which both graphs resolve.
+<2> `NpmPinTarget.JS`: only `kotlin-js-store/yarn.lock` gets the resolution.
+
+Check which graph holds a package before deciding:
+
+[source,bash]
+----
+grep -c '^webpack@' kotlin-js-store/yarn.lock kotlin-js-store/wasm/yarn.lock
+----
+
+`verifyNpmPins` checks each lockfile against its own pin map, so a scoped pin is never reported as missing from the lockfile it was never meant to reach.
+
+`verifyNpmPins` re-reads the committed lockfiles and fails if any pinned package resolved elsewhere. It is wired into `check` and runs on the `js-wasm` leg of `.github/workflows/build.yml`.
+
+The root plugin is not optional for web modules: `sk.ainet.multiplatform` fails at configuration time if a module builds `js`/`wasmJs` while the root project does not apply `sk.ainet.npm-pins`. Without it no `resolutions` are written *and* `verifyNpmPins` does not exist to notice — a silent security regression rather than a build error.
+
+The package name is written out rather than derived from the catalog alias, so names a catalog alias cannot spell need nothing special — `pin("socket.io", …)`, `pin("++@++types/node", …)`. Versions must be exact: a range such as `++^++8.21.1` is rejected at configuration time, because `verifyNpmPins` compares the lockfile's resolved version for equality and a range could never match.

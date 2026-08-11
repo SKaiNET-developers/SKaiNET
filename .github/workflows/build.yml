@@ -35,8 +35,10 @@ jobs:
         include:
           - name: jvm
             tasks: jvmTest
+          # verifyNpmPins guards the npm-* pins in gradle/libs.versions.toml against
+          # lockfile drift; it belongs on the leg that already has the JS toolchain.
           - name: js-wasm
-            tasks: jsTest wasmJsTest wasmWasiTest
+            tasks: verifyNpmPins jsTest wasmJsTest wasmWasiTest
           - name: native
             tasks: linuxX64Test
 
@@ -51,7 +53,7 @@ jobs:
         run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
 
       - name: Set up JDK 25
-        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'zulu'
           java-version: 25
@@ -120,7 +122,7 @@ jobs:
         run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
 
       - name: Set up JDK 25
-        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'zulu'
           java-version: 25

@@ -12,6 +12,31 @@ val staticArchivePath: String =
 val staticArchiveArm64Path: String =
     layout.buildDirectory.file("native/cmake-build-arm64/libskainet_kernels.a").get().asFile.absolutePath
 
+// --- Archive embedding (#941) ----------------------------------------------
+//
+// The static archive must be EMBEDDED into the cinterop klib (cinterop
+// -staticLibrary/-libraryPath) rather than attached via linkerOpts:
+// linkerOpts applies only to this project's own binaries, so a published
+// klib would carry bindings but no machine code and no downstream K/N
+// consumer could link. Embedding is conditional on a correct-architecture
+// ELF archive being available:
+//   - linuxX64:  a Linux host's CMake build (cmake-build/), or an injected
+//                -PskainetKernelsX64Dir (CI: artifact from the ubuntu leg).
+//   - linuxArm64: the -PcrossArm64 cross build (cmake-build-arm64/), or an
+//                injected -PskainetKernelsArm64Dir.
+// A macOS/Windows host produces host-format archives that must NOT be
+// embedded into a Linux klib; those builds fall back to linkerOpts (their
+// K/N test links are disabled anyway, below) and the cinterop task warns
+// that the produced klib is bindings-only.
+val isLinuxHostForEmbed: Boolean = System.getProperty("os.name").lowercase().contains("linux")
+val crossArm64ForEmbed: Boolean = (findProperty("crossArm64") as String?)?.toBoolean() == true
+val injectedX64Dir: String? = findProperty("skainetKernelsX64Dir") as String?
+val injectedArm64Dir: String? = findProperty("skainetKernelsArm64Dir") as String?
+val x64ArchiveDir: String? = injectedX64Dir
+    ?: if (isLinuxHostForEmbed) layout.buildDirectory.dir("native/cmake-build").get().asFile.absolutePath else null
+val arm64ArchiveDir: String? = injectedArm64Dir
+    ?: if (crossArm64ForEmbed) layout.buildDirectory.dir("native/cmake-build-arm64").get().asFile.absolutePath else null
+
 kotlin {
     explicitApi()
     jvm()
@@ -21,15 +46,23 @@ kotlin {
     // linuxX64 = host (POC / CI-runnable); linuxArm64 = the SL2610 board target
     // (its archive is the aarch64 cross-build with NEON). The JVM consumes the
     // same kernels via FFM instead. Shared K/N code lives in `nativeMain`.
-    fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.wireSkainetKernels(archive: String) {
+    fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.wireSkainetKernels(
+        archiveDir: String?,
+        fallbackArchive: String,
+    ) {
         compilations.getByName("main").cinterops.create("skainetKernels") {
             defFile(project.file("src/nativeInterop/cinterop/skainet_kernels.def"))
             includeDirs(nativeIncludeDir)
+            if (archiveDir != null) {
+                extraOpts("-staticLibrary", "libskainet_kernels.a", "-libraryPath", archiveDir)
+            }
         }
-        binaries.all { linkerOpts(archive) }
+        // Without an embeddable archive the old project-local linking keeps the
+        // in-repo binaries working, but the klib itself carries no machine code.
+        if (archiveDir == null) binaries.all { linkerOpts(fallbackArchive) }
     }
-    linuxX64 { wireSkainetKernels(staticArchivePath) }
-    linuxArm64 { wireSkainetKernels(staticArchiveArm64Path) }
+    linuxX64 { wireSkainetKernels(x64ArchiveDir, staticArchivePath) }
+    linuxArm64 { wireSkainetKernels(arm64ArchiveDir, staticArchiveArm64Path) }
 
     sourceSets {
         val jvmMain by getting {
@@ -146,6 +179,39 @@ tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxX64") }.co
     dependsOn(buildNativeKernels)
 }
 
+// With archive embedding (#941) the archive must exist at CINTEROP time, not
+// just link time: the cinterop task copies it into the klib.
+if (x64ArchiveDir != null && injectedX64Dir == null) {
+    tasks.matching { it.name == "cinteropSkainetKernelsLinuxX64" }.configureEach {
+        dependsOn(buildNativeKernels)
+    }
+}
+// Bindings-only builds warn loudly instead of publishing broken klibs silently.
+if (x64ArchiveDir == null) {
+    tasks.matching { it.name == "cinteropSkainetKernelsLinuxX64" }.configureEach {
+        doFirst {
+            logger.warn(
+                "skainet-backend-native-cpu: linuxX64 klib is built WITHOUT the embedded " +
+                    "libskainet_kernels.a (no Linux-ELF archive available on this host). " +
+                    "Downstream consumers of this klib cannot link. Build on Linux or pass " +
+                    "-PskainetKernelsX64Dir=<dir> (#941)."
+            )
+        }
+    }
+}
+if (arm64ArchiveDir == null) {
+    tasks.matching { it.name == "cinteropSkainetKernelsLinuxArm64" }.configureEach {
+        doFirst {
+            logger.warn(
+                "skainet-backend-native-cpu: linuxArm64 klib is built WITHOUT the embedded " +
+                    "libskainet_kernels.a. Downstream consumers of this klib cannot link. " +
+                    "Enable -PcrossArm64=true (aarch64 cross toolchain) or pass " +
+                    "-PskainetKernelsArm64Dir=<dir> (#941)."
+            )
+        }
+    }
+}
+
 // The linuxX64/linuxArm64 K/N *test* binaries link the CMake static archive and
 // execute a Linux ELF. On a non-Linux host the CMake build emits host-format
 // objects (Mach-O on macOS), which ld.lld cannot cross-link into a Linux binary,
@@ -260,6 +326,14 @@ tasks.named("jvmProcessResources") {
 if (crossArm64Enabled) {
     tasks.matching { it.name.startsWith("link") && it.name.endsWith("LinuxArm64") }.configureEach {
         dependsOn(buildNativeKernelsArm64)
+    }
+
+    // Embedding (#941): the cross-built archive must exist before the arm64
+    // cinterop copies it into the klib.
+    if (injectedArm64Dir == null) {
+        tasks.matching { it.name == "cinteropSkainetKernelsLinuxArm64" }.configureEach {
+            dependsOn(buildNativeKernelsArm64)
+        }
     }
 
     // The Kotlin Gradle plugin does not create a run task for non-host K/N test

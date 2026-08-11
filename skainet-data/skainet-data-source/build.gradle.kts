@@ -1,20 +1,12 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    alias(libs.plugins.kotlinMultiplatform)
+    id("sk.ainet.multiplatform")
     alias(libs.plugins.vanniktech.mavenPublish)
     id("sk.ainet.dokka")
 }
 
+// JVM-only; see skainet.targets in this module's gradle.properties.
+
 kotlin {
-    explicitApi()
-
-    jvm {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
-        }
-    }
-
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines)
@@ -23,7 +15,6 @@ kotlin {
         }
 
         commonTest.dependencies {
-            implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
         }
 
@@ -33,6 +24,5 @@ kotlin {
             implementation(libs.ktor.client.plugins)
             implementation(libs.kotlinx.coroutines.core.jvm)
         }
-
     }
 }

@@ -1,47 +1,16 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    alias(libs.plugins.kotlinMultiplatform)
+    id("sk.ainet.multiplatform")
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.binary.compatibility.validator)
     id("sk.ainet.dokka")
 }
 
+skainet {
+    namespace = "sk.ainet.backend.cpu"
+}
+
 kotlin {
-    explicitApi()
-    android {
-        namespace = "sk.ainet.backend.cpu"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
-        }
-    }
-
-    iosArm64()
-    iosSimulatorArm64()
-    macosArm64 ()
-    linuxX64 ()
-    linuxArm64 ()
-
-    jvm()
-
-    js {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-    }
-
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmWasi {
-        nodejs()
-    }
-
     sourceSets {
         commonMain.dependencies {
             // Every concrete backend should go through the neutral api
@@ -50,68 +19,30 @@ kotlin {
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-compile:skainet-compile-core"))
             implementation(project(":skainet-lang:skainet-lang-ksp-annotations"))
-
         }
 
         commonTest.dependencies {
-            implementation(libs.kotlin.test)
             implementation(project(":skainet-lang:skainet-lang-models"))
         }
 
-        val jvmMain by getting {
-            dependencies {
-                implementation(libs.kotlinx.coroutines)
-            }
-        }
-        val jvmTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
-            }
-        }
-        val androidMain by getting
-        val wasmJsMain by getting
-
-        val commonMain by getting
-
-        val nativeMain by creating {
-            dependsOn(commonMain)
+        jvmMain.dependencies {
+            implementation(libs.kotlinx.coroutines)
         }
 
-        val appleMain by creating {
-            dependsOn(nativeMain)
-        }
+        // This module opts out of the default hierarchy template
+        // (kotlin.mpp.applyDefaultHierarchyTemplate=false in gradle.properties),
+        // so the native tree is wired by hand.
+        nativeMain { dependsOn(commonMain.get()) }
+        appleMain { dependsOn(nativeMain.get()) }
+        linuxMain { dependsOn(nativeMain.get()) }
+        iosMain { dependsOn(appleMain.get()) }
+        macosMain { dependsOn(appleMain.get()) }
 
-        val linuxMain by creating {
-            dependsOn(nativeMain)
-        }
-
-        val iosMain by creating {
-            dependsOn(appleMain)
-        }
-
-        val macosMain by creating {
-            dependsOn(appleMain)
-        }
-
-        val iosArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val iosSimulatorArm64Main by getting {
-            dependsOn(iosMain)
-        }
-
-        val macosArm64Main by getting {
-            dependsOn(macosMain)
-        }
-
-        val linuxX64Main by getting {
-            dependsOn(linuxMain)
-        }
-
-        val linuxArm64Main by getting {
-            dependsOn(linuxMain)
-        }
+        iosArm64Main { dependsOn(iosMain.get()) }
+        iosSimulatorArm64Main { dependsOn(iosMain.get()) }
+        macosArm64Main { dependsOn(macosMain.get()) }
+        linuxX64Main { dependsOn(linuxMain.get()) }
+        linuxArm64Main { dependsOn(linuxMain.get()) }
     }
 }
 

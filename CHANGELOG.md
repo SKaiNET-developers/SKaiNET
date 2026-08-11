@@ -2,7 +2,175 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- **README points LLM users to SKaiNET-transformers**
+  ([#923](https://github.com/SKaiNET-developers/SKaiNET/issues/923)): a callout under
+  "Start in 5 minutes" says plainly that LLM inference lives in the
+  SKaiNET-transformers repository — this repo is the engine underneath — and names
+  the `sk.ainet.transformers` artifacts and BOM to depend on.
 ### Added
+
+- **Native Q5_0 / Q5_1 packed matmul kernels (FFM, Kotlin/Native, JNI).** 0.39.0 shipped
+  packed GGUF *loading* for Q5_0/Q5_1 plus scalar + Panama kernels, but the native tier had
+  no Q5_x kernels — on the JVM the registry cascaded to Panama (50), and on Kotlin/Native and
+  Android the formats ran on the priority-0 scalar floor. New `skainet_q5_0_matmul` /
+  `skainet_q5_1_matmul` C kernels (plain NEON, no dotprod/i8mm requirement — runs on every
+  AArch64 core) expand the `qh` high-bit plane with a per-lane `vtstq_u8` bit test and fold
+  the dequant algebraically (`d*(dot - 16*Σx)` for Q5_0, `d*dot + m*Σx` for Q5_1) so the
+  per-block input sum hoists out of the output-row loop. Wired into all three consumers:
+  the FFM `NativeKernelProvider` (JVM), the cinterop `NativeKnKernelProvider`
+  (Kotlin/Native), and the Android JNI bridge (`JniKernels.q50Matmul`/`q51Matmul` +
+  `JniKernelProvider`), each with parity tests against the scalar references. Unblocks the
+  packed Q5_1 path for `functiongemma-270m` "Q5_K_M" checkpoints (whose attention/FFN
+  weights are Q5_1) under `NATIVE_OPTIMIZED` — see SKaiNET-transformers#170. (#708)
+### Performance
+
+- **Primitive FP32 fast paths for the eager CPU ops** (`skainet-backend-cpu`,
+  [#949](https://github.com/SKaiNET-developers/SKaiNET/issues/949)). The generic paths in
+  `DefaultCpuOps` paid, per element: two `IntArray` allocations for broadcast index mapping, a
+  vararg-spread boxed `data.get`, a KClass `when (dtype)` comparison, and a boxed lambda
+  round-trip. On ART that overhead dominated LLM decode — 83% of end-to-end SmolLM2-135M decode
+  on a Pixel 8a was non-matmul overhead even with the NEON backend doing every matmul. The hot
+  ops now run flat primitive loops over the dense `FloatArray` buffer (falling back to the
+  generic path for other dtypes/layouts): binary/scalar arithmetic (incl. last-dim bias
+  broadcast, mirroring the JVM vector path's coverage), the activation family
+  (relu/sigmoid/silu/gelu/…), unary math (sqrt/exp/log/sin/cos/tanh/pow/…), softmax and
+  logSoftmax along the last dim (also removing an O(n²)-per-slice max/denominator recompute),
+  sum/mean reductions, concat (block copy), and reshape/flatten (buffer copy). Benefits every
+  non-JVM target — Android, Kotlin/Native, JS/Wasm; the JVM ops class keeps its Panama/FFM
+  specializations on top.
+- **`DirectCpuExecutionContext.ops` is cached.** The getter previously constructed a fresh ops
+  instance on every access, re-running per-instance lazy kernel resolution in the eager hot
+  loop ([#949](https://github.com/SKaiNET-developers/SKaiNET/issues/949)).
+
+## [0.39.0] - 2026-08-10
+
+Headline: **on-device AI on Android becomes real.** A JNI NEON kernel backend
+(`skainet-backend-jni-cpu`) brings hand-tuned ARM matmul to Android — where the
+FFM provider can never run — measured at ~24 tok/s SmolLM2-135M Q8_0 decode on a
+Pixel 8a versus ~3.8 scalar (6.4x), clearing the on-device usability bar. The
+release also hardens the GGUF load path on Android (streaming instead of
+full-file heap loads), makes published Kotlin/Native kernel klibs linkable, and
+lands a batch of tensor-storage correctness fixes.
+
+### CI
+
+- **Release workflow publishes the `skainet-backend-jni-cpu` AAR.** `./gradlew publish` now
+  includes the Android JNI kernel module, whose AAR carries NDK-cross-built `.so`s; the publish
+  job gains Android SDK + a pinned NDK setup so the native build succeeds on the release runner
+  (previously the release would ship no JNI artifact, or fail). The NDK version is pinned in
+  `gradle/libs.versions.toml` (`android-ndk`) and referenced by the module's `ndkVersion` and the
+  workflow, so local and CI builds are reproducible. (#946)
+
+### Added
+
+- **NEON body for the Q4_0 matmul kernel.** `skainet_q4_0_matmul` was the only priority
+  quant format without a SIMD path (scalar C only, while q8_0/q4k/q5k/q6k had NEON).
+  It now unpacks the split-layout nibbles with `vand`/`vshr`, re-centres in the signed
+  int8 domain, and widens to f32 FMA lanes — plain NEON with no dotprod/i8mm requirement,
+  so it runs on every AArch64 core, and the same block-outer/row-inner loop order as
+  q8_0 (sequential weight reads; per-row accumulation order unchanged). Verified: 27/27
+  kernel tests green under qemu-aarch64 (cross-built `-march=armv8.2-a+fp16+dotprod`,
+  K/N-bundled gcc 8.3), `fmla` confirmed in the archive's disassembly; a new
+  Kotlin/Native Q4_0 parity test closes the gap where the aarch64 lane had no Q4_0
+  coverage at all. Part of the mobile-kernels effort (#920).
+- **`skainet-backend-jni-cpu`: Android JNI bridge for the native NEON kernels.** ART has no
+  `java.lang.foreign`, so the priority-100 FFM provider can never run on Android — until now
+  Android inference ran on the priority-0 scalar floor. The new AAR ships the same C kernel
+  sources via NDK/CMake with thin JNI shims (`GetPrimitiveArrayCritical`, zero-copy pins) and
+  a priority-100 `JniKernelProvider` discovered via `ServiceLoader` (which ART supports; the
+  Android ops factory now installs discovered providers exactly like the JVM does). Two `.so`
+  tiers are built from the same sources and selected at load time from `/proc/cpuinfo`:
+  baseline `armv8-a` (NEON, runs on every arm64 core — 0 dot-product instructions, verified by
+  disassembly) and `armv8.2-a+fp16+dotprod` (enables the `vdotq_s32` q4k/q6k paths — would
+  SIGILL on Cortex-A53-class cores, hence the gate). Q8_0/Q4_0/Q4_K/Q5_K/Q6_K bridged;
+  16 KB-page-aligned `.so`s (Android 15+); consumer R8 rules keep the ServiceLoader entry in
+  release builds. On-device parity tests included (`androidTest`, vs the scalar references).
+  Part of the mobile-kernels effort (#920).
+
+### Fixed
+
+- **GGUF tensors report their real encodings and sizes in `TensorStorage`.**
+  `StreamingGGUFReader` mapped only Q4_K/Q8_0 to dedicated `TensorEncoding`s; Q4_0, Q5_0,
+  Q5_1, Q5_K and Q6_K — all of which have encoding objects and CPU kernels — fell through to
+  `Opaque(name, 0)`, whose zero byte count short-circuits `TensorStorage.physicalBytes` and
+  silently corrupted every memory report and compression ratio. All seven quant formats now
+  map to their encodings, and genuinely unknown types carry the tensor's real byte count in
+  `Opaque`. (#928)
+- **Memory-copy diagnostics attribute copies to their source.** `MemoryTracker.recordCopy`
+  discarded the `sourceName` every instrumented call site passes; reports now carry a
+  per-source breakdown (`copiesBySource: Map<String, CopySourceStat>`, included in the
+  report's text form, sorted by volume). `ActiveMemoryTracker.current` is now `@Volatile`
+  with an honest thread-safety contract in its docs; making the tracker per-execution-context
+  instead of a process-wide hook is part of the SKEEP-003 storage-model discussion. (#931)
+- **`TensorStorageFactory` ownership labels are now truthful.** `borrowFloatArray` re-encoded
+  the floats into a private byte copy and labeled it `Borrowed` despite its "(zero-copy)" doc —
+  it is now deprecated (delegating to `fromFloatArray`) and honestly returns `Owned`;
+  `fromTensorData`'s doc claimed "borrowed (not copied)" while its dense branches copy — the
+  contract is now documented per branch (packed Q4_K/Q8_0 genuinely borrow zero-copy, dense
+  arrays convert to owned bytes) and pinned by ownership + mutation-visibility tests. (#927)
+- **`TensorStorage` transfer API can materialize its own placements.** `copyMaterialize()`
+  threw for `Aliased` handles (now resolved directly, producing an independent owned copy of
+  the slice) and for `FileBacked` — meaning `copyToHost()` could not bring `MMAP_WEIGHTS`
+  storage to the heap, the one transfer the storage layer was designed around. Both methods
+  gain a `BufferResolver` overload that reads file-backed regions through a configured
+  resolver; `DeviceResident` remains unsupported with an error that says why. (#929)
+- **Published Kotlin/Native klibs for `skainet-backend-native-cpu` now carry their machine
+  code.** The static kernel archive was attached via project-local `linkerOpts`, which does
+  not travel with a published klib — downstream K/N consumers of the `-linuxx64`/`-linuxarm64`
+  artifacts could not link (unresolved `skainet_*` symbols). The archive is now EMBEDDED into
+  the cinterop klib (`-staticLibrary`/`-libraryPath`), conditional on a correct-architecture
+  ELF archive being available; bindings-only builds (e.g. macOS dev hosts) warn loudly instead
+  of staying silent. The release workflow's ubuntu leg now also cross-builds and uploads both
+  linux static archives, and the macOS publish job injects them, so released klibs embed real
+  code. In-repo K/N test binaries link purely from the embedded klib — the consumer-link
+  scenario is what the test suite now exercises. (#941)
+- **`TensorData.copyToFloatArray()` default implementation works for rank >= 2.** It used to
+  iterate a single flat index into the vararg `get`, tripping every implementation's
+  one-index-per-dimension arity check — a latent trap for any implementation that didn't
+  override it. The default now unravels flat positions into per-dimension indices (row-major);
+  a contract test exercises the default at ranks 1–3. (#930)
+- **Streaming GGUF loads fail fast on unsupported tensor types instead of silently skipping them.**
+  `StreamingGgufParametersLoader` used to emit a `SKIP` progress string for any tensor type outside
+  its `when` and deliver a model with silently missing weights — the failure then surfaced far away
+  in the forward pass (the load-time half of the Q4_1 report in
+  [#654](https://github.com/SKaiNET-developers/SKaiNET/issues/654)). An eager pre-scan of the tensor
+  directory now throws `IllegalArgumentException` before any tensor is delivered, naming every
+  offending tensor, its type (including raw values for unknown types), and the supported set; the
+  per-tensor `else` is a hard error guarding against drift from the new
+  `SUPPORTED_TENSOR_TYPES` companion set. **Behavior change:** files that previously "loaded" with
+  skipped tensors now fail at load — the legacy `GgufParametersLoader` already behaved this way.
+  Q4_0 / Q5_0 / Q5_1 — which had packed `TensorData` and matmul kernels but were missing from the
+  loader — now load as packed blocks instead of being skipped. Closes
+  [#919](https://github.com/SKaiNET-developers/SKaiNET/issues/919).
+- **Random file access on Android: streaming model loads instead of full-file heap loads.**
+  `createRandomAccessSource` unconditionally returned `null` on Android in `skainet-io-gguf`,
+  `skainet-io-safetensors` and `skainet-io-onnx`, forcing every load through the legacy
+  materialise-the-whole-file path — on a real device a 138 MiB GGUF then OOMs the ART heap
+  (capped at 256/512 MB) before tensors are even built. A new `AndroidRandomAccessSource` in
+  `skainet-io-core` (androidMain, positional `FileChannel` reads — thread-safe, API 1+) now backs
+  all three actuals, making `StreamingGGUFReader`/streaming loaders reachable on Android; this
+  also un-breaks `TokenizerFactory.fromGguf`, which needs `StreamingGGUFReader.fields`. Android
+  host-side unit tests (`withHostTest {}`, a first in the repo) cover the read contract including
+  concurrent positional reads. Closes [#922](https://github.com/SKaiNET-developers/SKaiNET/issues/922).
+
+## [0.38.0] - 2026-07-30
+
+### Added
+
+- **Narrow-float (BF16 + FP16) weights kept packed.** A shared `NarrowFloatCodec` layer
+  (`Bf16Codec`/`Fp16Codec`) plus `NarrowFloatDenseTensorData`/`Fp16DenseTensorData` let SafeTensors F16
+  and GGUF F16/BF16 weights load `KEEP_NATIVE` — two bytes per element at rest instead of widening to
+  FP32 at load. `DefaultCpuOpsJvm` dispatches to format-specific matmul kernels by codec, so the packed
+  weight reaches the kernel rather than a widened copy. Narrow floats are a *storage* width only:
+  kernels widen to f32 lanes, accumulate in f32, and narrow on store.
+- **Native (FFM) FP16 matmul kernel.** `skainet_fp16_matmul` joins the existing BF16 kernel in
+  `skainet-backend-native-cpu`, wired through `NativeKernelProvider.matmulFp16()`. Until now the
+  provider carried `matmulBf16` but no FP16 counterpart, so BF16 resolved to the native kernel at
+  priority 100 while FP16 silently cascaded to the JVM Panama kernel at 50 — which read as a slow
+  kernel and was a missing one. `KernelProvider.supports` gains the matching `"Float16"` arm, absent
+  while every other matmul dtype was present.
 
 - **First-class dynamic dimensions (`Dim`).** A new `sk.ainet.lang.tensor.Dim` vocabulary makes "dynamic
   extent" explicit instead of an overloaded `-1`: `Dim.DYNAMIC` is a reserved sentinel (`Int.MIN_VALUE`)
@@ -53,6 +221,49 @@
   (`VoidTensorOps.calculateConcatShape`) and the emitter (`ShapeOperationsConverter` concat) now keep the
   concatenated axis dynamic when any operand's extent there is dynamic, instead of numerically summing it
   (which turned a growing cache `? ++ 1` into a bogus static `0`).
+- **Narrow-float weights transpose for free.** `NarrowFloatInputMajorTensorData` stores a rank-2 narrow
+  weight input-major, so the `[out, in]` → `[in, out]` transpose that `Linear.onForward` performs on
+  every call is a zero-copy reinterpretation of the same buffer. Projections are stored `[out, in]` but
+  the narrow matmul dispatch needs `[in, out]`, and transposing a row-major narrow tensor previously
+  walked it elementwise through boxed `get()` and widened to FP32 — 4.4 s for a 4096x11008 projection,
+  per weight, per token, which made `KEEP_NATIVE` slower than not using it. A row-major narrow buffer
+  deliberately still takes the generic path: swapping its shape would silently yield a different matrix
+  rather than the transpose.
+- **Native narrow-float kernels read the weight once per matmul.** Both the BF16 and FP16 kernels tile
+  the `j` dimension at `m > 1` and widen each weight row once per tile, instead of walking the whole
+  weight matrix once per row of the input. Accumulation into any output element stays `p` ascending, so
+  results are bit-identical to the previous formulation. At `m == 1` both keep the straight pass — there
+  is nothing to amortize and tiling costs ~15% there.
+- **`Fp16Codec.decode` is straight-line.** The subnormal arm no longer renormalizes in a data-dependent
+  loop; binary16 subnormals are `mant * 2⁻²⁴` with both factors exact in FP32, so one multiply lets the
+  hardware renormalize. A NaN now decodes **quiet**, matching `encode` (which already never emitted a
+  signaling binary16 NaN) and the hardware conversion the JVM kernel uses. This changes 1022 patterns —
+  the signaling NaNs — and nothing else; without it the JVM and every other target would disagree on
+  them.
+
+### Fixed
+
+- **FP16 matmul was 2–18x slower than the FP32 SGEMM it replaces.** The cause was dispatch, not
+  arithmetic: `NativeKernelProvider` had no `matmulFp16()`, so FP16 fell through to the JVM kernel while
+  BF16 ran natively. Head to head the two JVM kernels are within ~15% of each other. FP16 is now
+  1.5–1.7x *faster* than FP32.
+- **CI and supply-chain hardening.** Least-privilege permissions on the build workflow, the docs MathJax
+  npm install pinned by version, and a `logback-classic` bump.
+
+### Performance
+
+Measured on an i7-9750H (AVX2), OpenJDK 21, median ms per call, `4096x11008` projection:
+
+| | batch 1 | batch 16 |
+|---|---|---|
+| FP32 SGEMM | 108.7 | 271.1 |
+| BF16 | 57.4 | 143.5 |
+| FP16 | 71.2 | 159.3 |
+
+Both narrow formats now beat the FP32 SGEMM — BF16 by 1.8–1.9x, FP16 by 1.5–1.7x. Note these kernels
+are compute-bound on the FMA chain at batch 16, not bandwidth-bound: cutting weight traffic 16x bought
+only 9–19%, so the next win is a blocked microkernel or `bfdot`/`bfmmla` on ARMv8.6-A+, not more layout
+work.
 
 ## [0.37.0] - 2026-07-25
 
