@@ -43,6 +43,18 @@
 - **`DirectCpuExecutionContext.ops` is cached.** The getter previously constructed a fresh ops
   instance on every access, re-running per-instance lazy kernel resolution in the eager hot
   loop ([#949](https://github.com/SKaiNET-developers/SKaiNET/issues/949)).
+- **Apple arm64 runtime FEAT_DotProd dispatch for the Q4_K/Q6_K C kernels**
+  (`skainet-backend-native-cpu`, [#958](https://github.com/SKaiNET-developers/SKaiNET/issues/958),
+  part of the iOS kernel track of [#920](https://github.com/SKaiNET-developers/SKaiNET/issues/920)).
+  Apple builds now compile at the SDK-default arm64 baseline — a Kotlin/Native klib embeds
+  exactly one static archive, and Apple A12 (iPhone XS/XR, still iOS-supported) lacks
+  FEAT_DotProd while A13+/M-series have it — with the dotprod hot bodies compiled twice
+  (baseline + `target("dotprod")`-attributed) and selected once per matmul via a cached
+  `sysctlbyname("hw.optional.arm.FEAT_DotProd")` probe. Non-Apple builds keep the compile-time
+  `-march` guard as the only mechanism; Linux codegen is unchanged (qemu parity green, `sdot`
+  verified in the cross archive). The existing macOS FFM dylib moves from TU-level dotprod to
+  baseline+dispatch — runtime-equivalent on every Apple Silicon Mac. iOS builds are static-only
+  (`SKAINET_STATIC_ONLY`, auto-on for `CMAKE_SYSTEM_NAME=iOS`).
 
 ## [0.39.0] - 2026-08-10
 

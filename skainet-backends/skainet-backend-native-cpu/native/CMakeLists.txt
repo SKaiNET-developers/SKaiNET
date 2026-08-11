@@ -11,6 +11,7 @@ endif()
 
 set(SKAINET_KERNEL_SOURCES
     src/skainet_smoke.c
+    src/skainet_cpu_features.c
     src/q4k_matmul.c
     src/q5k_matmul.c
     src/q6k_matmul.c
@@ -27,11 +28,22 @@ set(SKAINET_KERNEL_SOURCES
 #         resource (libskainet_kernels.{so,dylib,dll}).
 # STATIC: consumed by Kotlin/Native via cinterop, linked into the K/N binary
 #         (libskainet_kernels.a). Same sources + flags; both keep -fPIC.
-add_library(skainet_kernels SHARED ${SKAINET_KERNEL_SOURCES})
+# iOS has no dylib story for this library (K/N embeds the static archive into
+# the klib; nothing dlopens on iOS), and building the SHARED target there just
+# adds install_name/signing noise — static-only on iOS, overridable elsewhere.
+option(SKAINET_STATIC_ONLY "Build only the static archive (K/N cinterop embedding)" OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(SKAINET_STATIC_ONLY ON)
+endif()
+
 add_library(skainet_kernels_static STATIC ${SKAINET_KERNEL_SOURCES})
 set_target_properties(skainet_kernels_static PROPERTIES OUTPUT_NAME skainet_kernels)
+set(SKAINET_KERNEL_TARGETS skainet_kernels_static)
 
-set(SKAINET_KERNEL_TARGETS skainet_kernels skainet_kernels_static)
+if(NOT SKAINET_STATIC_ONLY)
+    add_library(skainet_kernels SHARED ${SKAINET_KERNEL_SOURCES})
+    list(APPEND SKAINET_KERNEL_TARGETS skainet_kernels)
+endif()
 
 foreach(tgt IN LISTS SKAINET_KERNEL_TARGETS)
     target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -60,7 +72,13 @@ foreach(tgt IN LISTS SKAINET_KERNEL_TARGETS)
         # would SIGILL on the board. CONFIRM on-device first: `grep Features
         # /proc/cpuinfo` must list `asimddp` and `fphp`/`asimdhp`. Explicit
         # -march (not -mcpu=native) because this is a cross-compile from x86.
-        if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+        #
+        # NOT APPLE: Apple arm64 builds stay at the SDK-default baseline — a
+        # klib embeds ONE archive and A12 (iPhone XS/XR) lacks FEAT_DotProd.
+        # The q4k/q6k dotprod bodies are per-function multiversioned there and
+        # selected at runtime via sysctl (SKAINET_DOTPROD_DISPATCH in
+        # skainet_simd.h, #920). NEON itself needs no flag on Apple.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64" AND NOT APPLE)
             target_compile_options(${tgt} PRIVATE
                 -march=armv8.2-a+fp16+dotprod
             )
