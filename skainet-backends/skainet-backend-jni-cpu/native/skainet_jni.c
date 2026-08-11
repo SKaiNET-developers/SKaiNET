@@ -74,6 +74,34 @@ Java_sk_ainet_exec_kernel_jni_JniKernels_q40Matmul(
 }
 
 JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q50Matmul(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q5_0_matmul(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+                            inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q51Matmul(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q5_1_matmul(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+                            inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
 Java_sk_ainet_exec_kernel_jni_JniKernels_q4kMatmul(
     JNIEnv* env, jobject thiz,
     jfloatArray input, jint inputOffset,

@@ -4,6 +4,8 @@ import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q5KMatmulKernel
+import sk.ainet.backend.api.kernel.Q5_0MatmulKernel
+import sk.ainet.backend.api.kernel.Q5_1MatmulKernel
 import sk.ainet.backend.api.kernel.Q6KMatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
@@ -55,6 +57,10 @@ public object JniKernelProvider : KernelProvider {
 
     override fun matmulQ6K(): Q6KMatmulKernel? = if (available) JniQ6KMatmul else null
 
+    override fun matmulQ5_0(): Q5_0MatmulKernel? = if (available) JniQ5_0Matmul else null
+
+    override fun matmulQ5_1(): Q5_1MatmulKernel? = if (available) JniQ5_1Matmul else null
+
     private object JniQ8_0Matmul : Q8_0MatmulKernel {
         override fun matmul(
             input: FloatArray, inputOffset: Int,
@@ -73,6 +79,28 @@ public object JniKernelProvider : KernelProvider {
             inputDim: Int, outputDim: Int,
             output: FloatArray, outputOffset: Int,
         ): Unit = JniKernels.q40Matmul(
+            input, inputOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset
+        )
+    }
+
+    private object JniQ5_0Matmul : Q5_0MatmulKernel {
+        override fun matmul(
+            input: FloatArray, inputOffset: Int,
+            weight: ByteArray, weightByteOffset: Int,
+            inputDim: Int, outputDim: Int,
+            output: FloatArray, outputOffset: Int,
+        ): Unit = JniKernels.q50Matmul(
+            input, inputOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset
+        )
+    }
+
+    private object JniQ5_1Matmul : Q5_1MatmulKernel {
+        override fun matmul(
+            input: FloatArray, inputOffset: Int,
+            weight: ByteArray, weightByteOffset: Int,
+            inputDim: Int, outputDim: Int,
+            output: FloatArray, outputOffset: Int,
+        ): Unit = JniKernels.q51Matmul(
             input, inputOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset
         )
     }

@@ -9,6 +9,21 @@
   "Start in 5 minutes" says plainly that LLM inference lives in the
   SKaiNET-transformers repository — this repo is the engine underneath — and names
   the `sk.ainet.transformers` artifacts and BOM to depend on.
+### Added
+
+- **Native Q5_0 / Q5_1 packed matmul kernels (FFM, Kotlin/Native, JNI).** 0.39.0 shipped
+  packed GGUF *loading* for Q5_0/Q5_1 plus scalar + Panama kernels, but the native tier had
+  no Q5_x kernels — on the JVM the registry cascaded to Panama (50), and on Kotlin/Native and
+  Android the formats ran on the priority-0 scalar floor. New `skainet_q5_0_matmul` /
+  `skainet_q5_1_matmul` C kernels (plain NEON, no dotprod/i8mm requirement — runs on every
+  AArch64 core) expand the `qh` high-bit plane with a per-lane `vtstq_u8` bit test and fold
+  the dequant algebraically (`d*(dot - 16*Σx)` for Q5_0, `d*dot + m*Σx` for Q5_1) so the
+  per-block input sum hoists out of the output-row loop. Wired into all three consumers:
+  the FFM `NativeKernelProvider` (JVM), the cinterop `NativeKnKernelProvider`
+  (Kotlin/Native), and the Android JNI bridge (`JniKernels.q50Matmul`/`q51Matmul` +
+  `JniKernelProvider`), each with parity tests against the scalar references. Unblocks the
+  packed Q5_1 path for `functiongemma-270m` "Q5_K_M" checkpoints (whose attention/FFN
+  weights are Q5_1) under `NATIVE_OPTIMIZED` — see SKaiNET-transformers#170. (#708)
 ### Performance
 
 - **Primitive FP32 fast paths for the eager CPU ops** (`skainet-backend-cpu`,

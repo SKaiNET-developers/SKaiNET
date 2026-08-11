@@ -10,10 +10,14 @@ import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q5KMatmulKernel
+import sk.ainet.backend.api.kernel.Q5_0MatmulKernel
+import sk.ainet.backend.api.kernel.Q5_1MatmulKernel
 import sk.ainet.backend.api.kernel.Q6KMatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 import sk.ainet.kernels.cinterop.skainet_q4_0_matmul
 import sk.ainet.kernels.cinterop.skainet_q4k_matmul
+import sk.ainet.kernels.cinterop.skainet_q5_0_matmul
+import sk.ainet.kernels.cinterop.skainet_q5_1_matmul
 import sk.ainet.kernels.cinterop.skainet_q6k_matmul
 import sk.ainet.kernels.cinterop.skainet_q8_0_matmul
 
@@ -25,8 +29,8 @@ import sk.ainet.kernels.cinterop.skainet_q8_0_matmul
  *
  * **Registration is manual on K/N** (no `ServiceLoader`): a consumer calls
  * [installNativeKernels] once at startup. [Q5KMatmulKernel] (the FunctionGemma
- * Q5_K_M hot path) plus Q4_K / Q6_K / Q8_0 / Q4_0 are wired; the rest cascade to
- * the scalar provider.
+ * Q5_K_M hot path) plus Q4_K / Q6_K / Q8_0 / Q4_0 / Q5_0 / Q5_1 are wired; the
+ * rest cascade to the scalar provider.
  */
 @OptIn(ExperimentalForeignApi::class)
 public object NativeKnKernelProvider : KernelProvider {
@@ -45,6 +49,8 @@ public object NativeKnKernelProvider : KernelProvider {
     override fun matmulQ6K(): Q6KMatmulKernel = NativeKnQ6KMatmulKernel
     override fun matmulQ8_0(): Q8_0MatmulKernel = NativeKnQ8_0MatmulKernel
     override fun matmulQ4_0(): Q4_0MatmulKernel = NativeKnQ4_0MatmulKernel
+    override fun matmulQ5_0(): Q5_0MatmulKernel = NativeKnQ5_0MatmulKernel
+    override fun matmulQ5_1(): Q5_1MatmulKernel = NativeKnQ5_1MatmulKernel
 }
 
 /**
@@ -148,6 +154,54 @@ public object NativeKnQ4_0MatmulKernel : Q4_0MatmulKernel {
         if (outputDim == 0 || inputDim == 0) return
         input.usePinned { i -> weight.usePinned { w -> output.usePinned { o ->
             skainet_q4_0_matmul(
+                i.addressOf(0), inputOffset,
+                w.addressOf(0).reinterpret(), weightByteOffset,
+                inputDim, outputDim,
+                o.addressOf(0), outputOffset,
+            )
+        } } }
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+public object NativeKnQ5_0MatmulKernel : Q5_0MatmulKernel {
+    private const val BLOCK_SIZE = 32
+    override fun matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    ) {
+        require(inputDim % BLOCK_SIZE == 0) {
+            "NativeKnQ5_0MatmulKernel: inputDim must be a multiple of $BLOCK_SIZE; got $inputDim"
+        }
+        if (outputDim == 0 || inputDim == 0) return
+        input.usePinned { i -> weight.usePinned { w -> output.usePinned { o ->
+            skainet_q5_0_matmul(
+                i.addressOf(0), inputOffset,
+                w.addressOf(0).reinterpret(), weightByteOffset,
+                inputDim, outputDim,
+                o.addressOf(0), outputOffset,
+            )
+        } } }
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+public object NativeKnQ5_1MatmulKernel : Q5_1MatmulKernel {
+    private const val BLOCK_SIZE = 32
+    override fun matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    ) {
+        require(inputDim % BLOCK_SIZE == 0) {
+            "NativeKnQ5_1MatmulKernel: inputDim must be a multiple of $BLOCK_SIZE; got $inputDim"
+        }
+        if (outputDim == 0 || inputDim == 0) return
+        input.usePinned { i -> weight.usePinned { w -> output.usePinned { o ->
+            skainet_q5_1_matmul(
                 i.addressOf(0), inputOffset,
                 w.addressOf(0).reinterpret(), weightByteOffset,
                 inputDim, outputDim,
