@@ -19,6 +19,8 @@ set(SKAINET_KERNEL_SOURCES
     src/fp16_matmul.c
     src/q8_0_matmul.c
     src/q4_0_matmul.c
+    src/q5_0_matmul.c
+    src/q5_1_matmul.c
 )
 
 # SHARED: consumed by the JVM via java.lang.foreign (FFM), bundled as a JAR

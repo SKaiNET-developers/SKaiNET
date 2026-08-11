@@ -101,6 +101,20 @@ public object JniKernels {
         output: FloatArray, outputOffset: Int,
     )
 
+    public external fun q50Matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    public external fun q51Matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
     public external fun q4kMatmul(
         input: FloatArray, inputOffset: Int,
         weight: ByteArray, weightByteOffset: Int,

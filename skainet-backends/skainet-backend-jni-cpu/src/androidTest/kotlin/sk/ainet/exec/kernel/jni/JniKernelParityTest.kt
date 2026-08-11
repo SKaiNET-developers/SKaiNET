@@ -8,6 +8,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import sk.ainet.exec.kernel.ScalarQ4_0MatmulKernel
 import sk.ainet.exec.kernel.ScalarQ4_KMatmulKernel
+import sk.ainet.exec.kernel.ScalarQ5_0MatmulKernel
+import sk.ainet.exec.kernel.ScalarQ5_1MatmulKernel
 import sk.ainet.exec.kernel.ScalarQ6_KMatmulKernel
 import sk.ainet.exec.kernel.ScalarQ8_0MatmulKernel
 import kotlin.math.abs
@@ -100,6 +102,8 @@ class JniKernelParityTest {
 
     private val conditionQ8_0: (ByteArray, Int) -> Unit = { b, base -> fp16One(b, base) }
     private val conditionQ4_0: (ByteArray, Int) -> Unit = { b, base -> fp16One(b, base) }
+    private val conditionQ5_0: (ByteArray, Int) -> Unit = { b, base -> fp16One(b, base) }
+    private val conditionQ5_1: (ByteArray, Int) -> Unit = { b, base -> fp16One(b, base); fp16One(b, base + 2) }
     private val conditionQ4K: (ByteArray, Int) -> Unit = { b, base -> fp16One(b, base); fp16One(b, base + 2) }
     private val conditionQ6K: (ByteArray, Int) -> Unit = { b, base -> fp16One(b, base + 208) }
 
@@ -179,6 +183,18 @@ class JniKernelParityTest {
     fun q40_parity() = assertExactParity(
         1024, 64, 7, 2e-1f, 32, 18, conditionQ4_0,
         reference = ScalarQ4_0MatmulKernel::matmul, jni = JniKernels::q40Matmul,
+    )
+
+    @Test
+    fun q50_parity() = assertExactParity(
+        1024, 64, 11, 2e-1f, 32, 22, conditionQ5_0,
+        reference = ScalarQ5_0MatmulKernel::matmul, jni = JniKernels::q50Matmul,
+    )
+
+    @Test
+    fun q51_parity() = assertExactParity(
+        1024, 64, 13, 2e-1f, 32, 24, conditionQ5_1,
+        reference = ScalarQ5_1MatmulKernel::matmul, jni = JniKernels::q51Matmul,
     )
 
     @Test

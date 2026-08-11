@@ -214,6 +214,62 @@ SKAINET_API void skainet_q4_0_matmul(
     int32_t output_offset
 );
 
+/*
+ * Q5_0 matrix-vector multiply.
+ *
+ *   output[output_offset + o] = sum_j input[input_offset + j] *
+ *                                dequant(weight[block, o, j])
+ *
+ * Block layout: canonical ggml Q5_0, 32 elements per block, 22 bytes
+ * per block (2 B FP16 scale `d` + 4 B `qh` high-bit plane + 16 B packed
+ * 4-bit codes in split layout — low nibbles → elements 0..15, high
+ * nibbles → 16..31; bit j of the little-endian 32-bit `qh` is the fifth
+ * bit of element j), with packed weights laid out as
+ *   weight + weight_byte_offset + (block_idx * output_dim + o) * 22
+ *
+ * Dequant per element: `(code - 16) * d` with
+ * `code = nibble | (fifth_bit << 4)`. input_dim must be a multiple
+ * of 32.
+ */
+SKAINET_API void skainet_q5_0_matmul(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
+ * Q5_1 matrix-vector multiply.
+ *
+ *   output[output_offset + o] = sum_j input[input_offset + j] *
+ *                                dequant(weight[block, o, j])
+ *
+ * Block layout: canonical ggml Q5_1, 32 elements per block, 24 bytes
+ * per block (2 B FP16 scale `d` + 2 B FP16 min `m` + 4 B `qh` high-bit
+ * plane + 16 B packed 4-bit codes in split layout; bit j of the
+ * little-endian 32-bit `qh` is the fifth bit of element j), with packed
+ * weights laid out as
+ *   weight + weight_byte_offset + (block_idx * output_dim + o) * 24
+ *
+ * Dequant per element: `d * code + m` (affine, no re-centring) with
+ * `code = nibble | (fifth_bit << 4)`. input_dim must be a multiple
+ * of 32.
+ */
+SKAINET_API void skainet_q5_1_matmul(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
 #ifdef __cplusplus
 }
 #endif
