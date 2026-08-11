@@ -94,6 +94,19 @@ jobs:
             :skainet-backends:skainet-backend-native-cpu:jvmTest \
             :skainet-backends:skainet-backend-native-cpu:jvmJar
 
+      # Apple K/N lane (#959, iOS kernel track of #920): builds the simulator +
+      # macOS static archives via the macOS-host heuristic and runs the shared
+      # nativeTest parity suites natively (macosArm64Test, dispatch fast arm on
+      # the M-series runner) and in the iOS simulator (iosSimulatorArm64Test).
+      - name: K/N Apple simulator + host tests (macOS only)
+        if: matrix.arch_label == 'macos-arm64'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :skainet-backends:skainet-backend-native-cpu:macosArm64Test \
+            :skainet-backends:skainet-backend-native-cpu:iosSimulatorArm64Test
+
       - name: Build + test native module (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
