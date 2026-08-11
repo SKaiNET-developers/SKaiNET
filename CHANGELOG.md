@@ -85,6 +85,21 @@ rebuilt per access. The README now points LLM users to SKaiNET-transformers.
   baseline+dispatch — runtime-equivalent on every Apple Silicon Mac. iOS builds are static-only
   (`SKAINET_STATIC_ONLY`, auto-on for `CMAKE_SYSTEM_NAME=iOS`).
 
+### Added
+
+- **`skainet-backend-native-cpu` publishes Apple Kotlin/Native targets** — `iosArm64`,
+  `iosSimulatorArm64`, and `macosArm64` klibs with the Mach-O kernel static archive embedded
+  via cinterop, exactly like the Linux pair ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959),
+  iOS kernel track of [#920](https://github.com/SKaiNET-developers/SKaiNET/issues/920)).
+  Archives are built by new Apple CMake lanes on a macOS host (platform SDKs, no `-march` —
+  the #958 runtime FEAT_DotProd dispatch serves A12 through M-series from one device archive)
+  or injected in CI via `-PskainetKernelsIosArm64Dir` / `-PskainetKernelsIosSimulatorArm64Dir` /
+  `-PskainetKernelsMacosArm64Dir`. The shared nativeTest parity suites now also run as
+  `macosArm64Test` (native) and `iosSimulatorArm64Test` (simulator) on the macos-14 PR lane.
+  On non-macOS hosts the Apple task family is disabled (ubuntu CI unaffected). Registration
+  on K/N remains manual via `installNativeKernels()` — Apple consumers call it once at startup,
+  same as Linux.
+
 ## [0.39.0] - 2026-08-10
 
 Headline: **on-device AI on Android becomes real.** A JNI NEON kernel backend

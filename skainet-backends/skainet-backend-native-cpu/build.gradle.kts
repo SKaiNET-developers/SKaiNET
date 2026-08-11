@@ -37,6 +37,28 @@ val x64ArchiveDir: String? = injectedX64Dir
 val arm64ArchiveDir: String? = injectedArm64Dir
     ?: if (crossArm64ForEmbed) layout.buildDirectory.dir("native/cmake-build-arm64").get().asFile.absolutePath else null
 
+// Apple (K/N) archives — iOS kernel track of #920 (#959). Mach-O static
+// archives built with the platform SDKs, so they exist only on a macOS host
+// (Xcode required); elsewhere the whole Apple task family is disabled below
+// and CI injects prebuilt archives via the -PskainetKernels*Dir properties
+// (publish.yml macos leg), mirroring the Linux pair above. The device archive
+// is compiled at baseline arm64 with runtime FEAT_DotProd dispatch (#958), so
+// ONE archive serves A12 (no dotprod) through A18/M-series.
+val isMacosHostForEmbed: Boolean =
+    System.getProperty("os.name").lowercase().let { it.contains("mac") || it.contains("darwin") }
+val cmakeBuildIosArm64Path: String =
+    layout.buildDirectory.dir("native/cmake-build-ios-arm64").get().asFile.absolutePath
+val cmakeBuildIosSimArm64Path: String =
+    layout.buildDirectory.dir("native/cmake-build-ios-sim-arm64").get().asFile.absolutePath
+val cmakeBuildMacosArm64Path: String =
+    layout.buildDirectory.dir("native/cmake-build-macos-arm64").get().asFile.absolutePath
+val injectedIosArm64Dir: String? = findProperty("skainetKernelsIosArm64Dir") as String?
+val injectedIosSimArm64Dir: String? = findProperty("skainetKernelsIosSimulatorArm64Dir") as String?
+val injectedMacosArm64Dir: String? = findProperty("skainetKernelsMacosArm64Dir") as String?
+val iosArm64ArchiveDir: String? = injectedIosArm64Dir ?: cmakeBuildIosArm64Path.takeIf { isMacosHostForEmbed }
+val iosSimArm64ArchiveDir: String? = injectedIosSimArm64Dir ?: cmakeBuildIosSimArm64Path.takeIf { isMacosHostForEmbed }
+val macosArm64ArchiveDir: String? = injectedMacosArm64Dir ?: cmakeBuildMacosArm64Path.takeIf { isMacosHostForEmbed }
+
 kotlin {
     explicitApi()
     jvm()
@@ -63,6 +85,11 @@ kotlin {
     }
     linuxX64 { wireSkainetKernels(x64ArchiveDir, staticArchivePath) }
     linuxArm64 { wireSkainetKernels(arm64ArchiveDir, staticArchiveArm64Path) }
+    // Apple targets (#959): the same cinterop/embedding seam, fed by the Apple
+    // CMake lanes below (macOS host) or CI-injected archives.
+    iosArm64 { wireSkainetKernels(iosArm64ArchiveDir, "$cmakeBuildIosArm64Path/libskainet_kernels.a") }
+    iosSimulatorArm64 { wireSkainetKernels(iosSimArm64ArchiveDir, "$cmakeBuildIosSimArm64Path/libskainet_kernels.a") }
+    macosArm64 { wireSkainetKernels(macosArm64ArchiveDir, "$cmakeBuildMacosArm64Path/libskainet_kernels.a") }
 
     sourceSets {
         val jvmMain by getting {
@@ -92,6 +119,9 @@ kotlin {
         }
         val linuxX64Main by getting { dependsOn(nativeMain) }
         val linuxArm64Main by getting { dependsOn(nativeMain) }
+        val iosArm64Main by getting { dependsOn(nativeMain) }
+        val iosSimulatorArm64Main by getting { dependsOn(nativeMain) }
+        val macosArm64Main by getting { dependsOn(nativeMain) }
         // Shared K/N parity tests (cinterop kernel vs commonMain scalar reference),
         // run on BOTH linuxX64 (host, scalar/auto-vec archive) and linuxArm64
         // (cross-built NEON archive, executed under the K/N-bundled qemu-aarch64
@@ -108,6 +138,11 @@ kotlin {
         }
         val linuxX64Test by getting { dependsOn(nativeTest) }
         val linuxArm64Test by getting { dependsOn(nativeTest) }
+        // Same parity suites on the Apple targets: iosSimulatorArm64Test /
+        // macosArm64Test execute them on a macOS host (simulator / natively).
+        val iosArm64Test by getting { dependsOn(nativeTest) }
+        val iosSimulatorArm64Test by getting { dependsOn(nativeTest) }
+        val macosArm64Test by getting { dependsOn(nativeTest) }
     }
 }
 
@@ -361,6 +396,117 @@ if (crossArm64Enabled) {
         inputs.file(testKexePath)
         commandLine(qemuAarch64, "-L", aarch64Sysroot, testKexePath)
     }
+}
+
+// --- Apple archives (#959, iOS kernel track of #920) ------------------------
+//
+// Three Mach-O static archives for the Apple K/N targets, built with the
+// platform SDKs on a macOS host (CMake >= 3.14 has first-class iOS support —
+// no toolchain file needed; contrast toolchain-aarch64.cmake, which exists
+// for the Linux cross triple). No -march is passed: Apple builds stay at the
+// SDK-default baseline and rely on the #958 runtime FEAT_DotProd dispatch.
+// Deployment targets match the K/N binary minimums (iOS 12.0 / simulator
+// 14.0 / macOS 11.0) so the K/N link never warns about newer object files.
+fun registerAppleKernelTasks(
+    suffix: String,
+    buildDir: String,
+    extraCmakeArgs: List<String>,
+): TaskProvider<Exec> {
+    // Local copy: the onlyIf lambda must capture a Boolean, not the script.
+    val macHost = isMacosHostForEmbed
+    val configure = tasks.register<Exec>("configureNativeKernels$suffix") {
+        group = "build"
+        description = "CMake configure for the $suffix (Apple) native kernels."
+        onlyIf { macHost }
+        inputs.file("$nativeSourcePath/CMakeLists.txt")
+        inputs.dir("$nativeSourcePath/src")
+        inputs.dir("$nativeSourcePath/include")
+        outputs.dir(buildDir)
+        commandLine = listOf(
+            "cmake", "-S", nativeSourcePath, "-B", buildDir,
+            "-DCMAKE_BUILD_TYPE=Release",
+        ) + extraCmakeArgs
+    }
+    return tasks.register<Exec>("buildNativeKernels$suffix") {
+        group = "build"
+        description = "Build the $suffix (Apple) native kernels static archive."
+        onlyIf { macHost }
+        dependsOn(configure)
+        inputs.file("$nativeSourcePath/CMakeLists.txt")
+        inputs.dir("$nativeSourcePath/src")
+        inputs.dir("$nativeSourcePath/include")
+        outputs.dir(buildDir)
+        commandLine = listOf("cmake", "--build", buildDir, "--config", "Release")
+    }
+}
+
+val buildNativeKernelsIosArm64 = registerAppleKernelTasks(
+    "IosArm64", cmakeBuildIosArm64Path,
+    listOf(
+        "-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_OSX_SYSROOT=iphoneos",
+        "-DCMAKE_OSX_ARCHITECTURES=arm64", "-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0",
+        "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
+    ),
+)
+val buildNativeKernelsIosSimulatorArm64 = registerAppleKernelTasks(
+    "IosSimulatorArm64", cmakeBuildIosSimArm64Path,
+    listOf(
+        "-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_OSX_SYSROOT=iphonesimulator",
+        "-DCMAKE_OSX_ARCHITECTURES=arm64", "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
+        "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
+    ),
+)
+val buildNativeKernelsMacosArm64 = registerAppleKernelTasks(
+    "MacosArm64", cmakeBuildMacosArm64Path,
+    listOf(
+        "-DCMAKE_OSX_ARCHITECTURES=arm64", "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0",
+        // The macOS lane exists for the K/N klib; the FFM dylib comes from the
+        // regular host build (packageNativeKernels) on the macos CI leg.
+        "-DSKAINET_STATIC_ONLY=ON",
+    ),
+)
+
+// Embedding (#941 semantics): the archive must exist at CINTEROP time (it is
+// copied into the klib) and at this project's own test-binary link time;
+// bindings-only builds warn loudly instead of publishing broken klibs silently.
+fun wireAppleCinterop(
+    suffix: String,
+    archiveDir: String?,
+    injected: String?,
+    buildTask: TaskProvider<Exec>,
+    propName: String,
+) {
+    if (archiveDir != null && injected == null) {
+        tasks.matching { it.name == "cinteropSkainetKernels$suffix" }.configureEach { dependsOn(buildTask) }
+        tasks.matching { it.name.startsWith("link") && it.name.endsWith(suffix) }.configureEach { dependsOn(buildTask) }
+    }
+    if (archiveDir == null) {
+        tasks.matching { it.name == "cinteropSkainetKernels$suffix" }.configureEach {
+            doFirst {
+                logger.warn(
+                    "skainet-backend-native-cpu: ${suffix.replaceFirstChar { it.lowercase() }} klib is built " +
+                        "WITHOUT the embedded libskainet_kernels.a (no Apple archive available on this " +
+                        "host). Downstream consumers of this klib cannot link. Build on macOS or pass " +
+                        "-P$propName=<dir> (#959)."
+                )
+            }
+        }
+    }
+}
+wireAppleCinterop("IosArm64", iosArm64ArchiveDir, injectedIosArm64Dir, buildNativeKernelsIosArm64, "skainetKernelsIosArm64Dir")
+wireAppleCinterop("IosSimulatorArm64", iosSimArm64ArchiveDir, injectedIosSimArm64Dir, buildNativeKernelsIosSimulatorArm64, "skainetKernelsIosSimulatorArm64Dir")
+wireAppleCinterop("MacosArm64", macosArm64ArchiveDir, injectedMacosArm64Dir, buildNativeKernelsMacosArm64, "skainetKernelsMacosArm64Dir")
+
+// The Apple task family needs macOS (Xcode SDKs), and klib cross-compilation
+// of cinterop-bearing modules is not supported off-macOS anyway. Disable the
+// whole family elsewhere so ubuntu CI stays deterministic regardless of KGP
+// defaults; publishing runs on macOS (publish.yml). Mirrors the non-Linux
+// gate above for the Linux K/N tests.
+if (!isMacosHostForEmbed) {
+    tasks.matching { t ->
+        listOf("IosArm64", "IosSimulatorArm64", "MacosArm64").any { t.name.endsWith(it) } ||
+            t.name in setOf("iosArm64Test", "iosSimulatorArm64Test", "macosArm64Test")
+    }.configureEach { enabled = false }
 }
 
 // Forward `-Dskainet.runBench=true` from Gradle CLI to the forked test
