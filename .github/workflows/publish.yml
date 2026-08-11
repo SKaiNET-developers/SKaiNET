@@ -127,6 +127,40 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # K/N klib embedding for the Apple targets (#959, iOS kernel track of
+      # #920): the three Mach-O static archives are built on the mac leg with
+      # the platform SDKs and injected into the publish job, mirroring the
+      # linux pair above. The `nm | grep sdot` check guards against clang
+      # silently ignoring an unknown target-feature string in the #958
+      # dispatch attribute (that failure mode is a warning, not an error).
+      - name: Build Apple K/N static archives (macOS only)
+        if: matrix.arch_label == 'macos-arm64'
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            :skainet-backends:skainet-backend-native-cpu:buildNativeKernelsIosArm64 \
+            :skainet-backends:skainet-backend-native-cpu:buildNativeKernelsIosSimulatorArm64 \
+            :skainet-backends:skainet-backend-native-cpu:buildNativeKernelsMacosArm64
+          BASE=skainet-backends/skainet-backend-native-cpu/build/native
+          for d in cmake-build-ios-arm64 cmake-build-ios-sim-arm64 cmake-build-macos-arm64; do
+            nm "$BASE/$d/libskainet_kernels.a" | grep -q . || { echo "empty archive: $d" >&2; exit 1; }
+            objdump -d "$BASE/$d/libskainet_kernels.a" | grep -qw sdot \
+              || { echo "no sdot in $d — dotprod dispatch body missing (#958)" >&2; exit 1; }
+          done
+
+      - name: Upload Apple K/N static archives (macOS only)
+        if: matrix.arch_label == 'macos-arm64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-static-apple
+          path: |
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build-ios-arm64/libskainet_kernels.a
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build-ios-sim-arm64/libskainet_kernels.a
+            skainet-backends/skainet-backend-native-cpu/build/native/cmake-build-macos-arm64/libskainet_kernels.a
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Release build and publish
     needs: build-native
@@ -207,12 +241,28 @@ jobs:
           test -f "$ARM64_DIR/libskainet_kernels.a" || { echo "Missing linux-arm64 static archive" >&2; exit 1; }
           echo "SKAINET_KERNELS_X64_DIR=$X64_DIR" >> "$GITHUB_ENV"
           echo "SKAINET_KERNELS_ARM64_DIR=$ARM64_DIR" >> "$GITHUB_ENV"
+          # Apple archives (#959): same verified-artifact-or-fail contract.
+          # Injection also suppresses a redundant local rebuild on this macOS
+          # host (injected dirs skip the cinterop -> CMake task dependency).
+          APPLE="$PWD/native-artifacts/native-static-apple"
+          IOS_DIR="$APPLE/cmake-build-ios-arm64"
+          IOS_SIM_DIR="$APPLE/cmake-build-ios-sim-arm64"
+          MACOS_DIR="$APPLE/cmake-build-macos-arm64"
+          test -f "$IOS_DIR/libskainet_kernels.a" || { echo "Missing ios-arm64 static archive" >&2; exit 1; }
+          test -f "$IOS_SIM_DIR/libskainet_kernels.a" || { echo "Missing ios-sim-arm64 static archive" >&2; exit 1; }
+          test -f "$MACOS_DIR/libskainet_kernels.a" || { echo "Missing macos-arm64 static archive" >&2; exit 1; }
+          echo "SKAINET_KERNELS_IOS_DIR=$IOS_DIR" >> "$GITHUB_ENV"
+          echo "SKAINET_KERNELS_IOS_SIM_DIR=$IOS_SIM_DIR" >> "$GITHUB_ENV"
+          echo "SKAINET_KERNELS_MACOS_DIR=$MACOS_DIR" >> "$GITHUB_ENV"
 
       - name: Publish to MavenCentral
         run: |
           ./gradlew publish --no-configuration-cache --stacktrace \
             -PskainetKernelsX64Dir="$SKAINET_KERNELS_X64_DIR" \
-            -PskainetKernelsArm64Dir="$SKAINET_KERNELS_ARM64_DIR"
+            -PskainetKernelsArm64Dir="$SKAINET_KERNELS_ARM64_DIR" \
+            -PskainetKernelsIosArm64Dir="$SKAINET_KERNELS_IOS_DIR" \
+            -PskainetKernelsIosSimulatorArm64Dir="$SKAINET_KERNELS_IOS_SIM_DIR" \
+            -PskainetKernelsMacosArm64Dir="$SKAINET_KERNELS_MACOS_DIR"
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

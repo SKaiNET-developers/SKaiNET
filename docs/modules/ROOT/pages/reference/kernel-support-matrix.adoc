@@ -11,13 +11,13 @@ Each cell is the best (highest-priority) provider that serves `Float32 × format
 
 | `Float32` | native-ffm | panama-vector | scalar | scalar | scalar 
 | `BFloat16` | native-ffm | panama-vector | scalar | scalar | scalar 
-| `Q8_0` | native-ffm | native-jni | scalar | scalar | scalar 
-| `Q4_0` | native-ffm | native-jni | scalar | scalar | scalar 
-| `Q4_K` | native-ffm | native-jni | scalar | scalar | scalar 
-| `Q6_K` | panama-vector | native-jni | scalar | scalar | scalar 
-| `Q5_K` | native-ffm | native-jni | scalar | scalar | scalar 
-| `Q5_1` | panama-vector | panama-vector | scalar | scalar | scalar 
-| `Q5_0` | panama-vector | panama-vector | scalar | scalar | scalar 
+| `Q8_0` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
+| `Q4_0` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
+| `Q4_K` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
+| `Q6_K` | panama-vector | native-jni | native-cinterop | native-cinterop | scalar 
+| `Q5_K` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
+| `Q5_1` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
+| `Q5_0` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
 |===
 
 See also the eager backends & kernels mindmap (`docs/eager-execution-backends-and-kernels.md`) for the narrative overview and gaps.

@@ -58,6 +58,13 @@ public object NativeKnKernelProvider : KernelProvider {
  * (re-registering the same instance is a no-op). Call once at startup before any
  * `ops.matmul` on quantized weights.
  *
+ * Available on every published K/N target: linuxX64/linuxArm64 and, since #959,
+ * iosArm64/iosSimulatorArm64/macosArm64 — the Apple klibs embed the same C
+ * kernels compiled at baseline arm64 with runtime FEAT_DotProd dispatch (#958:
+ * A13+/M-series take the sdot fast path, A12 the scalar-int fallback — one
+ * archive, no SIGILL). On Apple this coexists with AccelerateCpuOps, which
+ * covers dense FP32; the formats are disjoint.
+ *
  * For quant types without a C kernel also register the commonMain
  * `ScalarKernelProvider` (from `skainet-backend-cpu`) as the fallback — it lives
  * in a different module, so the consumer wires it:

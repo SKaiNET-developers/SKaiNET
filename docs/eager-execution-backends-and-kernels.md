@@ -82,7 +82,8 @@ those formats were JVM-only and broke on Native.
 ## In progress / missing (with trackers)
 
 - ❌ **Native FFM Q5_1/Q5_0/Q6_K** — the C kernel set covers FP32/BF16/Q8_0/Q4_0/Q4_K only. Tracked by **SKaiNET#708** (core kernel) and **SKaiNET-transformers#170** (converter wiring).
-- ❌ **Native SIMD on linux** — Kotlin/Native linux targets run the scalar floor; no cinterop/OpenBLAS or SIMD path (Apple has Accelerate for dense ops). Tracked by **SKaiNET#722**.
+- ✅ **Native packed-quant kernels on Kotlin/Native** — `NativeKnKernelProvider` (priority 100, `skainet-backend-native-cpu`) serves Q8_0/Q4_0/Q4_K/Q5_K/Q6_K/Q5_0/Q5_1 from the C kernels statically embedded in the klib, on linuxX64/linuxArm64 and (since #959) iosArm64/iosSimulatorArm64/macosArm64. Apple archives use runtime FEAT_DotProd dispatch (#958) so one device archive serves A12 through M-series. Registration is **manual** — call `installNativeKernels()` once at startup (no ServiceLoader on K/N).
+- ❌ **Dense FP32/BF16 SIMD on Kotlin/Native linux** — the dense floats still run the scalar floor there (Apple has Accelerate). Tracked by **SKaiNET#722** / **#910**.
 - ❌ **Other GGML quant formats** (Q5_K, Q2_K, Q3_K, Q8_K, IQ4_NL/XS) — loadable via dequant-to-FP32, but no packed matmul kernel.
 - ❌ **Non-CPU eager backends** (IREE, Metal, GPU) — the `KernelProvider` SPI anticipates them, but none are implemented for the eager path today.
 
