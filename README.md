@@ -32,6 +32,15 @@ matches what you want to try first.
 Working in Java? SKaiNET ships first-class Java support — see the
 [Java getting-started guide](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc).
 
+> [!NOTE]
+> **Looking for LLM inference?** Llama, Qwen, Gemma, Apertus, BERT embeddings and
+> GGUF chat models live in
+> [**SKaiNET-transformers**](https://github.com/SKaiNET-developers/SKaiNET-transformers) —
+> this repository is the engine underneath it (tensors, NN DSL, compiler, CPU/native
+> backends, GGUF/SafeTensors IO). Depend on the `sk.ainet.transformers` artifacts,
+> pinned together by the
+> [transformers BOM](https://central.sonatype.com/artifact/sk.ainet.transformers/skainet-transformers-bom).
+
 Use the version shown in this README as the source of truth for first-run snippets.
 If another page shows a different version, please open an issue or PR.
 
