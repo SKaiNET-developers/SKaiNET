@@ -28,6 +28,17 @@ extensions.configure<DokkaExtension> {
             suppress.set(true)
         }
 
+        // Modules with a shared src/jvmAndroidMain source *directory* (#966)
+        // compile the same files into BOTH the jvm and android compilations.
+        // Dokka refuses files that belong to two source sets (dokka#3701), and
+        // the android pages would duplicate the jvm ones anyway — document the
+        // shared API once, via jvm, by suppressing the android source set.
+        if ((name == "androidMain" || name == "android") &&
+            projectDir.resolve("src/jvmAndroidMain").exists()
+        ) {
+            suppress.set(true)
+        }
+
         sourceLink {
             localDirectory.set(projectDir.resolve("src"))
             remoteUrl("https://github.com/SKaiNET-developers/skainet/tree/main/${project.path.replace(":", "/").removePrefix("/")}/src")
