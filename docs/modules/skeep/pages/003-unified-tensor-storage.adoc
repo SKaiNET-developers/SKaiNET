@@ -50,6 +50,16 @@ The split is not cosmetic; it produces recurring, measurable costs:
   failures share one root cause: *weights and activations were given the same
   lifetime*. The vocabulary to distinguish them
   (`Placement.Residency { PERSISTENT, TRANSIENT }`) already exists — unused.
+* **Copy semantics are ambient, not expressed.** Because ownership transfer
+  is not part of the creation API, `DenseTensorDataFactory` copies every
+  input array defensively (`data.copyOf()`), and only callers who know about
+  the parallel `wrapFloatArray` borrow entry point can avoid it. The GGUF
+  load path paid this as a full-size extra copy of *every* tensor on top of
+  the dequant intermediate — one of the three compounding causes behind
+  issue https://github.com/SKaiNET-developers/SKaiNET/issues/782[#782]'s
+  ">12 GB transient for a 4.4 GB model" (fixed at the call sites; a
+  storage model where creation takes an explicit owned/borrowed handle fixes
+  the *class* of bug).
 * **Two disconnected view systems.** `SlicedTensorView` (index remap over a
   parent tensor, zero-copy, shares grad state) and `BufferHandle.Aliased`
   (bounds-checked byte-range view whose mutability delegates to its parent)
@@ -251,8 +261,26 @@ reason this proposal reworks the plumbing *around* them, not them.
 
 == Compatibility and Migration
 
+The binding rule for every phase: **the 0.39.0 public API is preserved —
+deprecate, don't delete.**
+
+* Public types, signatures and semantics that shipped in 0.39.0 stay
+  source-compatible throughout. Superseded entry points get `@Deprecated`
+  with a `ReplaceWith` pointing at the successor and stay functional until a
+  major release — the existing
+  `GgufParametersLoader` → `StreamingGgufParametersLoader` deprecation is the
+  house pattern.
+* Changes to existing classes are *additive with defaults that reproduce the
+  historical behavior* (the #782 slice below is the worked example: a new
+  optional `quantPolicy` constructor parameter whose default is bit-for-bit
+  the old packed behavior), or *implementation swaps behind an unchanged
+  type* (same slice: `GGUFReader`'s eagerly-boxed `List<Any>` payloads became
+  constant-space lazy views — same static type, same contents, same
+  equality).
 * Shared prerequisites (type bridge, `StorageSpec` decision) are additive or
-  deletion-of-dead-code respectively.
+  deletion-of-dead-code respectively — dead code with zero consumers is the
+  one category exempt from deprecate-don't-delete, and each such removal
+  must show the zero-consumer evidence in its PR.
 * End-state A requires a compatibility façade phase in which `TensorData`
   implementations delegate to storage-backed equivalents; public signatures
   (`Tensor.data`, factory entry points) remain source-compatible until a
@@ -262,6 +290,44 @@ reason this proposal reworks the plumbing *around* them, not them.
 * The scoped-lifetime improvement is opt-in per context; unscoped use keeps
   GC semantics.
 
+== Implementation Slices
+
+The proposal is deliberately sliceable: each slice is a normal PR that stands
+on its own merits *and* moves the storage model toward whichever end-state the
+discussion settles on. Slices in flight or landed:
+
+[cols="1,2,2",options="header"]
+|===
+| Slice | Issue | What it contributes to this SKEEP
+
+| Streaming dequant (first concrete slice, **landed**)
+| https://github.com/SKaiNET-developers/SKaiNET/issues/782[#782]
+| The load path stops copying what it already owns: `StreamingGgufParametersLoader`
+  wraps loader-owned arrays zero-copy instead of paying the factory's defensive
+  copy; a `quantPolicy = DEQUANTIZE_TO_FP32` mode dequantizes each tensor
+  block-by-block straight into its destination `FloatArray` (peak transient per
+  tensor = the packed source bytes); the legacy reader's whole-file boxed
+  materialization (measured 41x payload size in allocations) became lazy views.
+  This is improvement 4's *staging* stage done concretely for one loader, and a
+  live demonstration of why creation APIs need explicit owned/borrowed handles
+  (improvement 1) rather than ambient copy semantics.
+
+| Android off-heap / mmap
+| https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]
+| The mobile *destination-placement* stage of improvement 4, specified in
+  sibling proposal SKEEP-002: `FileChannel.map`-backed weights outside the ART
+  heap, a real accessor path for `BufferHandle.FileBacked`, and direct
+  `ByteBuffer` storage for non-file-backed tensors. Lands against whichever
+  byte-owner survives the end-state decision.
+
+| Mechanical storage fixes (**landed, 0.39.0**)
+| https://github.com/SKaiNET-developers/SKaiNET/issues/927[#927]–https://github.com/SKaiNET-developers/SKaiNET/issues/931[#931]
+| Contract violations found in the audit that motivated this SKEEP (factory
+  ownership labels, GGUF encoding map, transfer/materialize gaps, rank-broken
+  `copyToFloatArray`, memory-tracker attribution) — fixed under either
+  end-state, shipped in 0.39.0.
+|===
+
 == Rollout Plan
 
 1. Maintainer discussion on this SKEEP settles the end-state (or rejects
@@ -270,13 +336,21 @@ reason this proposal reworks the plumbing *around* them, not them.
 3. Cross-cutting improvements land in the order 3 → 2 → 1 → 5 → 4 (coherence
    first, since views and scopes want the (dtype, encoding) pair in place);
    each phase independently shippable and benchmarked.
-4. Mechanical bugs found during the audit that motivated this SKEEP are
-   already filed and fixable under either end-state:
+4. Mechanical bugs found during the audit that motivated this SKEEP were
+   filed independently and are *already fixed* (PRs #934–#938, shipped in
+   0.39.0), demonstrating the slice model:
    https://github.com/SKaiNET-developers/SKaiNET/issues/927[#927],
    https://github.com/SKaiNET-developers/SKaiNET/issues/928[#928],
    https://github.com/SKaiNET-developers/SKaiNET/issues/929[#929],
    https://github.com/SKaiNET-developers/SKaiNET/issues/930[#930],
    https://github.com/SKaiNET-developers/SKaiNET/issues/931[#931].
+5. Larger behavior-preserving slices proceed in parallel with the
+   discussion — see <<_implementation_slices,Implementation Slices>>: the
+   streaming-dequant slice
+   (https://github.com/SKaiNET-developers/SKaiNET/issues/782[#782]) first,
+   then the Android off-heap/mmap slice
+   (https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921],
+   SKEEP-002).
 
 == Acceptance Criteria
 
@@ -328,7 +402,9 @@ reason this proposal reworks the plumbing *around* them, not them.
 * Related issues: https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]
   (Android off-heap), https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922]
   (Android load OOM), https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920]
-  (native mobile kernels)
+  (native mobile kernels),
+  https://github.com/SKaiNET-developers/SKaiNET/issues/782[#782]
+  (GGUF dequant over-allocation — the first implementation slice)
 * ZML memory concepts: https://docs.zml.ai/learn/concepts/ and
   https://zml.ai/posts/zml-v2/ (explicit allocators, pinned staging, userland
   VFS)
