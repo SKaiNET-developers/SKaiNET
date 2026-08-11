@@ -34,9 +34,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Set contents permission to read, all others are set to none automatically
-permissions:
-  contents: read
+# Set default permission for all jobs to none
+permissions: {}
 
 jobs:
   smoke-ubuntu-latest:
