@@ -53,7 +53,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.39.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.39.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -297,7 +297,13 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.39.0
+## What's New in 0.39.1
+
+- **Native Q5_0/Q5_1 packed matmul kernels — FFM, Kotlin/Native, JNI.** 0.39.0 could *load* Q5_0/Q5_1 packed but had no native-tier kernels for them: the JVM fell back to Panama and Kotlin/Native/Android to scalar. New plain-NEON C kernels (no dotprod/i8mm requirement, so they run on every AArch64 core) are wired into all three native consumers, each with parity tests against the scalar references. This unblocks the packed `NATIVE_OPTIMIZED` path for Q5_1-quantized checkpoints such as `functiongemma-270m`.
+- **Eager CPU ops run primitive FP32 fast paths.** The generic per-element paths (index-array allocations, boxed accessors, dtype dispatch) dominated on-device LLM decode — 83% of end-to-end SmolLM2-135M decode time on a Pixel 8a was non-matmul overhead even with the NEON backend. Hot ops (arithmetic, activations, unary math, softmax/logSoftmax, reductions, concat, reshape) now run flat primitive loops over the dense `FloatArray` buffer, benefiting every non-JVM target — Android, Kotlin/Native, JS/Wasm. `DirectCpuExecutionContext.ops` is also cached instead of rebuilt per access.
+- **README points LLM users to SKaiNET-transformers.** A callout under "Start in 5 minutes" makes clear that LLM inference lives in the SKaiNET-transformers repository — this repo is the engine underneath.
+
+### Previously, in 0.39.0
 
 - **On-device AI on Android — a NEON kernel backend.** New `skainet-backend-jni-cpu` module: the hand-tuned ARM matmul kernels reach Android through a JNI bridge (ART has no `java.lang.foreign`, so the FFM provider can never run there). Two `.so` tiers are built from the same sources and selected at load time from `/proc/cpuinfo` — a baseline `armv8-a` build that runs on every 64-bit core, and an `armv8.2-a+dotprod` build for the `vdotq_s32` Q4_K/Q6_K paths — so a single artifact is safe from Cortex-A53 up. Measured on a Pixel 8a: **~24 tok/s** SmolLM2-135M Q8_0 decode versus ~3.8 scalar (6.4x), clearing the on-device usability bar. The provider auto-registers via `ServiceLoader`; an app just adds the AAR.
 - **Android GGUF loading no longer OOMs.** `createRandomAccessSource` returned `null` on Android, forcing every model load through a full-file heap read that exhausted the ART heap on real devices. It now streams via positional `FileChannel` reads across `skainet-io-gguf` / `-safetensors` / `-onnx`.
@@ -341,6 +347,10 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.39.1)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — native Q5_0/Q5_1 packed matmul kernels across FFM, Kotlin/Native, and JNI (#708), primitive FP32 fast paths for the eager CPU ops (#949), README pointer to SKaiNET-transformers (#923)
 
 ### Contributors (0.39.0)
 

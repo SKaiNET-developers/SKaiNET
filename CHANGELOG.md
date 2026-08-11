@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-08-11
+
+Headline: **the packed Q5 gap is closed, and eager overhead off the JVM is gone.**
+Native Q5_0/Q5_1 matmul kernels land in all three native tiers — FFM (JVM),
+Kotlin/Native, and the Android JNI bridge — unblocking the packed `NATIVE_OPTIMIZED`
+path for Q5_1-quantized checkpoints such as `functiongemma-270m`. On top of that,
+the eager CPU ops gain primitive FP32 fast paths, removing the per-element
+allocation/boxing overhead that dominated on-device LLM decode (83% of end-to-end
+time on a Pixel 8a even with NEON matmul).
+
 ### Documentation
 
 - **README points LLM users to SKaiNET-transformers**
@@ -9,6 +19,7 @@
   "Start in 5 minutes" says plainly that LLM inference lives in the
   SKaiNET-transformers repository — this repo is the engine underneath — and names
   the `sk.ainet.transformers` artifacts and BOM to depend on.
+
 ### Added
 
 - **Native Q5_0 / Q5_1 packed matmul kernels (FFM, Kotlin/Native, JNI).** 0.39.0 shipped
@@ -24,6 +35,7 @@
   `JniKernelProvider`), each with parity tests against the scalar references. Unblocks the
   packed Q5_1 path for `functiongemma-270m` "Q5_K_M" checkpoints (whose attention/FFN
   weights are Q5_1) under `NATIVE_OPTIMIZED` — see SKaiNET-transformers#170. (#708)
+
 ### Performance
 
 - **Primitive FP32 fast paths for the eager CPU ops** (`skainet-backend-cpu`,
