@@ -40,9 +40,9 @@ class KernelSupportMatrixTest {
         Tier("panama-vector", 50, setOf("JVM", "Android"),
             setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")),
         Tier("native-ffm", 100, setOf("JVM"),
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_K")),
+            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q5_1", "Q5_0")),
         Tier("native-jni", 100, setOf("Android"),
-            setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K")),
+            setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
     )
 
     private fun best(fmt: String, platform: String, tiers: List<Tier>): String? =

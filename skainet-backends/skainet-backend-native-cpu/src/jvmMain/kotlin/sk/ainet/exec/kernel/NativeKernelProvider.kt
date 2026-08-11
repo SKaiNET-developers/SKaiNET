@@ -9,6 +9,8 @@ import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4KMemSegMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
 import sk.ainet.backend.api.kernel.Q5KMatmulKernel
+import sk.ainet.backend.api.kernel.Q5_0MatmulKernel
+import sk.ainet.backend.api.kernel.Q5_1MatmulKernel
 import sk.ainet.backend.api.kernel.Q6KMatmulKernel
 import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 
@@ -113,4 +115,10 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun matmulQ6K(): Q6KMatmulKernel? =
         if (NativeQ6KMatmulKernel.isAvailable()) NativeQ6KMatmulKernel else null
+
+    override fun matmulQ5_0(): Q5_0MatmulKernel? =
+        if (NativeQ5_0MatmulKernel.isAvailable()) NativeQ5_0MatmulKernel else null
+
+    override fun matmulQ5_1(): Q5_1MatmulKernel? =
+        if (NativeQ5_1MatmulKernel.isAvailable()) NativeQ5_1MatmulKernel else null
 }
