@@ -22,6 +22,27 @@
   are rejected fast (single-region mapping); windowed mapping is a follow-up under
   SKEEP-003's IO pipeline improvement.
 
+### Fixed
+
+- **GGUF `DEQUANTIZE_TO_FP32` no longer over-allocates**
+  ([#782](https://github.com/SKaiNET-developers/SKaiNET/issues/782)): loading a 1.1B Q4_K_M
+  transiently needed >12 GB heap against a ~4.4 GB dense-FP32 floor. Three compounding causes,
+  all in `skainet-io-gguf`: (1) the legacy `GGUFReader` eagerly materialized **every** tensor
+  payload as a boxed `List<Any>` at parse time — measured at **41x** the payload size in
+  allocations (~26 GB for a 637 MB file); payloads are now constant-space lazy views that
+  decode elements on access (same `List<Any>` API, same contents). (2) every dense tensor paid
+  a full-size defensive `copyOf` in the tensor factory on top of the dequant intermediate —
+  `StreamingGgufParametersLoader` now wraps its loader-owned arrays zero-copy
+  (`ctx.wrapFloatArray`). (3) the K-quant kernels allocated per-block `copyOfRange` scratch —
+  they now index the source buffer directly, so a full-tensor dequant allocates exactly the
+  destination `FloatArray`. `StreamingGgufParametersLoader` also gains an optional
+  `quantPolicy` parameter: `DEQUANTIZE_TO_FP32` streams each quantized tensor block-by-block
+  straight into its destination array (peak transient per tensor = the packed source bytes;
+  measured: eager FP32 load of a synthetic multi-tensor model allocates 1.38x the FP32 total
+  vs 2.1-2.3x for the historical copy chain, with peak live ≈ 1.05x). The default
+  (`NATIVE_OPTIMIZED`) keeps the loader's historical packed-block behavior bit-for-bit; a
+  parity test pins the dequant path to the packed accessors bit-exactly across all seven
+  supported quant formats.
 ## [0.39.1] - 2026-08-11
 
 Headline: **eager overhead off the JVM is gone.** The eager CPU ops gain

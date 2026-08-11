@@ -3,6 +3,8 @@ package sk.ainet.io.gguf
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.ParametersLoader
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.gguf.dequant.DequantOps
+import sk.ainet.io.model.QuantPolicy
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Bf16DenseTensorData
@@ -54,7 +56,29 @@ public class StreamingGgufParametersLoader(
      * Keep `BF16` source tensors packed. Off by default — flip via `withPolicy(Require(BF16))`.
      */
     private val keepBf16Native: Boolean = false,
+    /**
+     * How quantized tensors are materialized (#782).
+     *
+     * - [QuantPolicy.NATIVE_OPTIMIZED] (default — the loader's historical behavior):
+     *   quantized tensors are delivered as packed block [TensorData]; F32/F16/BF16
+     *   are dense FP32 (subject to [keepF16Native]/[keepBf16Native]).
+     * - [QuantPolicy.DEQUANTIZE_TO_FP32]: quantized tensors are dequantized
+     *   *streaming, per tensor, block-by-block into the destination `FloatArray`*,
+     *   which is then wrapped zero-copy. Peak transient memory per tensor is the
+     *   packed source bytes only — there is no full-size intermediate copy.
+     * - [QuantPolicy.RAW_BYTES] is not supported by this loader (it preserves
+     *   packed block storage instead) and is rejected eagerly.
+     */
+    private val quantPolicy: QuantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
 ) : ParametersLoader {
+
+    init {
+        require(quantPolicy != QuantPolicy.RAW_BYTES) {
+            "StreamingGgufParametersLoader does not support QuantPolicy.RAW_BYTES — quantized " +
+                "tensors are preserved as packed block TensorData (NATIVE_OPTIMIZED) or " +
+                "dequantized to dense FP32 (DEQUANTIZE_TO_FP32)."
+        }
+    }
 
     @Suppress("UNCHECKED_CAST")
     override suspend fun <T : DType, V> load(
@@ -74,9 +98,10 @@ public class StreamingGgufParametersLoader(
 
                 val tensor: Tensor<T, V>? = when (tensorInfo.tensorType) {
                     GGMLQuantizationType.F32 -> {
-                        val floats = bytesToFloatArray(rawBytes)
                         when (dtype) {
-                            FP32::class -> ctx.fromFloatArray<T, Float>(shape, dtype, floats) as Tensor<T, V>
+                            // The freshly decoded array is loader-owned — wrap it zero-copy
+                            // instead of paying the factory's defensive copy (#782).
+                            FP32::class -> ctx.wrapFloatArray<T, Float>(shape, dtype, bytesToFloatArray(rawBytes)) as Tensor<T, V>
                             else -> null
                         }
                     }
@@ -97,7 +122,8 @@ public class StreamingGgufParametersLoader(
                             val packed = Fp16DenseTensorData(shape, rawBytes)
                             ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                         } else {
-                            ctx.fromFloatArray<T, Float>(shape, dtype, dequantF16(rawBytes)) as Tensor<T, V>
+                            // Loader-owned widened array — zero-copy wrap (#782).
+                            ctx.wrapFloatArray<T, Float>(shape, dtype, dequantF16(rawBytes)) as Tensor<T, V>
                         }
                         else -> null
                     }
@@ -108,52 +134,19 @@ public class StreamingGgufParametersLoader(
                             val packed = Bf16DenseTensorData(shape, rawBytes)
                             ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                         } else {
-                            ctx.fromFloatArray<T, Float>(shape, dtype, dequantBF16(rawBytes)) as Tensor<T, V>
+                            // Loader-owned widened array — zero-copy wrap (#782).
+                            ctx.wrapFloatArray<T, Float>(shape, dtype, dequantBF16(rawBytes)) as Tensor<T, V>
                         }
                         else -> null
                     }
 
-                    GGMLQuantizationType.Q4_K -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q4_KBlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
-
-                    GGMLQuantizationType.Q5_K -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q5_KBlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
-
-                    GGMLQuantizationType.Q6_K -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q6_KBlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
-
-                    GGMLQuantizationType.Q8_0 -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q8_0BlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
-
-                    GGMLQuantizationType.Q4_0 -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q4_0BlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
-
-                    GGMLQuantizationType.Q5_0 -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q5_0BlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
-
-                    GGMLQuantizationType.Q5_1 -> {
-                        @Suppress("UNCHECKED_CAST")
-                        val packed = Q5_1BlockTensorData.fromRawBytes(shape, rawBytes)
-                        ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
-                    }
+                    GGMLQuantizationType.Q4_K,
+                    GGMLQuantizationType.Q5_K,
+                    GGMLQuantizationType.Q6_K,
+                    GGMLQuantizationType.Q8_0,
+                    GGMLQuantizationType.Q4_0,
+                    GGMLQuantizationType.Q5_0,
+                    GGMLQuantizationType.Q5_1 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes)
 
                     else -> throw IllegalStateException(
                         "StreamingGgufParametersLoader: tensor '${tensorInfo.name}' of type " +
@@ -171,6 +164,47 @@ public class StreamingGgufParametersLoader(
                 onProgress(current, total, tensorInfo.name)
             }
         }
+    }
+
+    /**
+     * Materialize a quantized tensor according to [quantPolicy].
+     *
+     * DEQUANTIZE_TO_FP32 (#782): the packed bytes are unpacked block-by-block
+     * straight into one destination `FloatArray` (the shared [DequantOps]
+     * kernels write each block into the single output array — no boxed values,
+     * no per-tensor intermediate), and the destination is wrapped zero-copy.
+     * Peak transient allocation per tensor is the packed source bytes.
+     *
+     * Any other policy (or a non-float destination dtype) preserves the packed
+     * block storage exactly as before.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> quantizedTensor(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        shape: Shape,
+        tensorInfo: StreamingTensorInfo,
+        rawBytes: ByteArray,
+    ): Tensor<T, V> {
+        if (quantPolicy == QuantPolicy.DEQUANTIZE_TO_FP32 &&
+            (dtype == FP32::class || dtype == FP16::class)
+        ) {
+            val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
+            return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
+        }
+        val packed = when (tensorInfo.tensorType) {
+            GGMLQuantizationType.Q4_K -> Q4_KBlockTensorData.fromRawBytes(shape, rawBytes)
+            GGMLQuantizationType.Q5_K -> Q5_KBlockTensorData.fromRawBytes(shape, rawBytes)
+            GGMLQuantizationType.Q6_K -> Q6_KBlockTensorData.fromRawBytes(shape, rawBytes)
+            GGMLQuantizationType.Q8_0 -> Q8_0BlockTensorData.fromRawBytes(shape, rawBytes)
+            GGMLQuantizationType.Q4_0 -> Q4_0BlockTensorData.fromRawBytes(shape, rawBytes)
+            GGMLQuantizationType.Q5_0 -> Q5_0BlockTensorData.fromRawBytes(shape, rawBytes)
+            GGMLQuantizationType.Q5_1 -> Q5_1BlockTensorData.fromRawBytes(shape, rawBytes)
+            else -> throw IllegalStateException(
+                "quantizedTensor called for non-quantized type ${tensorInfo.tensorType}"
+            )
+        }
+        return ctx.fromData(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
     }
 
     private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
