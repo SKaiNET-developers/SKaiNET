@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **Primitive FP32 fast paths for the eager CPU ops** (`skainet-backend-cpu`,
+  [#949](https://github.com/SKaiNET-developers/SKaiNET/issues/949)). The generic paths in
+  `DefaultCpuOps` paid, per element: two `IntArray` allocations for broadcast index mapping, a
+  vararg-spread boxed `data.get`, a KClass `when (dtype)` comparison, and a boxed lambda
+  round-trip. On ART that overhead dominated LLM decode — 83% of end-to-end SmolLM2-135M decode
+  on a Pixel 8a was non-matmul overhead even with the NEON backend doing every matmul. The hot
+  ops now run flat primitive loops over the dense `FloatArray` buffer (falling back to the
+  generic path for other dtypes/layouts): binary/scalar arithmetic (incl. last-dim bias
+  broadcast, mirroring the JVM vector path's coverage), the activation family
+  (relu/sigmoid/silu/gelu/…), unary math (sqrt/exp/log/sin/cos/tanh/pow/…), softmax and
+  logSoftmax along the last dim (also removing an O(n²)-per-slice max/denominator recompute),
+  sum/mean reductions, concat (block copy), and reshape/flatten (buffer copy). Benefits every
+  non-JVM target — Android, Kotlin/Native, JS/Wasm; the JVM ops class keeps its Panama/FFM
+  specializations on top.
+- **`DirectCpuExecutionContext.ops` is cached.** The getter previously constructed a fresh ops
+  instance on every access, re-running per-instance lazy kernel resolution in the eager hot
+  loop ([#949](https://github.com/SKaiNET-developers/SKaiNET/issues/949)).
+
 ## [0.39.0] - 2026-08-10
 
 Headline: **on-device AI on Android becomes real.** A JNI NEON kernel backend

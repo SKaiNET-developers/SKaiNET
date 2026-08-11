@@ -178,8 +178,105 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         return newTensor(outData, a.dtype, a, b)
     }
 
+    // ---- FP32 primitive fast paths (#949) --------------------------------
+    //
+    // The generic paths in this class pay, per element: IntArray allocations
+    // for broadcast index mapping, a vararg-spread boxed `data.get`, a KClass
+    // `when (dtype)` comparison, and a boxed lambda round-trip. On ART that
+    // overhead dominates LLM decode (#949: 83% of e2e decode on a Pixel 8a
+    // was non-matmul overhead, most of it these mechanics). The helpers below
+    // give the hot ops a flat primitive loop over the dense FloatArray buffer;
+    // every caller falls back to the generic path for other dtypes/layouts.
+    // `inline` is load-bearing: a non-inlined `(Float, Float) -> Float` lambda
+    // would box through `Function2` and reintroduce the very churn removed.
+
+    private fun <T : DType, V> floatBufferOf(t: Tensor<T, V>): FloatArray? =
+        (t.data as? FloatArrayTensorData<*>)?.buffer
+
+    private fun <T : DType, V> floatResult(
+        shape: Shape,
+        dtype: kotlin.reflect.KClass<T>,
+        buf: FloatArray,
+        vararg inputs: Tensor<T, V>,
+    ): Tensor<T, V> {
+        @Suppress("UNCHECKED_CAST")
+        val outData = dataFactory.fromFloatArray<T, Float>(shape, dtype, buf)
+            as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(outData, dtype, *inputs)
+    }
+
+    private inline fun <T : DType, V> floatUnaryFast(
+        t: Tensor<T, V>,
+        op: (Float) -> Float,
+    ): Tensor<T, V>? {
+        val src = floatBufferOf(t) ?: return null
+        val out = FloatArray(src.size)
+        for (i in src.indices) out[i] = op(src[i])
+        return floatResult(t.shape, t.dtype, out, t)
+    }
+
+    private inline fun <T : DType, V> floatBinaryFast(
+        a: Tensor<T, V>,
+        b: Tensor<T, V>,
+        op: (Float, Float) -> Float,
+    ): Tensor<T, V>? {
+        if (a.dtype != b.dtype) return null
+        val ab = floatBufferOf(a) ?: return null
+        val bb = floatBufferOf(b) ?: return null
+        val outShape = try {
+            broadcastShapes(a.shape, b.shape)
+        } catch (e: IllegalArgumentException) {
+            return null
+        }
+        val n = outShape.volume
+        if (a.shape == b.shape) {
+            val out = FloatArray(n)
+            for (i in 0 until n) out[i] = op(ab[i], bb[i])
+            return floatResult(outShape, a.dtype, out, a, b)
+        }
+        if (a.shape.volume == 1) {
+            val av = ab[0]
+            val out = FloatArray(n)
+            for (i in 0 until n) out[i] = op(av, bb[i])
+            return floatResult(outShape, a.dtype, out, a, b)
+        }
+        if (b.shape.volume == 1) {
+            val bv = bb[0]
+            val out = FloatArray(n)
+            for (i in 0 until n) out[i] = op(ab[i], bv)
+            return floatResult(outShape, a.dtype, out, a, b)
+        }
+        // Last-dim ("bias") broadcast, mirroring DefaultCpuOpsJvm.vectorFloatBinary.
+        val outLast = outShape.dimensions.lastOrNull() ?: return null
+        if (outLast <= 0) return null
+        val groups = n / outLast
+        val bIsBias = b.shape.rank >= 1 && b.shape[b.shape.rank - 1] == outLast &&
+            b.shape.dimensions.dropLast(1).all { it == 1 }
+        val aIsBias = a.shape.rank >= 1 && a.shape[a.shape.rank - 1] == outLast &&
+            a.shape.dimensions.dropLast(1).all { it == 1 }
+        if (bIsBias && a.shape.volume == n) {
+            val out = FloatArray(n)
+            for (g in 0 until groups) {
+                val off = g * outLast
+                for (i in 0 until outLast) out[off + i] = op(ab[off + i], bb[i])
+            }
+            return floatResult(outShape, a.dtype, out, a, b)
+        }
+        if (aIsBias && b.shape.volume == n) {
+            val out = FloatArray(n)
+            for (g in 0 until groups) {
+                val off = g * outLast
+                for (i in 0 until outLast) out[off + i] = op(ab[i], bb[off + i])
+            }
+            return floatResult(outShape, a.dtype, out, a, b)
+        }
+        return null
+    }
+
     // Scalar ops implemented via materializing a full-like tensor and delegating to elementwise ops
     override fun <T : DType, V> addScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val s = b.toFloat()
+        floatUnaryFast(a) { x -> x + s }?.let { return it }
         val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
             a.dtype,
@@ -189,6 +286,8 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> subScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val s = b.toFloat()
+        floatUnaryFast(a) { x -> x - s }?.let { return it }
         val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
             a.dtype,
@@ -198,6 +297,8 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> mulScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val s = b.toFloat()
+        floatUnaryFast(a) { x -> x * s }?.let { return it }
         val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
             a.dtype,
@@ -207,6 +308,8 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> divScalar(a: Tensor<T, V>, b: Number): Tensor<T, V> {
+        val s = b.toFloat()
+        floatUnaryFast(a) { x -> x / s }?.let { return it }
         val sb = newTensor(
             dataFactory.full<T, V>(a.shape, a.dtype, b),
             a.dtype,
@@ -216,6 +319,8 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> rsubScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> {
+        val s = a.toFloat()
+        floatUnaryFast(b) { x -> s - x }?.let { return it }
         val ta = newTensor(
             dataFactory.full<T, V>(b.shape, b.dtype, a),
             b.dtype,
@@ -225,6 +330,8 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> rdivScalar(a: Number, b: Tensor<T, V>): Tensor<T, V> {
+        val s = a.toFloat()
+        floatUnaryFast(b) { x -> s / x }?.let { return it }
         val ta = newTensor(
             dataFactory.full<T, V>(b.shape, b.dtype, a),
             b.dtype,
@@ -239,6 +346,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         a: Tensor<T, V>,
         b: Tensor<T, V>
     ): Tensor<T, V> {
+        floatBinaryFast(a, b) { x, y -> x + y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -262,6 +370,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         a: Tensor<T, V>,
         b: Tensor<T, V>
     ): Tensor<T, V> {
+        floatBinaryFast(a, b) { x, y -> x - y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -285,6 +394,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         a: Tensor<T, V>,
         b: Tensor<T, V>
     ): Tensor<T, V> {
+        floatBinaryFast(a, b) { x, y -> x * y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -308,6 +418,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         a: Tensor<T, V>,
         b: Tensor<T, V>
     ): Tensor<T, V> {
+        floatBinaryFast(a, b) { x, y -> x / y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -1533,6 +1644,9 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         }
         val finalShape = Shape(dims)
         require(finalShape.volume == inVol) { "Reshape volume mismatch: input=${inVol}, output=${finalShape.volume}" }
+        floatBufferOf(tensor)?.let { src ->
+            return floatResult(finalShape, tensor.dtype, src.copyOf(), tensor)
+        }
         // Reinitialize data by mapping flat index order
         val outData = dataFactory.init<T, V>(finalShape, tensor.dtype) { outIdx ->
             // Compute flat index in output (row-major)
@@ -1636,6 +1750,32 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val sz = if (rank == 0) 1 else tensors[i].shape[nd]
             prefixSums[i + 1] = prefixSums[i] + sz
         }
+        if (rank > 0 && nd < rank) {
+            var allFloat = true
+            val buffers = arrayOfNulls<FloatArray>(tensors.size)
+            for (ti in tensors.indices) {
+                val fb = floatBufferOf(tensors[ti])
+                if (fb == null) { allFloat = false; break }
+                buffers[ti] = fb
+            }
+            if (allFloat) {
+                var inner = 1
+                for (i2 in nd + 1 until rank) inner *= first.shape[i2]
+                var outer = 1
+                for (i2 in 0 until nd) outer *= first.shape[i2]
+                val out = FloatArray(outShape.volume)
+                var dst = 0
+                for (o in 0 until outer) {
+                    for (ti in tensors.indices) {
+                        val block = tensors[ti].shape[nd] * inner
+                        val srcOff = o * block
+                        buffers[ti]!!.copyInto(out, dst, srcOff, srcOff + block)
+                        dst += block
+                    }
+                }
+                return floatResult(outShape, dtype, out, *tensors.toTypedArray())
+            }
+        }
         val outData = dataFactory.init<T, V>(outShape, dtype) { outIdx ->
             var k = 0
             val along = if (rank == 0) outIdx[0] else outIdx[nd]
@@ -1725,6 +1865,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-relu")
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> if (x < 0f) 0f else x }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -1745,6 +1886,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
     @TensorOp()
     override fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> if (x < 0f) negativeSlope * x else x }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -1765,6 +1907,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
     @TensorOp()
     override fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> if (x >= 0f) x else alpha * (kotlin.math.exp(x) - 1f) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -1789,6 +1932,27 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(rank > 0) { "softmax: tensor must have rank > 0" }
         val nd = if (dim < 0) dim + rank else dim
         require(nd in 0 until rank) { "softmax: dim ${dim} out of range for rank ${rank}" }
+        if (nd == rank - 1) {
+            val src = floatBufferOf(tensor)
+            val last = tensor.shape[nd]
+            if (src != null && last > 0) {
+                val rows = src.size / last
+                val out = FloatArray(src.size)
+                for (r in 0 until rows) {
+                    val off = r * last
+                    var maxVal = Float.NEGATIVE_INFINITY
+                    for (k in 0 until last) if (src[off + k] > maxVal) maxVal = src[off + k]
+                    var denom = 0.0f
+                    for (k in 0 until last) {
+                        val e = kotlin.math.exp(src[off + k] - maxVal)
+                        out[off + k] = e
+                        denom += e
+                    }
+                    for (k in 0 until last) out[off + k] /= denom
+                }
+                return floatResult(tensor.shape, tensor.dtype, out, tensor)
+            }
+        }
         when (tensor.dtype) {
             sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
                 val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { outIdx ->
@@ -1831,6 +1995,26 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(rank > 0) { "logSoftmax: tensor must have rank > 0" }
         val nd = if (dim < 0) dim + rank else dim
         require(nd in 0 until rank) { "logSoftmax: dim ${dim} out of range for rank ${rank}" }
+        if (nd == rank - 1) {
+            val src = floatBufferOf(tensor)
+            val last = tensor.shape[nd]
+            if (src != null && last > 0) {
+                val rows = src.size / last
+                val out = FloatArray(src.size)
+                for (r in 0 until rows) {
+                    val off = r * last
+                    var maxVal = Float.NEGATIVE_INFINITY
+                    for (k in 0 until last) if (src[off + k] > maxVal) maxVal = src[off + k]
+                    var sumExp = 0.0f
+                    for (k in 0 until last) {
+                        sumExp += kotlin.math.exp((src[off + k] - maxVal).toDouble()).toFloat()
+                    }
+                    val logSumExp = kotlin.math.ln(sumExp.toDouble()).toFloat() + maxVal
+                    for (k in 0 until last) out[off + k] = src[off + k] - logSumExp
+                }
+                return floatResult(tensor.shape, tensor.dtype, out, tensor)
+            }
+        }
         when (tensor.dtype) {
             sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
                 val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { outIdx ->
@@ -1861,6 +2045,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-sigmoid")
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> 1.0f / (1.0f + kotlin.math.exp(-x)) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -1877,6 +2062,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-silu")
     override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> x * (1.0f / (1.0f + kotlin.math.exp(-x))) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -1894,6 +2080,10 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-gelu")
     override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x ->
+            val inner = x + 0.044715f * (x * x * x)
+            0.5f * x * (1.0f + kotlin.math.tanh(0.7978845608f * inner))
+        }?.let { return it }
         // Tanh approximation of GELU
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
@@ -1956,6 +2146,35 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     ): Tensor<T, V> {
         val rank = tensor.rank
         // Determine reduction mode
+        floatBufferOf(tensor)?.let { src ->
+            if (dim == null) {
+                var acc = 0.0f
+                for (i in src.indices) acc += src[i]
+                return floatResult(Shape(), tensor.dtype, floatArrayOf(acc), tensor)
+            }
+            val nd = if (dim < 0) dim + rank else dim
+            if (nd in 0 until rank) {
+                val dims = tensor.shape.dimensions
+                var outer = 1
+                for (i in 0 until nd) outer *= dims[i]
+                val red = dims[nd]
+                var inner = 1
+                for (i in nd + 1 until rank) inner *= dims[i]
+                val out = FloatArray(outer * inner)
+                for (o in 0 until outer) {
+                    val srcBase = o * red * inner
+                    val outBase = o * inner
+                    for (k in 0 until red) {
+                        val rowBase = srcBase + k * inner
+                        for (x in 0 until inner) out[outBase + x] += src[rowBase + x]
+                    }
+                }
+                val outDims = IntArray(rank - 1)
+                var oi = 0
+                for (i in 0 until rank) { if (i == nd) continue; outDims[oi++] = dims[i] }
+                return floatResult(Shape(outDims), tensor.dtype, out, tensor)
+            }
+        }
         if (dim == null) {
             // Reduce all elements to a scalar (rank-0)
             val outShape = Shape()
@@ -2112,6 +2331,39 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         dim: Int?
     ): Tensor<T, V> {
         val rank = tensor.rank
+        if (tensor.volume > 0) floatBufferOf(tensor)?.let { src ->
+            if (dim == null) {
+                var acc = 0.0f
+                for (i in src.indices) acc += src[i]
+                return floatResult(Shape(), tensor.dtype, floatArrayOf(acc / tensor.volume.toFloat()), tensor)
+            }
+            val nd = if (dim < 0) dim + rank else dim
+            if (nd in 0 until rank) {
+                val dims = tensor.shape.dimensions
+                var outer = 1
+                for (i in 0 until nd) outer *= dims[i]
+                val red = dims[nd]
+                if (red > 0) {
+                    var inner = 1
+                    for (i in nd + 1 until rank) inner *= dims[i]
+                    val out = FloatArray(outer * inner)
+                    for (o in 0 until outer) {
+                        val srcBase = o * red * inner
+                        val outBase = o * inner
+                        for (k in 0 until red) {
+                            val rowBase = srcBase + k * inner
+                            for (x in 0 until inner) out[outBase + x] += src[rowBase + x]
+                        }
+                    }
+                    val invN = red.toFloat()
+                    for (x in out.indices) out[x] /= invN
+                    val outDims = IntArray(rank - 1)
+                    var oi = 0
+                    for (i in 0 until rank) { if (i == nd) continue; outDims[oi++] = dims[i] }
+                    return floatResult(Shape(outDims), tensor.dtype, out, tensor)
+                }
+            }
+        }
         if (dim == null) {
             val outShape = Shape()
             val count = if (tensor.volume == 0) 0 else tensor.volume
@@ -2383,6 +2635,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 tensor.dtype == sk.ainet.lang.types.FP16::class
         ) { "sqrt supports only FP16/FP32, got ${tensor.dtype}" }
 
+        floatUnaryFast(tensor) { x -> sqrt(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val v = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2403,6 +2656,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 a.dtype == sk.ainet.lang.types.FP16::class
         ) { "pow supports only FP16/FP32, got ${a.dtype}" }
         require(a.shape == b.shape) { "pow requires matching shapes; got ${a.shape} and ${b.shape}" }
+        floatBinaryFast(a, b) { x, y -> scalarPow(x, y) }?.let { return it }
         val outData = dataFactory.init<T, V>(a.shape, a.dtype) { idx ->
             val av = a.data.get(*idx) as Float
             val bv = b.data.get(*idx) as Float
@@ -2425,6 +2679,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val nFloat = n.toFloat()
         val nInt = n.toInt()
         val isSmallInt = nFloat == nInt.toFloat() && kotlin.math.abs(nInt) <= 16
+        floatUnaryFast(a) { x -> if (isSmallInt) integerPow(x, nInt) else scalarPow(x, nFloat) }?.let { return it }
         val outData = dataFactory.init<T, V>(a.shape, a.dtype) { idx ->
             val av = a.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2461,6 +2716,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
                 tensor.dtype == sk.ainet.lang.types.FP16::class
         ) { "log supports only FP16/FP32, got ${tensor.dtype}" }
+        floatUnaryFast(tensor) { x -> ln(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val v = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2475,6 +2731,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
                 tensor.dtype == sk.ainet.lang.types.FP16::class
         ) { "log2 supports only FP16/FP32, got ${tensor.dtype}" }
+        floatUnaryFast(tensor) { x -> kmLog2(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val v = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2489,6 +2746,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
                 tensor.dtype == sk.ainet.lang.types.FP16::class
         ) { "log10 supports only FP16/FP32, got ${tensor.dtype}" }
+        floatUnaryFast(tensor) { x -> kmLog10(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val v = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2502,6 +2760,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-abs")
     override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> kotlin.math.abs(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -2523,6 +2782,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-sign")
     override fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> if (x > 0f) 1f else if (x < 0f) -1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -2545,6 +2805,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-clamp")
     override fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
         require(minVal <= maxVal) { "clamp: minVal ($minVal) must be <= maxVal ($maxVal)" }
+        floatUnaryFast(tensor) { x -> x.coerceIn(minVal, maxVal) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -2566,6 +2827,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-lt")
     override fun <T : DType, V> lt(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> if (x < value) 1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -2587,6 +2849,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-ge")
     override fun <T : DType, V> ge(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> if (x >= value) 1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
@@ -2826,6 +3089,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> exp(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> kotlin.math.exp(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val x = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2835,6 +3099,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> kotlin.math.expm1(x.toDouble()).toFloat() }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val x = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2844,6 +3109,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> sin(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> kotlin.math.sin(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val x = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2853,6 +3119,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     }
 
     override fun <T : DType, V> cos(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> kotlin.math.cos(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             val x = tensor.data.get(*idx) as Float
             @Suppress("UNCHECKED_CAST")
@@ -2864,6 +3131,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @TensorOp()
     @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-tanh")
     override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> kotlin.math.tanh(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
                 sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
