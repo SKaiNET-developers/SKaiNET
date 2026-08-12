@@ -32,7 +32,6 @@ import sk.ainet.lang.tensor.data.Q4_0TensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
-import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.BF16
@@ -225,24 +224,22 @@ internal class DefaultCpuOpsJvm(
                 @Suppress("UNCHECKED_CAST")
                 return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
             }
-            // Lazy transpose for Q4_K packed data: swap shape, keep the packed byte
-            // array untouched. `JvmQuantizedVectorKernels.matmulQ4_KVec` derives its
-            // byte offsets from (inputDim, outputDim) via `(blockIdx * outputDim + o)`
-            // and the packed layout is input-block-major (all output rows for a given
-            // input block packed contiguously), so the same bytes produce the right
-            // values under the swapped shape. This is the DSL-path counterpart of the
-            // Q4/Q8 MemSeg lazy transpose: Q4_K weights can flow through
-            // `ops.matmul(x, ops.transpose(W))` without a dequant round-trip.
-            if (data is Q4_KTensorData) {
-                val packedData = data.packedData
-                val transposed = Q4_KBlockTensorData(Shape(cols, rows), packedData)
-                @Suppress("UNCHECKED_CAST")
-                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
-            }
+            // Q4_K (ByteArray-backed `Q4_KBlockTensorData`) transpose used to be
+            // intercepted here with a bare shape swap, on the claim that
+            // `JvmQuantizedVectorKernels.matmulQ4_KVec`'s `(blockIdx * outputDim + o)`
+            // byte addressing matches the packed layout "as-is". That's only true
+            // when there's a single quant block per row; for any wider row it silently
+            // fed the kernel physically wrong bytes — the same root cause as the
+            // Q5_0/Q5_1/Q8_0/Q4_0/Q5_K/Q6_K bug fixed in `DefaultCpuOpsBase.transpose`
+            // (see `transposePackedBlocks`, SKaiNET-transformers#307). Falling through
+            // to `super.transpose()` picks up the corrected, physically-reordering
+            // implementation instead of duplicating (and re-diverging from) it here.
+            //
             // Narrow-float input-major lazy transpose is handled in DefaultCpuOpsBase too —
             // nothing above intercepts it, so it falls through. Issue #888.
-            // Q6_K / Q5_1 / Q5_0 lazy transpose is handled in DefaultCpuOpsBase
-            // (block-major, shared with Native); the JVM ops don't intercept them here.
+            // Q6_K / Q5_1 / Q5_0 / Q4_K / Q8_0 / Q4_0 transpose is handled in
+            // DefaultCpuOpsBase (block-major, shared with Native); the JVM ops don't
+            // intercept them here.
             // MemorySegment FP32 fast path: physical transpose via SIMD.
             // Uses Arena.ofAuto() so the result segment is reclaimed by GC
             // when the wrapping Tensor is no longer reachable. Earlier

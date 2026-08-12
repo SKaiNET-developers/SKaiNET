@@ -459,6 +459,67 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     private val q5_0Kernel by lazy { resolveProvider { it.matmulQ5_0() != null }?.matmulQ5_0() }
 
     /**
+     * `cols / blockSize`, i.e. the number of quantization blocks per output row —
+     * validated so a misaligned packed tensor fails loudly here rather than
+     * silently truncating a partial trailing block during [transposePackedBlocks].
+     */
+    private fun requirePackedBlockAligned(cols: Int, blockSize: Int, formatName: String): Int {
+        require(cols % blockSize == 0) {
+            "$formatName transpose: inputDim $cols is not a multiple of the block size $blockSize " +
+                "— packed weight is not row-block-aligned, cannot compute a physical block-grid transpose"
+        }
+        return cols / blockSize
+    }
+
+    /**
+     * Physically transposes a packed weight's block grid from *row-major*
+     * (canonical) order into the *input-block-major* order the packed-quant
+     * matmul kernels require.
+     *
+     * Canonical storage — what a fresh `[outputDim, inputDim]`-shaped packed
+     * tensor has, whether loaded verbatim from GGUF or built any other
+     * row-major way — groups blocks per output row: for row `o`, its
+     * `blocksPerInputDim` blocks are contiguous, then row `o + 1`. Flat block
+     * index = `o * blocksPerInputDim + blockIdx`.
+     *
+     * Every packed-quant native/Panama/scalar matmul kernel instead reads
+     * `weight + (blockIdx * outputDim + o) * bytesPerBlock` — see e.g. the
+     * `Per-block packed weight layout` header comment in `q5_0_matmul.c` /
+     * `q4k_matmul.c` / etc. — because for a FIXED input block, all `outputDim`
+     * rows' corresponding block bytes are consecutive, letting the kernel's
+     * block-outer/row-inner loop read weight memory sequentially instead of
+     * striding `outputDim * bytesPerBlock` per input block.
+     *
+     * These two orderings are literal transposes of the `(outputDim,
+     * blocksPerInputDim)` block grid (treating each `bytesPerBlock`-sized
+     * block as an atomic item) and coincide only when `blocksPerInputDim == 1`.
+     * For every wider weight — i.e. essentially every real model, since
+     * `inputDim` is almost always many multiples of the 32/256-element block
+     * size — reordering the *shape* without reordering the *bytes* hands the
+     * kernel physically wrong data: it silently reads block `bI` of row `o`
+     * from where block `o`'s row `bI`-th chunk actually lives. This is the
+     * root cause of the SKaiNET-transformers#307 all-zero Q5_0/Q5_1 matmul
+     * report (general to every packed format the native tier serves, not
+     * Q5-specific — see `NativeLazyTransposeGroundTruthReproTest`).
+     */
+    private fun transposePackedBlocks(
+        packed: ByteArray,
+        outputDim: Int,
+        blocksPerInputDim: Int,
+        bytesPerBlock: Int,
+    ): ByteArray {
+        val out = ByteArray(packed.size)
+        for (o in 0 until outputDim) {
+            for (blockIdx in 0 until blocksPerInputDim) {
+                val srcOff = (o * blocksPerInputDim + blockIdx) * bytesPerBlock
+                val dstOff = (blockIdx * outputDim + o) * bytesPerBlock
+                packed.copyInto(out, dstOff, srcOff, srcOff + bytesPerBlock)
+            }
+        }
+        return out
+    }
+
+    /**
      * Platform-neutral packed-quant matmul: `FP32 input × packed-quant weight`,
      * resolving the kernel via [KernelRegistry] (scalar on Native/JS/WASM, Panama/
      * native-FFM on JVM). Returns `null` when the weight isn't a heap-packed quant
@@ -714,28 +775,68 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val rows = tensor.shape[rank - 2]
         val cols = tensor.shape[rank - 1]
 
-        // Lazy transpose for heap-packed quant weights (Q4_K/Q6_K/Q5_1/Q5_0): the
-        // matmul kernels index the packed bytes input-block-major from the post-swap
-        // (inputDim, outputDim), so transpose is a pure shape swap — same bytes, no copy.
-        // Lets `ops.matmul(x, ops.transpose(W))` run on every platform without a dequant
-        // round-trip. (The JVM ops intercept Q4_K/Q6_K + MemSeg before reaching here.)
+        // Transpose for heap-packed quant weights (Q4_K/Q5_K/Q6_K/Q5_1/Q5_0/Q8_0/Q4_0):
+        // the packed-quant matmul kernels (chooseQuantizedMatmulHeap, native/Panama/
+        // scalar alike) always read `packedData` as *input-block-major* —
+        // `(blockIdx * outputDim + o)`, all `outputDim` rows' blocks for a fixed
+        // input block contiguous (see e.g. q5_0_matmul.c) — regardless of the
+        // tensor's declared shape. Canonical packed storage (as loaded verbatim from
+        // GGUF, or as built by any other row-major producer) is instead *row-major*:
+        // for output row `o`, its `blocksPerInputDim` blocks are contiguous, then row
+        // `o + 1`. Those two orderings coincide only when there's a single block per
+        // row (`blocksPerInputDim == 1`); for any weight wider than one block — i.e.
+        // virtually every real model, since inputDim is almost always >> the 32/256-
+        // element block size — a bare shape relabel hands the kernel bytes in the
+        // WRONG physical order and it silently reads garbage (SKaiNET#968,
+        // surfaced downstream via SKaiNET-transformers#307's all-zero Q5_0/Q5_1
+        // matmul). So this performs the actual O(bytes) block-grid permutation
+        // (`transposePackedBlocks`) instead of a free shape swap. Still avoids the
+        // FP32 dequant round-trip `ops.matmul(x, ops.transpose(W))` was written to
+        // dodge — just not for free anymore.
         if (rank == 2) {
             @Suppress("UNCHECKED_CAST")
             when (val d = tensor.data) {
-                is Q4_KTensorData -> return newTensor(Q4_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                is Q5_KTensorData -> return newTensor(Q5_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                is Q6_KTensorData -> return newTensor(Q6_KBlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                is Q5_1TensorData -> return newTensor(Q5_1BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                is Q5_0TensorData -> return newTensor(Q5_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                // Q8_0 / Q4_0 lazy transpose: rewrap the same input-block-major bytes
-                // with flipped shape (bytes are layout-agnostic to the [out,in] kernel
-                // convention) so a packed weight (e.g. gemma's tied Q8_0 lm_head)
-                // survives linearProject's transpose instead of hitting the generic
-                // FP32 path (Byte→Float ClassCastException). This `when` now covers
-                // every quant type chooseQuantizedMatmulHeap dispatches — i.e. every
-                // packed type that can be a matmul weight. See transformers #178.
-                is Q8_0TensorData -> return newTensor(Q8_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
-                is Q4_0TensorData -> return newTensor(Q4_0BlockTensorData(Shape(cols, rows), d.packedData) as TensorData<T, V>, tensor.dtype, tensor)
+                is Q4_KTensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q4_KTensorData.BLOCK_SIZE, "Q4_K")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q4_KTensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q4_KBlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
+                is Q5_KTensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q5_KTensorData.BLOCK_SIZE, "Q5_K")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q5_KTensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q5_KBlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
+                is Q6_KTensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q6_KTensorData.BLOCK_SIZE, "Q6_K")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q6_KTensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q6_KBlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
+                is Q5_1TensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q5_1TensorData.BLOCK_SIZE, "Q5_1")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q5_1TensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q5_1BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
+                is Q5_0TensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q5_0TensorData.BLOCK_SIZE, "Q5_0")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q5_0TensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q5_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
+                // Q8_0 / Q4_0: same physical block-grid transpose as the arms above —
+                // this `when` covers every quant type chooseQuantizedMatmulHeap
+                // dispatches, i.e. every packed type that can be a matmul weight
+                // (originally retrofitted for the Byte→Float ClassCastException gap,
+                // see transformers #178; the shape-swap-only version of these arms
+                // carried the same block-order bug as Q5_0/Q5_1 above).
+                is Q8_0TensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q8_0TensorData.BLOCK_SIZE, "Q8_0")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q8_0TensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q8_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
+                is Q4_0TensorData -> {
+                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q4_0TensorData.BLOCK_SIZE, "Q4_0")
+                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q4_0TensorData.BYTES_PER_BLOCK)
+                    return newTensor(Q4_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
+                }
                 // Narrow floats (FP16/BF16) relaid input-major at load: the transpose is the
                 // same buffer read with the other shape's strides, so hand back an ordinary
                 // dense narrow tensor over it. This is what lets a KEEP_NATIVE weight survive
