@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.40.1] - 2026-08-12
+
+Headline: **correctness hotfix — silently wrong output, not a crash.** `DefaultCpuOps.transpose()` for packed quantized weights (Q4_0/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K) performed a shape-only relabel instead of a real block-grid byte permutation whenever a row spanned more than one quant block (`blocksPerInputDim > 1` — true of virtually every real model). `ops.matmul(x, ops.transpose(W))` fed the packed-quant kernels bytes in the wrong order across all three kernel tiers — scalar, Panama-vector, and native (FFM/JNI) — silently producing wrong numbers, sometimes all-zero output, with no exception raised. Upgrading is strongly recommended for anyone using packed-quantized weights with `ops.transpose()`.
+
+### Fixed
+
+- **Packed-quant `transpose()` silently corrupted matmul output**
+  ([#968](https://github.com/SKaiNET-developers/SKaiNET/issues/968),
+  [#969](https://github.com/SKaiNET-developers/SKaiNET/pull/969))
+  — `DefaultCpuOps.transpose()` swapped the tensor's shape metadata without
+  physically reordering the underlying `packedData` bytes, on the assumption
+  that the packed-quant matmul kernels index those bytes block-major
+  regardless of layout. That assumption only holds when there is a single
+  quant block per row (`blocksPerInputDim == 1`); for any wider row the
+  canonical (row-major) and kernel-native block orderings are literal
+  transposes of the `(outputDim, blocksPerInputDim)` block grid and do not
+  coincide, so a freshly-loaded weight run through `ops.transpose()` fed the
+  scalar, Panama-vector, and native (FFM/JNI) kernel tiers alike bytes in the
+  wrong order — for all seven packed formats (Q4_0/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K).
+  `transpose()` now performs a real `O(bytes)` block-grid permutation
+  (`transposePackedBlocks`); a misaligned packed tensor (`inputDim` not a
+  multiple of the format's block size) now throws `IllegalArgumentException`
+  instead of silently truncating a partial trailing block.
+  `DefaultCpuOpsJvm`'s separate, independently-buggy shape-swap-only
+  interception for `Q4_KTensorData` is removed, falling through to the
+  shared corrected implementation. Caught by a new ground-truth regression
+  test (`NativeLazyTransposeGroundTruthReproTest`) that dequants each packed
+  format's canonical and kernel-native byte layouts independently and checks
+  both the classic (`transpose` + matmul) and pre-transposed paths against
+  that ground truth, per format — the kind of test the original "same bytes,
+  new shape" optimization lacked.
+
 ## [0.40.0] - 2026-08-11
 
 Headline: **big models fit on real devices, and SKaiNET reaches iOS/macOS
