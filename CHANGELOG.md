@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-08-11
+
+Headline: **big models fit on real devices, and SKaiNET reaches iOS/macOS
+natively.** Off-heap/mmap tensor storage lets Android load models beyond the
+hard ART heap cap by paging weight bytes from mapped files instead of the
+managed heap, and a compounding GGUF dequantization bug that transiently
+needed >12 GB heap for a 1.1B Q4_K_M model is fixed down to a ~1.05x-of-dense
+floor. Q5_0/Q5_1 packed matmul reaches the native tier (FFM, Kotlin/Native,
+JNI) for the first time, and `skainet-backend-native-cpu` now publishes
+iOS/macOS Kotlin/Native targets whose single Apple arm64 archive dispatches
+FEAT_DotProd at runtime — one build serves A12 through M-series.
+
 ### Added
 
 - **Off-heap / mmap tensor storage on Android**
@@ -21,6 +33,31 @@
   new `androidHostTest` suites (96 MB payload, ~240 KB used-heap growth). Files over 2 GB
   are rejected fast (single-region mapping); windowed mapping is a follow-up under
   SKEEP-003's IO pipeline improvement.
+- **Native Q5_0 / Q5_1 packed matmul kernels (FFM, Kotlin/Native, JNI).** 0.39.0 shipped
+  packed GGUF *loading* for Q5_0/Q5_1 plus scalar + Panama kernels, but the native tier had
+  no Q5_x kernels — on the JVM the registry cascaded to Panama (50), and on Kotlin/Native and
+  Android the formats ran on the priority-0 scalar floor. New `skainet_q5_0_matmul` /
+  `skainet_q5_1_matmul` C kernels (plain NEON, no dotprod/i8mm requirement — runs on every
+  AArch64 core) expand the `qh` high-bit plane with a per-lane `vtstq_u8` bit test and fold
+  the dequant algebraically (`d*(dot - 16*Σx)` for Q5_0, `d*dot + m*Σx` for Q5_1) so the
+  per-block input sum hoists out of the output-row loop. Wired into all three consumers:
+  the FFM `NativeKernelProvider` (JVM), the cinterop `NativeKnKernelProvider`
+  (Kotlin/Native), and the Android JNI bridge (`JniKernels.q50Matmul`/`q51Matmul` +
+  `JniKernelProvider`), each with parity tests against the scalar references. Unblocks the
+  packed Q5_1 path for `functiongemma-270m` "Q5_K_M" checkpoints (whose attention/FFN
+  weights are Q5_1) under `NATIVE_OPTIMIZED` — see SKaiNET-transformers#170. (#708)
+- **`skainet-backend-native-cpu` publishes Apple Kotlin/Native targets** — `iosArm64`,
+  `iosSimulatorArm64`, and `macosArm64` klibs with the Mach-O kernel static archive embedded
+  via cinterop, exactly like the Linux pair ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959),
+  iOS kernel track of [#920](https://github.com/SKaiNET-developers/SKaiNET/issues/920)).
+  Archives are built by new Apple CMake lanes on a macOS host (platform SDKs, no `-march` —
+  the #958 runtime FEAT_DotProd dispatch serves A12 through M-series from one device archive)
+  or injected in CI via `-PskainetKernelsIosArm64Dir` / `-PskainetKernelsIosSimulatorArm64Dir` /
+  `-PskainetKernelsMacosArm64Dir`. The shared nativeTest parity suites now also run as
+  `macosArm64Test` (native) and `iosSimulatorArm64Test` (simulator) on the macos-14 PR lane.
+  On non-macOS hosts the Apple task family is disabled (ubuntu CI unaffected). Registration
+  on K/N remains manual via `installNativeKernels()` — Apple consumers call it once at startup,
+  same as Linux.
 
 ### Fixed
 
@@ -43,6 +80,40 @@
   (`NATIVE_OPTIMIZED`) keeps the loader's historical packed-block behavior bit-for-bit; a
   parity test pins the dequant path to the packed accessors bit-exactly across all seven
   supported quant formats.
+
+### Performance
+
+- **Apple arm64 runtime FEAT_DotProd dispatch for the Q4_K/Q6_K C kernels**
+  (`skainet-backend-native-cpu`, [#958](https://github.com/SKaiNET-developers/SKaiNET/issues/958),
+  part of the iOS kernel track of [#920](https://github.com/SKaiNET-developers/SKaiNET/issues/920)).
+  Apple builds now compile at the SDK-default arm64 baseline — a Kotlin/Native klib embeds
+  exactly one static archive, and Apple A12 (iPhone XS/XR, still iOS-supported) lacks
+  FEAT_DotProd while A13+/M-series have it — with the dotprod hot bodies compiled twice
+  (baseline + `target("dotprod")`-attributed) and selected once per matmul via a cached
+  `sysctlbyname("hw.optional.arm.FEAT_DotProd")` probe. Non-Apple builds keep the compile-time
+  `-march` guard as the only mechanism; Linux codegen is unchanged (qemu parity green, `sdot`
+  verified in the cross archive). The existing macOS FFM dylib moves from TU-level dotprod to
+  baseline+dispatch — runtime-equivalent on every Apple Silicon Mac. iOS builds are static-only
+  (`SKAINET_STATIC_ONLY`, auto-on for `CMAKE_SYSTEM_NAME=iOS`).
+
+### CI
+
+- **Releases embed the Apple kernel archives** ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959)):
+  publish.yml's macos leg builds the three Mach-O static archives (with an `nm`/`objdump`
+  `sdot` assertion guarding the #958 dispatch body against clang's silent unknown-feature
+  ignore), uploads them fail-loud, and the publish job verifies and injects them via the
+  `-PskainetKernels{IosArm64,IosSimulatorArm64,MacosArm64}Dir` properties — the same
+  verified-artifact-or-fail contract as the Linux ELF archives.
+
+### Documentation
+
+- **Kernel support matrix gains the `native-cinterop` tier** (Native·linux + Native·apple,
+  the 7 packed-quant formats) — the Native·linux column was under-reported as `scalar`
+  before; both native columns now reflect `NativeKnKernelProvider`
+  ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959)). The eager-backends
+  mindmap and the `installNativeKernels()` KDoc document the manual-registration contract
+  and the Apple A12 dispatch fallback.
+
 ## [0.39.1] - 2026-08-11
 
 Headline: **eager overhead off the JVM is gone.** The eager CPU ops gain
@@ -58,21 +129,7 @@ rebuilt per access. The README now points LLM users to SKaiNET-transformers.
   "Start in 5 minutes" says plainly that LLM inference lives in the
   SKaiNET-transformers repository — this repo is the engine underneath — and names
   the `sk.ainet.transformers` artifacts and BOM to depend on.
-### Added
 
-- **Native Q5_0 / Q5_1 packed matmul kernels (FFM, Kotlin/Native, JNI).** 0.39.0 shipped
-  packed GGUF *loading* for Q5_0/Q5_1 plus scalar + Panama kernels, but the native tier had
-  no Q5_x kernels — on the JVM the registry cascaded to Panama (50), and on Kotlin/Native and
-  Android the formats ran on the priority-0 scalar floor. New `skainet_q5_0_matmul` /
-  `skainet_q5_1_matmul` C kernels (plain NEON, no dotprod/i8mm requirement — runs on every
-  AArch64 core) expand the `qh` high-bit plane with a per-lane `vtstq_u8` bit test and fold
-  the dequant algebraically (`d*(dot - 16*Σx)` for Q5_0, `d*dot + m*Σx` for Q5_1) so the
-  per-block input sum hoists out of the output-row loop. Wired into all three consumers:
-  the FFM `NativeKernelProvider` (JVM), the cinterop `NativeKnKernelProvider`
-  (Kotlin/Native), and the Android JNI bridge (`JniKernels.q50Matmul`/`q51Matmul` +
-  `JniKernelProvider`), each with parity tests against the scalar references. Unblocks the
-  packed Q5_1 path for `functiongemma-270m` "Q5_K_M" checkpoints (whose attention/FFN
-  weights are Q5_1) under `NATIVE_OPTIMIZED` — see SKaiNET-transformers#170. (#708)
 ### Performance
 
 - **Primitive FP32 fast paths for the eager CPU ops** (`skainet-backend-cpu`,
@@ -92,51 +149,6 @@ rebuilt per access. The README now points LLM users to SKaiNET-transformers.
 - **`DirectCpuExecutionContext.ops` is cached.** The getter previously constructed a fresh ops
   instance on every access, re-running per-instance lazy kernel resolution in the eager hot
   loop ([#949](https://github.com/SKaiNET-developers/SKaiNET/issues/949)).
-- **Apple arm64 runtime FEAT_DotProd dispatch for the Q4_K/Q6_K C kernels**
-  (`skainet-backend-native-cpu`, [#958](https://github.com/SKaiNET-developers/SKaiNET/issues/958),
-  part of the iOS kernel track of [#920](https://github.com/SKaiNET-developers/SKaiNET/issues/920)).
-  Apple builds now compile at the SDK-default arm64 baseline — a Kotlin/Native klib embeds
-  exactly one static archive, and Apple A12 (iPhone XS/XR, still iOS-supported) lacks
-  FEAT_DotProd while A13+/M-series have it — with the dotprod hot bodies compiled twice
-  (baseline + `target("dotprod")`-attributed) and selected once per matmul via a cached
-  `sysctlbyname("hw.optional.arm.FEAT_DotProd")` probe. Non-Apple builds keep the compile-time
-  `-march` guard as the only mechanism; Linux codegen is unchanged (qemu parity green, `sdot`
-  verified in the cross archive). The existing macOS FFM dylib moves from TU-level dotprod to
-  baseline+dispatch — runtime-equivalent on every Apple Silicon Mac. iOS builds are static-only
-  (`SKAINET_STATIC_ONLY`, auto-on for `CMAKE_SYSTEM_NAME=iOS`).
-
-### Added
-
-- **`skainet-backend-native-cpu` publishes Apple Kotlin/Native targets** — `iosArm64`,
-  `iosSimulatorArm64`, and `macosArm64` klibs with the Mach-O kernel static archive embedded
-  via cinterop, exactly like the Linux pair ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959),
-  iOS kernel track of [#920](https://github.com/SKaiNET-developers/SKaiNET/issues/920)).
-  Archives are built by new Apple CMake lanes on a macOS host (platform SDKs, no `-march` —
-  the #958 runtime FEAT_DotProd dispatch serves A12 through M-series from one device archive)
-  or injected in CI via `-PskainetKernelsIosArm64Dir` / `-PskainetKernelsIosSimulatorArm64Dir` /
-  `-PskainetKernelsMacosArm64Dir`. The shared nativeTest parity suites now also run as
-  `macosArm64Test` (native) and `iosSimulatorArm64Test` (simulator) on the macos-14 PR lane.
-  On non-macOS hosts the Apple task family is disabled (ubuntu CI unaffected). Registration
-  on K/N remains manual via `installNativeKernels()` — Apple consumers call it once at startup,
-  same as Linux.
-
-### CI
-
-- **Releases embed the Apple kernel archives** ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959)):
-  publish.yml's macos leg builds the three Mach-O static archives (with an `nm`/`objdump`
-  `sdot` assertion guarding the #958 dispatch body against clang's silent unknown-feature
-  ignore), uploads them fail-loud, and the publish job verifies and injects them via the
-  `-PskainetKernels{IosArm64,IosSimulatorArm64,MacosArm64}Dir` properties — the same
-  verified-artifact-or-fail contract as the Linux ELF archives.
-
-### Documentation
-
-- **Kernel support matrix gains the `native-cinterop` tier** (Native·linux + Native·apple,
-  the 7 packed-quant formats) — the Native·linux column was under-reported as `scalar`
-  before; both native columns now reflect `NativeKnKernelProvider`
-  ([#959](https://github.com/SKaiNET-developers/SKaiNET/issues/959)). The eager-backends
-  mindmap and the `installNativeKernels()` KDoc document the manual-registration contract
-  and the Apple A12 dispatch fallback.
 
 ## [0.39.0] - 2026-08-10
 

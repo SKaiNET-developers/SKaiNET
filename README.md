@@ -53,7 +53,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.39.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.40.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -297,7 +297,14 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.39.1
+## What's New in 0.40.0
+
+- **Android models grow past the ART heap cap.** Off-heap/mmap tensor storage shares the JVM's memory-mapped weight loading with Android — dense F32 tensors serve as zero-heap mapped views, and weight bytes live in OS-paged file-backed pages instead of the managed heap. A 640 MB dense model now loads with **1.4 MB** of heap allocation.
+- **GGUF `DEQUANTIZE_TO_FP32` no longer over-allocates.** A 1.1B Q4_K_M GGUF transiently needed >12 GB heap against a ~4.4 GB dense-FP32 floor. Three compounding allocation sources in the loader and K-quant kernels are fixed, bringing peak live allocation to ~1.05x of the dense FP32 size.
+- **Q5_0/Q5_1 packed matmul reaches the native tier.** New NEON C kernels for both formats are wired into the FFM (JVM), Kotlin/Native, and Android JNI providers — unblocking the packed Q5_1 path for Q5_K_M checkpoints under `NATIVE_OPTIMIZED`.
+- **SKaiNET reaches iOS and macOS natively.** `skainet-backend-native-cpu` now publishes `iosArm64`, `iosSimulatorArm64`, and `macosArm64` Kotlin/Native targets with embedded kernel archives; a single Apple arm64 archive dispatches FEAT_DotProd at runtime, so one build serves A12 through M-series.
+
+### Previously, in 0.39.1
 
 - **Eager CPU ops run primitive FP32 fast paths.** The generic per-element paths (index-array allocations, boxed accessors, dtype dispatch) dominated on-device LLM decode — 83% of end-to-end SmolLM2-135M decode time on a Pixel 8a was non-matmul overhead even with the NEON backend. Hot ops (arithmetic, activations, unary math, softmax/logSoftmax, reductions, concat, reshape) now run flat primitive loops over the dense `FloatArray` buffer, benefiting every non-JVM target — Android, Kotlin/Native, JS/Wasm. `DirectCpuExecutionContext.ops` is also cached instead of rebuilt per access.
 - **README points LLM users to SKaiNET-transformers.** A callout under "Start in 5 minutes" makes clear that LLM inference lives in the SKaiNET-transformers repository — this repo is the engine underneath.
@@ -346,6 +353,10 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.40.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — off-heap/mmap tensor storage on Android (#921), GGUF `DEQUANTIZE_TO_FP32` over-allocation fix (#782), native Q5_0/Q5_1 packed matmul kernels (#708), Apple arm64 runtime FEAT_DotProd dispatch (#958), Apple iOS/macOS Kotlin/Native kernel targets (#959)
 
 ### Contributors (0.39.1)
 
