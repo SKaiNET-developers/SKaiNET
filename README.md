@@ -53,7 +53,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.40.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.40.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -297,7 +297,11 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.40.0
+## What's New in 0.40.1
+
+- **Correctness hotfix: packed-quant `transpose()` was silently wrong, not crashing.** `ops.matmul(x, ops.transpose(W))` on a packed-quantized weight (Q4_0/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K) with more than one quant block per row produced silently incorrect output — sometimes all-zero — across the scalar, Panama-vector, *and* native (FFM/JNI) kernel tiers, with no exception raised. `transpose()` now performs a real block-grid byte permutation instead of a shape-only relabel; a misaligned packed tensor now throws instead of silently truncating. Closes [#968](https://github.com/SKaiNET-developers/SKaiNET/issues/968). **Upgrading is strongly recommended** for anyone calling `ops.transpose()` on packed-quantized weights.
+
+### Previously, in 0.40.0
 
 - **Android models grow past the ART heap cap.** Off-heap/mmap tensor storage shares the JVM's memory-mapped weight loading with Android — dense F32 tensors serve as zero-heap mapped views, and weight bytes live in OS-paged file-backed pages instead of the managed heap. A 640 MB dense model now loads with **1.4 MB** of heap allocation.
 - **GGUF `DEQUANTIZE_TO_FP32` no longer over-allocates.** A 1.1B Q4_K_M GGUF transiently needed >12 GB heap against a ~4.4 GB dense-FP32 floor. Three compounding allocation sources in the loader and K-quant kernels are fixed, bringing peak live allocation to ~1.05x of the dense FP32 size.
@@ -353,6 +357,10 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.40.1)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — packed-quant `transpose()` block-grid correctness fix, all three kernel tiers (#968, #969)
 
 ### Contributors (0.40.0)
 
