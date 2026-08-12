@@ -35,11 +35,22 @@ class PackedMatmulDispatchTest {
     }
     private fun le16(b: ByteArray, o: Int, h: Int) { b[o] = (h and 0xFF).toByte(); b[o + 1] = ((h ushr 8) and 0xFF).toByte() }
 
-    /** Random block-major Q5_1 bytes for [out,in] + the FP32 weight they dequantize to (row-major). */
+    /**
+     * Random CANONICAL (row-major: for output row `o`, its `blocks` input-blocks
+     * are contiguous, then row `o + 1`) Q5_1 bytes for `[out,in]` + the FP32
+     * weight they dequantize to (row-major) — i.e. bytes shaped the way a
+     * `[outputDim, inputDim]`-shaped packed tensor actually has them (verbatim
+     * GGUF load, or any other row-major producer), NOT the kernel-native
+     * `(blockIdx * outputDim + o)` layout the matmul kernels want. `ops
+     * .transpose` is responsible for the canonical → kernel-native block-grid
+     * permutation (`DefaultCpuOpsBase.transposePackedBlocks`); this generator
+     * must hand it genuinely canonical input or it isn't testing the real
+     * `ops.matmul(x, ops.transpose(W))` path — see SKaiNET-transformers#307.
+     */
     private fun q5_1(inDim: Int, outDim: Int, rng: Random): Pair<ByteArray, FloatArray> {
         val blocks = inDim / 32; val bytes = ByteArray(outDim * blocks * 24); val wf = FloatArray(outDim * inDim)
         for (o in 0 until outDim) for (bI in 0 until blocks) {
-            val off = (bI * outDim + o) * 24; val dst = o * inDim + bI * 32
+            val off = (o * blocks + bI) * 24; val dst = o * inDim + bI * 32
             val d = rng.nextFloat() * 0.05f + 0.01f; val m = rng.nextFloat() - 0.5f
             le16(bytes, off, half(d)); le16(bytes, off + 2, half(m))
             val qh = IntArray(4) { rng.nextInt(256) }; for (k in 0 until 4) bytes[off + 4 + k] = qh[k].toByte()
@@ -53,11 +64,11 @@ class PackedMatmulDispatchTest {
         return bytes to wf
     }
 
-    /** Random block-major Q4_K bytes for [out,in] + the FP32 weight. */
+    /** Random CANONICAL (row-major, see [q5_1]) Q4_K bytes for [out,in] + the FP32 weight. */
     private fun q4_k(inDim: Int, outDim: Int, rng: Random): Pair<ByteArray, FloatArray> {
         val blocks = inDim / 256; val bytes = ByteArray(outDim * blocks * 144); val wf = FloatArray(outDim * inDim)
         for (o in 0 until outDim) for (bI in 0 until blocks) {
-            val off = (bI * outDim + o) * 144; val dst = o * inDim + bI * 256
+            val off = (o * blocks + bI) * 144; val dst = o * inDim + bI * 256
             val d = rng.nextFloat() * 0.02f + 0.005f; val dMin = rng.nextFloat() * 0.02f + 0.005f
             le16(bytes, off, half(d)); le16(bytes, off + 2, half(dMin))
             for (k in 0 until 140) bytes[off + 4 + k] = rng.nextInt(256).toByte()
@@ -80,11 +91,11 @@ class PackedMatmulDispatchTest {
         return bytes to wf
     }
 
-    /** Random block-major Q6_K bytes for [out,in] + the FP32 weight. */
+    /** Random CANONICAL (row-major, see [q5_1]) Q6_K bytes for [out,in] + the FP32 weight. */
     private fun q6_k(inDim: Int, outDim: Int, rng: Random): Pair<ByteArray, FloatArray> {
         val blocks = inDim / 256; val bytes = ByteArray(outDim * blocks * 210); val wf = FloatArray(outDim * inDim)
         for (o in 0 until outDim) for (bI in 0 until blocks) {
-            val off = (bI * outDim + o) * 210; val dst = o * inDim + bI * 256
+            val off = (o * blocks + bI) * 210; val dst = o * inDim + bI * 256
             for (k in 0 until 208) bytes[off + k] = rng.nextInt(256).toByte()
             val d = rng.nextFloat() * 0.01f + 0.002f; le16(bytes, off + 208, half(d))
             for (h in 0..1) {

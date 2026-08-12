@@ -150,14 +150,20 @@ class QuantizedMemSegMatmulTest {
             transposed.data is Q4_KTensorData,
             "transpose must preserve Q4_K packed layout, got ${transposed.data::class.simpleName}"
         )
-        // Lazy invariant: the packed byte array must be the SAME reference —
-        // no copy, no re-layout. This is what distinguishes the specialized
-        // branch from the fallback per-element transpose (which would crash
-        // on Byte → Float casts, the very regression this test guards).
+        // `cols == BLOCK_SIZE` means exactly one block per row (blocksPerInputDim ==
+        // 1), so the physical block-grid transpose (see `DefaultCpuOpsBase
+        // .transposePackedBlocks`) is a content-preserving permutation here — but it
+        // is still a genuine copy (a new array), not the old bare shape-swap-only
+        // "zero-copy" behaviour, which was only byte-order-correct in this exact
+        // single-block-per-row case and silently wrong for every wider row
+        // (SKaiNET-transformers#307). Assert content equality, not reference
+        // identity — the specialized branch (vs. the fallback per-element
+        // transpose, which would crash on Byte → Float casts, the original
+        // regression this test guarded) is still exercised either way.
         val transposedPacked = (transposed.data as Q4_KTensorData).packedData
         assertTrue(
-            transposedPacked === bytes,
-            "Q4_K lazy transpose must keep the same packedData reference (zero-copy)"
+            transposedPacked.contentEquals(bytes),
+            "Q4_K transpose must preserve block content for a single-block-per-row weight",
         )
     }
 
@@ -178,10 +184,12 @@ class QuantizedMemSegMatmulTest {
             transposed.data is Q6_KTensorData,
             "transpose must preserve Q6_K packed layout, got ${transposed.data::class.simpleName}"
         )
+        // See the Q4_K case above: single block per row (cols == BLOCK_SIZE) makes
+        // the physical block-grid transpose content-preserving but still a copy.
         val transposedPacked = (transposed.data as Q6_KTensorData).packedData
         assertTrue(
-            transposedPacked === bytes,
-            "Q6_K lazy transpose must keep the same packedData reference (zero-copy)"
+            transposedPacked.contentEquals(bytes),
+            "Q6_K transpose must preserve block content for a single-block-per-row weight",
         )
     }
 
