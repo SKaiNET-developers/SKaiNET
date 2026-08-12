@@ -82,6 +82,8 @@ between modes is part of the test contract.
 | `skainet-lang/skainet-lang-models` | Reference reusable models (Llama, Gemma, Qwen, Whisper) built on the DSL.
 | `skainet-backends/skainet-backend-api` | Neutral backend SPI — `TensorOps`, `TensorDataFactory`, **kernel SPI** (`KernelProvider`, `Fp32MatmulKernel`, `Q4KMatmulKernel`, `KernelRegistry`).
 | `skainet-backends/skainet-backend-cpu` | CPU implementation. Eager-execution `DefaultCpuOpsBase` (commonMain) + `DefaultCpuOpsJvm` (jvmMain) with SIMD kernels.
+| `skainet-backends/skainet-backend-native-cpu` | Native (FFM) kernel provider — JVM only, ART has no `java.lang.foreign`.
+| `skainet-backends/skainet-backend-jni-cpu` | Native (JNI) kernel provider for Android — same shared C kernels as `skainet-backend-native-cpu`, reached through JNI instead of FFM since FFM cannot run on ART. See xref:explanation/perf/android-neon-jni-kernels.adoc[].
 | `skainet-backends/skainet-backend-xnnpack` | Optional XNNPACK CPU backend (FP32 matmul / conv2d / pooling) on linuxX64 / linuxArm64 / Android.
 | `skainet-backends/benchmarks/jvm-cpu-jmh` | JMH harness — `MatmulBench`, `KernelMatmulBench`, `QuantizedMatmulBench`, `ElementwiseAdd1MBench`, `Reductions1MBench`.
 | `skainet-compile/*` | Tape recording, StableHLO emission, IREE export.
@@ -92,71 +94,85 @@ between modes is part of the test contract.
 
 Introduced in 0.21.0 (PRs #554, #559, #562). The static structure:
 
-[source]
+[mermaid]
 ----
-                 commonMain (skainet-backend-api)
-                 ┌──────────────────────────────────────┐
-                 │  KernelProvider {                    │
-                 │    name: String                      │
-                 │    priority: Int                     │
-                 │    isAvailable(): Boolean            │
-                 │    matmulFp32(): Fp32MatmulKernel?   │
-                 │    matmulQ4K(): Q4KMatmulKernel?     │
-                 │  }                                   │
-                 │                                      │
-                 │  KernelRegistry {                    │
-                 │    register(KernelProvider)          │
-                 │    bestAvailable(): KernelProvider?  │
-                 │    find(name): KernelProvider?       │
-                 │  }                                   │
-                 │                                      │
-                 │  Fp32MatmulKernel.matmul(...)        │
-                 │  Q4KMatmulKernel.matmul(...)         │
-                 └──────────────┬───────────────────────┘
-                                │ implements / extends
-   ┌────────────────────────────┼────────────────────────────────┐
-   │ jvmMain (api)              │ commonMain (cpu)               │
-   │  KernelServiceLoader       │  ScalarMatmulKernel (priority 0) │
-   │  installAll()              │  ScalarKernelProvider          │
-   └────────────────────────────┴────────────────────────────────┘
-                                │
-   ┌────────────────────────────┼────────────────────────────────┐
-   │ jvmMain (cpu)                                               │
-   │  PanamaVectorKernelProvider (priority 50)                   │
-   │   FP32 BF16 Q8_0 Q4_0 Q4_K Q6_K Q5_1 Q5_0 (SIMD)            │
-   │  Scalar/PanamaVectorKernelProviderFactory (no-arg wrappers) │
-   │  META-INF/services/...KernelProvider                        │
-   └─────────────────────────────────────────────────────────────┘
-                                │
-   ┌────────────────────────────┼────────────────────────────────┐
-   │ jvmMain (skainet-backend-native-cpu)                        │
-   │  NativeKernelProvider (priority 100, FFM/C)                 │
-   │   FP32 BF16 Q8_0 Q4_0 Q4_K (+ Q4_K MemSeg zero-copy)        │
-   └─────────────────────────────────────────────────────────────┘
+flowchart TD
+    subgraph common["commonMain (skainet-backend-api)"]
+        SPI["KernelProvider { name, priority, isAvailable(),<br/>matmulFp32(), matmulQ4K(), ... }<br/>KernelRegistry { register(), bestAvailable(), find() }<br/>Fp32MatmulKernel.matmul(...) / Q4KMatmulKernel.matmul(...)"]
+    end
+
+    subgraph loader["jvmMain (skainet-backend-api)"]
+        Loader["KernelServiceLoader.installAll()"]
+    end
+
+    subgraph scalar["commonMain (skainet-backend-cpu)"]
+        Scalar["ScalarKernelProvider — priority 0<br/>ScalarMatmulKernel, every format, every target"]
+    end
+
+    subgraph panama["jvmMain (skainet-backend-cpu)"]
+        Panama["PanamaVectorKernelProvider — priority 50<br/>FP32 BF16 Q8_0 Q4_0 Q4_K Q6_K Q5_1 Q5_0 SIMD"]
+    end
+
+    subgraph ffm["jvmMain (skainet-backend-native-cpu)"]
+        Ffm["NativeKernelProvider — priority 100, FFM/C<br/>FP32 BF16 Q8_0 Q4_0 Q4_K Q5_K Q5_1 Q5_0"]
+    end
+
+    subgraph jni["androidMain (skainet-backend-jni-cpu)"]
+        Jni["JniKernelProvider — priority 100, JNI/C<br/>same C kernels as native-cpu; ART has no FFM<br/>Q8_0 Q4_0 Q4_K Q5_K Q6_K Q5_1 Q5_0"]
+    end
+
+    SPI -.->|implements| Scalar
+    SPI -.->|implements| Panama
+    SPI -.->|implements| Ffm
+    SPI -.->|implements| Jni
+    Loader -->|ServiceLoader discovers| Panama
+    Loader -->|ServiceLoader discovers| Ffm
+    Loader -->|ServiceLoader discovers| Jni
 ----
 
-Four live providers ship. The exact, machine-generated coverage of every
+Five live providers ship. The exact, machine-generated coverage of every
 weight format on every KMP target is at
 xref:reference/kernel-support-matrix.adoc[]; for *how* the kernels are
-implemented see xref:explanation/perf/simd-kernels.adoc[] (FP32) and
-xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized). Packed-quant
-matmul (Q4_K/Q6_K/Q5_1/Q5_0) also has a commonMain *scalar* kernel, so it runs
-on Kotlin/Native, JS and WASM — not only the JVM.
+implemented see xref:explanation/perf/simd-kernels.adoc[] (FP32),
+xref:explanation/perf/quantized-simd-kernels.adoc[] (quantized), and
+xref:explanation/perf/android-neon-jni-kernels.adoc[] (Android JNI).
+Packed-quant matmul (Q4_K/Q6_K/Q5_1/Q5_0) also has a commonMain *scalar*
+kernel, so it runs on Kotlin/Native, JS and WASM — not only the JVM.
 
 [NOTE]
-.Native (FFM) provider
+.Native (FFM) provider — JVM only
 ====
 `NativeKernelProvider` registers at priority 100 so that on JDK 21+ it wins
 `KernelRegistry.bestAvailable()` over the Panama Vector provider whenever the
 native library loads, and transparently falls back to Panama (priority 50) or
 scalar (priority 0) when it doesn't — no code change above the registry. It
 uses FFM, not JNI (near-zero call overhead, no global lock), ships in the
-`skainet-backend-native-cpu` module with C kernels for FP32/BF16/Q8_0/Q4_0/Q4_K
+`skainet-backend-native-cpu` module with C kernels for FP32/BF16/Q8_0/Q4_0/Q4_K/Q5_K/Q5_1/Q5_0
 (plus a zero-copy `MemorySegment` Q4_K path), and currently builds for the host
 architecture only (cross-arch builds and Maven classifier JARs are out of
-scope). Native FFM kernels for Q5_1/Q5_0/Q6_K are a tracked follow-up
-(SKaiNET#708). The kernel SPI this builds on shipped across 0.21.0
+scope). Native FFM kernels for Q5_1/Q5_0 shipped in 0.39.1
+(SKaiNET#708); Q6_K has no FFM kernel yet and still resolves to
+`panama-vector` on JVM — see xref:reference/kernel-support-matrix.adoc[].
+The kernel SPI this builds on shipped across 0.21.0
 (PRs #554–#565); the in-process native-FFM groundwork landed in 0.22.0 (PR #571).
+====
+
+[NOTE]
+.Native (JNI) provider — Android only
+====
+`JniKernelProvider` also registers at priority 100 — not because it
+competes with the FFM provider (they never coexist: FFM cannot load on
+ART, so a process runs one or the other, never both) but because it
+plays the same role on the platform where FFM isn't an option. It calls
+the *same* shared C kernels as `NativeKernelProvider` through JNI instead
+of FFM, ships two `.so` tiers gated on a `/proc/cpuinfo` dot-product
+check (baseline `armv8-a` vs. `armv8.2-a+dotprod`, selected once at
+library-load time), and covers Q8_0/Q4_0/Q5_K/Q5_1/Q5_0/Q4_K/Q6_K — not
+yet dense FP32 (SKaiNET#920). Measured ~6.4× decode speedup over scalar
+on a Pixel 8a. Shipped in 0.39.0; see
+xref:explanation/perf/android-neon-jni-kernels.adoc[] for the full
+mechanism, including why this does *not* contradict the FFM decision
+above.
 ====
 
 == 6. Runtime view — eager execution
@@ -265,7 +281,7 @@ BLAS (`-Dskainet.cpu.blas.enabled=true`).
 | Kernel SPI parallel to BackendProvider | 2026-04 (PR #554) | Matmul / SDPA are model-agnostic; isolating them lets bench harnesses time the SIMD loop directly and lets a future native provider register without touching the op layer.
 | `KernelProvider.matmulQ4K()` accessor with `default null` | 2026-04 (PR #562) | Backwards compat for existing providers (Scalar) without forcing every implementation to override. Same pattern will be used for Q6KMatmulKernel / Q4KMemSegMatmulKernel sibling SPIs.
 | ServiceLoader auto-discovery deferred until 2 providers exist | 2026-04 (PR #559) | Single-provider auto-discovery would have been ceremony for nothing; once Panama landed alongside Scalar, the trigger condition was met.
-| FFM (not JNI) for any future native code | roadmap M5 | JNI's per-call overhead and global lock are wrong for hot per-token kernels.
+| FFM over JNI for the JVM native provider | roadmap M5 | JNI's per-call overhead and global lock are wrong for hot per-token kernels — where FFM is available. This did not generalize to "JNI is rejected everywhere": ART has no FFM at all, so `skainet-backend-jni-cpu` (0.39.0) uses JNI on Android specifically because there is no FFM alternative there. See xref:explanation/perf/android-neon-jni-kernels.adoc[].
 | Antora docs (Diátaxis), not GitHub Wiki | 2025 | Source-controlled, branchable, ranked higher in search than wikis, ships with the repo.
 |===
 

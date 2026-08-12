@@ -9,8 +9,8 @@ Each cell is the best (highest-priority) provider that serves `Float32 × format
 |===
 | Weight format | JVM | Android | Native·linux | Native·apple | JS/WASM 
 
-| `Float32` | native-ffm | panama-vector | scalar | scalar | scalar 
-| `BFloat16` | native-ffm | panama-vector | scalar | scalar | scalar 
+| `Float32` | native-ffm | scalar | scalar | scalar | scalar 
+| `BFloat16` | native-ffm | scalar | scalar | scalar | scalar 
 | `Q8_0` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
 | `Q4_0` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
 | `Q4_K` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
