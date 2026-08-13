@@ -24,6 +24,7 @@ kotlin {
     macosArm64()
     linuxX64()
     linuxArm64()
+    androidNativeArm32()
 
     jvm()
 
@@ -95,6 +96,10 @@ kotlin {
 
         val linuxArm64Main by getting {
             dependsOn(linuxMain)
+        }
+
+        val androidNativeArm32Main by getting {
+            dependsOn(nativeMain)
         }
     }
 }
