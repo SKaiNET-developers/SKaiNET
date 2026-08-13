@@ -35,6 +35,11 @@ kotlin {
     macosArm64 ()
     linuxX64 ()
     linuxArm64 ()
+    // 32-bit: RandomAccessSourceFactory needs its own actual (see
+    // androidNativeArm32Main) — pread's ssize_t/off_t are Int here vs Long on
+    // every other native target, so it can't share nativeMain's actual with
+    // them (see the native64Main split below and skainet-io-core's own).
+    androidNativeArm32()
 
     js {
         browser()
@@ -50,17 +55,47 @@ kotlin {
         nodejs()
     }
 
+    // 64-bit-only intermediate: holds the pread-based RandomAccessSourceFactory
+    // actual, whose ssize_t/off_t widths are uniform (Long) across every native
+    // target EXCEPT androidNativeArm32 (which gets its own actual instead — see
+    // androidNativeArm32Main). Mirrors skainet-io-core's identical split.
+    val native64Targets = listOf("iosArm64", "iosSimulatorArm64", "macosArm64", "linuxX64", "linuxArm64")
+    applyDefaultHierarchyTemplate()
+
     sourceSets {
+        val nativeMain by getting
         val commonMain by getting {
             dependencies {
                 implementation(libs.kotlinx.io.core)
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-io:skainet-io-core"))
-                implementation(project(":skainet-compile:skainet-compile-core"))
-                implementation(project(":skainet-compile:skainet-compile-dag"))
-
             }
         }
+        // GgufExportFacade (host-side model export/compile tooling) needs
+        // skainet-compile-dag, which doesn't build for androidNativeArm32
+        // (32-bit) — see PosixPreadRandomAccessSource's own split for the
+        // identical reasoning. Model export isn't an on-device concern anyway,
+        // so it lives here instead of commonMain: jvm/android/native64 (every
+        // target except androidNativeArm32) get it.
+        val exportMain by creating {
+            dependsOn(commonMain)
+            dependencies {
+                implementation(project(":skainet-compile:skainet-compile-core"))
+                implementation(project(":skainet-compile:skainet-compile-dag"))
+            }
+        }
+        val native64Main by creating {
+            dependsOn(nativeMain)
+            dependsOn(exportMain)
+        }
+        native64Targets.forEach { t -> getByName("${t}Main").dependsOn(native64Main) }
+        val jvmMain by getting { dependsOn(exportMain) }
+        val androidMain by getting { dependsOn(exportMain) }
+        // js/wasmJs/wasmWasi: skainet-compile-dag supports these too — only
+        // androidNativeArm32 is actually excluded from exportMain.
+        val jsMain by getting { dependsOn(exportMain) }
+        val wasmJsMain by getting { dependsOn(exportMain) }
+        val wasmWasiMain by getting { dependsOn(exportMain) }
         val commonTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
