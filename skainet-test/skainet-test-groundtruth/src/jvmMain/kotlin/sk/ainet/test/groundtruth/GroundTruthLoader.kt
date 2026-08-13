@@ -5,6 +5,7 @@ import kotlinx.io.buffered
 import sk.ainet.io.gguf.GGMLQuantizationType
 import sk.ainet.io.gguf.GGUFReader
 import sk.ainet.io.gguf.GGUFValueType
+import sk.ainet.io.gguf.ReaderField
 import sk.ainet.io.gguf.ReaderTensor
 import sk.ainet.lang.tensor.Shape
 import java.io.File
@@ -94,8 +95,47 @@ public object GroundTruthLoader {
             expectedGradients = gradients.ifEmpty { null },
             testSuite = testSuite,
             useCase = useCase,
-            sourcePath = sourcePath
+            sourcePath = sourcePath,
+            rawOpParams = extractOpParams(reader)
         )
+    }
+
+    /**
+     * Extract every `op.*` GGUF metadata field into a name -> value map (name with the
+     * `op.` prefix stripped). Written by `store_experiment_as_gguf`'s `op_params` handling
+     * (`gt/pytorch/io/writer.py`): `add_int32`/`add_uint32` for a scalar int, `add_float32`
+     * for a scalar float, `add_array` for a list/tuple of ints (e.g. an asymmetric
+     * `(stride_h, stride_w)`) — see [decodeFieldValue] for the corresponding GGUF-side shape.
+     */
+    private fun extractOpParams(reader: GGUFReader): Map<String, Any> {
+        val result = mutableMapOf<String, Any>()
+        for ((name, field) in reader.fields) {
+            if (!name.startsWith("op.")) continue
+            decodeFieldValue(field)?.let { result[name.removePrefix("op.")] = it }
+        }
+        return result
+    }
+
+    /**
+     * Decode a [sk.ainet.io.gguf.ReaderField] into a plain Int/Float/List<Int>/List<Float>,
+     * for the scalar-or-array-of-numbers shape `op.*` fields always use. `field.data` holds
+     * indices into `field.parts` for the field's actual value(s) — one index for a scalar,
+     * N indices for an N-element array (see GGUFReader.getFieldParts's ARRAY branch); each
+     * `field.parts[idx]` is itself a single-element list holding the raw decoded number.
+     */
+    private fun decodeFieldValue(field: ReaderField): Any? {
+        val raw = field.data.mapNotNull { idx -> field.parts.getOrNull(idx)?.firstOrNull() }
+        if (raw.isEmpty()) return null
+        val numbers = raw.map { toNumber(it) ?: return null }
+        val isArray = field.types.firstOrNull() == GGUFValueType.ARRAY
+        return if (isArray) numbers else numbers.first()
+    }
+
+    private fun toNumber(value: Any): Number? = when (value) {
+        is UInt -> value.toInt()
+        is ULong -> value.toLong()
+        is Number -> value
+        else -> null
     }
 
     /**
@@ -225,35 +265,41 @@ public operator fun List<GroundTruthTestCase>.get(testSuite: String, useCase: St
 
 /**
  * JVM-specific validator extensions with file system support.
+ *
+ * `params: OperationParams? = null` (not a bare [OperationParams] default) throughout this
+ * file so "not specified" can fall through to each test case's own `op.*`-derived
+ * [GroundTruthTestCase.resolvedParams] instead of silently overriding it with an empty one.
  */
 public fun GroundTruthValidator.validate(
     ggufPath: String,
-    params: OperationParams = OperationParams(),
+    params: OperationParams? = null,
     tolerance: Float? = null,
     rtol: Float = 1e-5f,
     validateGradients: Boolean = false
 ): GroundTruthValidator.ValidationResult {
-    return validate(GroundTruthLoader.load(ggufPath), params, tolerance, rtol, validateGradients)
+    val testCase = GroundTruthLoader.load(ggufPath)
+    return validate(testCase, params ?: testCase.resolvedParams(), tolerance, rtol, validateGradients)
 }
 
 public fun GroundTruthValidator.validate(
     file: File,
-    params: OperationParams = OperationParams(),
+    params: OperationParams? = null,
     tolerance: Float? = null,
     rtol: Float = 1e-5f,
     validateGradients: Boolean = false
 ): GroundTruthValidator.ValidationResult {
-    return validate(GroundTruthLoader.load(file), params, tolerance, rtol, validateGradients)
+    val testCase = GroundTruthLoader.load(file)
+    return validate(testCase, params ?: testCase.resolvedParams(), tolerance, rtol, validateGradients)
 }
 
 public fun GroundTruthValidator.validateDirectory(
     directory: File,
-    params: OperationParams = OperationParams(),
+    params: OperationParams? = null,
     tolerance: Float? = null,
     rtol: Float = 1e-5f
 ): List<GroundTruthValidator.ValidationResult> {
     val testCases = GroundTruthLoader.loadFromDirectory(directory)
-    return testCases.map { validate(it, params, tolerance, rtol) }
+    return testCases.map { validate(it, params ?: it.resolvedParams(), tolerance, rtol) }
 }
 
 public fun GroundTruthValidator.validateTestSuite(
@@ -268,7 +314,7 @@ public fun GroundTruthValidator.validateTestSuite(
 
 public fun GroundTruthValidator.assertValid(
     ggufPath: String,
-    params: OperationParams = OperationParams(),
+    params: OperationParams? = null,
     tolerance: Float? = null,
     rtol: Float = 1e-5f
 ) {

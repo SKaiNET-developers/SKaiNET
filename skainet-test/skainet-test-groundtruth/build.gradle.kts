@@ -9,8 +9,15 @@ plugins {
 // Ground Truth Generation via Docker
 // =============================================================================
 
-// Path to the skainet-ground-truth project (relative to SKaiNET root)
-val groundTruthProjectDir = rootProject.projectDir.parentFile.resolve("skainet-ground-truth/pytorch")
+// Path to the skainet-ground-truth project's `pytorch` subdirectory. Override with
+// -PgroundTruthSourceDir=/path/to/pytorch — e.g. once fixture generation moves to a
+// numcrux-hosted corpus (https://github.com/numcrux) instead of this SKaiNET-org sibling
+// checkout. Defaults to today's convenience: a `skainet-ground-truth` checkout next to
+// this repo (../skainet-ground-truth relative to SKaiNET's root), matching the layout
+// GroundTruthConfig.findDefaultResultsDir() also assumes on the Kotlin test side.
+val groundTruthProjectDir = (findProperty("groundTruthSourceDir") as String?)
+    ?.let(::File)
+    ?: rootProject.projectDir.parentFile.resolve("skainet-ground-truth/pytorch")
 val groundTruthResultsDir = groundTruthProjectDir.resolve("results")
 
 // Docker image name for ground truth generation
@@ -97,6 +104,9 @@ tasks.register("listGroundTruth") {
 // Make ground truth results available as a system property for tests
 tasks.withType<Test> {
     systemProperty("groundtruth.results.dir", groundTruthResultsDir.absolutePath)
+    // -PrequireGroundTruth=true (CI) turns missing-ground-truth from a silent skip into a
+    // hard failure — see GroundTruthConfig.requireAvailable / TestAssumptions.kt.
+    systemProperty("groundtruth.require", (findProperty("requireGroundTruth") as String?) ?: "false")
 }
 
 kotlin {
