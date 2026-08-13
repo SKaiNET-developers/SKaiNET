@@ -6,6 +6,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import sk.ainet.exec.kernel.Q4_KQ8ActivationReferenceKernel
+import sk.ainet.exec.kernel.Q6_KQ8ActivationReferenceKernel
 import sk.ainet.exec.kernel.ScalarQ4_0MatmulKernel
 import sk.ainet.exec.kernel.ScalarQ4_KMatmulKernel
 import sk.ainet.exec.kernel.ScalarQ5_0MatmulKernel
@@ -219,6 +221,38 @@ class JniKernelParityTest {
     fun q6k_parity() = assertRmsParity(
         1024, 64, 999, 5e-2f, 256, 210, conditionQ6K,
         reference = ScalarQ6_KMatmulKernel::matmul, jni = JniKernels::q6kMatmul,
+    )
+
+    /**
+     * Tight per-row parity against [Q4_KQ8ActivationReferenceKernel] /
+     * [Q6_KQ8ActivationReferenceKernel] (#944): these references perform the
+     * same int8 activation quantization the JNI kernel does, so agreement
+     * should be tight like the exact-float formats above — a wide
+     * divergence here indicates a real kernel/bridge bug, not the expected
+     * quantization loss the RMS-gated tests above absorb.
+     */
+    @Test
+    fun q4k_parity_single_block_q8ActivationReference() = assertExactParity(
+        256, 16, 42, 1e-2f, 256, 144, conditionQ4K,
+        reference = Q4_KQ8ActivationReferenceKernel::matmul, jni = JniKernels::q4kMatmul,
+    )
+
+    @Test
+    fun q4k_parity_q8ActivationReference() = assertExactParity(
+        1024, 64, 123, 1e-2f, 256, 144, conditionQ4K,
+        reference = Q4_KQ8ActivationReferenceKernel::matmul, jni = JniKernels::q4kMatmul,
+    )
+
+    @Test
+    fun q6k_parity_single_block_q8ActivationReference() = assertExactParity(
+        256, 16, 42, 1e-2f, 256, 210, conditionQ6K,
+        reference = Q6_KQ8ActivationReferenceKernel::matmul, jni = JniKernels::q6kMatmul,
+    )
+
+    @Test
+    fun q6k_parity_q8ActivationReference() = assertExactParity(
+        1024, 64, 999, 1e-2f, 256, 210, conditionQ6K,
+        reference = Q6_KQ8ActivationReferenceKernel::matmul, jni = JniKernels::q6kMatmul,
     )
 
     @Test

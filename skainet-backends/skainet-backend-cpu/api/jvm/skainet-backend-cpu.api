@@ -129,6 +129,16 @@ public final class sk/ainet/exec/kernel/PanamaVectorQ8_0MatmulKernel : sk/ainet/
 	public fun matmul ([FI[BIII[FI)V
 }
 
+public final class sk/ainet/exec/kernel/Q4_KQ8ActivationReferenceKernel : sk/ainet/backend/api/kernel/Q4KMatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/Q4_KQ8ActivationReferenceKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
+public final class sk/ainet/exec/kernel/Q6_KQ8ActivationReferenceKernel : sk/ainet/backend/api/kernel/Q6KMatmulKernel {
+	public static final field INSTANCE Lsk/ainet/exec/kernel/Q6_KQ8ActivationReferenceKernel;
+	public fun matmul ([FI[BIII[FI)V
+}
+
 public final class sk/ainet/exec/kernel/ScalarBf16MatmulKernel : sk/ainet/backend/api/kernel/Bf16MatmulKernel {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarBf16MatmulKernel;
 	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;
