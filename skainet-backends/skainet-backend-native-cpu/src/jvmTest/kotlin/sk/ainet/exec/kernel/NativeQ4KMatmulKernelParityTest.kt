@@ -102,14 +102,56 @@ class NativeQ4KMatmulKernelParityTest {
         const val AGG_REL_TOL = 0.03
     }
 
+    /**
+     * Tight per-row parity against [Q4_KQ8ActivationReferenceKernel] (#944):
+     * unlike [assertParity] above, this reference performs the SAME int8
+     * activation quantization the native kernel does, so agreement should be
+     * tight (float-accumulation-order noise only) — a wide divergence here,
+     * unlike against the exact-float Panama reference, indicates a genuine
+     * kernel bug (wrong offset/layout/scale-decode/dispatch), not the
+     * expected quantization loss.
+     */
+    private fun assertQ8ActivationParity(inputDim: Int, outputDim: Int, seed: Int) {
+        val numBlocks = (inputDim / blockSize) * outputDim
+        val packed = randomQ4KBytes(numBlocks, seed)
+        val input = FloatArray(inputDim) { Random(seed + it).nextFloat() - 0.5f }
+
+        val refOut = FloatArray(outputDim)
+        Q4_KQ8ActivationReferenceKernel.matmul(input, 0, packed, 0, inputDim, outputDim, refOut, 0)
+
+        val nativeOut = FloatArray(outputDim)
+        NativeQ4KMatmulKernel.matmul(input, 0, packed, 0, inputDim, outputDim, nativeOut, 0)
+
+        for (o in 0 until outputDim) {
+            val diff = abs(refOut[o] - nativeOut[o])
+            val rel = diff / (abs(refOut[o]) + 1e-6f)
+            assertTrue(
+                diff <= 1e-2f || rel < 1e-4f,
+                "row $o diverged vs Q8-activation reference: ref=${refOut[o]} native=${nativeOut[o]} " +
+                    "diff=$diff rel=$rel — this reference already accounts for int8 activation " +
+                    "quantization, so this points at a real kernel bug, not expected quant loss (#944)",
+            )
+        }
+    }
+
     @Test
     fun single_block_single_row() {
         assertParity(inputDim = 256, outputDim = 1, seed = 42, tol = 1e-2f)
     }
 
     @Test
+    fun single_block_single_row_q8ActivationReference() {
+        assertQ8ActivationParity(inputDim = 256, outputDim = 1, seed = 42)
+    }
+
+    @Test
     fun single_block_multi_row() {
         assertParity(inputDim = 256, outputDim = 16, seed = 7, tol = 1e-2f)
+    }
+
+    @Test
+    fun single_block_multi_row_q8ActivationReference() {
+        assertQ8ActivationParity(inputDim = 256, outputDim = 16, seed = 7)
     }
 
     @Test
@@ -119,9 +161,19 @@ class NativeQ4KMatmulKernelParityTest {
     }
 
     @Test
+    fun multi_block_multi_row_q8ActivationReference() {
+        assertQ8ActivationParity(inputDim = 1024, outputDim = 64, seed = 123)
+    }
+
+    @Test
     fun llm_typical_shape_4096_outputDim_64() {
         // 4096 inputs × 64 outputs — slice of an LLM hidden→ffn matrix.
         assertParity(inputDim = 4096, outputDim = 64, seed = 999, tol = 5e-1f)
+    }
+
+    @Test
+    fun llm_typical_shape_4096_outputDim_64_q8ActivationReference() {
+        assertQ8ActivationParity(inputDim = 4096, outputDim = 64, seed = 999)
     }
 
     @Test

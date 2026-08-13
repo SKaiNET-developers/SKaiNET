@@ -86,17 +86,58 @@ class NativeQ6KMatmulKernelParityTest {
         const val AGG_REL_TOL = 0.03
     }
 
+    /**
+     * Tight per-row parity against [Q6_KQ8ActivationReferenceKernel] (#944) —
+     * see [NativeQ4KMatmulKernelParityTest.assertQ8ActivationParity] for the
+     * rationale: this reference performs the same int8 activation
+     * quantization the native kernel does, so a wide divergence here points
+     * at a real kernel bug, not the expected quantization loss.
+     */
+    private fun assertQ8ActivationParity(inputDim: Int, outputDim: Int, seed: Int) {
+        val numBlocks = (inputDim / blockSize) * outputDim
+        val packed = randomQ6KBytes(numBlocks, seed)
+        val input = FloatArray(inputDim) { Random(seed + it).nextFloat() - 0.5f }
+
+        val refOut = FloatArray(outputDim)
+        Q6_KQ8ActivationReferenceKernel.matmul(input, 0, packed, 0, inputDim, outputDim, refOut, 0)
+
+        val nativeOut = FloatArray(outputDim)
+        NativeQ6KMatmulKernel.matmul(input, 0, packed, 0, inputDim, outputDim, nativeOut, 0)
+
+        for (o in 0 until outputDim) {
+            val diff = abs(refOut[o] - nativeOut[o])
+            val rel = diff / (abs(refOut[o]) + 1e-6f)
+            assertTrue(
+                diff <= 1e-2f || rel < 1e-4f,
+                "row $o diverged vs Q8-activation reference: ref=${refOut[o]} native=${nativeOut[o]} " +
+                    "diff=$diff rel=$rel (#944)",
+            )
+        }
+    }
+
     @Test
     fun single_block_single_row() = assertParity(256, 1, 42, 1e-2f)
+
+    @Test
+    fun single_block_single_row_q8ActivationReference() = assertQ8ActivationParity(256, 1, 42)
 
     @Test
     fun single_block_multi_row() = assertParity(256, 16, 7, 5e-2f)
 
     @Test
+    fun single_block_multi_row_q8ActivationReference() = assertQ8ActivationParity(256, 16, 7)
+
+    @Test
     fun multi_block_multi_row() = assertParity(1024, 64, 123, 2e-1f)
 
     @Test
+    fun multi_block_multi_row_q8ActivationReference() = assertQ8ActivationParity(1024, 64, 123)
+
+    @Test
     fun llm_typical_shape_4096_outputDim_64() = assertParity(4096, 64, 999, 2e0f)
+
+    @Test
+    fun llm_typical_shape_4096_outputDim_64_q8ActivationReference() = assertQ8ActivationParity(4096, 64, 999)
 
     @Test
     fun rejects_inputDim_not_multiple_of_block() {
