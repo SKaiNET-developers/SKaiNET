@@ -32,18 +32,24 @@ jobs:
     permissions:
       contents: read
 
+    env:
+      # actions/checkout's `path` can't escape the primary repo's own workspace with `..`
+      # (hard-rejected: "Repository path ... is not under ...") — so this lands as a plain
+      # subdirectory of SKaiNET's checkout instead of a true sibling, and every Gradle
+      # invocation below points at it explicitly via -PgroundTruthSourceDir (the override
+      # skainet-test-groundtruth/build.gradle.kts's groundTruthProjectDir already supports —
+      # local dev still uses the sibling-checkout default, only CI needs this).
+      GROUND_TRUTH_SOURCE_DIR: ${{ github.workspace }}/skainet-ground-truth/pytorch
+
     steps:
       - name: Checkout SKaiNET
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Checked out as a sibling of SKaiNET's own checkout (../skainet-ground-truth), matching
-      # what skainet-test-groundtruth/build.gradle.kts expects by default — see
-      # groundTruthProjectDir there, overridable via -PgroundTruthSourceDir.
       - name: Checkout skainet-ground-truth
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: SKaiNET-developers/skainet-ground-truth
-          path: ../skainet-ground-truth
+          path: skainet-ground-truth
 
       - name: Copy CI gradle.properties
         run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
@@ -55,10 +61,16 @@ jobs:
           java-version: 21
 
       - name: Build ground truth Docker image
-        run: ./gradlew --no-daemon --stacktrace --no-configuration-cache :skainet-test:skainet-test-groundtruth:buildGroundTruthDocker
+        run: |
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            -PgroundTruthSourceDir="$GROUND_TRUTH_SOURCE_DIR" \
+            :skainet-test:skainet-test-groundtruth:buildGroundTruthDocker
 
       - name: Generate ground truth GGUF files
-        run: ./gradlew --no-daemon --stacktrace --no-configuration-cache :skainet-test:skainet-test-groundtruth:generateGroundTruth
+        run: |
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            -PgroundTruthSourceDir="$GROUND_TRUTH_SOURCE_DIR" \
+            :skainet-test:skainet-test-groundtruth:generateGroundTruth
 
       # -PrequireGroundTruth=true turns a missing/broken pipeline into a hard failure instead
       # of the tests silently skipping (see GroundTruthConfig.requireAvailable) — the whole
@@ -68,6 +80,7 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
         run: |
           ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            -PgroundTruthSourceDir="$GROUND_TRUTH_SOURCE_DIR" \
             :skainet-test:skainet-test-groundtruth:jvmTest -PrequireGroundTruth=true
 
       - name: Upload test reports
