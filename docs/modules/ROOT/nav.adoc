@@ -38,6 +38,7 @@
 ** xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
 ** xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]
 ** xref:explanation/perf/quantized-simd-kernels.adoc[How quantized SIMD kernels are built]
+** xref:explanation/perf/android-neon-jni-kernels.adoc[Android NEON kernels via JNI]
 ** xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compression]
 ** xref:explanation/perf/java-25-cpu-backend.adoc[Java 25 CPU backend notes]
 ** xref:explanation/issues/native-macos-accelerate-simd.adoc[Native macOS Accelerate SIMD issues]

@@ -1,0 +1,238 @@
+= Android NEON Kernels via JNI
+:description: How SKaiNET reaches hand-written ARM NEON SIMD on Android, where the JVM's FFM native provider cannot run.
+
+This page explains *how* SKaiNET's eager CPU backend reaches native SIMD
+throughput on Android — a genuinely different mechanism from the JVM's
+FFM path, because Android's runtime (ART) rules FFM out entirely. If you
+just want the fastest available kernel to run automatically, you don't
+need to read this — installing `skainet-backend-jni-cpu` on the Android
+classpath is enough; discovery is automatic. This page is for the
+engineer who wants to understand or extend the kernel layer, or who is
+debugging why a given device is (or isn't) hitting the native path.
+
+== Why Android needs its own provider
+
+xref:explanation/perf/simd-kernels.adoc[The SIMD kernels page] and the
+xref:reference/architecture.adoc[architecture reference] describe the
+JVM's `NativeKernelProvider`: priority 100, backed by `java.lang.foreign`
+(FFM), near-zero call overhead, no global lock. That provider cannot run
+on Android — ART does not implement `java.lang.foreign` at all, at any
+API level. Without a native provider, Android falls back all the way to
+priority-0 scalar Kotlin, which is where the practical decode-speed
+problem actually starts: primitive-loop overhead aside, a scalar matmul
+loop on ART is simply not competitive with hand-tuned NEON.
+
+`skainet-backends/skainet-backend-jni-cpu` is the fix: the *same* shared
+C matmul kernels the FFM provider calls
+(`skainet-backend-native-cpu/native/`), reached through JNI instead of
+FFM, packaged as an AAR any Android app can add as a dependency. It
+registers as `JniKernelProvider`, priority 100 — same priority as the
+JVM's FFM provider, because on Android it plays the identical role: the
+best kernel available, falling back to Panama... except Panama isn't
+available either (no JDK Vector API on ART), so in practice the cascade
+on Android is JNI (100) → scalar (0), with nothing in between.
+
+[NOTE]
+.This is not a rejection of the FFM decision
+====
+xref:reference/architecture.adoc[Architecture §9] records "FFM (not JNI)
+for any future native code" as a decision, made when the JVM native
+provider was designed, with the rationale "JNI's per-call overhead and
+global lock are wrong for hot per-token kernels." That's still correct
+*for the JVM*, where FFM is available and strictly better. It doesn't
+apply to Android, where FFM isn't an option at all — JNI is not a
+second-best alternative there, it's the only native path ART offers.
+The two decisions coexist: FFM where you can have it, JNI where you can't.
+====
+
+== Two `.so` tiers, selected once at load time
+
+Unlike the JVM FFM provider (one native library, host architecture only),
+the Android JNI provider ships **two** shared libraries built from the
+same C sources, gated on a real hardware risk:
+
+[cols="1,2,3",options="header"]
+|===
+| Library | Compiled with | Runs on
+| `libskainet_jni.so` (`BASELINE`) | plain `armv8-a` | Every 64-bit ARM core. NEON is architecturally guaranteed on AArch64, so FP32/Q8_0/Q4_0/Q5_K get NEON bodies here; Q4_K/Q6_K fall back to scalar (their SIMD bodies need the dot-product extension, see below).
+| `libskainet_jni_v82.so` (`V82_DOTPROD`) | `-march=armv8.2-a+fp16+dotprod` | Only cores that report `asimddp` (+ `asimdhp`/`fphp`) in `/proc/cpuinfo`. Enables the `vdotq_s32` paths in the Q4_K/Q6_K kernels.
+|===
+
+Executing the dotprod library on an armv8.0 core (Cortex-A53, early A55)
+would `SIGILL` — the instruction genuinely doesn't exist on that
+silicon. So the choice has to be made *before* the library loads, not
+inside it. `JniKernels.loadVariant()` reads `/proc/cpuinfo` first — the
+NDK-sanctioned detection path, and one that needs no JNI itself, which
+matters precisely because it has to run before any native call is
+possible — and loads exactly one variant per process:
+
+[source,kotlin]
+----
+private fun cpuSupportsV82(): Boolean = runCatching {
+    val features = File("/proc/cpuinfo").useLines { lines ->
+        lines.firstOrNull { it.startsWith("Features") }
+    } ?: return false
+    "asimddp" in features && ("asimdhp" in features || "fphp" in features)
+}.getOrDefault(false)
+
+private fun loadVariant(): Variant? {
+    if (cpuSupportsV82()) {
+        try {
+            System.loadLibrary(Variant.V82_DOTPROD.libName)
+            return Variant.V82_DOTPROD
+        } catch (_: Throwable) {
+            // Fall through to baseline — e.g. a packaging that stripped the v82 lib.
+        }
+    }
+    return try {
+        System.loadLibrary(Variant.BASELINE.libName)
+        Variant.BASELINE
+    } catch (_: Throwable) {
+        null
+    }
+}
+----
+
+A `/proc/cpuinfo` read failure, or any load failure, degrades to
+baseline or to no native provider at all (the registry then cascades to
+scalar) — never a `SIGILL`. Both `.so`s export the *same* JNI symbols
+(same class, same method names), so selecting the variant is a load-time
+decision, not a per-call or per-symbol one — no runtime dispatch cost on
+the hot path.
+
+Both variants ship in the AAR; on install, Android's own APK splitting
+picks the right ABI slice (`arm64-v8a`), and the CPU-feature choice
+between baseline/dotprod happens on top of that at process start.
+
+== JNI, done carefully
+
+JNI is not free — the concern the FFM decision (above) raises for the
+JVM is real, it's just not the binding constraint on Android, where the
+alternative isn't "FFM instead" but "no native kernel at all." The
+implementation still keeps per-call overhead as low as JNI allows:
+
+* **`GetPrimitiveArrayCritical`, not `GetFloatArrayElements`.** On ART,
+  heap primitive arrays are contiguous, so a critical pin is zero-copy —
+  no array is duplicated for the call. The rules that make this safe are
+  followed exactly: no JNI calls between `Get` and `Release`, arrays
+  released in reverse acquisition order, read-only inputs released with
+  `JNI_ABORT` (no write-back copy), the output array released with `0`
+  (write-back + unpin).
++
+[source,c]
+----
+#define SKAINET_JNI_MATMUL_BODY(CALL)                                          \
+    jfloat* in = (*env)->GetPrimitiveArrayCritical(env, input, NULL);          \
+    jbyte* w = in ? (*env)->GetPrimitiveArrayCritical(env, weight, NULL) : NULL; \
+    jfloat* out = w ? (*env)->GetPrimitiveArrayCritical(env, output, NULL) : NULL; \
+    if (out) { CALL; }                                                        \
+    if (out) (*env)->ReleasePrimitiveArrayCritical(env, output, out, 0);      \
+    if (w) (*env)->ReleasePrimitiveArrayCritical(env, weight, w, JNI_ABORT);  \
+    if (in) (*env)->ReleasePrimitiveArrayCritical(env, input, in, JNI_ABORT);
+----
++
+Every JNI entry point (`skainet_jni.c`) is a one-line body built from
+this macro — pin, call the shared C kernel, release. There is no logic
+in the JNI layer beyond array pinning; the NEON kernels themselves are
+the exact same code the FFM provider calls (`skainet-backend-native-cpu`'s
+`native/`), so there is one implementation to keep numerically correct,
+not two.
+* **No underscores in JNI method names.** JNI mangles `_` to `_1` in
+  native symbol names — a silent mismatch trap if a Kotlin method name
+  and its `Java_..._methodName` C symbol drift (`q4_0Matmul` would
+  mangle differently than `q40Matmul`). Every method on `JniKernels` is
+  named to avoid this by construction (`q80Matmul`, `q40Matmul`,
+  `q4kMatmul`, ...).
+* **Eager, not lazy, library load.** `JniKernels.variant` is a `val`
+  initialized in `object init`, not a `by lazy` property read on first
+  use. Kotlin object initialization runs on first access to *any*
+  member, so a direct call to an `external fun` is guaranteed to find
+  the library already loaded — a lazy property would only trigger the
+  load when the property itself was read, and a caller that skipped
+  straight to `q80Matmul(...)` would hit `UnsatisfiedLinkError`.
+
+== Availability probe and registration
+
+`JniKernelProvider.isAvailable()` doesn't just check that a library
+loaded — it round-trips a smoke kernel (`output[i] = 2 * input[i]`)
+through the real JNI path and checks the numeric result, so a library
+that loaded but is somehow broken (corrupted APK, ABI mismatch a
+`try`/`catch` didn't catch) still reports itself unavailable rather than
+returning wrong answers:
+
+[source,kotlin]
+----
+private val available: Boolean by lazy {
+    if (!JniKernels.isLoaded) return@lazy false
+    runCatching {
+        val input = floatArrayOf(1.0f, 2.5f, -3.0f)
+        val output = FloatArray(3)
+        JniKernels.smoke(input, output, 3)
+        output[0] == 2.0f && output[1] == 5.0f && output[2] == -6.0f
+    }.getOrDefault(false)
+}
+----
+
+Registration follows the same `ServiceLoader` pattern as every other
+kernel provider (xref:explanation/perf/simd-kernels.adoc[SIMD kernels
+page, "Auto-discovery"] section) — `JniKernelProviderFactory` (a
+no-arg-constructible wrapper, since `ServiceLoader` can't instantiate a
+Kotlin `object` directly) is listed in
+`META-INF/services/sk.ainet.backend.api.kernel.KernelProvider`, and the
+Android CPU-ops factory installs every discovered provider exactly like
+the JVM does. An app pulls in the JNI provider by adding the
+`skainet-backend-jni-cpu` AAR as a dependency (e.g. via `kllama`'s
+`androidMain` `runtimeOnly`) — no explicit registration call needed.
+
+`matmulFp32()` returns `null` — the JNI provider does not carry a dense
+FP32 GEMM kernel yet (tracked as
+https://github.com/SKaiNET-developers/SKaiNET/issues/920[#920]); dense
+FP32 execution on Android currently falls through to scalar regardless
+of which JNI variant loaded. Q8_0, Q4_0, Q4_K, Q5_K, Q6_K, Q5_0, and
+Q5_1 all have JNI kernels — see
+xref:reference/kernel-support-matrix.adoc[] for the generated,
+authoritative per-format table (column `Android`, provider
+`native-jni`).
+
+== Numbers
+
+Measured on a Pixel 8a, SmolLM2-135M-Instruct Q8_0 decode:
+**~24 tok/s** with the JNI NEON provider active, versus **~3.8 tok/s**
+scalar — a **6.4×** speedup, the difference between unusable and
+clearing the on-device usability bar for a real-time chat UI. This
+number predates the primitive-fast-path work described below; with it,
+NEON matmul time itself was found to be a *minority* of end-to-end
+decode time on that same device — 83% of wall-clock was non-matmul
+per-element overhead (index-array allocation, boxed accessors, dtype
+dispatch) in the generic eager op paths, fixed separately by making the
+hot ops (arithmetic, activations, softmax, reductions, concat, reshape)
+run flat primitive loops over the dense buffer instead of the generic
+path. Both fixes matter for the same reason: on ART, allocation and
+boxing costs that JIT-vanish on a desktop JVM do not vanish, so the
+matmul kernel being fast doesn't help if everything around it isn't.
+
+`skainet-backend-jni-cpu`'s `src/androidTest` includes both a parity
+suite (`JniKernelParityTest`, every JNI kernel checked against the
+scalar reference on-device) and a throughput benchmark
+(`SmolLm2DecodeBenchmark`, real end-to-end decode timing) — run them on
+a physical device via `./gradlew :skainet-backends:skainet-backend-jni-cpu:connectedAndroidTest`
+to reproduce numbers on your own hardware; emulator CPUs don't reflect
+real ARM performance characteristics.
+
+== Where to look in the code
+
+[cols="1,2",options="header"]
+|===
+| File | What it does
+| `skainet-backends/skainet-backend-jni-cpu/native/skainet_jni.c` | Thin JNI shims — array pinning + one call into the shared C kernels, nothing else.
+| `skainet-backends/skainet-backend-jni-cpu/native/CMakeLists.txt` | Builds both `.so` tiers from the same C sources as `skainet-backend-native-cpu`.
+| `skainet-backends/skainet-backend-jni-cpu/src/main/kotlin/.../jni/JniKernels.kt` | Two-tier loader (`/proc/cpuinfo` gate) + `external fun` declarations.
+| `skainet-backends/skainet-backend-jni-cpu/src/main/kotlin/.../jni/JniKernelProvider.kt` | The `KernelProvider` implementation — smoke-tested availability, per-format kernel wiring, `ServiceLoader` factory.
+| `skainet-backends/skainet-backend-jni-cpu/src/androidTest/.../JniKernelParityTest.kt` | On-device parity vs. the scalar reference, every supported format.
+| `skainet-backends/skainet-backend-jni-cpu/src/androidTest/.../SmolLm2DecodeBenchmark.kt` | Real end-to-end decode throughput on-device — the source of the numbers above.
+|===
+
+For the compiled-graph alternative to this eager path — running a whole
+DSL-authored model through IREE instead of op-by-op — see
+`SKaiNET-transformers`' `llm-runtime/iree-android` module and its
+"Android getting started" tutorial.

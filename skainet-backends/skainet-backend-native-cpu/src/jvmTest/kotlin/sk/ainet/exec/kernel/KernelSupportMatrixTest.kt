@@ -31,13 +31,16 @@ class KernelSupportMatrixTest {
     private fun scalarFormats(): Set<String> =
         formats.filter { ScalarKernelProvider.supports("matmul", listOf("Float32", it)) }.toSet()
 
-    // Source-set -> platforms. commonMain reaches all; backend-cpu jvmMain -> {JVM,Android};
+    // Source-set -> platforms. commonMain reaches all; backend-cpu jvmMain -> {JVM} only:
+    // Panama Vector (jdk.incubator.vector) is a JDK-only incubator module — ART has no
+    // Vector API, so PlatformCpuOpsFactory.android (skainet-backend-cpu/androidMain)
+    // registers ONLY ServiceLoader-discovered providers + the scalar floor, never Panama.
     // backend-native-cpu jvmMain -> {JVM} (the native module declares only jvm()).
     // native-jni: skainet-backend-jni-cpu AAR — same C kernels via JNI, Android
     // only, discovered via ServiceLoader from PlatformCpuOpsFactory.android (#920).
     private fun tiers(): List<Tier> = listOf(
         Tier("scalar", 0, platforms.toSet(), scalarFormats()),
-        Tier("panama-vector", 50, setOf("JVM", "Android"),
+        Tier("panama-vector", 50, setOf("JVM"),
             setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")),
         Tier("native-ffm", 100, setOf("JVM"),
             setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q5_1", "Q5_0")),
