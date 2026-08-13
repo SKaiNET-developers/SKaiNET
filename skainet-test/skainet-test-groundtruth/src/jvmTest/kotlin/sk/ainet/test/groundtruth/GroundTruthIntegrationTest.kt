@@ -38,9 +38,9 @@ class GroundTruthIntegrationTest {
         val results = testCases.map { testCase ->
             println("  Validating: ${testCase.description}")
 
-            // Infer parameters from test case description
-            val params = inferConv2dParams(testCase)
-            validator.validate(testCase, params)
+            // Params come from the GGUF's own op.* metadata (GroundTruthTestCase.resolvedParams,
+            // the default validator.validate already uses) — no per-test-case guessing needed.
+            validator.validate(testCase)
         }
 
         // Print summary
@@ -120,8 +120,7 @@ class GroundTruthIntegrationTest {
             println("  Found ${testCases.size} test cases")
 
             val results = testCases.map { testCase ->
-                val params = inferOperationParams(testCase)
-                validator.validate(testCase, params, tolerance = ToleranceConfig.RELAXED)
+                validator.validate(testCase, tolerance = ToleranceConfig.RELAXED)
             }
 
             allResults.addAll(results)
@@ -145,48 +144,4 @@ class GroundTruthIntegrationTest {
         }
     }
 
-    // =========================================================================
-    // Helper Functions
-    // =========================================================================
-
-    private fun inferConv2dParams(testCase: GroundTruthTestCase): OperationParams {
-        val desc = testCase.description.lowercase()
-        return operationParams {
-            when {
-                desc.contains("stride") && desc.contains("2") -> stride(2)
-                desc.contains("strided") -> stride(2)
-            }
-            when {
-                desc.contains("padding") && desc.contains("1") -> padding(1)
-                desc.contains("padded") -> padding(1)
-            }
-            when {
-                desc.contains("dilation") && desc.contains("2") -> dilation(2)
-                desc.contains("dilated") -> dilation(2)
-            }
-            when {
-                desc.contains("depthwise") -> groups(3) // Assume 3 channels
-                desc.contains("grouped") -> groups(2)
-            }
-        }
-    }
-
-    private fun inferOperationParams(testCase: GroundTruthTestCase): OperationParams {
-        val opName = testCase.operationName.lowercase()
-        val desc = testCase.description.lowercase()
-
-        return when {
-            opName.contains("conv") -> inferConv2dParams(testCase)
-            opName.contains("flatten") -> operationParams {
-                // Default flatten params
-                startDim(1)
-                endDim(-1)
-            }
-            opName.contains("pool") -> operationParams {
-                kernelSize(2)
-                stride(2)
-            }
-            else -> OperationParams()
-        }
-    }
 }

@@ -29,8 +29,54 @@ public data class GroundTruthTestCase(
     val useCase: String? = null,
 
     /** Path to the source GGUF file */
-    val sourcePath: String? = null
+    val sourcePath: String? = null,
+
+    /**
+     * Operation parameters as written by the Python side's `op.*` GGUF metadata keys
+     * (e.g. `op.padding` -> `"padding" to 1`), decoded to Int/Float/List<Int>/List<Float>
+     * per value. See [resolvedParams] to turn this into a typed [OperationParams].
+     */
+    val rawOpParams: Map<String, Any> = emptyMap()
 )
+
+/**
+ * Maps [GroundTruthTestCase.rawOpParams] onto [OperationParams]'s named, typed fields.
+ * A scalar value (`op.padding = 1`) becomes a symmetric pair for the height/width-style
+ * params, matching how [OperationParamsBuilder.padding] already turns a single Int into
+ * `(value, value)` — the Python side writes symmetric params as a plain scalar, not a
+ * 2-element array (see `skainet-ground-truth`'s `op_params={"padding": 1, ...}` usage).
+ */
+public fun GroundTruthTestCase.resolvedParams(): OperationParams {
+    fun pair(name: String): Pair<Int, Int>? = when (val v = rawOpParams[name]) {
+        is Int -> v to v
+        is Float -> v.toInt() to v.toInt()
+        is List<*> -> when (v.size) {
+            1 -> (v[0] as Number).toInt().let { it to it }
+            else -> (v.getOrNull(0) as? Number)?.toInt()?.let { h ->
+                (v.getOrNull(1) as? Number)?.toInt()?.let { w -> h to w }
+            }
+        }
+        else -> null
+    }
+
+    fun int(name: String): Int? = (rawOpParams[name] as? Number)?.toInt()
+        ?: (rawOpParams[name] as? List<*>)?.firstOrNull().let { (it as? Number)?.toInt() }
+
+    fun float(name: String): Float? = (rawOpParams[name] as? Number)?.toFloat()
+
+    return OperationParams(
+        stride = pair("stride"),
+        padding = pair("padding"),
+        dilation = pair("dilation"),
+        groups = int("groups"),
+        kernelSize = pair("kernel_size") ?: pair("kernelSize"),
+        dim = int("dim"),
+        startDim = int("start_dim") ?: int("startDim"),
+        endDim = int("end_dim") ?: int("endDim"),
+        negativeSlope = float("negative_slope") ?: float("negativeSlope"),
+        alpha = float("alpha")
+    )
+}
 
 /**
  * Represents a tensor loaded from ground truth GGUF file.

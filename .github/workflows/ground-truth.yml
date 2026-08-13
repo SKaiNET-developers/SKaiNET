@@ -1,0 +1,81 @@
+name: Ground Truth Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "skainet-test/skainet-test-groundtruth/**"
+      - ".github/workflows/ground-truth.yml"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "skainet-test/skainet-test-groundtruth/**"
+      - ".github/workflows/ground-truth.yml"
+  # skainet-ground-truth's PyTorch fixtures can change independently of any commit here —
+  # a weekly run catches that drift even when nothing in this repo touched the module.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Set default permission for all jobs to none
+permissions: {}
+
+jobs:
+  ground-truth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout SKaiNET
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Checked out as a sibling of SKaiNET's own checkout (../skainet-ground-truth), matching
+      # what skainet-test-groundtruth/build.gradle.kts expects by default — see
+      # groundTruthProjectDir there, overridable via -PgroundTruthSourceDir.
+      - name: Checkout skainet-ground-truth
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SKaiNET-developers/skainet-ground-truth
+          path: ../skainet-ground-truth
+
+      - name: Copy CI gradle.properties
+        run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: 21
+
+      - name: Build ground truth Docker image
+        run: ./gradlew --no-daemon --stacktrace --no-configuration-cache :skainet-test:skainet-test-groundtruth:buildGroundTruthDocker
+
+      - name: Generate ground truth GGUF files
+        run: ./gradlew --no-daemon --stacktrace --no-configuration-cache :skainet-test:skainet-test-groundtruth:generateGroundTruth
+
+      # -PrequireGroundTruth=true turns a missing/broken pipeline into a hard failure instead
+      # of the tests silently skipping (see GroundTruthConfig.requireAvailable) — the whole
+      # point of this workflow is proving the pipeline above actually produced something.
+      - name: Run validation tests
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4g -Dfile.encoding=UTF-8"
+        run: |
+          ./gradlew --no-daemon --stacktrace --no-configuration-cache \
+            :skainet-test:skainet-test-groundtruth:jvmTest -PrequireGroundTruth=true
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ground-truth-reports
+          path: |
+            skainet-test/skainet-test-groundtruth/build/reports/tests/**
+            skainet-test/skainet-test-groundtruth/build/test-results/**
+          retention-days: 14

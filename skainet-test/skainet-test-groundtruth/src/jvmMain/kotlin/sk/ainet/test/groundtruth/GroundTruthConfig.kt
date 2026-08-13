@@ -34,6 +34,16 @@ public object GroundTruthConfig {
         }
 
     /**
+     * When true, missing ground truth is a hard test failure instead of a skip — set via
+     * `-PrequireGroundTruth=true` (see build.gradle.kts), used in CI so a broken/missing
+     * pipeline shows up red instead of silently skipping every ground-truth test.
+     * Local dev runs default to false: skip gracefully when the sibling
+     * `../skainet-ground-truth` checkout or generated GGUF files aren't present.
+     */
+    public val requireAvailable: Boolean
+        get() = System.getProperty("groundtruth.require")?.toBoolean() ?: false
+
+    /**
      * Get all available test suites.
      */
     public val availableTestSuites: List<String>

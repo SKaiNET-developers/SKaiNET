@@ -106,14 +106,16 @@ public class GroundTruthValidator(
      * Validate a ground truth test case.
      *
      * @param testCase The test case to validate
-     * @param params Operation parameters (stride, padding, etc.)
+     * @param params Operation parameters (stride, padding, etc.) — defaults to
+     *   [testCase]'s own `op.*` GGUF metadata ([GroundTruthTestCase.resolvedParams]),
+     *   not an empty [OperationParams]; pass an explicit value to override.
      * @param tolerance Absolute tolerance for comparison (auto-selected if null)
      * @param rtol Relative tolerance for comparison
      * @param validateGradients Whether to also validate gradient computation
      */
     public fun validate(
         testCase: GroundTruthTestCase,
-        params: OperationParams = OperationParams(),
+        params: OperationParams = testCase.resolvedParams(),
         tolerance: Float? = null,
         rtol: Float = 1e-5f,
         validateGradients: Boolean = false
@@ -180,7 +182,7 @@ public class GroundTruthValidator(
      */
     public fun validateAll(
         testCases: List<GroundTruthTestCase>,
-        paramsProvider: (GroundTruthTestCase) -> OperationParams = { OperationParams() },
+        paramsProvider: (GroundTruthTestCase) -> OperationParams = { it.resolvedParams() },
         tolerance: Float? = null,
         rtol: Float = 1e-5f
     ): List<ValidationResult> {
@@ -194,7 +196,7 @@ public class GroundTruthValidator(
      */
     public fun assertValid(
         testCase: GroundTruthTestCase,
-        params: OperationParams = OperationParams(),
+        params: OperationParams = testCase.resolvedParams(),
         tolerance: Float? = null,
         rtol: Float = 1e-5f
     ) {
@@ -275,7 +277,7 @@ public class GroundTruthValidator(
  */
 public fun GroundTruthTestCase.validateWith(
     ops: TensorOps,
-    params: OperationParams = OperationParams(),
+    params: OperationParams = resolvedParams(),
     tolerance: Float? = null
 ): GroundTruthValidator.ValidationResult {
     return GroundTruthValidator(ops).validate(this, params, tolerance)
@@ -286,7 +288,7 @@ public fun GroundTruthTestCase.validateWith(
  */
 public fun GroundTruthTestCase.assertValidWith(
     ops: TensorOps,
-    params: OperationParams = OperationParams(),
+    params: OperationParams = resolvedParams(),
     tolerance: Float? = null
 ) {
     GroundTruthValidator(ops).assertValid(this, params, tolerance)
