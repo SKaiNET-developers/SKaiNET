@@ -17,6 +17,7 @@ import sk.ainet.lang.tensor.data.Q6_KTensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
 import java.lang.foreign.Arena
 
@@ -324,5 +325,68 @@ class QuantizedMemSegMatmulTest {
         val result = ops.matmul(input, ops.transpose(weight))
         assertEquals(Shape(batchSize, outputDim), result.shape)
         arena.close()
+    }
+
+    // ── Q6_K + MemorySegment-backed activation (SKaiNET#991) ──────────────────
+
+    /**
+     * Regression test for SKaiNET#991. Real attention-layer activations produced
+     * by [DirectCpuExecutionContext] wired with [MemorySegmentTensorDataFactory]
+     * (the config every production caller uses — see KLlamaJava.loadGGUF in
+     * SKaiNET-transformers) are `MemorySegmentTensorData`, not
+     * `FloatArrayTensorData`. `chooseQuantizedMatmul` (this class) intentionally
+     * does not intercept Q6_K/Q5_1/Q5_0 — the comment above its `when(bData)`
+     * block says they're "handled in DefaultCpuOpsBase via the kernel registry" —
+     * but `DefaultCpuOpsBase.chooseQuantizedMatmulHeap` required
+     * `a.data as? FloatArrayTensorData<*>` and silently returned null for
+     * anything else, so those quant types fell all the way through to
+     * `matmulGeneric`, which has no packed-quant handling and threw
+     * `ClassCastException: class java.lang.Byte cannot be cast to class
+     * java.lang.Float` reading the raw packed bytes as if they were `Float`.
+     *
+     * Fixed by having `chooseQuantizedMatmulHeap` call the universal
+     * `TensorData.copyToFloatArray()` instead of requiring the
+     * `FloatArrayTensorData` subtype specifically.
+     */
+    @Test
+    fun `Q6_K matmul with MemorySegment-backed FP32 activation does not throw and stays finite`() {
+        val inputDim = Q6_KTensorData.BLOCK_SIZE // exactly one block per row
+        val outputDim = 2
+        val numBlocks = outputDim
+
+        val weightBytes = ByteArray(numBlocks * Q6_KTensorData.BYTES_PER_BLOCK) { i -> (i and 0x3F).toByte() }
+        // Force a small, finite half-float scale per block (last 2 bytes of each
+        // 210-byte Q6_K block) so we don't synthesize a NaN/Inf scale — mirrors
+        // the safeguard in Q6KMatmulTest.randomQ6KBytes. 0x3C00 = 1.0f16.
+        for (block in 0 until numBlocks) {
+            val dOffset = block * Q6_KTensorData.BYTES_PER_BLOCK + 208
+            weightBytes[dOffset] = 0x00.toByte()
+            weightBytes[dOffset + 1] = 0x3C.toByte()
+        }
+        @Suppress("UNCHECKED_CAST")
+        val weight: Tensor<FP32, Float> = VoidOpsTensor(
+            Q6_KBlockTensorData(Shape(numBlocks, inputDim), weightBytes) as TensorData<FP32, Float>,
+            FP32::class,
+        )
+
+        // MemorySegmentTensorDataFactory, not DenseTensorDataFactory — this is the
+        // one detail that reproduces the real bug. `fpTensor()` above (used by
+        // every other test in this file) goes through DenseTensorDataFactory and
+        // yields FloatArrayTensorData, which never exercised the broken path.
+        val memSegFactory = MemorySegmentTensorDataFactory()
+        val inputData = memSegFactory.fromFloatArray<FP32, Float>(
+            Shape(1, inputDim), FP32::class, FloatArray(inputDim) { (it + 1).toFloat() / inputDim },
+        )
+        val input: Tensor<FP32, Float> = VoidOpsTensor(inputData, FP32::class)
+
+        val transposedWeight = ops.transpose(weight)
+        assertTrue(transposedWeight.data is Q6_KTensorData, "transpose must preserve Q6_K packed layout")
+
+        val result = ops.matmul(input, transposedWeight)
+
+        assertEquals(Shape(1, outputDim), result.shape)
+        for (v in result.data.copyToFloatArray()) {
+            assertTrue(v.isFinite(), "Q6_K matmul with MemorySegment-backed input produced a non-finite value: $v")
+        }
     }
 }

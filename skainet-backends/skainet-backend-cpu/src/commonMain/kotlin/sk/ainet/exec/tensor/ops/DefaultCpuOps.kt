@@ -528,9 +528,31 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
      * whole set on non-JVM) resolve here.
      */
     protected fun <T : DType, V> chooseQuantizedMatmulHeap(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
-        if (a.dtype != FP32::class || a.shape.rank != 2 || b.shape.rank != 2) return null
+        if (a.dtype != FP32::class || b.shape.rank != 2 || a.shape.rank < 2) return null
+        if (a.shape.rank == 2) return chooseQuantizedMatmulHeap2D(a, b)
+
+        // Attention linear projections legitimately pass `[..., in]` (see linearProject's kdoc) —
+        // flatten the leading batch/sequence dims into one so the specialized quant kernels below
+        // (which only understand `[batch, in]`) still get used, instead of silently falling
+        // through to matmulGeneric, which has no packed-quant handling at all (see SKaiNET#991).
+        val leading = a.shape.dimensions.copyOf(a.shape.rank - 1)
+        val flatBatch = leading.fold(1) { acc, d -> acc * d }
+        val inputDim = a.shape.dimensions.last()
+        val a2d = reshape(a, Shape(intArrayOf(flatBatch, inputDim)))
+        val result2d = chooseQuantizedMatmulHeap2D(a2d, b) ?: return null
+        val outputDim = result2d.shape.dimensions.last()
+        return reshape(result2d, Shape(leading + outputDim))
+    }
+
+    private fun <T : DType, V> chooseQuantizedMatmulHeap2D(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         if (a.shape[1] != b.shape[0]) return null
-        val inputBuffer = (a.data as? FloatArrayTensorData<*>)?.buffer ?: return null
+        // Any TensorData exposes copyToFloatArray() (FloatArrayTensorData overrides it with a cheap
+        // buffer.copyOf(); everything else — e.g. MemorySegmentTensorData — uses the generic
+        // row-major default). The previous strict `as? FloatArrayTensorData` cast meant activations
+        // backed by anything else (e.g. MemorySegment-backed FP32, as SKaiNET-transformers' attention
+        // path produces) silently declined here, falling through to the unguarded matmulGeneric
+        // fallback for quant types routed to this function (Q6_K, Q5_1, Q5_0) — see SKaiNET#991.
+        val inputBuffer = a.data.copyToFloatArray()
         val batchSize = a.shape[0]
         val inputDim = a.shape[1]
         val outputDim = b.shape[1]

@@ -503,11 +503,28 @@ internal class DefaultCpuOpsJvm(
     private fun <T : DType, V> chooseQuantizedMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         // Input must be FP32
         if (a.dtype != FP32::class) return null
-        if (a.shape.rank != 2) return null
+        if (b.shape.rank != 2) return null
+        if (a.shape.rank < 2) return null
+        if (a.shape.rank == 2) return chooseQuantizedMatmul2D(a, b)
 
+        // Defensive: attention linear projections can in principle pass `[..., in]` (see
+        // linearProject's kdoc) — flatten any leading batch/sequence dims into one so the
+        // specialized quant kernels below (which only understand `[batch, in]`) still get used.
+        // Not exercised by the SKaiNET#991 repro itself (that input was already rank-2 — the
+        // actual bug there was chooseQuantizedMatmulHeap2D requiring FloatArrayTensorData, fixed
+        // separately in DefaultCpuOps.kt), but kept as a real robustness gap this closes too.
+        val leading = a.shape.dimensions.copyOf(a.shape.rank - 1)
+        val flatBatch = leading.fold(1) { acc, d -> acc * d }
+        val inputDim = a.shape.dimensions.last()
+        val a2d = reshape(a, Shape(intArrayOf(flatBatch, inputDim)))
+        val result2d = chooseQuantizedMatmul2D(a2d, b) ?: return null
+        val outputDim = result2d.shape.dimensions.last()
+        return reshape(result2d, Shape(leading + outputDim))
+    }
+
+    private fun <T : DType, V> chooseQuantizedMatmul2D(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         val bData = b.data
         val bShape = b.shape
-        if (bShape.rank != 2) return null
 
         val batchSize = a.shape[0]
         val inputDim = a.shape[1]
