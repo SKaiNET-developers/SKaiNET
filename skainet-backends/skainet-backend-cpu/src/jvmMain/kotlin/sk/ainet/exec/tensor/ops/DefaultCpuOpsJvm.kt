@@ -504,15 +504,19 @@ internal class DefaultCpuOpsJvm(
         // Input must be FP32
         if (a.dtype != FP32::class) return null
         if (b.shape.rank != 2) return null
-        if (a.shape.rank < 2) return null
+        if (a.shape.rank < 1) return null
         if (a.shape.rank == 2) return chooseQuantizedMatmul2D(a, b)
 
         // Defensive: attention linear projections can in principle pass `[..., in]` (see
         // linearProject's kdoc) — flatten any leading batch/sequence dims into one so the
         // specialized quant kernels below (which only understand `[batch, in]`) still get used.
-        // Not exercised by the SKaiNET#991 repro itself (that input was already rank-2 — the
-        // actual bug there was chooseQuantizedMatmulHeap2D requiring FloatArrayTensorData, fixed
-        // separately in DefaultCpuOps.kt), but kept as a real robustness gap this closes too.
+        // Also covers rank-1 activations: a single-token hidden-state vector during incremental
+        // decode (post-prefill, once the KV cache is warm) — `leading` is then empty and
+        // `flatBatch` is 1, so `[in]` promotes to `[1, in]` and the result squeezes back down to
+        // `[out]`, same as `rank > 2` already did. Previously excluded by `a.shape.rank < 2`,
+        // which sent every such decode step straight to matmulGeneric's untyped per-element
+        // `TensorData.get()` path — for a pre-transposed packed-quant weight (e.g.
+        // PreTransposedQ4_K) that returns the raw packed byte, not a dequantized Float.
         val leading = a.shape.dimensions.copyOf(a.shape.rank - 1)
         val flatBatch = leading.fold(1) { acc, d -> acc * d }
         val inputDim = a.shape.dimensions.last()

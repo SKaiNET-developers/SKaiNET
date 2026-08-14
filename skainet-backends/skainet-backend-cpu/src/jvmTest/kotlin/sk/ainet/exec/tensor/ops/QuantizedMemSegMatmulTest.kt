@@ -389,4 +389,43 @@ class QuantizedMemSegMatmulTest {
             assertTrue(v.isFinite(), "Q6_K matmul with MemorySegment-backed input produced a non-finite value: $v")
         }
     }
+
+    // ── Q4_K + rank-1 (single-token decode) activation ─────────────────────────
+
+    /**
+     * Regression test for the "Byte cannot be cast to Float" crash reported against a real
+     * EdgeTranslator run: `chooseQuantizedMatmul`/`chooseQuantizedMatmulHeap` both required
+     * `a.shape.rank >= 2`, returning null for a rank-1 activation and sending it straight to
+     * `matmulGeneric`'s untyped per-element `TensorData.get()`, which — for a packed-quant weight
+     * (in production, one wrapped by SKaiNET-transformers' `PreTransposedQ4_K` marker; a plain
+     * `Q4_KBlockTensorData` reproduces the same dispatch gap here) — returns the raw packed byte,
+     * not a dequantized Float. Real attention forward passes run FP32 batched (rank >= 2) during
+     * prefill but drop to a bare `[in]` hidden-state vector once the KV cache is warm and decoding
+     * proceeds one token at a time, which is exactly the shape this test exercises.
+     */
+    @Test
+    fun `Q4_K matmul with rank-1 activation does not throw and stays finite`() {
+        val inputDim = Q4_KTensorData.BLOCK_SIZE // exactly one block per row
+        val outputDim = 2
+        val numBlocks = outputDim
+
+        val weightBytes = ByteArray(numBlocks * Q4_KTensorData.BYTES_PER_BLOCK) { i -> (i and 0x3F).toByte() }
+        @Suppress("UNCHECKED_CAST")
+        val weight: Tensor<FP32, Float> = VoidOpsTensor(
+            Q4_KBlockTensorData(Shape(numBlocks, inputDim), weightBytes) as TensorData<FP32, Float>,
+            FP32::class,
+        )
+        val transposedWeight = ops.transpose(weight)
+        assertTrue(transposedWeight.data is Q4_KTensorData, "transpose must preserve Q4_K packed layout")
+
+        // Rank 1, not rank 2 — a single-token hidden-state vector, not a `[1, in]` batch.
+        val input = fpTensor(Shape(inputDim), FloatArray(inputDim) { (it + 1).toFloat() / inputDim })
+
+        val result = ops.matmul(input, transposedWeight)
+
+        assertEquals(Shape(outputDim), result.shape)
+        for (v in result.data.copyToFloatArray()) {
+            assertTrue(v.isFinite(), "Q4_K matmul with a rank-1 activation produced a non-finite value: $v")
+        }
+    }
 }

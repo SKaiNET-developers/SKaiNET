@@ -528,13 +528,21 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
      * whole set on non-JVM) resolve here.
      */
     protected fun <T : DType, V> chooseQuantizedMatmulHeap(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
-        if (a.dtype != FP32::class || b.shape.rank != 2 || a.shape.rank < 2) return null
+        if (a.dtype != FP32::class || b.shape.rank != 2 || a.shape.rank < 1) return null
         if (a.shape.rank == 2) return chooseQuantizedMatmulHeap2D(a, b)
 
         // Attention linear projections legitimately pass `[..., in]` (see linearProject's kdoc) —
         // flatten the leading batch/sequence dims into one so the specialized quant kernels below
         // (which only understand `[batch, in]`) still get used, instead of silently falling
         // through to matmulGeneric, which has no packed-quant handling at all (see SKaiNET#991).
+        // Also covers rank-1 activations (a single-token hidden-state vector during incremental
+        // decode, once the KV cache is warm and a matmul no longer runs against a batched
+        // prefill) — `leading` is then empty and `flatBatch` is 1, i.e. `[in]` promotes to
+        // `[1, in]` and the result squeezes back down to `[out]`, the same as `rank > 2`
+        // already did; previously this rank guard sent every post-prefill decode step straight
+        // to matmulGeneric's untyped per-element `TensorData.get()` path, which — for a
+        // packed-quant (or pre-transposed-marker-wrapped, e.g. PreTransposedQ4_K) weight —
+        // returns the raw packed byte, not a dequantized Float.
         val leading = a.shape.dimensions.copyOf(a.shape.rank - 1)
         val flatBatch = leading.fold(1) { acc, d -> acc * d }
         val inputDim = a.shape.dimensions.last()
@@ -701,6 +709,35 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             return mapped
         }
 
+        // Safety net for TensorData implementations whose generic per-element get() doesn't
+        // return the tensor's own dtype — e.g. a packed-quant weight wrapped in a
+        // PreTransposedWeight marker (PreTransposedQ4_K/Q5_K/Q6_K/...), whose delegated get()
+        // surfaces the raw packed byte rather than a dequantized Float. The dispatchers above
+        // this fallback (chooseQuantizedMatmulHeap et al.) now route both prefill (rank > 2) and
+        // single-token decode (rank == 1) activations to the packed-quant kernels, so this should
+        // no longer be hit on that path — kept as defense in depth for any other TensorData
+        // implementation with the same gap, materializing the dequantized array lazily (once,
+        // only if actually needed) rather than up front for every matmulGeneric call.
+        var aFallback: FloatArray? = null
+        var bFallback: FloatArray? = null
+
+        fun flatIndex(dims: IntArray, indices: IntArray): Int {
+            var offset = 0
+            for (i in dims.indices) offset = offset * dims[i] + indices[i]
+            return offset
+        }
+
+        fun floatAt(data: TensorData<T, V>, dims: IntArray, indices: IntArray, isA: Boolean): Float {
+            val raw = data.get(*indices)
+            if (raw is Float) return raw
+            val fallback = if (isA) {
+                aFallback ?: data.copyToFloatArray().also { aFallback = it }
+            } else {
+                bFallback ?: data.copyToFloatArray().also { bFallback = it }
+            }
+            return fallback[flatIndex(dims, indices)]
+        }
+
         val outData = dataFactory.init<T, V>(outShape, a.dtype) { outIdx ->
             val (batchIdx, mIdx, nIdx) = when {
                 aIs1D && bIs1D -> Triple(IntArray(0), -1, -1)
@@ -730,22 +767,22 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     var k = 0
                     while (k < kA) {
                         val av: Float = if (aIs1D) {
-                            a.data.get(*intArrayOf(k)) as Float
+                            floatAt(a.data, aDims, intArrayOf(k), isA = true)
                         } else {
                             val aIdx = IntArray(aRank)
                             if (aBatchIdx.isNotEmpty()) aBatchIdx.copyInto(aIdx)
                             aIdx[aRank - 2] = mIdx
                             aIdx[aRank - 1] = k
-                            a.data.get(*aIdx) as Float
+                            floatAt(a.data, aDims, aIdx, isA = true)
                         }
                         val bv: Float = if (bIs1D) {
-                            b.data.get(*intArrayOf(k)) as Float
+                            floatAt(b.data, bDims, intArrayOf(k), isA = false)
                         } else {
                             val bIdx = IntArray(bRank)
                             if (bBatchIdx.isNotEmpty()) bBatchIdx.copyInto(bIdx)
                             bIdx[bRank - 2] = k
                             bIdx[bRank - 1] = nIdx
-                            b.data.get(*bIdx) as Float
+                            floatAt(b.data, bDims, bIdx, isA = false)
                         }
                         acc += av * bv
                         k++
