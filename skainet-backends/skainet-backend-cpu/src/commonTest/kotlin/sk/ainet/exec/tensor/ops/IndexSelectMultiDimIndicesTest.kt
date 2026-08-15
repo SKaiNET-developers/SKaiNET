@@ -39,4 +39,32 @@ class IndexSelectMultiDimIndicesTest {
             out.data.copyToFloatArray(),
         )
     }
+
+    @Test
+    fun indexSelectAcceptsRank3Indices() {
+        val ctx = DirectCpuExecutionContext.create()
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(4), FP32::class, floatArrayOf(10f, 20f, 30f, 40f))
+        // rank-3 indices [2,2,2] (volume 8) along dim=0 -> a [batch, group, seq]-shaped lookup.
+        val ids = ctx.fromIntArray<Int32, Int>(Shape(2, 2, 2), Int32::class, intArrayOf(0, 1, 2, 3, 3, 2, 1, 0))
+
+        @Suppress("UNCHECKED_CAST")
+        val out = ctx.ops.indexSelect(x, ids as Tensor<sk.ainet.lang.types.DType, *>, dim = 0)
+
+        assertEquals(listOf(8), out.shape.dimensions.toList())
+        assertContentEquals(floatArrayOf(10f, 20f, 30f, 40f, 40f, 30f, 20f, 10f), out.data.copyToFloatArray())
+    }
+
+    @Test
+    fun indexSelectHandlesSingleIndex() {
+        // numIndices=1 boundary, still rank 2 (not rank 1) indices.
+        val ctx = DirectCpuExecutionContext.create()
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(3, 2), FP32::class, floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f))
+        val ids = ctx.fromIntArray<Int32, Int>(Shape(1, 1), Int32::class, intArrayOf(2))
+
+        @Suppress("UNCHECKED_CAST")
+        val out = ctx.ops.indexSelect(x, ids as Tensor<sk.ainet.lang.types.DType, *>, dim = 0)
+
+        assertEquals(listOf(1, 2), out.shape.dimensions.toList())
+        assertContentEquals(floatArrayOf(5f, 6f), out.data.copyToFloatArray())
+    }
 }
