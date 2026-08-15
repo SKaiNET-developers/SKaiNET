@@ -3171,9 +3171,25 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
         require(dim in 0 until input.rank) { "indexSelect: dim=$dim out of range for rank ${input.rank}" }
         val numIndices = indices.volume
-        val indexList = IntArray(numIndices) { i ->
-            val v = indices.data[i]
-            (v as Number).toInt()
+        // The vararg element accessor requires one coordinate per dimension, so a flat
+        // `data[i]` throws for rank >= 2 indices — read the contiguous buffer when present,
+        // otherwise unravel the flat position into a coordinate (mirrors gather() above).
+        val idxData = indices.data
+        val indexList = when (idxData) {
+            is IntArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it] }
+            is FloatArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it].toInt() }
+            else -> {
+                val dims = indices.shape.dimensions
+                IntArray(numIndices) { flat ->
+                    val coord = IntArray(dims.size)
+                    var rem = flat
+                    for (d in dims.indices.reversed()) {
+                        coord[d] = rem % dims[d]
+                        rem /= dims[d]
+                    }
+                    (idxData.get(*coord) as Number).toInt()
+                }
+            }
         }
 
         val resultDims = input.shape.dimensions.copyOf()

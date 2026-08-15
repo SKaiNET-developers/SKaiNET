@@ -158,6 +158,28 @@ class OpsAutodiffBackwardTest {
     }
 
     @Test
+    fun gather_backward_scatter_adds_rows_with_rank2_indices() {
+        // table [vocab=4, emb=3], indices [B=2,T=2] = [[0,2],[2,1]] -> same gather counts as the
+        // rank-1 case above (1,1,2,0), just batched — the shape a token-embedding lookup uses.
+        // Regression: gatherBackward read indices via a single flat index, which only matches
+        // rank-1 indices tensors and threw for any indices rank != 1.
+        assertGradMatchesFiniteDiff(Shape(4, 3), FloatArray(12) { (it - 6) * 0.1f }) { c, x ->
+            val idx = intTensor(c, Shape(2, 2), intArrayOf(0, 2, 2, 1))
+            x.ops.gather(x, idx, dim = 0)
+        }
+    }
+
+    @Test
+    fun indexSelect_backward_scatter_adds_along_dim_with_rank2_indices() {
+        // x [3,4], dim=1, indices [2,2] = [[0,2],[2,0]] -> same select counts as the rank-1 case
+        // above (1,0,2,0... wait, laid out [0,2,2,0]), batched. Same regression as gather above.
+        assertGradMatchesFiniteDiff(Shape(3, 4), FloatArray(12) { (it - 6) * 0.1f }) { c, x ->
+            val idx = intTensor(c, Shape(2, 2), intArrayOf(0, 2, 2, 0))
+            x.ops.indexSelect(x, idx, dim = 1)
+        }
+    }
+
+    @Test
     fun unfold_backward_folds_overlapping_windows() {
         // x [6], size 3, step 1 -> 4 windows; each element's grad = number of windows covering it.
         assertGradMatchesFiniteDiff(Shape(6), FloatArray(6) { (it - 3) * 0.25f }) { _, x ->
