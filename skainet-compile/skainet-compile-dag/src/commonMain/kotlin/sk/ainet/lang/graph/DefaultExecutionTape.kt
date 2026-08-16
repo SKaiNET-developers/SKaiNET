@@ -1056,7 +1056,12 @@ public class DefaultGradientTape(
         val indices = inputs[1]
         val gradInput = zerosLike(input)
         val numIndices = indices.volume
-        val indexList = IntArray(numIndices) { (indices.data[it] as Number).toInt() }
+        // indices.data[it] requires exactly one coordinate per dimension (arity check in
+        // calcFlatIndex), so it only works when indices is rank 1. copyToFloatArray() unravels
+        // the flat position for us and reads correctly for any indices rank (e.g. a batched
+        // [B,T] token-id lookup).
+        val indexFloats = indices.data.copyToFloatArray()
+        val indexList = IntArray(numIndices) { indexFloats[it].toInt() }
         fun rowOf(outIdx: IntArray): Int {
             val flatIdx = if (outIdx.size == 2) outIdx[0] else {
                 var flat = 0
@@ -1090,7 +1095,9 @@ public class DefaultGradientTape(
         val dim = (attributes["dim"] as? Int) ?: 0
         val gradInput = zerosLike(input)
         val numIndices = indices.volume
-        val indexList = IntArray(numIndices) { (indices.data[it] as Number).toInt() }
+        // See gatherBackward above: indices.data[it] only supports rank-1 indices.
+        val indexFloats = indices.data.copyToFloatArray()
+        val indexList = IntArray(numIndices) { indexFloats[it].toInt() }
         val upDims = upstream.shape.dimensions
         val outIdx = IntArray(upDims.size)
         val srcIdx = IntArray(upDims.size)
