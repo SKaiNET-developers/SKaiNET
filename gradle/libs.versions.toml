@@ -29,7 +29,7 @@ kotlinxCli = "0.3.6"
 kotlinxBenchmark = "0.4.17"
 kotlinxIo = "0.9.1"
 pbandk = "0.16.0"
-kotest = "6.2.2"
+kotest = "6.2.4"
 
 # --- npm pins -----------------------------------------------------------------
 # Versions for npm packages forced into BOTH kotlin-js-store lockfiles via Yarn
