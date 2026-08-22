@@ -45,7 +45,39 @@ public enum class LogicalDType(
 
     public val sizeInBytes: Int get() = (sizeInBits + 7) / 8
 
+    /**
+     * The [DType] this logical type corresponds to — the inverse of [fromDType].
+     *
+     * Bridge half 1 of 2 (SKEEP-003 Phase 0, decision #13): [LogicalDType] and [DType] are
+     * bijective (14 ↔ 14) and will merge into one sealed `DType` that carries its `KClass`
+     * witness; until then this is the single sanctioned way to go from a storage descriptor's
+     * logical type to the `DType` the tensor DSL uses. Total — every constant maps to exactly
+     * one `DType` object — and exhaustive by construction (no `else` branch).
+     *
+     * @see sk.ainet.lang.tensor.storage.toLogicalDType
+     */
+    public fun toDType(): DType = when (this) {
+        TERNARY -> Ternary
+        INT4 -> Int4
+        INT8 -> Int8
+        INT16 -> Int16
+        INT32 -> Int32
+        INT64 -> Int64
+        UINT8 -> UInt8
+        UINT16 -> UInt16
+        UINT32 -> UInt32
+        UINT64 -> UInt64
+        FLOAT16 -> FP16
+        BFLOAT16 -> BF16
+        FLOAT32 -> FP32
+        FLOAT64 -> FP64
+    }
+
     public companion object {
+        /**
+         * The [LogicalDType] for a [DType]. Inverse of [toDType]; prefer the extension
+         * [sk.ainet.lang.tensor.storage.toLogicalDType] at call sites.
+         */
         public fun fromDType(dtype: DType): LogicalDType = when (dtype) {
             is Ternary -> TERNARY
             is Int4 -> INT4

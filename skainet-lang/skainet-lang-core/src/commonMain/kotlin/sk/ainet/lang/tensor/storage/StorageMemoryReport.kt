@@ -20,6 +20,9 @@ public data class StorageMemoryReport(
     val isAlias: Boolean,
     val isMutable: Boolean
 ) {
+    /** The [sk.ainet.lang.types.DType] of [logicalType] (SKEEP-003 Phase 0 bridge). */
+    val dtype: sk.ainet.lang.types.DType get() = logicalType.toDType()
+
     /** Compression ratio: logical / physical. >1 means the encoding is smaller than dense. */
     val compressionRatio: Double
         get() = if (physicalBytes > 0) logicalBytes.toDouble() / physicalBytes else 1.0

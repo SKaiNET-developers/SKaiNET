@@ -5110,6 +5110,10 @@ public final class sk/ainet/lang/tensor/storage/CopySourceStat {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/tensor/storage/DTypeBridge {
+	public static final fun toLogicalDType (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/LogicalDType;
+}
+
 public final class sk/ainet/lang/tensor/storage/DefaultBufferResolver : sk/ainet/lang/tensor/storage/BufferResolver {
 	public fun <init> ()V
 	public fun <init> (Lkotlin/jvm/functions/Function1;)V
@@ -5292,6 +5296,7 @@ public final class sk/ainet/lang/tensor/storage/LogicalDType : java/lang/Enum {
 	public final fun getSizeInBytes ()I
 	public final fun isFloatingPoint ()Z
 	public final fun isSigned ()Z
+	public final fun toDType ()Lsk/ainet/lang/types/DType;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/LogicalDType;
 	public static fun values ()[Lsk/ainet/lang/tensor/storage/LogicalDType;
 }
@@ -5446,6 +5451,7 @@ public final class sk/ainet/lang/tensor/storage/StorageMemoryReport {
 	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/StorageMemoryReport;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;JJZZZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCompressionRatio ()D
+	public final fun getDtype ()Lsk/ainet/lang/types/DType;
 	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun getLogicalBytes ()J
 	public final fun getLogicalType ()Lsk/ainet/lang/tensor/storage/LogicalDType;
@@ -5471,6 +5477,7 @@ public final class sk/ainet/lang/tensor/storage/StorageSpec {
 	public final fun copy (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
 	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/StorageSpec;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDtype ()Lsk/ainet/lang/types/DType;
 	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun getLogicalType ()Lsk/ainet/lang/tensor/storage/LogicalDType;
 	public final fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
@@ -5666,6 +5673,7 @@ public final class sk/ainet/lang/tensor/storage/TensorStorage {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBuffer ()Lsk/ainet/lang/tensor/storage/BufferHandle;
 	public final fun getByteOffset ()J
+	public final fun getDtype ()Lsk/ainet/lang/types/DType;
 	public final fun getElementCount ()J
 	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun getLogicalBytes ()J
