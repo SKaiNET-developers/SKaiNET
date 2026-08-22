@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -25,7 +27,6 @@ import kotlin.test.assertSame
  * SKEEP-003 Phase 0, decision #13: the two-way `LogicalDType` <-> `DType` bridge must be total
  * and bijective so that `LogicalDType` can later be merged into `DType` without a semantic gap.
  */
-@Suppress("DEPRECATION") // StorageSpec is exercised on purpose: the bridge must keep the legacy descriptor working
 class LogicalDTypeBridgeTest {
 
     private val expectedPairs: List<Pair<LogicalDType, DType>> = listOf(

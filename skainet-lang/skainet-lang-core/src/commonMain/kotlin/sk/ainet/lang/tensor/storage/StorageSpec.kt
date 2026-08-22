@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // StorageSpec is itself deprecated and built on LogicalDType; both go at the next major
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.memory.AllocationSpec

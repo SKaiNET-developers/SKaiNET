@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // keeps the LogicalDType primary constructor working until the next major
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -22,6 +24,10 @@ import sk.ainet.lang.types.DType
  */
 public data class TensorStorage(
     val shape: Shape,
+    @Deprecated(
+        message = "Use dtype (SKEEP-003 decision #13); the LogicalDType view stays until the next major.",
+        replaceWith = ReplaceWith("dtype"),
+    )
     val logicalType: LogicalDType,
     val encoding: TensorEncoding,
     val buffer: BufferHandle,

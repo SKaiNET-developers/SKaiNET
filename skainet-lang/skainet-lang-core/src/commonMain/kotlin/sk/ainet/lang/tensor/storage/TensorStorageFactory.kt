@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // the LogicalDType overloads stay as delegating shims until the next major
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -72,6 +74,7 @@ public object TensorStorageFactory {
      * Create storage from raw bytes with explicit encoding.
      * The byte array is borrowed (not copied).
      */
+    @Deprecated(message = "Use the DType overload (SKEEP-003 decision #13).", replaceWith = ReplaceWith("fromRawBytes(shape, dtype, encoding, …)"))
     public fun fromRawBytes(
         shape: Shape,
         logicalType: LogicalDType,
@@ -98,6 +101,7 @@ public object TensorStorageFactory {
     /**
      * Create storage from raw bytes with explicit encoding (owned copy).
      */
+    @Deprecated(message = "Use the DType overload (SKEEP-003 decision #13).", replaceWith = ReplaceWith("fromRawBytesOwned(shape, dtype, encoding, …)"))
     public fun fromRawBytesOwned(
         shape: Shape,
         logicalType: LogicalDType,
@@ -124,6 +128,7 @@ public object TensorStorageFactory {
     /**
      * Create file-backed storage (for memory-mapped model weights).
      */
+    @Deprecated(message = "Use the DType overload (SKEEP-003 decision #13).", replaceWith = ReplaceWith("fileBacked(shape, dtype, encoding, …)"))
     public fun fileBacked(
         shape: Shape,
         logicalType: LogicalDType,
