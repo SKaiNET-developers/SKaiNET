@@ -1,6 +1,7 @@
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.types.DType
 
 /**
  * Runtime descriptor for a tensor's backing memory.
@@ -29,8 +30,23 @@ public data class TensorStorage(
     val strides: LongArray? = null,
     val isContiguous: Boolean = true
 ) {
-    /** The [sk.ainet.lang.types.DType] of [logicalType] (SKEEP-003 Phase 0 bridge). */
-    val dtype: sk.ainet.lang.types.DType get() = logicalType.toDType()
+    /**
+     * Construct from a [DType] (SKEEP-003 Phase 0): the dtype-first form every new call site uses;
+     * the [LogicalDType] primary constructor stays for source compatibility until the next major.
+     */
+    public constructor(
+        shape: Shape,
+        dtype: DType,
+        encoding: TensorEncoding,
+        buffer: BufferHandle,
+        placement: Placement = Placement.CPU_HEAP,
+        byteOffset: Long = 0,
+        strides: LongArray? = null,
+        isContiguous: Boolean = true,
+    ) : this(shape, dtype.toLogicalDType(), encoding, buffer, placement, byteOffset, strides, isContiguous)
+
+    /** The [DType] of this storage — what the values mean (SKEEP-003 Phase 0 bridge over [logicalType]). */
+    val dtype: DType get() = logicalType.toDType()
 
     /** Number of logical elements in this tensor. */
     val elementCount: Long get() = shape.volume.toLong()

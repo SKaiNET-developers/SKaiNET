@@ -1,9 +1,12 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 64-bit signed integer type (Long).
  */
 public object Int64 : DType {
+    override val witness: KClass<Int64> get() = Int64::class
     override val sizeInBits: Int = 64
     override val name: String = "Int64"
 

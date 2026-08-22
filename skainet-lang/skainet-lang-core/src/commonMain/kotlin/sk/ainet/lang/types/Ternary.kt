@@ -1,10 +1,13 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * Custom data type holding 3 values -1,0,1 stored in 2 bits. Used e.g. with BitNet models
  * https://huggingface.co/microsoft/bitnet-b1.58-2B-4T
  */
 public object Ternary : DType {
+    override val witness: KClass<Ternary> get() = Ternary::class
     override val sizeInBits: Int = 2
     override val name: String = "Ternary"
 

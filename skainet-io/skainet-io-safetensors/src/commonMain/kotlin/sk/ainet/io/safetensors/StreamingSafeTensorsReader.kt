@@ -4,6 +4,7 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.model.DataType
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.*
+import sk.ainet.lang.types.*
 
 /**
  * Streaming SafeTensors reader that parses metadata without loading tensor data.
@@ -106,7 +107,7 @@ public class StreamingSafeTensorsReader private constructor(
         val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
         return TensorStorage(
             shape = shape,
-            logicalType = safeTensorsTypeToLogical(tensor.dataType),
+            dtype = safeTensorsTypeToDType(tensor.dataType),
             encoding = safeTensorsTypeToEncoding(tensor.dataType),
             buffer = BufferHandle.Borrowed(bytes, isMutable = false),
             placement = Placement.CPU_HEAP
@@ -133,7 +134,7 @@ public class StreamingSafeTensorsReader private constructor(
         val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
         return TensorStorage(
             shape = shape,
-            logicalType = safeTensorsTypeToLogical(tensor.dataType),
+            dtype = safeTensorsTypeToDType(tensor.dataType),
             encoding = safeTensorsTypeToEncoding(tensor.dataType),
             buffer = BufferHandle.FileBacked(
                 path = filePath,
@@ -144,21 +145,21 @@ public class StreamingSafeTensorsReader private constructor(
         )
     }
 
-    private fun safeTensorsTypeToLogical(type: DataType): LogicalDType = when (type) {
-        DataType.FLOAT32 -> LogicalDType.FLOAT32
-        DataType.FLOAT64 -> LogicalDType.FLOAT64
-        DataType.FLOAT16 -> LogicalDType.FLOAT16
-        DataType.BFLOAT16 -> LogicalDType.BFLOAT16
-        DataType.INT8 -> LogicalDType.INT8
-        DataType.INT16 -> LogicalDType.INT16
-        DataType.INT32 -> LogicalDType.INT32
-        DataType.INT64 -> LogicalDType.INT64
-        DataType.UINT8 -> LogicalDType.UINT8
-        DataType.UINT16 -> LogicalDType.UINT16
-        DataType.UINT32 -> LogicalDType.UINT32
-        DataType.UINT64 -> LogicalDType.UINT64
-        DataType.BOOL -> LogicalDType.UINT8
-        else -> LogicalDType.INT8 // fallback for UNKNOWN
+    private fun safeTensorsTypeToDType(type: DataType): DType = when (type) {
+        DataType.FLOAT32 -> FP32
+        DataType.FLOAT64 -> FP64
+        DataType.FLOAT16 -> FP16
+        DataType.BFLOAT16 -> BF16
+        DataType.INT8 -> Int8
+        DataType.INT16 -> Int16
+        DataType.INT32 -> Int32
+        DataType.INT64 -> Int64
+        DataType.UINT8 -> UInt8
+        DataType.UINT16 -> UInt16
+        DataType.UINT32 -> UInt32
+        DataType.UINT64 -> UInt64
+        DataType.BOOL -> UInt8
+        else -> Int8 // fallback for UNKNOWN
     }
 
     private fun safeTensorsTypeToEncoding(type: DataType): TensorEncoding = when (type) {

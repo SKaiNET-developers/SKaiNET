@@ -1,9 +1,13 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 8-bit unsigned integer type.
  */
 public object UInt8 : DType {
+    override val witness: KClass<UInt8> get() = UInt8::class
+    override val isSigned: Boolean get() = false
     override val sizeInBits: Int = 8
     override val name: String = "UInt8"
 

@@ -3,6 +3,7 @@ package sk.ainet.io.gguf
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.*
+import sk.ainet.lang.types.*
 
 /**
  * Streaming GGUF reader that parses metadata without loading the entire file.
@@ -118,7 +119,7 @@ public class StreamingGGUFReader private constructor(
         val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
         return TensorStorage(
             shape = shape,
-            logicalType = ggmlTypeToLogical(tensor.tensorType),
+            dtype = ggmlTypeToDType(tensor.tensorType),
             encoding = ggmlTypeToEncoding(tensor.tensorType, tensor.nBytes),
             buffer = BufferHandle.Borrowed(bytes, isMutable = false),
             placement = Placement.CPU_HEAP
@@ -148,7 +149,7 @@ public class StreamingGGUFReader private constructor(
         val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
         return TensorStorage(
             shape = shape,
-            logicalType = ggmlTypeToLogical(tensor.tensorType),
+            dtype = ggmlTypeToDType(tensor.tensorType),
             encoding = ggmlTypeToEncoding(tensor.tensorType, tensor.nBytes),
             buffer = BufferHandle.FileBacked(
                 path = filePath,
@@ -159,17 +160,17 @@ public class StreamingGGUFReader private constructor(
         )
     }
 
-    private fun ggmlTypeToLogical(type: GGMLQuantizationType): LogicalDType = when (type) {
-        GGMLQuantizationType.F32 -> LogicalDType.FLOAT32
-        GGMLQuantizationType.F16 -> LogicalDType.FLOAT16
-        GGMLQuantizationType.BF16 -> LogicalDType.BFLOAT16
-        GGMLQuantizationType.F64 -> LogicalDType.FLOAT64
-        GGMLQuantizationType.I8 -> LogicalDType.INT8
-        GGMLQuantizationType.I16 -> LogicalDType.INT16
-        GGMLQuantizationType.I32 -> LogicalDType.INT32
-        GGMLQuantizationType.I64 -> LogicalDType.INT64
+    private fun ggmlTypeToDType(type: GGMLQuantizationType): DType = when (type) {
+        GGMLQuantizationType.F32 -> FP32
+        GGMLQuantizationType.F16 -> FP16
+        GGMLQuantizationType.BF16 -> BF16
+        GGMLQuantizationType.F64 -> FP64
+        GGMLQuantizationType.I8 -> Int8
+        GGMLQuantizationType.I16 -> Int16
+        GGMLQuantizationType.I32 -> Int32
+        GGMLQuantizationType.I64 -> Int64
         // Quantized types logically represent floats
-        else -> LogicalDType.FLOAT32
+        else -> FP32
     }
 
     private fun ggmlTypeToEncoding(type: GGMLQuantizationType, nBytes: Long): TensorEncoding = when (type) {

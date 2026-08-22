@@ -3,12 +3,14 @@ package sk.ainet.io.gguf
 import org.junit.Test
 import sk.ainet.io.JvmFileBackedResolver
 import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.lang.types.FP32
 import sk.ainet.lang.tensor.storage.*
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -106,6 +108,7 @@ class StorageIntegrationTest {
                 // F32 tensor
                 val f32Storage = reader.loadTensorStorage("weight_f32")
                 assertEquals(LogicalDType.FLOAT32, f32Storage.logicalType)
+                assertSame(FP32, f32Storage.dtype)
                 assertEquals(TensorEncoding.Dense(4), f32Storage.encoding)
                 assertEquals(Ownership.BORROWED, f32Storage.ownership)
                 assertEquals(16L, f32Storage.physicalBytes)
@@ -114,7 +117,8 @@ class StorageIntegrationTest {
 
                 // Q8_0 tensor
                 val q80Storage = reader.loadTensorStorage("weight_q80")
-                assertEquals(LogicalDType.FLOAT32, q80Storage.logicalType)
+                assertEquals(LogicalDType.FLOAT32, q80Storage.logicalType) // packed weights are logically FP32
+                assertSame(FP32, q80Storage.dtype)
                 assertEquals(TensorEncoding.Q8_0, q80Storage.encoding)
                 assertEquals(Ownership.BORROWED, q80Storage.ownership)
                 assertEquals(34L, q80Storage.physicalBytes)

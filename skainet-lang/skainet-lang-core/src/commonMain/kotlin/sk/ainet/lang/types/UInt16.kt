@@ -1,9 +1,13 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 16-bit unsigned integer type.
  */
 public object UInt16 : DType {
+    override val witness: KClass<UInt16> get() = UInt16::class
+    override val isSigned: Boolean get() = false
     override val sizeInBits: Int = 16
     override val name: String = "UInt16"
 

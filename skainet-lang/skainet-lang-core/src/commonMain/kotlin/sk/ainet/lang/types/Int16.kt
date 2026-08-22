@@ -1,9 +1,12 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 16-bit signed integer type.
  */
 public object Int16 : DType {
+    override val witness: KClass<Int16> get() = Int16::class
     override val sizeInBits: Int = 16
     override val name: String = "Int16"
 
