@@ -29,6 +29,9 @@ public data class TensorStorage(
     val strides: LongArray? = null,
     val isContiguous: Boolean = true
 ) {
+    /** The [sk.ainet.lang.types.DType] of [logicalType] (SKEEP-003 Phase 0 bridge). */
+    val dtype: sk.ainet.lang.types.DType get() = logicalType.toDType()
+
     /** Number of logical elements in this tensor. */
     val elementCount: Long get() = shape.volume.toLong()
 
