@@ -69,6 +69,18 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
     public val shape: Shape
 
     /**
+     * How this data's bytes are laid out, or `null` when they are the plain dense representation
+     * of the tensor's logical dtype (the default for array-backed data).
+     *
+     * Packed implementations (Q4_0 … Q8_0, Q4_K/Q5_K/Q6_K, ternary) report their block encoding;
+     * narrow-float data reports `Dense(2)`. Together with the tensor's dtype witness this yields
+     * the tensor's `Format` (SKEEP-003 rule 3: a packed weight is *logically* FP32 — the encoding
+     * says how it is stored, it never replaces the dtype). A default member, not an abstract one,
+     * because `TensorData` is implemented outside this module.
+     */
+    public val encoding: sk.ainet.lang.tensor.storage.TensorEncoding? get() = null
+
+    /**
      * Copies all tensor data to a FloatArray.
      *
      * This method provides efficient bulk data transfer from tensor storage to a FloatArray.

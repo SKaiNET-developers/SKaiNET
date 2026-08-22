@@ -1,6 +1,7 @@
 package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.types.NarrowFloatCodec
@@ -57,6 +58,9 @@ public open class NarrowFloatDenseTensorData(
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
+
+    /** Physically two bytes per element whatever the declared dtype witness. */
+    override val encoding: TensorEncoding get() = TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)
 
     init {
         val requiredBytes = shape.volume * NarrowFloatTensorData.BYTES_PER_ELEMENT
