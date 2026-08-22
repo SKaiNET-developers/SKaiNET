@@ -41,6 +41,25 @@ Out of scope:
 - Denial of service from intentionally malformed inputs where the documented
   contract is "trusted input only."
 
+## Handling dependency CVEs
+
+Dependabot flags high/critical-severity advisories against this repo's Maven/JVM and
+npm dependency graphs, including transitive ones no build script declares directly.
+
+- **A transitive npm/Yarn dependency** (Kotlin/JS or Kotlin/Wasm): pinned via
+  `sk.ainet.npm-pins` — see [Pinning npm Packages](docs/modules/ROOT/pages/contributing/build-from-source.adoc#pinning-npm-packages).
+- **A transitive Maven/JVM dependency of the app's own graph**: pinned via
+  `sk.ainet.maven-pins` — see [Pinning Maven/JVM Dependencies](docs/modules/ROOT/pages/contributing/build-from-source.adoc#pinning-mavenjvm-dependencies).
+- **A transitive dependency of a *Gradle plugin's own classpath*** (AGP, Dokka, KSP,
+  etc.) — neither mechanism above can reach these; see the "What this cannot fix"
+  note in the Maven/JVM pinning doc linked above. These packages are build-time-only
+  and are not present in anything SKaiNET publishes, so unless the vulnerable code
+  path is actually reachable during a build, the alert is usually dismissed as
+  tolerable risk with that reasoning recorded on the alert, rather than forcing a
+  plugin version bump purely to silence the scanner. See
+  [issue #1046](https://github.com/SKaiNET-developers/SKaiNET/issues/1046) for a
+  worked example of this triage.
+
 ## Hardening and best practices
 
 Broader open-source security posture (REUSE/OpenSSF Best Practices, SBOM, dependency
