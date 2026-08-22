@@ -67,6 +67,6 @@ Every proposal should include:
 | Off-heap tensor storage on Android
 
 | xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003]
-| Draft
+| Accepted
 | Unifying the tensor storage model
 |===
