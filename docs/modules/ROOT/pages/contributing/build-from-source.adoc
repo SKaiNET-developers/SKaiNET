@@ -165,6 +165,33 @@ Applying `sk.ainet.multiplatform` to the *root* project is not supported and fai
 . Rewrite any `val someSourceSet by getting ++{++ ++}++` to the convention accessors (`jvmMain ++{++ ++}++`, `iosArm64Main ++{++ ++}++`). The `by getting` form resolves eagerly and fails now that targets are created by the plugin.
 . Confirm nothing moved: `./gradlew :module:tasks --all` before and after must be identical, and `./gradlew apiCheck` must pass without a new dump.
 
+=== Pre-PR Gate and the Packed-Encoding Golden Parity Tests
+
+CI runs the test legs per target (`jvmTest`, `jsTest wasmJsTest wasmWasiTest`, `linuxX64Test`,
+`assemble`) and, since the SKEEP-003 roadmap, a `golden-parity` leg. Before opening a PR, run the
+same set locally:
+
+[source,bash]
+----
+scripts/pr-gate.sh            # full gate: jvmTest, apiCheck, JS/Wasm tests, linuxX64Test, assemble, Java API tests
+scripts/pr-gate.sh --quick    # jvmTest + apiCheck only, for iteration
+scripts/pr-gate.sh --golden   # packed-encoding golden parity (JVM + linuxX64) + apiCheck only
+scripts/pr-gate.sh --bench    # full gate + StorageBenchmarks and JMH microbenchmarks
+----
+
+The script points `CHROME_BIN` at an installed Chrome/Chromium for the Karma browser tests and
+expects a JDK 21+ (`JAVA_HOME`; CI uses 25).
+
+*Golden parity tests* (`skainet-backends/skainet-backend-cpu/src/goldenTest/kotlin/sk/ainet/exec/golden/`)
+guard the packed encodings bit-for-bit: for every GGML block format (Q4_0, Q5_0, Q5_1, Q8_0, Q4_K,
+Q5_K, Q6_K), ternary (TQ2_0) and TurboQuant they decode seeded bytes, run the scalar reference
+kernels and encode/decode seeded vectors, and compare an FNV-64 digest of the raw float bits against
+the values recorded in `Goldens.kt`. They are compiled into the JVM and Kotlin/Native test targets
+(JS/Wasm compute `Float` in double precision and are covered by the tolerance-based
+`PackedMatmulDispatchParityTest` in `commonTest` instead). A mismatch means a decoder or kernel no
+longer produces the same bits; if that is the intent of a PR, re-baseline `Goldens.kt` in the same
+PR and say so. See SKEEP-003 and the memory-architecture design record under `docs/design/memory/`.
+
 === Pinning npm Packages
 
 Kotlin/JS and Kotlin/Wasm dependencies are locked in `kotlin-js-store/yarn.lock` and `kotlin-js-store/wasm/yarn.lock`. Both files are *generated*. Editing them by hand does not survive the next lockfile refresh — see https://github.com/SKaiNET-developers/SKaiNET/pull/894[PR #894], where a hand-applied `ws` security bump was reverted by `kotlinWasmUpgradeYarnLock` in the same pull request.

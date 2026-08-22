@@ -6,6 +6,7 @@
 #   scripts/pr-gate.sh            # full gate
 #   scripts/pr-gate.sh --bench    # full gate + StorageBenchmarks and JMH microbenchmarks
 #   scripts/pr-gate.sh --quick    # JVM leg + apiCheck only (iterate fast, then run the full gate)
+#   scripts/pr-gate.sh --golden   # packed-encoding golden parity (JVM + linuxX64) + apiCheck only
 #
 # Set JAVA_HOME to a JDK 25 (CI uses 25; the build requires >= 21).
 set -euo pipefail
@@ -24,6 +25,14 @@ fi
 echo "pr-gate: JAVA_HOME=${JAVA_HOME:-<default>} CHROME_BIN=${CHROME_BIN:-<none: browser tests will fail>}"
 
 step() { echo; echo "=== pr-gate: $* ==="; }
+
+if [[ "$mode" == "--golden" ]]; then
+  step "golden parity (bit-identical packed decode / scalar kernels / TurboQuant; dispatch parity) + apiCheck"
+  "${GRADLE[@]}" apiCheck \
+    :skainet-backends:skainet-backend-cpu:jvmTest --tests 'sk.ainet.exec.golden.*' \
+    :skainet-backends:skainet-backend-cpu:linuxX64Test --tests 'sk.ainet.exec.golden.*'
+  echo; echo "pr-gate: golden parity passed."; exit 0
+fi
 
 step "JVM tests"
 "${GRADLE[@]}" jvmTest

@@ -43,6 +43,16 @@ kotlin {
         macosArm64Main { dependsOn(macosMain.get()) }
         linuxX64Main { dependsOn(linuxMain.get()) }
         linuxArm64Main { dependsOn(linuxMain.get()) }
+
+        // Golden (bit-identical) regression tests for the packed encodings — SKEEP-003 gate.
+        // Shared by the JVM and Kotlin/Native test targets only: JS/Wasm compute Float in
+        // double precision and are not expected to be bit-identical (they are covered by the
+        // tolerance-based parity tests in commonTest).
+        val goldenTestDir = "src/goldenTest/kotlin"
+        jvmTest { kotlin.srcDir(goldenTestDir) }
+        linuxX64Test { kotlin.srcDir(goldenTestDir) }
+        linuxArm64Test { kotlin.srcDir(goldenTestDir) }
+        macosArm64Test { kotlin.srcDir(goldenTestDir) }
     }
 }
 
