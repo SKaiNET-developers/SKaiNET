@@ -1,11 +1,14 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * Brain Float 16 (BFloat16) type.
  * 16-bit floating point format with same exponent range as FP32 but reduced mantissa.
  * Commonly used in machine learning workloads.
  */
 public object BF16 : DType {
+    override val witness: KClass<BF16> get() = BF16::class
     override val sizeInBits: Int = 16
     override val name: String = "BFloat16"
 

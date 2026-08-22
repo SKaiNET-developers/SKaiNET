@@ -1,6 +1,7 @@
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.types.FP32
 import sk.ainet.lang.tensor.ops.turboquant.TurboQuantBlock
 import sk.ainet.lang.tensor.ops.turboquant.TurboQuantCodec
 import sk.ainet.lang.tensor.ops.turboquant.TurboQuantConfig
@@ -187,7 +188,7 @@ public class TurboQuantKvCacheStore(
         }
         return TensorStorage(
             shape = Shape(numHeads, seqLen, headDim),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = encoding,
             buffer = BufferHandle.Owned(bytes),
             placement = placement

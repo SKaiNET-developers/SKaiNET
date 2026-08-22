@@ -1,9 +1,34 @@
 package sk.ainet.lang.types
 
-// Base marker interface for all dtypes
+import kotlin.jvm.JvmStatic
+import kotlin.reflect.KClass
+
+/**
+ * The logical element type of a tensor: what a value *means* when you read it.
+ *
+ * `DType` is sealed with exactly fourteen `object` members, so it is switchable like an enum
+ * (`when (dtype) { FP32 -> … }`) while each member still serves as the generic witness of
+ * `Tensor<T : DType, V>` through [witness]. SKEEP-003 (decision #13): this single type replaces
+ * the storage-side `LogicalDType` enum; `Format = (DType, TensorEncoding)` has exactly one dtype
+ * type.
+ */
 public sealed interface DType {
     public val sizeInBits: Int
     public val name: String
+
+    /**
+     * The `KClass` witness of this dtype — the value `Tensor.dtype` / `TensorData<T, V>` carry as
+     * their type argument. Each member returns its own class (`FP32.witness == FP32::class`), so
+     * [DType.fromWitness] maps a `Tensor.dtype` back to the `DType` object. (Not to be confused with
+     * [kotlinClass], which is the KClass of the *value* representation, e.g. `Float::class`.)
+     */
+    public val witness: KClass<out DType>
+
+    /** Whether the type carries a sign (false only for the unsigned integer types). */
+    public val isSigned: Boolean get() = true
+
+    /** Storage width of one element rounded up to whole bytes. */
+    public val sizeInBytes: Int get() = (sizeInBits + 7) / 8
 
     /**
      * Checks if this data type is compatible with another data type for operations.
@@ -33,10 +58,14 @@ public sealed interface DType {
     public fun promoteTo(other: DType): DType
 
     public companion object {
+        // All companion collections are lazy on purpose: `DType` now has default members, so on
+        // the JVM initializing any `object` (e.g. FP32) also initializes this interface's statics;
+        // an eager map would capture the half-initialized object (class-init cycle →
+        // ExceptionInInitializerError). Lazy delegates defer the member references until first use.
         /**
          * Registry of all available data types.
          */
-        private val typeRegistry: Map<String, DType> = mapOf(
+        private val typeRegistry: Map<String, DType> by lazy { mapOf(
             "Ternary" to Ternary,
             "Int4" to Int4,
             "Int8" to Int8,
@@ -51,7 +80,7 @@ public sealed interface DType {
             "BFloat16" to BF16,
             "Float32" to FP32,
             "Float64" to FP64
-        )
+        ) }
 
         /**
          * Gets all registered data types.
@@ -59,6 +88,39 @@ public sealed interface DType {
          * @return Map of type names to DType instances
          */
         public fun getAllTypes(): Map<String, DType> = typeRegistry
+
+        /**
+         * All fourteen dtypes in a stable order (the storage-layer order: ternary, signed ints,
+         * unsigned ints, floats) — the enum-like `entries` of this sealed type.
+         */
+        public val entries: List<DType> by lazy {
+            listOf(
+                Ternary, Int4, Int8, Int16, Int32, Int64,
+                UInt8, UInt16, UInt32, UInt64,
+                FP16, BF16, FP32, FP64,
+            )
+        }
+
+        // Identity-keyed (KClass equality), never name-based: stable on JS/Wasm where class
+        // names may be minified.
+        private val byWitness: Map<KClass<out DType>, DType> by lazy { entries.associateBy { it.witness } }
+
+        /**
+         * The [DType] whose [witness] is [kclass], or `null` if [kclass] is not one of the
+         * fourteen dtype classes (e.g. `DType::class` itself).
+         */
+        @JvmStatic
+        public fun fromWitnessOrNull(kclass: KClass<out DType>): DType? = byWitness[kclass]
+
+        /**
+         * The [DType] whose [witness] is [kclass] — the inverse of [witness], e.g.
+         * `DType.fromWitness(tensor.dtype)`.
+         *
+         * @throws IllegalArgumentException if [kclass] is not a dtype class
+         */
+        @JvmStatic
+        public fun fromWitness(kclass: KClass<out DType>): DType =
+            byWitness[kclass] ?: throw IllegalArgumentException("Not a DType witness: $kclass")
 
         /**
          * Finds a data type by name.

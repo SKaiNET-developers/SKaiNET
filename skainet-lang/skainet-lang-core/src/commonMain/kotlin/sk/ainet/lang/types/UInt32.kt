@@ -1,9 +1,13 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 32-bit unsigned integer type.
  */
 public object UInt32 : DType {
+    override val witness: KClass<UInt32> get() = UInt32::class
+    override val isSigned: Boolean get() = false
     override val sizeInBits: Int = 32
     override val name: String = "UInt32"
 

@@ -12,6 +12,8 @@ import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.Bf16Codec
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP16
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.types.Int32
@@ -29,7 +31,7 @@ public object TensorStorageFactory {
     public fun fromFloatArray(shape: Shape, data: FloatArray): TensorStorage =
         TensorStorage(
             shape = shape,
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(bytesPerElement = 4),
             buffer = BufferHandleFactory.owned(data)
         )
@@ -61,7 +63,7 @@ public object TensorStorageFactory {
     public fun fromIntArray(shape: Shape, data: IntArray): TensorStorage =
         TensorStorage(
             shape = shape,
-            logicalType = LogicalDType.INT32,
+            dtype = Int32,
             encoding = TensorEncoding.Dense(bytesPerElement = 4),
             buffer = BufferHandleFactory.owned(data)
         )
@@ -84,6 +86,15 @@ public object TensorStorageFactory {
         placement = placement
     )
 
+    /** Create storage from raw bytes with explicit encoding, dtype-first (the byte array is borrowed). */
+    public fun fromRawBytes(
+        shape: Shape,
+        dtype: DType,
+        encoding: TensorEncoding,
+        data: ByteArray,
+        placement: Placement = Placement.CPU_HEAP
+    ): TensorStorage = fromRawBytes(shape, dtype.toLogicalDType(), encoding, data, placement)
+
     /**
      * Create storage from raw bytes with explicit encoding (owned copy).
      */
@@ -100,6 +111,15 @@ public object TensorStorageFactory {
         buffer = BufferHandleFactory.owned(data),
         placement = placement
     )
+
+    /** Create storage from raw bytes with explicit encoding (owned copy), dtype-first. */
+    public fun fromRawBytesOwned(
+        shape: Shape,
+        dtype: DType,
+        encoding: TensorEncoding,
+        data: ByteArray,
+        placement: Placement = Placement.CPU_HEAP
+    ): TensorStorage = fromRawBytesOwned(shape, dtype.toLogicalDType(), encoding, data, placement)
 
     /**
      * Create file-backed storage (for memory-mapped model weights).
@@ -118,6 +138,16 @@ public object TensorStorageFactory {
         buffer = BufferHandleFactory.fileBacked(path, fileOffset, sizeInBytes),
         placement = Placement.MMAP_WEIGHTS
     )
+
+    /** Create file-backed storage (for memory-mapped model weights), dtype-first. */
+    public fun fileBacked(
+        shape: Shape,
+        dtype: DType,
+        encoding: TensorEncoding,
+        path: String,
+        fileOffset: Long,
+        sizeInBytes: Long
+    ): TensorStorage = fileBacked(shape, dtype.toLogicalDType(), encoding, path, fileOffset, sizeInBytes)
 
     /**
      * Bridge: create a [TensorStorage] descriptor from an existing [TensorData].
@@ -189,8 +219,8 @@ public object TensorStorageFactory {
         val bytes = extractBytes(storage)
 
         return when (storage.encoding) {
-            is TensorEncoding.Dense -> when (storage.logicalType) {
-                LogicalDType.FLOAT32 -> {
+            is TensorEncoding.Dense -> when (storage.dtype) {
+                FP32 -> {
                     val floats = bytesToFloatArray(bytes)
                     DenseFloatArrayTensorData<T>(storage.shape, floats) as TensorData<T, V>
                 }
@@ -201,17 +231,17 @@ public object TensorStorageFactory {
                 // ignored it. Widening to f32 here keeps this method's existing contract (it has
                 // always returned float-backed data); preserving 2-byte storage end-to-end is the
                 // loader `KEEP_NATIVE` path, not this one.
-                LogicalDType.FLOAT16, LogicalDType.BFLOAT16 -> {
-                    val codec = if (storage.logicalType == LogicalDType.FLOAT16) Fp16Codec else Bf16Codec
+                FP16, BF16 -> {
+                    val codec = if (storage.dtype == FP16) Fp16Codec else Bf16Codec
                     val floats = narrowBytesToFloatArray(bytes, codec)
                     DenseFloatArrayTensorData<T>(storage.shape, floats) as TensorData<T, V>
                 }
-                LogicalDType.INT32 -> {
+                Int32 -> {
                     val ints = bytesToIntArray(bytes)
                     DenseIntArrayTensorData<T>(storage.shape, ints) as TensorData<T, V>
                 }
                 else -> throw UnsupportedOperationException(
-                    "toTensorData not supported for dense ${storage.logicalType}"
+                    "toTensorData not supported for dense ${storage.dtype.name}"
                 )
             }
             is TensorEncoding.Q4_K -> {

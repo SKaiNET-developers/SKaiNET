@@ -219,4 +219,44 @@ class TensorStorageContractTest {
         assertFalse(report.isFileBacked)
         assertFalse(report.isMutable)
     }
+
+    // --- dtype-first constructors (SKEEP-003 Phase 0) ---
+
+    @Test
+    fun dtypeConstructorEqualsLogicalTypeConstructor() {
+        val shape = Shape(2, 3)
+        val buffer = BufferHandle.Borrowed(ByteArray(24)) // one instance: BufferHandle equality is identity
+        val viaLogical = TensorStorage(shape, LogicalDType.FLOAT32, TensorEncoding.Dense(4), buffer)
+        val viaDType = TensorStorage(shape, FP32, TensorEncoding.Dense(4), buffer)
+        assertEquals(viaLogical, viaDType)
+        assertEquals(FP32, viaDType.dtype)
+        assertEquals(LogicalDType.FLOAT32, viaDType.logicalType)
+        assertEquals(viaLogical.memoryReport(), viaDType.memoryReport())
+
+        val bf16 = TensorStorage(shape, BF16, TensorEncoding.Dense(2), BufferHandle.Borrowed(ByteArray(12)), Placement.CPU_HEAP)
+        assertEquals(LogicalDType.BFLOAT16, bf16.logicalType)
+        assertEquals(12L, bf16.logicalBytes)
+    }
+
+    @Test
+    fun dtypeFactoryOverloadsMatchLogicalTypeOverloads() {
+        val shape = Shape(4)
+        val bytes = ByteArray(16)
+        // BufferHandle subclasses have identity equality, so compare the descriptor fields.
+        fun sig(s: TensorStorage) = listOf(s.shape, s.logicalType, s.dtype, s.encoding, s.ownership, s.placement, s.physicalBytes)
+        assertEquals(
+            sig(TensorStorageFactory.fromRawBytes(shape, LogicalDType.INT32, TensorEncoding.Dense(4), bytes)),
+            sig(TensorStorageFactory.fromRawBytes(shape, Int32, TensorEncoding.Dense(4), bytes)),
+        )
+        assertEquals(
+            sig(TensorStorageFactory.fromRawBytesOwned(shape, LogicalDType.FLOAT16, TensorEncoding.Dense(2), ByteArray(8))),
+            sig(TensorStorageFactory.fromRawBytesOwned(shape, FP16, TensorEncoding.Dense(2), ByteArray(8))),
+        )
+        assertEquals(
+            sig(TensorStorageFactory.fileBacked(shape, LogicalDType.FLOAT32, TensorEncoding.Dense(4), "/m.gguf", 128L, 16L)),
+            sig(TensorStorageFactory.fileBacked(shape, FP32, TensorEncoding.Dense(4), "/m.gguf", 128L, 16L)),
+        )
+        assertEquals(FP32, TensorStorageFactory.fromFloatArray(shape, FloatArray(4)).dtype)
+        assertEquals(Int32, TensorStorageFactory.fromIntArray(shape, IntArray(4)).dtype)
+    }
 }

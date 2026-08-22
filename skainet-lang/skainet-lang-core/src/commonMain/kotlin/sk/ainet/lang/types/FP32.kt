@@ -1,6 +1,9 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 public object FP32 : DType {
+    override val witness: KClass<FP32> get() = FP32::class
     override val sizeInBits: Int = 32
     override val name: String = "Float32"
 

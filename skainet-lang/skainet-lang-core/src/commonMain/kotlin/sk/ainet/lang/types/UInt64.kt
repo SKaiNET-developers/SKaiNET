@@ -1,9 +1,13 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 64-bit unsigned integer type.
  */
 public object UInt64 : DType {
+    override val witness: KClass<UInt64> get() = UInt64::class
+    override val isSigned: Boolean get() = false
     override val sizeInBits: Int = 64
     override val name: String = "UInt64"
 

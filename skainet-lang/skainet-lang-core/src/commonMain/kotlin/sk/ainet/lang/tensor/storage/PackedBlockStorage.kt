@@ -73,4 +73,10 @@ public interface PackedBlockStorage {
         buffer = BufferHandle.Borrowed(packedData, isMutable = false),
         placement = placement
     )
+
+    /** Convert this packed storage to a [TensorStorage] descriptor, dtype-first (packed weights are logically [FP32]). */
+    public fun toTensorStorage(
+        dtype: sk.ainet.lang.types.DType,
+        placement: Placement = Placement.CPU_HEAP
+    ): TensorStorage = toTensorStorage(dtype.toLogicalDType(), placement)
 }

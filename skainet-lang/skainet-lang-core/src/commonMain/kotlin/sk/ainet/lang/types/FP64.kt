@@ -1,10 +1,13 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 /**
  * 64-bit floating point type (Double precision).
  * Highest precision floating point type in SKaiNET.
  */
 public object FP64 : DType {
+    override val witness: KClass<FP64> get() = FP64::class
     override val sizeInBits: Int = 64
     override val name: String = "Float64"
 

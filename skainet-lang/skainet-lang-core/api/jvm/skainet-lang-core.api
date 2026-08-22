@@ -3202,6 +3202,7 @@ public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData$Companion {
@@ -3260,6 +3261,7 @@ public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData$Companion {
@@ -3314,6 +3316,7 @@ public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData$Companion {
@@ -3355,6 +3358,7 @@ public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData$Companion {
@@ -3401,6 +3405,7 @@ public final class sk/ainet/lang/tensor/data/Q5_KBlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q5_KBlockTensorData$Companion {
@@ -3462,6 +3467,7 @@ public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData$Companion {
@@ -3544,6 +3550,7 @@ public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData$Companion {
@@ -3637,6 +3644,7 @@ public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData : sk/ainet/la
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData$Companion {
@@ -5356,7 +5364,9 @@ public abstract interface class sk/ainet/lang/tensor/storage/PackedBlockStorage 
 	public abstract fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun toFloatArray ()[F
 	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public final class sk/ainet/lang/tensor/storage/PackedBlockStorage$DefaultImpls {
@@ -5365,7 +5375,9 @@ public final class sk/ainet/lang/tensor/storage/PackedBlockStorage$DefaultImpls 
 	public static fun getPhysicalBytes (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)J
 	public static fun toFloatArray (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)[F
 	public static fun toTensorStorage (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static fun toTensorStorage (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
 public abstract interface annotation class sk/ainet/lang/tensor/storage/Place : java/lang/annotation/Annotation {
@@ -5655,6 +5667,8 @@ public final class sk/ainet/lang/tensor/storage/TensorEncoding$TurboQuantPolarQj
 public final class sk/ainet/lang/tensor/storage/TensorStorage {
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZ)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZ)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Lsk/ainet/lang/tensor/storage/Placement;J[JZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lsk/ainet/lang/tensor/Shape;
 	public final fun component2 ()Lsk/ainet/lang/tensor/storage/LogicalDType;
 	public final fun component3 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
@@ -5697,12 +5711,17 @@ public final class sk/ainet/lang/tensor/storage/TensorStorageFactory {
 	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorStorageFactory;
 	public final fun borrowFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fileBacked (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Ljava/lang/String;JJ)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fileBacked (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Ljava/lang/String;JJ)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromIntArray (Lsk/ainet/lang/tensor/Shape;[I)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/storage/TensorStorageFactory;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/storage/TensorStorageFactory;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromRawBytesOwned (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun fromRawBytesOwned (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun fromRawBytesOwned$default (Lsk/ainet/lang/tensor/storage/TensorStorageFactory;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public static synthetic fun fromRawBytesOwned$default (Lsk/ainet/lang/tensor/storage/TensorStorageFactory;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BLsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromTensorData (Lsk/ainet/lang/tensor/data/TensorData;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun toTensorData (Lsk/ainet/lang/tensor/storage/TensorStorage;)Lsk/ainet/lang/tensor/data/TensorData;
 }
@@ -5813,7 +5832,10 @@ public final class sk/ainet/lang/types/BF16 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/BF16;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5831,14 +5853,19 @@ public abstract interface class sk/ainet/lang/types/DType {
 	public static fun fp16 ()Lsk/ainet/lang/types/DType;
 	public static fun fp32 ()Lsk/ainet/lang/types/DType;
 	public static fun fp64 ()Lsk/ainet/lang/types/DType;
+	public static fun fromWitness (Lkotlin/reflect/KClass;)Lsk/ainet/lang/types/DType;
+	public static fun fromWitnessOrNull (Lkotlin/reflect/KClass;)Lsk/ainet/lang/types/DType;
 	public abstract fun getName ()Ljava/lang/String;
 	public abstract fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public abstract fun getWitness ()Lkotlin/reflect/KClass;
 	public static fun int16 ()Lsk/ainet/lang/types/DType;
 	public static fun int32 ()Lsk/ainet/lang/types/DType;
 	public static fun int4 ()Lsk/ainet/lang/types/DType;
 	public static fun int64 ()Lsk/ainet/lang/types/DType;
 	public static fun int8 ()Lsk/ainet/lang/types/DType;
 	public abstract fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public abstract fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 	public static fun ternary ()Lsk/ainet/lang/types/DType;
 	public static fun uint16 ()Lsk/ainet/lang/types/DType;
@@ -5853,7 +5880,10 @@ public final class sk/ainet/lang/types/DType$Companion {
 	public final fun fp16 ()Lsk/ainet/lang/types/DType;
 	public final fun fp32 ()Lsk/ainet/lang/types/DType;
 	public final fun fp64 ()Lsk/ainet/lang/types/DType;
+	public final fun fromWitness (Lkotlin/reflect/KClass;)Lsk/ainet/lang/types/DType;
+	public final fun fromWitnessOrNull (Lkotlin/reflect/KClass;)Lsk/ainet/lang/types/DType;
 	public final fun getAllTypes ()Ljava/util/Map;
+	public final fun getEntries ()Ljava/util/List;
 	public final fun int16 ()Lsk/ainet/lang/types/DType;
 	public final fun int32 ()Lsk/ainet/lang/types/DType;
 	public final fun int4 ()Lsk/ainet/lang/types/DType;
@@ -5864,6 +5894,11 @@ public final class sk/ainet/lang/types/DType$Companion {
 	public final fun uint32 ()Lsk/ainet/lang/types/DType;
 	public final fun uint64 ()Lsk/ainet/lang/types/DType;
 	public final fun uint8 ()Lsk/ainet/lang/types/DType;
+}
+
+public final class sk/ainet/lang/types/DType$DefaultImpls {
+	public static fun getSizeInBytes (Lsk/ainet/lang/types/DType;)I
+	public static fun isSigned (Lsk/ainet/lang/types/DType;)Z
 }
 
 public final class sk/ainet/lang/types/DTypeExtensionsKt {
@@ -5937,7 +5972,10 @@ public final class sk/ainet/lang/types/FP16 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/FP16;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5945,7 +5983,10 @@ public final class sk/ainet/lang/types/FP32 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/FP32;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5953,7 +5994,10 @@ public final class sk/ainet/lang/types/FP64 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/FP64;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5969,7 +6013,10 @@ public final class sk/ainet/lang/types/Int16 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Int16;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5977,7 +6024,10 @@ public final class sk/ainet/lang/types/Int32 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Int32;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5985,7 +6035,10 @@ public final class sk/ainet/lang/types/Int4 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Int4;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -5993,7 +6046,10 @@ public final class sk/ainet/lang/types/Int64 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Int64;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -6001,7 +6057,10 @@ public final class sk/ainet/lang/types/Int8 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Int8;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -6028,7 +6087,10 @@ public final class sk/ainet/lang/types/Ternary : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/Ternary;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -6056,7 +6118,10 @@ public final class sk/ainet/lang/types/UInt16 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/UInt16;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -6064,7 +6129,10 @@ public final class sk/ainet/lang/types/UInt32 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/UInt32;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -6072,7 +6140,10 @@ public final class sk/ainet/lang/types/UInt64 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/UInt64;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 
@@ -6080,7 +6151,10 @@ public final class sk/ainet/lang/types/UInt8 : sk/ainet/lang/types/DType {
 	public static final field INSTANCE Lsk/ainet/lang/types/UInt8;
 	public fun getName ()Ljava/lang/String;
 	public fun getSizeInBits ()I
+	public fun getSizeInBytes ()I
+	public fun getWitness ()Lkotlin/reflect/KClass;
 	public fun isCompatible (Lsk/ainet/lang/types/DType;)Z
+	public fun isSigned ()Z
 	public fun promoteTo (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/types/DType;
 }
 

@@ -1,6 +1,9 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 public object Int8 : DType {
+    override val witness: KClass<Int8> get() = Int8::class
     override val sizeInBits: Int = 8
     override val name: String = "Int8"
 

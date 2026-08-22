@@ -1,6 +1,7 @@
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.types.FP32
 
 /**
  * Default KV cache implementation using dense FP32 storage.
@@ -169,7 +170,7 @@ public class DefaultKvCacheStore(
         }
         return TensorStorage(
             shape = Shape(numHeads, seqLen, headDim),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = encoding,
             buffer = BufferHandle.Owned(bytes),
             placement = placement

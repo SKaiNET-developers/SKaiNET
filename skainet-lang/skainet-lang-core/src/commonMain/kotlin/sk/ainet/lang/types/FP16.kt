@@ -1,6 +1,9 @@
 package sk.ainet.lang.types
 
+import kotlin.reflect.KClass
+
 public object FP16 : DType {
+    override val witness: KClass<FP16> get() = FP16::class
     override val sizeInBits: Int = 16
     override val name: String = "Float16"
 
