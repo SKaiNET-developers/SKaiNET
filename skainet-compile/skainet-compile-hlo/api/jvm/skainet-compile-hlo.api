@@ -314,16 +314,22 @@ public final class sk/ainet/compile/hlo/StableHloTextWriter : sk/ainet/compile/e
 }
 
 public final class sk/ainet/compile/hlo/TypeMapper {
+	public static final field Companion Lsk/ainet/compile/hlo/TypeMapper$Companion;
+	public static final field DYNAMIC_DIM I
 	public fun <init> ()V
 	public final fun areTypesCompatible (Lsk/ainet/lang/tensor/ops/TensorSpec;Lsk/ainet/lang/tensor/ops/TensorSpec;)Z
 	public final fun createDynamicTensorType (ILjava/lang/String;)Ljava/lang/String;
 	public final fun createTensorType (Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;
+	public final fun formatShape (Ljava/util/List;)Ljava/lang/String;
 	public final fun getScalarType (Ljava/lang/String;)Ljava/lang/String;
 	public final fun inferBroadcastType (Lsk/ainet/lang/tensor/ops/TensorSpec;Lsk/ainet/lang/tensor/ops/TensorSpec;)Lsk/ainet/lang/tensor/ops/TensorSpec;
 	public final fun mapDType (Ljava/lang/String;)Ljava/lang/String;
 	public final fun mapFunctionSignature (Ljava/util/List;Ljava/util/List;)Ljava/lang/String;
 	public final fun mapTensorType (Lsk/ainet/lang/tensor/ops/TensorSpec;)Ljava/lang/String;
 	public final fun negInfBits (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/TypeMapper$Companion {
 }
 
 public final class sk/ainet/compile/hlo/converters/ActivationOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
