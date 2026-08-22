@@ -55,5 +55,9 @@ gradlePlugin {
             id = "sk.ainet.npm-pins"
             implementationClass = "sk.ainet.buildlogic.npm.NpmPinsPlugin"
         }
+        register("SKaiNetMavenPins") {
+            id = "sk.ainet.maven-pins"
+            implementationClass = "sk.ainet.buildlogic.maven.MavenPinsPlugin"
+        }
     }
 }

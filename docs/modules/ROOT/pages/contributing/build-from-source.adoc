@@ -150,7 +150,7 @@ The name appears in two places, deliberately: there is one SKaiNET namespace to 
 | That module's own compilation — `namespace`, `androidJvmTarget`, `explicitApi`, `expectActualClasses`, `kotlinTestInCommonTest`. Created by `sk.ainet.multiplatform`.
 
 | root `build.gradle.kts`
-| Conventions global to the build, which have nowhere else to live — currently `npmPins ++{++ ++}++`. Created by whichever root convention plugin is applied first; each nests its own sub-block.
+| Conventions global to the build, which have nowhere else to live — currently `npmPins ++{++ ++}++` and `mavenPins ++{++ ++}++`. Created by whichever root convention plugin is applied first; each nests its own sub-block.
 |===
 
 Applying `sk.ainet.multiplatform` to the *root* project is not supported and fails with a message saying so: the root project is not a library module, and its `skainet ++{++ ++}++` block means something else.
@@ -255,3 +255,35 @@ grep -c '^webpack@' kotlin-js-store/yarn.lock kotlin-js-store/wasm/yarn.lock
 The root plugin is not optional for web modules: `sk.ainet.multiplatform` fails at configuration time if a module builds `js`/`wasmJs` while the root project does not apply `sk.ainet.npm-pins`. Without it no `resolutions` are written *and* `verifyNpmPins` does not exist to notice — a silent security regression rather than a build error.
 
 The package name is written out rather than derived from the catalog alias, so names a catalog alias cannot spell need nothing special — `pin("socket.io", …)`, `pin("++@++types/node", …)`. Versions must be exact: a range such as `++^++8.21.1` is rejected at configuration time, because `verifyNpmPins` compares the lockfile's resolved version for equality and a range could never match.
+
+=== Pinning Maven/JVM Dependencies
+
+`sk.ainet.maven-pins` is the JVM/Maven equivalent of `sk.ainet.npm-pins`: it force-pins a transitive `group:artifact` coordinate to an audited version across every subproject's dependency graph, for a high-severity CVE in a package no build script declares directly.
+
+Declaring a pin also takes two edits. The version goes in `++[++versions++]++` of `gradle/libs.versions.toml`:
+
+[source,toml]
+----
+maven-netty = "4.1.136.Final"   # CVE-2026-56819
+----
+
+and the root build script names the coordinate:
+
+[source,kotlin]
+----
+skainet {
+    mavenPins {
+        pin("io.netty:netty-handler", libs.versions.maven.netty)
+    }
+}
+----
+
+`sk.ainet.maven-pins` forces the pin via `resolutionStrategy` across every subproject's configurations. Unlike npm pins there is one shared JVM dependency graph, not a per-target lockfile, so there is no `NpmPinTarget`-style scoping.
+
+`verifyMavenPins` is registered per subproject (a Gradle task may only resolve configurations belonging to its own project) and wired into that subproject's `check`. It walks each `++*++CompileClasspath`/`++*++RuntimeClasspath` configuration's live resolved dependency graph and fails if a pinned coordinate resolves to something other than its pinned version. Running `./gradlew verifyMavenPins` from the repository root still verifies the whole build — Gradle matches a bare task name against every project — and a coordinate that never resolves anywhere is reported as a warning (a pin can outlive the dependency that once pulled it in transitively), not a failure.
+
+==== What this cannot fix
+
+`resolutionStrategy` only reaches a project's own `configurations` — it cannot touch a Gradle *plugin's* own classpath (the Android Gradle Plugin, Dokka, KSP, and so on). Those classpaths are resolved before any project's `configurations` exist, through a separate mechanism entirely. A high-severity CVE in a transitive dependency of a *plugin* — not the app — cannot be closed with a `mavenPins` pin, no matter how the coordinate is spelled.
+
+This came up concretely in https://github.com/SKaiNET-developers/SKaiNET/issues/1046[issue #1046]: 22 high-severity Dependabot alerts (Netty, Jackson, jose4j, jdom2) turned out to be transitive to AGP's and Dokka's own plugin classpaths, not the app's dependency graph — confirmed with `./gradlew buildEnvironment`, which prints the classpath used to resolve a project's plugins. None of those packages are reachable via `mavenPins`, and none are present in anything SKaiNET publishes to Maven Central, so consumers of the library never load them. The alerts were dismissed as tolerable risk rather than pinned. For a plugin-classpath CVE that genuinely needs fixing, the options are: upgrade the plugin to a version that no longer pulls the vulnerable transitive dependency, or (confirmed to work, but not currently used anywhere in this build) add a `+buildscript { configurations.classpath { resolutionStrategy { ... } } }+` block directly to the affected script — `mavenPins` cannot express this because a build-logic-supplied plugin only runs *after* the script's own `plugins ++{++ ++}++` block has already resolved.

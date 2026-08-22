@@ -2,6 +2,7 @@ package sk.ainet.buildlogic.root
 
 import org.gradle.api.Action
 import org.gradle.api.model.ObjectFactory
+import sk.ainet.buildlogic.maven.MavenPinsExtension
 import sk.ainet.buildlogic.npm.NpmPinsExtension
 import javax.inject.Inject
 
@@ -19,6 +20,9 @@ import javax.inject.Inject
  * skainet {
  *     npmPins {
  *         pin("ws", libs.versions.npm.ws)
+ *     }
+ *     mavenPins {
+ *         pin("io.netty:netty-handler", libs.versions.maven.netty)
  *     }
  * }
  * ```
@@ -38,6 +42,17 @@ abstract class SkainetRootExtension @Inject constructor(objects: ObjectFactory) 
     /** Configures [npmPins]. */
     fun npmPins(action: Action<in NpmPinsExtension>) {
         action.execute(npmPins)
+    }
+
+    /**
+     * Maven/JVM coordinates forced onto an exact version across every subproject's
+     * dependency graph. Populated by `sk.ainet.maven-pins`; see [MavenPinsExtension].
+     */
+    val mavenPins: MavenPinsExtension = objects.newInstance(MavenPinsExtension::class.java)
+
+    /** Configures [mavenPins]. */
+    fun mavenPins(action: Action<in MavenPinsExtension>) {
+        action.execute(mavenPins)
     }
 
     companion object {

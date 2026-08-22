@@ -136,5 +136,6 @@ dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 skainet-docs = { id = "sk.ainet.documentation" }
 skainet-multiplatform = { id = "sk.ainet.multiplatform" }
 skainet-npmPins = { id = "sk.ainet.npm-pins" }
+skainet-mavenPins = { id = "sk.ainet.maven-pins" }
 kotlinx-benchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinxBenchmark" }
 shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
