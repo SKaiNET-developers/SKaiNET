@@ -82,6 +82,13 @@ public interface Tensor<T : DType, V> {
     public val dtype: KClass<T>
 
     /**
+     * Stable identity of this tensor within its model (`model.layers[3].attn.q_proj.weight`), or
+     * `null` for an anonymous tensor. Assigned from the module tree by `assignTensorIds`; carried by
+     * implementations of [TensorIdBearer]. Default `null` so existing implementations are unaffected.
+     */
+    public val id: TensorId? get() = null
+
+    /**
      * Gradient state tied to this tensor instance.
      */
     public val gradState: GradState<T, V>

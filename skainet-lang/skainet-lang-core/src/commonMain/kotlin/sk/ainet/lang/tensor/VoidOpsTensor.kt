@@ -13,7 +13,9 @@ public class VoidOpsTensor<T : DType, V>(
     override val data: TensorData<T, V>,
     override val dtype: KClass<T>,
     override val gradState: GradState<T, V> = GradState()
-) : Tensor<T, V> {
+) : Tensor<T, V>, TensorIdBearer {
     override val ops: TensorOps
         get() = VoidTensorOps()
+
+    override var id: TensorId? = null
 }

@@ -314,6 +314,7 @@ protected final class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase$CpuTensor : sk/
 	public fun getDtype ()Lkotlin/reflect/KClass;
 	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
 	public fun getGradState ()Lsk/ainet/lang/tensor/GradState;
+	public fun getId ()Lsk/ainet/lang/tensor/TensorId;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getRank ()I
 	public fun getRequiresGrad ()Z
