@@ -1,10 +1,62 @@
 = SKEEP-003: Unifying the tensor storage model — one byte-owner, enforced ownership, coherent dtype/encoding
 :description: SKaiNET proposal to converge the TensorData and TensorStorage layers into one storage model with real ownership, a single view mechanism, and dtype/encoding coherence.
 
-Status: Draft +
+Status: Accepted (2026-08-22) +
 Audience: SKaiNET maintainers and contributors +
 Created: 2026-08-10 +
-Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932]
+Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] (umbrella) → https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001 M0] · https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002 M1] · https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003 M2] +
+Design record: https://github.com/SKaiNET-developers/SKaiNET/blob/develop/docs/design/memory/memory-architecture-proposal.md[memory-architecture-proposal.md] and https://github.com/SKaiNET-developers/SKaiNET/blob/develop/docs/design/memory/memory-architecture-milestones-prd.md[memory-architecture-milestones-prd.md] (repository `docs/design/memory/`)
+
+== Decision (2026-08-22)
+
+The maintainer discussion settled on **end-state A (storage-first), delivered
+with end-state B's incremental mechanics**: the new types are introduced
+*beside* the existing ones, every `TensorData` implementation becomes a thin
+façade over the new view type, dispatch sites migrate one kernel at a time,
+and the façades are deleted at the next major release. Pure B would leave the
+erased packed dtype and the `is`-ladder in place; pure A as a big-bang rewrite
+is the "third layer" risk named below.
+
+The full analysis, terminology and diagrams are in the repository file
+`docs/design/memory/memory-architecture-proposal.md` (revision 2); the
+milestone scoping, sample apps and acceptance numbers are in
+`docs/design/memory/memory-architecture-milestones-prd.md`. The thirteen
+decisions recorded there:
+
+[cols="1,3",options="header"]
+|===
+| # | Decision
+
+| 1 | End-state A (storage-first) via B mechanics: new types beside old, `TensorData` façades, kernel-by-kernel migration, façades deleted at the next major.
+| 2 | Naming: `Storage` owns bytes, `TensorView` interprets them, `Tensor` is the DSL handle over a view or a graph node, kernels take views. Rejected: `Buffer` (`java.nio` collision), `Array` (Kotlin collision), `Arena` (the JVM implementation, not the concept). New types live in package `sk.ainet.lang.memory` of `skainet-lang-core` (a separate module would cycle with `Tensor`/`TensorData`); the existing `sk.ainet.lang.tensor.TensorView` marker and `sk.ainet.lang.graph.Layout` are deprecated when their replacements land.
+| 3 | `get()` on a packed view decodes (slow, correct) with a debug-mode warning on hot paths; it never returns a raw byte.
+| 4 | Ring wrap-around for sliding windows: `KVCache.window(from, to)` returns a `(head, tail)` view pair accepted by SKaiNET's attention kernels; a gather adapter is the fallback for kernels that do not accept a pair. `Layout` stays single-segment.
+| 5 | `Encoding.activation` lives on the encoding, so `HloGenerator` inserts the same requant adapter without a registry lookup.
+| 6 | A short throw-away `TensorView`/`Storage` prototype is benchmarked before Phase 2 on JVM (HotSpot, `MemorySegment`) and one Cortex-A55-class Android device (direct `ByteBuffer`): matmul within noise, elementwise ≤ 3 %; above that the access path is redesigned first. Flat-RSS decode loop on both.
+| 7 | `suspend` `RandomAccessSource` variant: interface in `skainet-io-core`, implementations in the optional remote module.
+| 8 | Axis labels on `Shape`: yes, additive and optional.
+| 9 | `TensorId` is structured (module path + parameter + discriminator) with a canonical string form.
+| 10 | Activation ids: debug-only in eager, always-on when tracing for compile.
+| 11 | Planner tuned to a 2 GB reference profile (1B-class at Q4, ctx 2–4k, BitNet-2B as stretch): budget = available − reserve (700 MB Android/JVM, 300 MB K/Native); fit check before any allocation; weights mapped, packed, counted resident; KV preallocated in `Model` scope, TurboQuant 4-bit auto when the plan exceeds 80 % of budget; `Forward` slab pre-sized, prefill chunked at 256; heap/off-heap threshold 256 KB; dispatcher-inserted dequant above 5 % warns, errors under `strict`; a desktop profile relaxes all of these.
+| 12 | Debugger surface, first release: `toString()` renderer, `ExecutionContext` hooks, Perfetto/JFR/`android.os.Trace` exporters; IDE plugin and live inspector are a follow-up SKEEP.
+| 13 | `LogicalDType` merges into `DType`: after a two-way bridge, one sealed `DType` carries its `KClass` witness; `Format = (DType, Encoding)` has exactly one dtype type; `LogicalDType` deprecated with `ReplaceWith`, removed at the next major.
+|===
+
+Phase order differs from the rollout plan below in one place: scopes (P2)
+land before dispatch (P3), because adapters allocate and must allocate into a
+`Forward` scope from day one. Each phase has one real-model acceptance test
+(Llama-3.2-1B Q4_K_M decode for P1–P4, an Android load for P5, a BitNet GGUF
+for P6, a `.vmfb` parity run for P7). Milestones M0 ("know before you
+load"), M1 ("flat decode") and M2 ("1.58-bit on a 2 GB board") bundle P0–P6;
+P7 (compiled parity) and P8 (façade removal) follow M2.
+
+Working rules for every slice: one `sub-issue` = one `feature/<issue>-<slug>`
+branch = one PR into `develop`; additive or behind a façade/opt-in so
+`develop` stays usable after each merge even while later phases are missing;
+deprecate-don't-delete; binary-compatibility dumps updated; the full test gate
+(`jvmTest`, `linuxX64Test`, JS/Wasm tests, `assemble`, `apiCheck`, Java API
+tests, and the packed-encoding golden parity tests) runs before each PR.
+
 
 == Summary
 
@@ -385,18 +437,29 @@ discussion settles on. Slices in flight or landed:
 
 == Open Questions
 
+All resolved 2026-08-22 — see <<_decision_2026_08_22,Decision>>:
+
 * Which end-state — or a deliberate "B now, A when a device backend is
-  scheduled" sequencing?
+  scheduled" sequencing? → *A via B mechanics* (decision 1).
 * Should the `suspend` source variant (required for remote weights on
   JS/Wasm) live in `skainet-io-core` or in the optional remote-IO module?
-* Are axis labels on `Shape` wanted at all, or noise?
+  → *interface in `skainet-io-core`, implementations in the remote module*
+  (decision 7).
+* Are axis labels on `Shape` wanted at all, or noise? → *yes, additive and
+  optional* (decision 8).
 * Does `LogicalDType` survive (as the storage-layer type) once the bridge is
   two-way, or should the storage layer use `DType` directly and delete the
-  enum?
+  enum? → *merge into one sealed `DType`; deprecate `LogicalDType`* (decision
+  13).
 
 == References
 
-* Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932]
+* Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932];
+  milestone trackers https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001]
+  (M0), https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002] (M1),
+  https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003] (M2)
+* Design record: `docs/design/memory/memory-architecture-proposal.md`,
+  `docs/design/memory/memory-architecture-milestones-prd.md`
 * Sibling proposal: SKEEP-002 (off-heap tensor storage on Android) — the
   mobile/mmap slice of improvement 4
 * Related issues: https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]

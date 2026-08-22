@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Docs
+
+- **SKEEP-003 accepted — memory & storage architecture design record and roadmap**
+  ([#932](https://github.com/SKaiNET-developers/SKaiNET/issues/932)).
+  `docs/modules/skeep/pages/003-unified-tensor-storage.adoc` moves to *Accepted* and records the
+  thirteen design decisions (storage-first end-state delivered incrementally: `Storage` / `TensorView` /
+  `Tensor`, scopes, `Format(dtype, encoding)`, `TensorId`, kernel dispatch on declared formats, 2 GB
+  planner profile, `LogicalDType` → `DType` merge). The full proposal and the M0/M1/M2 milestone PRD are
+  committed under `docs/design/memory/`; the work is tracked as milestone issues
+  [#1001](https://github.com/SKaiNET-developers/SKaiNET/issues/1001),
+  [#1002](https://github.com/SKaiNET-developers/SKaiNET/issues/1002),
+  [#1003](https://github.com/SKaiNET-developers/SKaiNET/issues/1003) with one sub-issue per feature branch.
+
 ## [0.40.1] - 2026-08-12
 
 Headline: **correctness hotfix — silently wrong output, not a crash.** `DefaultCpuOps.transpose()` for packed quantized weights (Q4_0/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K) performed a shape-only relabel instead of a real block-grid byte permutation whenever a row spanned more than one quant block (`blocksPerInputDim > 1` — true of virtually every real model). `ops.matmul(x, ops.transpose(W))` fed the packed-quant kernels bytes in the wrong order across all three kernel tiers — scalar, Panama-vector, and native (FFM/JNI) — silently producing wrong numbers, sometimes all-zero output, with no exception raised. Upgrading is strongly recommended for anyone using packed-quantized weights with `ops.transpose()`.
