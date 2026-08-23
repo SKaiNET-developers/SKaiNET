@@ -627,8 +627,53 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             }
         }
 
-        // Generic fallback for batched / non-float / non-2D cases
-        return KernelProfile.timeGeneric { matmulGeneric(a, b) }
+        // Everything else: the kernel registry first (SKEEP-003 §5.1) — rank is normalised once as
+        // views and packed operands are read through decoding get(), so a rank-1 decode step against
+        // a packed weight is correct by construction rather than a ClassCastException (#993). The
+        // legacy per-element fallback stays one flag away (skainet.dispatch.registry=false) until the
+        // migration is complete.
+        return KernelProfile.timeGeneric {
+            dispatchMatmulViaRegistry(a, b) ?: matmulGeneric(a, b)
+        }
+    }
+
+    /**
+     * Run `matmul` through [KernelDispatch] when both operands can describe themselves as views and
+     * the result is float-typed; `null` means "not expressible here, use the legacy path".
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> dispatchMatmulViaRegistry(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
+        if (!sk.ainet.backend.api.kernel.DispatchMode.useRegistry()) return null
+        if (a.dtype != FP32::class) return null
+        if (b.shape.rank != 2) return null
+        val aView = a.data.view ?: return null
+        val bView = b.data.view ?: return null
+        // b is [k, n] here; the kernels take the weight output-major, which is a transposed *view*.
+        val bT = try { bView.transpose() } catch (_: IllegalArgumentException) { return null }
+        val (aNorm, leading) = try {
+            sk.ainet.backend.api.kernel.KernelDispatch.normalizeActivation(aView)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        val m = aNorm.shape[0]
+        val k = aNorm.shape[1]
+        val n = bT.shape[0]
+        if (k != bT.shape[1]) return null
+        val outArray = FloatArray(m * n)
+        val outView = sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.Storage.Heap.wrap(outArray),
+            Shape(m, n),
+            FP32,
+        )
+        sk.ainet.backend.api.kernel.KernelDispatch.matmul(aNorm, bT, outView)
+        val outShape = when {
+            a.shape.rank == 1 -> Shape(n)                    // [k] x [k, n] -> [n]
+            leading.isEmpty() -> Shape(m, n)
+            else -> Shape(*(leading + n))
+        }
+        val outData = dataFactory.fromFloatArray<T, Float>(outShape, a.dtype, outArray) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(outData, a.dtype, a, b)
     }
 
     private fun <T : DType, V> matmulGeneric(
