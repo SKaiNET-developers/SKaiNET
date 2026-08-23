@@ -799,88 +799,24 @@ public object DequantOps {
     }
 
     @Suppress("UNUSED_PARAMETER")
+    /**
+     * `TQ2_0` → floats through the shared reference codec (#1033).
+     *
+     * The layout — including the interleave, where one byte holds four elements **32 apart** — is
+     * defined once by [sk.ainet.lang.memory.TernaryCodec], next to the `TensorEncoding.TQ2_0`
+     * descriptor, so the loader and the ternary kernels cannot decode the same bytes differently.
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     private fun dequantTQ2_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
-        val blockSize = 256
-        val bytesPerBlock = 66
-        val blockCount = bytes.size / bytesPerBlock
-        val out = FloatArray(blockCount * blockSize)
-        var offset = 0
-        var outOff = 0
-
-        repeat(blockCount) {
-            val qs = bytes.copyOfRange(offset, offset + 64)
-            offset += 64
-
-            val scale = halfToFloat(
-                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
-            )
-            offset += 2
-
-            for (i in 0 until 64) {
-                val b = qs[i].toInt() and 0xFF
-                val v0 = (b and 0x03) - 1
-                val v1 = ((b shr 2) and 0x03) - 1
-                val v2 = ((b shr 4) and 0x03) - 1
-                val v3 = ((b shr 6) and 0x03) - 1
-
-                out[outOff + i * 4 + 0] = v0 * scale
-                out[outOff + i * 4 + 1] = v1 * scale
-                out[outOff + i * 4 + 2] = v2 * scale
-                out[outOff + i * 4 + 3] = v3 * scale
-            }
-            outOff += blockSize
-        }
-        return out
+        val blocks = bytes.size / sk.ainet.lang.tensor.storage.TensorEncoding.TQ2_0.BYTES_PER_BLOCK
+        return sk.ainet.lang.memory.TernaryCodec.decodeTq2_0(bytes, blocks * 256)
     }
 
-    @Suppress("UNUSED_PARAMETER")
+    /** `TQ1_0` → floats through the shared reference codec (#1033); see [dequantTQ2_0FromBytes]. */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     private fun dequantTQ1_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
-        val blockSize = 256
-        val bytesPerBlock = 54
-        val blockCount = bytes.size / bytesPerBlock
-        val out = FloatArray(blockCount * blockSize)
-        var offset = 0
-        var outOff = 0
-
-        repeat(blockCount) {
-            val qsBase3 = bytes.copyOfRange(offset, offset + 48)
-            offset += 48
-
-            val qs2bit = bytes.copyOfRange(offset, offset + 4)
-            offset += 4
-
-            val scale = halfToFloat(
-                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
-            )
-            offset += 2
-
-            var outIdx = 0
-            for (i in 0 until 48) {
-                var b = qsBase3[i].toInt() and 0xFF
-                repeat(5) {
-                    val v = (b % 3) - 1
-                    out[outOff + outIdx] = v * scale
-                    outIdx++
-                    b /= 3
-                }
-            }
-
-            for (i in 0 until 4) {
-                val b = qs2bit[i].toInt() and 0xFF
-                val v0 = (b and 0x03) - 1
-                val v1 = ((b shr 2) and 0x03) - 1
-                val v2 = ((b shr 4) and 0x03) - 1
-                val v3 = ((b shr 6) and 0x03) - 1
-
-                out[outOff + 240 + i * 4 + 0] = v0 * scale
-                out[outOff + 240 + i * 4 + 1] = v1 * scale
-                out[outOff + 240 + i * 4 + 2] = v2 * scale
-                out[outOff + 240 + i * 4 + 3] = v3 * scale
-            }
-
-            outOff += blockSize
-        }
-        return out
+        val blocks = bytes.size / sk.ainet.lang.tensor.storage.TensorEncoding.TQ1_0.BYTES_PER_BLOCK
+        return sk.ainet.lang.memory.TernaryCodec.decodeTq1_0(bytes, blocks * 256)
     }
 
     private fun typeName(value: Any?): String =

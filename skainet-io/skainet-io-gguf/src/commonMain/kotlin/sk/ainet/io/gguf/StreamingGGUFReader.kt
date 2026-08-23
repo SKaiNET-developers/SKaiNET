@@ -189,6 +189,8 @@ public class StreamingGGUFReader private constructor(
         GGMLQuantizationType.Q4_K -> TensorEncoding.Q4_K
         GGMLQuantizationType.Q5_K -> TensorEncoding.Q5_K
         GGMLQuantizationType.Q6_K -> TensorEncoding.Q6_K
+        GGMLQuantizationType.TQ1_0 -> TensorEncoding.TQ1_0
+        GGMLQuantizationType.TQ2_0 -> TensorEncoding.TQ2_0
         // Types without a dedicated TensorEncoding carry their real byte count,
         // so TensorStorage.physicalBytes (which prefers encoding.physicalBytes
         // over buffer.sizeInBytes) stays truthful. The previous Opaque(name, 0)

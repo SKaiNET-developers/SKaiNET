@@ -79,6 +79,7 @@ public fun ggufFormat(type: GGMLQuantizationType, nBytes: Long): Format {
         GGMLQuantizationType.Q4_0 -> TensorEncoding.Q4_0; GGMLQuantizationType.Q5_0 -> TensorEncoding.Q5_0; GGMLQuantizationType.Q5_1 -> TensorEncoding.Q5_1
         GGMLQuantizationType.Q8_0 -> TensorEncoding.Q8_0; GGMLQuantizationType.Q4_K -> TensorEncoding.Q4_K; GGMLQuantizationType.Q5_K -> TensorEncoding.Q5_K
         GGMLQuantizationType.Q6_K -> TensorEncoding.Q6_K
+        GGMLQuantizationType.TQ1_0 -> TensorEncoding.TQ1_0; GGMLQuantizationType.TQ2_0 -> TensorEncoding.TQ2_0
         else -> TensorEncoding.Opaque(type.name, nBytes)
     }
     return Format(dtype, encoding)

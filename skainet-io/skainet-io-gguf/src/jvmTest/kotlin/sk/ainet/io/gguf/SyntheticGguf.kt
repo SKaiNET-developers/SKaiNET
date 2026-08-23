@@ -1,5 +1,7 @@
 package sk.ainet.io.gguf
 
+import sk.ainet.lang.memory.TernaryCodec
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -60,6 +62,7 @@ object SyntheticGguf {
                 }
                 buf.array()
             }
+            GGMLQuantizationType.TQ1_0, GGMLQuantizationType.TQ2_0 -> ternary(name, type, elements, seed).second
             else -> {
                 val (blockBytes, blockElems) = blockLayout(type)
                 require(elements % blockElems == 0) {
@@ -72,6 +75,32 @@ object SyntheticGguf {
             }
         }
         return TestTensor(name, type, elements.toLong(), bytes)
+    }
+
+    /**
+     * A ternary tensor (`TQ1_0` / `TQ2_0`) and the exact values it encodes (#1033).
+     *
+     * Values are drawn from `{-0.5, 0, +0.5}`, so every block's absmax is 0.5 — exactly
+     * representable in FP16 — and the file round-trips to the values bit for bit. The bytes come
+     * from [TernaryCodec], the same reference encoder the decoder is defined against, so this
+     * fixture exercises the real GGML layout (interleave included) rather than a plausible one.
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    fun ternary(
+        name: String,
+        type: GGMLQuantizationType,
+        elements: Int,
+        seed: Int = name.hashCode(),
+    ): Triple<TestTensor, ByteArray, FloatArray> {
+        val encoding = when (type) {
+            GGMLQuantizationType.TQ1_0 -> TensorEncoding.TQ1_0
+            GGMLQuantizationType.TQ2_0 -> TensorEncoding.TQ2_0
+            else -> error("$type is not a ternary GGML type")
+        }
+        val rnd = Random(seed)
+        val values = FloatArray(elements) { (rnd.nextInt(3) - 1) * 0.5f }
+        val bytes = TernaryCodec.encode(encoding, values)
+        return Triple(TestTensor(name, type, elements.toLong(), bytes), bytes, values)
     }
 
     /**

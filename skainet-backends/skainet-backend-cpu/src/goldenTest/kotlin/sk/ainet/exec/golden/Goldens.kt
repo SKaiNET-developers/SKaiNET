@@ -9,6 +9,17 @@ package sk.ainet.exec.golden
  */
 internal object Goldens {
     val expected: Map<String, String> = mapOf(
+        // #1033 — the ternary encodings, encoded and decoded by TernaryCodec (the GGML layout,
+        // interleave included). TQ1_0 and TQ2_0 share a decode digest on purpose: the same ternary
+        // values in two different byte layouts must come back identical.
+        "decode/BITNET_B1_58" to "n=768 fnv=42c65c028e7afe7e head=3ead0000,00000000,00000000,00000000",
+        "decode/TQ1_0" to "n=768 fnv=1a9dbfa9435ab9d8 head=3f000000,00000000,00000000,00000000",
+        "decode/TQ2_0" to "n=768 fnv=1a9dbfa9435ab9d8 head=3f000000,00000000,00000000,00000000",
+        "packed/BITNET_B1_58" to "n=196 fnv=f3e967d46c75c048 head=5646021586982468",
+        "packed/TQ1_0" to "n=162 fnv=202d7437bd7e9cd7 head=c7927ca5c36f235f",
+        "packed/TQ2_0" to "n=198 fnv=b72a1ac914b84809 head=a249156962a18411",
+        "view/TQ1_0" to "n=512 fnv=a315d19d84ba1325 head=3f000000,3f000000,00000000,bf000000",
+        "view/TQ2_0" to "n=512 fnv=a315d19d84ba1325 head=3f000000,3f000000,00000000,bf000000",
         "decode/Q4_0" to "n=384 fnv=d6bc5d718cd98a58 head=bdb0dc00,3d979800,00000000,3d4a2000",
         "decode/Q4_K" to "n=3072 fnv=fa096e860a45191e head=4049e820,408a0210,409c8910,40c19710",
         "decode/Q5_0" to "n=384 fnv=6a72d36758b74185 head=3dc3e000,bdc3e000,bef4d800,be74d800",
@@ -16,7 +27,9 @@ internal object Goldens {
         "decode/Q5_K" to "n=3072 fnv=3381529c397a361d head=4125da40,416af240,41980520,41980520",
         "decode/Q6_K" to "n=3072 fnv=3c3d7fa00c48faa9 head=c2606550,40ef5b00,41fe50b0,42606550",
         "decode/Q8_0" to "n=384 fnv=334c03e32df05c28 head=3f6a1700,bf6ede00,3ee55000,bf786c00",
-        "decode/TERNARY_tq2_0" to "n=256 fnv=48409a8f0eeaba6e head=bd000000,bd000000,bd000000,bd000000",
+        // Re-baselined by #1033: Ternary2BitTensorData.fromTQ2_0Block used to adopt the TQ2_0
+        // payload bytes verbatim, which silently mis-ordered the elements (TQ2_0 interleaves by 32).
+        "decode/TERNARY_tq2_0" to "n=256 fnv=7aa8775d0e1c591e head=bd000000,00000000,3d800000,bd000000",
         "decode/TERNARY_values" to "n=384 fnv=e455e2a9df6acf48 head=00000000,bf500000,bf500000,3f500000",
         "scalar-matmul/Q4_0" to "n=12 fnv=0aaee3d77e3619f6 head=3f15be82,3f0f4b4e,3e49fb8e,be220b31",
         "scalar-matmul/Q4_K" to "n=12 fnv=1c27f69421ebce94 head=c29e9232,c3116957,c3a2cb4f,c2da54e5",
