@@ -94,7 +94,13 @@ public sealed class Storage : AutoCloseable {
     public abstract val isMutable: Boolean
 
     /** Throws [StorageClosedException] if this storage is no longer alive. Called by every accessor. */
-    public fun checkAlive() { if (!isAlive) throw StorageClosedException(id, debugOrigin) }
+    public fun checkAlive() {
+        if (isAlive) return
+        // In debug mode the ledger knows where this storage was allocated and closed, which is the
+        // difference between "something is closed" and "this weight was freed at model.close()".
+        val detail = if (MemoryDebug.isEnabled) "\n" + MemoryDebug.describeClosed(id) else ""
+        throw StorageClosedException(id, debugOrigin, "Storage $id${debugOrigin?.let { " (" + it.canonical + ")" } ?: ""} is closed$detail")
+    }
 
     /**
      * Close: an [Owner.Owned] storage releases its bytes (exactly once); an [Owner.Borrowed] storage
@@ -105,7 +111,10 @@ public sealed class Storage : AutoCloseable {
         if (closed) return
         closed = true
         onClose()
-        if (sink.isEnabled && owner !is Owner.Alias) sink.emit(TraceEvent.Free(id.value, scope, sizeBytes))
+        if (owner !is Owner.Alias) {
+            if (sink.isEnabled) sink.emit(TraceEvent.Free(id.value, scope, sizeBytes))
+            MemoryDebug.recordClose(id, if (MemoryDebug.isEnabled) platformCallSite() else null)
+        }
     }
 
     /** Release platform resources (owned storage only); default nothing. */
@@ -155,7 +164,11 @@ public sealed class Storage : AutoCloseable {
             private fun create(floats: FloatArray?, ints: IntArray?, bytes: ByteArray?, offset: Int, count: Int, owner: Owner, origin: TensorId?, sink: TraceSink, mutable: Boolean): Heap {
                 val eb = if (bytes != null) 1 else 4
                 val s = Heap(StorageId.next(), floats, ints, bytes, offset, count.toLong() * eb, owner, origin, sink, mutable)
-                if (sink.isEnabled && owner is Owner.Owned) sink.emit(TraceEvent.Allocation(s.id.value, owner.scope, s.sizeBytes, origin))
+                if (owner is Owner.Owned) {
+                    val site = if (MemoryDebug.isEnabled) platformCallSite() else null
+                    if (sink.isEnabled) sink.emit(TraceEvent.Allocation(s.id.value, owner.scope, s.sizeBytes, origin, site))
+                    MemoryDebug.recordAllocation(s.id, owner.scope, s.sizeBytes, origin, site)
+                }
                 return s
             }
 
