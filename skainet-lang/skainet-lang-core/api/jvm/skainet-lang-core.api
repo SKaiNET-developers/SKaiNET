@@ -1108,6 +1108,33 @@ public final class sk/ainet/lang/memory/TensorView$Companion {
 	public static synthetic fun packed$default (Lsk/ainet/lang/memory/TensorView$Companion;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/BlockDecoder;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
 }
 
+public final class sk/ainet/lang/memory/plan/ActualMemory {
+	public static final field Companion Lsk/ainet/lang/memory/plan/ActualMemory$Companion;
+	public fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun component3 ()Ljava/util/Map;
+	public final fun component4 ()Ljava/util/Map;
+	public final fun copy (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)Lsk/ainet/lang/memory/plan/ActualMemory;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/ActualMemory;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/ActualMemory;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdapterBytes ()J
+	public final fun getAdapterBytesByKind ()Ljava/util/Map;
+	public final fun getAllocatedByScope ()Ljava/util/Map;
+	public final fun getAllocationsByScope ()Ljava/util/Map;
+	public final fun getPeakByScope ()Ljava/util/Map;
+	public final fun getPeakForwardBytes ()J
+	public final fun getPeakModelBytes ()J
+	public final fun getPeakTotalBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/ActualMemory$Companion {
+	public final fun from (Ljava/util/List;)Lsk/ainet/lang/memory/plan/ActualMemory;
+	public final fun from (Lsk/ainet/lang/memory/trace/RecordingTraceSink;)Lsk/ainet/lang/memory/plan/ActualMemory;
+}
+
 public final class sk/ainet/lang/memory/plan/Budget {
 	public static final field Companion Lsk/ainet/lang/memory/plan/Budget$Companion;
 	public static final field RESERVE_ANDROID_JVM J
@@ -1272,6 +1299,52 @@ public final class sk/ainet/lang/memory/plan/PlanTensor {
 	public final fun getName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/PlanVsActual {
+	public static final field Companion Lsk/ainet/lang/memory/plan/PlanVsActual$Companion;
+	public static final field DEFAULT_TOLERANCE D
+	public fun <init> (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/ActualMemory;D)V
+	public synthetic fun <init> (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/ActualMemory;DILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun check ()V
+	public final fun component1 ()Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun component2 ()Lsk/ainet/lang/memory/plan/ActualMemory;
+	public final fun component3 ()D
+	public final fun copy (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/ActualMemory;D)Lsk/ainet/lang/memory/plan/PlanVsActual;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanVsActual;Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/ActualMemory;DILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanVsActual;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActual ()Lsk/ainet/lang/memory/plan/ActualMemory;
+	public final fun getLines ()Ljava/util/List;
+	public final fun getPlan ()Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun getTolerance ()D
+	public final fun getWithinTolerance ()Z
+	public fun hashCode ()I
+	public final fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+	public final fun violations ()Ljava/util/List;
+}
+
+public final class sk/ainet/lang/memory/plan/PlanVsActual$Companion {
+	public final fun of (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/trace/RecordingTraceSink;D)Lsk/ainet/lang/memory/plan/PlanVsActual;
+	public static synthetic fun of$default (Lsk/ainet/lang/memory/plan/PlanVsActual$Companion;Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/trace/RecordingTraceSink;DILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanVsActual;
+}
+
+public final class sk/ainet/lang/memory/plan/PlanVsActualLine {
+	public fun <init> (Ljava/lang/String;JJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;JJ)Lsk/ainet/lang/memory/plan/PlanVsActualLine;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanVsActualLine;Ljava/lang/String;JJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanVsActualLine;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAbsoluteDrift ()J
+	public final fun getActualBytes ()J
+	public final fun getPlannedBytes ()J
+	public final fun getRelativeDrift ()Ljava/lang/Double;
+	public final fun getSection ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+	public final fun withinTolerance (D)Z
 }
 
 public final class sk/ainet/lang/memory/plan/Suggestion {
