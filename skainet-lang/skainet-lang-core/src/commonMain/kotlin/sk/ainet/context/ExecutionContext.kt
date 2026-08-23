@@ -14,6 +14,14 @@ import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
 
 public interface ExecutionContext {
+    /**
+     * Where this context's trace events go (SKEEP-003 §4.9): phases, kernel runs, adapter
+     * insertions, allocations. Default [sk.ainet.lang.memory.trace.NoopTraceSink] — nothing is
+     * recorded until a context opts in with a recording or exporting sink.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val traceSink: sk.ainet.lang.memory.trace.TraceSink get() = sk.ainet.lang.memory.trace.NoopTraceSink
+
     public val ops: TensorOps
 
     // Optional forward hooks for recording or diagnostics (null → disabled)
