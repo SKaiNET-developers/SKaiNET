@@ -854,6 +854,14 @@ public final class sk/ainet/lang/memory/ModelScope : sk/ainet/lang/memory/Scope 
 	public static synthetic fun mapFile$default (Lsk/ainet/lang/memory/ModelScope;Ljava/lang/String;JJLsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage;
 }
 
+public final class sk/ainet/lang/memory/NarrowFloatDecoder : sk/ainet/lang/memory/BlockDecoder {
+	public fun <init> (Lsk/ainet/lang/types/NarrowFloatCodec;)V
+	public fun decodeBlock (Lsk/ainet/lang/memory/Storage;J[FI)V
+	public fun decodeElement (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/memory/Layout;J)F
+	public fun getBlockSize ()I
+	public fun getBytesPerBlock ()I
+}
+
 public abstract interface class sk/ainet/lang/memory/Owner {
 }
 
@@ -3861,6 +3869,7 @@ public final class sk/ainet/lang/tensor/data/Bf16TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Bf16TensorData;)[F
 	public static fun getCodec (Lsk/ainet/lang/tensor/data/Bf16TensorData;)Lsk/ainet/lang/types/NarrowFloatCodec;
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Bf16TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Bf16TensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Bf16TensorDataKt {
@@ -3875,6 +3884,7 @@ public final class sk/ainet/lang/tensor/data/DenseFloatArrayTensorData : sk/aine
 	public fun getBuffer ()[F
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IF)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -3887,6 +3897,7 @@ public final class sk/ainet/lang/tensor/data/DenseIntArrayTensorData : sk/ainet/
 	public fun getBuffer ()[I
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([II)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -3923,11 +3934,13 @@ public final class sk/ainet/lang/tensor/data/DenseTensorDataFactory : sk/ainet/l
 public abstract interface class sk/ainet/lang/tensor/data/FloatArrayTensorData : sk/ainet/lang/tensor/data/TensorData {
 	public fun copyToFloatArray ()[F
 	public abstract fun getBuffer ()[F
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/FloatArrayTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/FloatArrayTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/FloatArrayTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/FloatArrayTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/FloatBufferTensorData : sk/ainet/lang/tensor/data/TensorData {
@@ -3937,6 +3950,7 @@ public abstract interface class sk/ainet/lang/tensor/data/FloatBufferTensorData 
 public final class sk/ainet/lang/tensor/data/FloatBufferTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/FloatBufferTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/FloatBufferTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/FloatBufferTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Fp16DenseTensorData : sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData {
@@ -3951,11 +3965,13 @@ public final class sk/ainet/lang/tensor/data/Fp16DenseTensorData$Companion {
 
 public abstract interface class sk/ainet/lang/tensor/data/IntArrayTensorData : sk/ainet/lang/tensor/data/TensorData {
 	public abstract fun getBuffer ()[I
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/IntArrayTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/IntArrayTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/IntArrayTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/IntArrayTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/ItemsAccessor {
@@ -3971,6 +3987,7 @@ public final class sk/ainet/lang/tensor/data/LazyZeroFloatArrayTensorData : sk/a
 	public fun getBuffer ()[F
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IF)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -3983,6 +4000,7 @@ public final class sk/ainet/lang/tensor/data/LazyZeroIntArrayTensorData : sk/ain
 	public fun getBuffer ()[I
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([II)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -4007,6 +4025,7 @@ public final class sk/ainet/lang/tensor/data/MemorySegmentTensorData : sk/ainet/
 	public fun getSegment ()Ljava/lang/foreign/MemorySegment;
 	public fun getSegmentByteOffset ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public final fun getVolume ()I
 	public fun set ([IF)V
 	public synthetic fun set ([ILjava/lang/Object;)V
@@ -4042,6 +4061,7 @@ public final class sk/ainet/lang/tensor/data/MmapFloatTensorData : sk/ainet/lang
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getFloatBuffer ()Ljava/nio/FloatBuffer;
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IF)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -4070,6 +4090,7 @@ public class sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData : sk/ainet/lan
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IF)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -4088,6 +4109,7 @@ public final class sk/ainet/lang/tensor/data/NarrowFloatInputMajorTensorData : s
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IF)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public final fun transposedView ()Lsk/ainet/lang/tensor/data/NarrowFloatDenseTensorData;
@@ -4111,6 +4133,7 @@ public final class sk/ainet/lang/tensor/data/NarrowFloatTensorData$Companion {
 public final class sk/ainet/lang/tensor/data/NarrowFloatTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/NarrowFloatTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/NarrowFloatTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/NarrowFloatTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/NarrowFloatTensorDataKt {
@@ -4141,6 +4164,7 @@ public final class sk/ainet/lang/tensor/data/Q4MemorySegmentTensorData : sk/aine
 	public fun getSegment ()Ljava/lang/foreign/MemorySegment;
 	public fun getSegmentByteOffset ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -4166,6 +4190,7 @@ public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData : sk/ainet/lang
 	public fun getPackedData ()[B
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4201,6 +4226,7 @@ public final class sk/ainet/lang/tensor/data/Q4_0TensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q4_0TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q4_0TensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q4_0TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q4_0TensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q4_0TensorDataKt {
@@ -4226,6 +4252,7 @@ public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getSubBlockMin (II)F
 	public fun getSubBlockScale (II)F
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4262,6 +4289,7 @@ public final class sk/ainet/lang/tensor/data/Q4_KTensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q4_KTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q4_KTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q4_KTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q4_KTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q4_KTensorDataKt {
@@ -4282,6 +4310,7 @@ public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData : sk/ainet/lang
 	public fun getPackedData ()[B
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4309,6 +4338,7 @@ public final class sk/ainet/lang/tensor/data/Q5_0TensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q5_0TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q5_0TensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q5_0TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q5_0TensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData : sk/ainet/lang/tensor/data/Q5_1TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
@@ -4325,6 +4355,7 @@ public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData : sk/ainet/lang
 	public fun getPackedData ()[B
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4352,6 +4383,7 @@ public final class sk/ainet/lang/tensor/data/Q5_1TensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q5_1TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q5_1TensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q5_1TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q5_1TensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q5_KBlockTensorData : sk/ainet/lang/tensor/data/Q5_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
@@ -4373,6 +4405,7 @@ public final class sk/ainet/lang/tensor/data/Q5_KBlockTensorData : sk/ainet/lang
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getSubBlockMin (II)F
 	public fun getSubBlockScale (II)F
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4413,6 +4446,7 @@ public final class sk/ainet/lang/tensor/data/Q5_KTensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q5_KTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q5_KTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q5_KTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q5_KTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q5_KTensorDataKt {
@@ -4436,6 +4470,7 @@ public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData : sk/ainet/lang
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getSubBlockScale (II)I
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4470,6 +4505,7 @@ public final class sk/ainet/lang/tensor/data/Q6_KTensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q6_KTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q6_KTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q6_KTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q6_KTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q6_KTensorDataKt {
@@ -4496,6 +4532,7 @@ public final class sk/ainet/lang/tensor/data/Q8MemorySegmentTensorData : sk/aine
 	public fun getSegment ()Ljava/lang/foreign/MemorySegment;
 	public fun getSegmentByteOffset ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 }
@@ -4521,6 +4558,7 @@ public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang
 	public fun getPackedData ()[B
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4550,6 +4588,7 @@ public final class sk/ainet/lang/tensor/data/Q8_0TensorData$Companion {
 public final class sk/ainet/lang/tensor/data/Q8_0TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/Q8_0TensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/Q8_0TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/Q8_0TensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/Q8_0TensorDataKt {
@@ -4564,11 +4603,13 @@ public abstract interface class sk/ainet/lang/tensor/data/TensorData : sk/ainet/
 	public fun copyToFloatArray ()[F
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public abstract fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/TensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/TensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/TensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/TensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/TensorDataFactory {
@@ -4618,6 +4659,7 @@ public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData : sk/ainet/la
 	public fun getPhysicalBytes ()J
 	public fun getScale ()F
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
 	public fun toFloatArray ()[F
@@ -4640,6 +4682,7 @@ public abstract interface class sk/ainet/lang/tensor/data/TernaryTensorData : sk
 public final class sk/ainet/lang/tensor/data/TernaryTensorData$DefaultImpls {
 	public static fun copyToFloatArray (Lsk/ainet/lang/tensor/data/TernaryTensorData;)[F
 	public static fun getEncoding (Lsk/ainet/lang/tensor/data/TernaryTensorData;)Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public static fun getView (Lsk/ainet/lang/tensor/data/TernaryTensorData;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/TernaryTensorDataKt {
@@ -4701,6 +4744,7 @@ public final class sk/ainet/lang/tensor/data/views/UnsqueezedTensorData : sk/ain
 	public fun get ([I)Ljava/lang/Object;
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
 	public fun set ([ILjava/lang/Object;)V
 }
 

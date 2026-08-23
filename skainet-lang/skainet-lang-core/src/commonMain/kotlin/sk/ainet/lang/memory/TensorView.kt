@@ -89,10 +89,11 @@ public class TensorView(
     public fun get(vararg indices: Int): Float {
         storage.checkAlive()
         require(indices.size == shape.rank) { "expected ${shape.rank} indices, got ${indices.size}" }
-        if (format.isDense) return readDense(flatDenseIndex(indices))
-        val d = decoder ?: throw IllegalStateException("no decoder for ${format.encoding.name}")
-        val flat = flatLogicalIndex(indices)
-        return d.decodeElement(storage, layout, flat)
+        // A decoder wins over the plain path: narrow floats are Dense(2) yet still need decoding.
+        val d = decoder
+        if (d != null) return d.decodeElement(storage, layout, flatLogicalIndex(indices))
+        check(format.isDense) { "no decoder for ${format.encoding.name}" }
+        return readDense(flatDenseIndex(indices))
     }
 
     /** Write [value] at [indices] (dense, mutable views only). */
@@ -115,7 +116,10 @@ public class TensorView(
         return flat
     }
 
-    /** Logical element index for a packed view: the layout addresses blocks, so the last axis contributes elements. */
+    /**
+     * Logical element index for a decoded view: the layout addresses blocks (one element per block
+     * for narrow floats), so the last axis contributes both a block step and an offset inside it.
+     */
     private fun flatLogicalIndex(indices: IntArray): Long {
         val bs = blockSize()
         val last = indices[indices.size - 1]
@@ -218,5 +222,29 @@ public class PackedBlockDecoder(private val packed: PackedBlockStorage) : BlockD
     override val bytesPerBlock: Int get() = (packed.physicalBytes / maxOf(packed.blockCount, 1)).toInt()
     override fun decodeBlock(storage: Storage, blockIndex: Long, out: FloatArray, outOffset: Int) {
         packed.dequantizeBlock(blockIndex.toInt(), out, outOffset)
+    }
+}
+
+/**
+ * Decoder for 16-bit narrow floats (FP16 / BF16) held two bytes per element — the "block" is one
+ * element, so a narrow-float view decodes element by element through its [codec].
+ */
+@ExperimentalMemoryApi
+public class NarrowFloatDecoder(private val codec: sk.ainet.lang.types.NarrowFloatCodec) : BlockDecoder {
+    override val blockSize: Int get() = 1
+    override val bytesPerBlock: Int get() = codec.bytesPerElement
+
+    override fun decodeBlock(storage: Storage, blockIndex: Long, out: FloatArray, outOffset: Int) {
+        out[outOffset] = decodeAt(storage, blockIndex)
+    }
+
+    override fun decodeElement(storage: Storage, layout: Layout, flatElementIndex: Long): Float = decodeAt(storage, flatElementIndex)
+
+    private fun decodeAt(storage: Storage, elementIndex: Long): Float {
+        val heap = storage as? Storage.Heap ?: throw UnsupportedOperationException("narrow-float views need heap storage in this milestone")
+        val bytes = heap.bytes ?: throw UnsupportedOperationException("narrow-float views need byte storage")
+        val off = heap.arrayOffset + (elementIndex * codec.bytesPerElement).toInt()
+        val bits = (bytes[off].toInt() and 0xFF) or ((bytes[off + 1].toInt() and 0xFF) shl 8)
+        return codec.decode(bits)
     }
 }

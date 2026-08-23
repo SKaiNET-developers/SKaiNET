@@ -49,6 +49,21 @@ public class MemorySegmentTensorData<T : DType> private constructor(
     override val segmentByteOffset: Long,
     private val ownsArena: Boolean,
 ) : TensorData<T, Float>, MemorySegmentBackedData {
+    /**
+     * A dense view over the *same* off-heap bytes (SKEEP-003 §4.1 façade): the storage borrows this
+     * data's [segment] — nothing is copied and a migrated kernel unwraps it once with
+     * `SegmentStorage.segment()`.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.SegmentStorage.borrow(
+                if (segmentByteOffset == 0L) segment else segment.asSlice(segmentByteOffset),
+            ),
+            shape,
+            sk.ainet.lang.types.FP32,
+        )
+
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
