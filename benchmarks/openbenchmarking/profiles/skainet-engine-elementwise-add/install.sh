@@ -16,12 +16,15 @@ fi
 
 cp "$SKAINET_PUBLISH_JAR" "$DEST/skainet-engine-publish.jar"
 
-cat > "$DEST/$SCENARIO" <<'WRAPPER'
+cat > "$DEST/skainet-$SCENARIO" <<'WRAPPER'
 #!/usr/bin/env bash
+# PTS only parses results from the file at $LOG_FILE (set by the PTS client), never
+# from captured stdout directly — so the parseable result line must land there too.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-exec java --enable-preview --add-modules jdk.incubator.vector \
+java --enable-preview --add-modules jdk.incubator.vector \
     -jar "$HERE/skainet-engine-publish.jar" \
-    run --scenario engine-elementwise-add --out "$HERE/last-result.json" "$@"
+    run --scenario engine-elementwise-add --out "$HERE/last-result.json" "$@" \
+    | tee -a "${LOG_FILE:-/dev/stdout}"
 WRAPPER
-chmod +x "$DEST/$SCENARIO"
+chmod +x "$DEST/skainet-$SCENARIO"

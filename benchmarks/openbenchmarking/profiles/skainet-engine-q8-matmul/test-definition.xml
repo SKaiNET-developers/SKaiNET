@@ -11,16 +11,15 @@
     <TestProfile>
         <Version>1.0.0</Version>
         <SupportedPlatforms>Linux, MacOSX</SupportedPlatforms>
-        <SoftwareType>Library</SoftwareType>
+        <SoftwareType>Benchmark</SoftwareType>
         <TestType>Processor</TestType>
-        <License>MIT</License>
-        <Status>Testing</Status>
+        <License>Free</License>
+        <Status>Unverified</Status>
         <Maintainer>SKaiNET Developers</Maintainer>
-        <Executable>skainet-engine-q8-matmul</Executable>
     </TestProfile>
     <TestSettings>
         <Default>
-            <Arguments>--smoke false --provider panama</Arguments>
+            <Arguments>--provider panama</Arguments>
         </Default>
         <Option>
             <DisplayName>Kernel Provider</DisplayName>
@@ -28,11 +27,11 @@
             <Menu>
                 <Entry>
                     <Name>Panama Vector</Name>
-                    <Value>--smoke false --provider panama</Value>
+                    <Value>--provider panama</Value>
                 </Entry>
                 <Entry>
                     <Name>Scalar</Name>
-                    <Value>--smoke false --provider scalar</Value>
+                    <Value>--provider scalar</Value>
                 </Entry>
             </Menu>
         </Option>
