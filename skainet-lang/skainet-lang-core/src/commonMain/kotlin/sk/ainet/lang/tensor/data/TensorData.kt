@@ -81,6 +81,20 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
     public val encoding: sk.ainet.lang.tensor.storage.TensorEncoding? get() = null
 
     /**
+     * This data as a [sk.ainet.lang.memory.TensorView] — `Shape + Format + Layout + Storage` — or
+     * `null` when the implementation cannot expose one (SKEEP-003 §4.1: `TensorData` becomes a
+     * façade over the view; migrated kernels take the view, everything else keeps using this
+     * interface unchanged).
+     *
+     * The view is over the *same* bytes: for array-backed data the storage borrows the array
+     * (`Storage.Heap.wrap`), so writes through either side are visible on both and nothing is
+     * copied. Per-element access stays on this interface's own fast path — the Phase-2 spike
+     * (#1016) showed a view is for unwrapping once per call, not for per-element reads.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val view: sk.ainet.lang.memory.TensorView? get() = null
+
+    /**
      * Copies all tensor data to a FloatArray.
      *
      * This method provides efficient bulk data transfer from tensor storage to a FloatArray.
@@ -119,6 +133,15 @@ public interface FloatArrayTensorData<T : DType> : TensorData<T, Float> {
     public val buffer: FloatArray
 
     override fun copyToFloatArray(): FloatArray = buffer.copyOf()
+
+    /** A dense FP32 view borrowing [buffer] — zero-copy, the same bytes this data reads and writes. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.Storage.Heap.wrap(buffer),
+            shape,
+            sk.ainet.lang.types.FP32,
+        )
 }
 
 /**
@@ -126,4 +149,13 @@ public interface FloatArrayTensorData<T : DType> : TensorData<T, Float> {
  */
 public interface IntArrayTensorData<T : DType> : TensorData<T, Int> {
     public val buffer: IntArray
+
+    /** A dense Int32 view borrowing [buffer] — zero-copy, the same bytes this data reads and writes. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.Storage.Heap.wrap(buffer),
+            shape,
+            sk.ainet.lang.types.Int32,
+        )
 }

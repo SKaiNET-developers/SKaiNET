@@ -98,10 +98,11 @@ public class LazyMaterializationStrategy<T : DType, V> : MaterializationStrategy
          * Lazy tensor data implementation with sparse element caching.
          */
         private class LazyMaterializedTensorData<T : DType, V>(
-            private val view: TensorView<T, V>
+            // named `sourceView`, not `view`: TensorData.view is the memory-model view (SKEEP-003)
+            private val sourceView: TensorView<T, V>
         ) : TensorData<T, V> {
 
-            override val shape: Shape = view.viewShape
+            override val shape: Shape = sourceView.viewShape
 
             // Cache for materialized elements
             // Using a map to store only accessed elements
@@ -113,7 +114,7 @@ public class LazyMaterializationStrategy<T : DType, V> : MaterializationStrategy
                 // Check if element is already cached
                 return elementCache[cacheKey] ?: run {
                     // Element not cached, fetch from view and cache it
-                    val element = view.data.get(*indices)
+                    val element = sourceView.data.get(*indices)
                     elementCache[cacheKey] = element
                     element
                 }

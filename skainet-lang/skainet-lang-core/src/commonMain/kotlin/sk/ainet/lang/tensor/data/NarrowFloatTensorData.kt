@@ -62,6 +62,25 @@ public open class NarrowFloatDenseTensorData(
     /** Physically two bytes per element whatever the declared dtype witness. */
     override val encoding: TensorEncoding get() = TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)
 
+    /**
+     * A view over the *same* packed bytes, decoded by this data's [codec] (SKEEP-003 §4.1 façade).
+     * The dtype is the codec's (FP16 or BF16) and the encoding `Dense(2)`; `view.get()` returns the
+     * decoded float, exactly like [get].
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = sk.ainet.lang.memory.TensorView(
+            shape = shape,
+            format = sk.ainet.lang.memory.Format(codec.dtype, TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)),
+            layout = sk.ainet.lang.memory.Layout(
+                shape = shape,
+                strides = sk.ainet.lang.memory.Layout.rowMajorStrides(shape),
+                elementBytes = NarrowFloatTensorData.BYTES_PER_ELEMENT,
+            ),
+            storage = sk.ainet.lang.memory.Storage.Heap.wrap(data, mutable = false),
+            decoder = sk.ainet.lang.memory.NarrowFloatDecoder(codec),
+        )
+
     init {
         val requiredBytes = shape.volume * NarrowFloatTensorData.BYTES_PER_ELEMENT
         require(data.size >= requiredBytes) {
