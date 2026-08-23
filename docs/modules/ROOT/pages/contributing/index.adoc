@@ -31,7 +31,7 @@ Concretely:
 |===
 | Page | What it answers
 | xref:contributing/build-from-source.adoc[Build from source] | How to clone, build, and run the test suite locally.
-| xref:contributing/benchmarks.adoc[Engine benchmark program] | The Phoronix Test Suite / OpenBenchmarking publication path: methodology, manifest, lanes, CI workflow, replay.
+| xref:contributing/benchmarks.adoc[Engine benchmark program] | The Phoronix Test Suite / OpenBenchmarking publication path: methodology, manifest, lanes, CI workflow, replay, and the gated steps to actually publish a run to OpenBenchmarking.org.
 | xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] | What the published numbers mean — scalar vs. Panama vs. quantized regimes, roofline reasoning, and a checklist for interpreting any new measurement.
 | xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner] | The one-time operator setup that lights up the full-publish CI lane on a Linux x86 box.
 | xref:skeep:index.adoc[SKEEP proposal track] | How SKaiNET records long-lived API, DSL, runtime, compiler, storage, and compatibility proposals.

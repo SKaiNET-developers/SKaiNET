@@ -73,6 +73,12 @@ The full lane currently runs on a Linux x86 host with an
 AVX2-capable CPU. macOS Arm64 and Linux Arm64 lanes are tracked as
 follow-ups.
 
+Both triggers (`release`, `workflow_dispatch`) run the full lane and
+upload its JSON records as a build artifact — that alone never
+touches OpenBenchmarking.org. Actually publishing to the public
+leaderboard is a separate, explicitly gated step; see
+<<publishing-to-openbenchmarking-org>>.
+
 == Reproducing a public run locally
 
 Prerequisites: JDK 21 or newer, Phoronix Test Suite (required to
@@ -113,10 +119,19 @@ GH_RUNNER_TOKEN=<token from repo Settings -> Actions -> Runners> \
   ./scripts/register_bench_runner.sh
 ----
 
+[#publishing-to-openbenchmarking-org]
 == Publishing to OpenBenchmarking.org
 
-One-time setup on the self-hosted bench host (not automated — this
-script never sees or handles OpenBenchmarking.org credentials):
+Publishing is deliberately a separate, human-confirmed step from
+running the benchmarks — the full lane runs (and uploads its JSON
+artifact) on every `release` and `workflow_dispatch`, but nothing
+reaches the public leaderboard without an explicit opt-in each time.
+See <<why-manual-login>> for why the OpenBenchmarking.org login itself
+can't be automated either.
+
+One-time setup on the self-hosted bench host (also covered in
+xref:contributing/register-bench-runner.adoc[Register a self-hosted
+bench runner]):
 
 [source,bash]
 ----
@@ -148,6 +163,20 @@ manual `workflow_dispatch` run with `confirm_publish: true`. A
 JSON artifact, but never triggers a publish to OpenBenchmarking.org —
 that always requires an explicit, separate dispatch.
 
+[#why-manual-login]
+[TIP]
+.Why the OpenBenchmarking.org login stays manual
+====
+`phoronix-test-suite openbenchmarking-login` does a live
+username/password handshake against OpenBenchmarking.org and stores
+the resulting session locally — there's no static API key or token to
+hand the runner as a secret. Re-implementing that handshake in CI
+would mean the workflow handling account credentials directly; a
+one-time interactive login on a box only maintainers can reach is the
+safer trade. The login persists across runs, so this is genuinely
+one-time per bench host, not per publish.
+====
+
 == Result record schema
 
 Every scenario emits a `BenchmarkRecord` JSON (schema version `1.0.0`)
@@ -172,5 +201,6 @@ comparisons don't silently break.
 
 * {url-pts}[Phoronix Test Suite]
 * {url-obo}[OpenBenchmarking.org]
+* xref:contributing/register-bench-runner.adoc[Register a self-hosted bench runner] — one-time host setup, including OpenBenchmarking.org login
 * xref:explanation/perf/jvm-cpu.adoc[JVM CPU backend notes]
 * xref:explanation/perf/simd-kernels.adoc[How SIMD kernels are built]

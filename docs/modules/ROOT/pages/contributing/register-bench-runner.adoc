@@ -38,6 +38,10 @@ workflow's `runs-on:` clause can route the job to it.
 * Optional but recommended: Phoronix Test Suite, installed via
   `./scripts/install_pts.sh`. The benchmark workflow installs it
   itself if missing, but pre-installing avoids a per-run download.
+* Only if this box will publish to OpenBenchmarking.org: a free
+  OpenBenchmarking.org account, and `phoronix-test-suite
+  openbenchmarking-login` run once, interactively, on this host (see
+  <<openbenchmarking-login>>).
 
 [#nat-firewall]
 == Running behind NAT — what you don't need to configure
@@ -159,6 +163,37 @@ button on the workflow's page in the GitHub UI.)
 Within ~30 seconds the runner journal should pick up the job. The
 full lane completes in 10–20 minutes; the published artifacts land
 at `engine-full-records-<run-id>` on the workflow run page.
+
+[#openbenchmarking-login]
+=== 5. (Optional) Enable OpenBenchmarking.org publishing
+
+The full lane above always runs benchmarks and uploads a JSON
+artifact — it never touches OpenBenchmarking.org by itself. Actually
+publishing to the public leaderboard needs one more, separate
+one-time step on this host, since the workflow itself is never
+handed OpenBenchmarking.org credentials (see
+xref:contributing/benchmarks.adoc#why-manual-login[why the login
+stays manual]):
+
+[source,bash]
+----
+phoronix-test-suite openbenchmarking-login
+----
+
+This prompts for your OpenBenchmarking.org username and password
+once and stores the resulting session under
+`~/.phoronix-test-suite/`. After that, publishing is a per-run
+opt-in — trigger the workflow with `confirm_publish: true`:
+
+[source,bash]
+----
+gh workflow run engine-benchmarks.yml --ref develop -f confirm_publish=true
+----
+
+Full details, including the local (non-CI) publish path via
+`scripts/upload_openbenchmarking.sh`, are in
+xref:contributing/benchmarks.adoc#publishing-to-openbenchmarking-org[Publishing
+to OpenBenchmarking.org].
 
 == Optional hardening
 
