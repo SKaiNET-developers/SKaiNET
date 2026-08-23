@@ -665,6 +665,12 @@ public final class sk/ainet/lang/memory/AllocationSpec$Companion {
 	public static synthetic fun of$default (Lsk/ainet/lang/memory/AllocationSpec$Companion;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/memory/ScopeKind;ZIILjava/lang/Object;)Lsk/ainet/lang/memory/AllocationSpec;
 }
 
+public final class sk/ainet/lang/memory/DescribeKt {
+	public static final fun describe (Lsk/ainet/lang/tensor/Tensor;)Ljava/lang/String;
+	public static final fun describe (Lsk/ainet/lang/tensor/storage/TensorStorage;Lsk/ainet/lang/tensor/TensorId;)Ljava/lang/String;
+	public static synthetic fun describe$default (Lsk/ainet/lang/tensor/storage/TensorStorage;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Ljava/lang/String;
+}
+
 public abstract interface annotation class sk/ainet/lang/memory/ExperimentalMemoryApi : java/lang/annotation/Annotation {
 }
 
@@ -2368,6 +2374,26 @@ public final class sk/ainet/lang/nn/topology/Parameter {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/nn/topology/TensorIdAssignment {
+	public fun <init> (Ljava/util/Map;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/Map;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/Map;Ljava/util/List;)Lsk/ainet/lang/nn/topology/TensorIdAssignment;
+	public static synthetic fun copy$default (Lsk/ainet/lang/nn/topology/TensorIdAssignment;Ljava/util/Map;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/lang/nn/topology/TensorIdAssignment;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun get (Ljava/lang/String;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun get (Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/tensor/Tensor;
+	public final fun getNotCarried ()Ljava/util/List;
+	public final fun getTensors ()Ljava/util/Map;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/nn/topology/TensorIdsKt {
+	public static final fun assignTensorIds (Lsk/ainet/lang/nn/topology/ModuleNode;Ljava/lang/String;)Lsk/ainet/lang/nn/topology/TensorIdAssignment;
+	public static synthetic fun assignTensorIds$default (Lsk/ainet/lang/nn/topology/ModuleNode;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/nn/topology/TensorIdAssignment;
+}
+
 public final class sk/ainet/lang/nn/topology/TraversalKt {
 	public static final fun bindPaths (Lsk/ainet/lang/nn/topology/ModuleNode;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun bindPaths$default (Lsk/ainet/lang/nn/topology/ModuleNode;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
@@ -2699,6 +2725,7 @@ public final class sk/ainet/lang/tensor/SlicedTensorView : sk/ainet/lang/tensor/
 	public fun getDtype ()Lkotlin/reflect/KClass;
 	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
 	public fun getGradState ()Lsk/ainet/lang/tensor/GradState;
+	public fun getId ()Lsk/ainet/lang/tensor/TensorId;
 	public fun getIndexMapping ()Lsk/ainet/lang/tensor/IndexMapper;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getParentTensor ()Lsk/ainet/lang/tensor/Tensor;
@@ -2726,6 +2753,7 @@ public abstract interface class sk/ainet/lang/tensor/Tensor {
 	public abstract fun getDtype ()Lkotlin/reflect/KClass;
 	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun getGradState ()Lsk/ainet/lang/tensor/GradState;
+	public fun getId ()Lsk/ainet/lang/tensor/TensorId;
 	public abstract fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getRank ()I
 	public fun getRequiresGrad ()Z
@@ -2737,6 +2765,7 @@ public abstract interface class sk/ainet/lang/tensor/Tensor {
 public final class sk/ainet/lang/tensor/Tensor$DefaultImpls {
 	public static fun accumulateGrad (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
 	public static fun getGrad (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun getId (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/TensorId;
 	public static fun getRank (Lsk/ainet/lang/tensor/Tensor;)I
 	public static fun getRequiresGrad (Lsk/ainet/lang/tensor/Tensor;)Z
 	public static fun getShape (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Shape;
@@ -2827,6 +2856,34 @@ public abstract interface class sk/ainet/lang/tensor/TensorFactory {
 	public abstract fun zeros (Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
 }
 
+public final class sk/ainet/lang/tensor/TensorId {
+	public static final field Companion Lsk/ainet/lang/tensor/TensorId$Companion;
+	public fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCanonical ()Ljava/lang/String;
+	public final fun getDiscriminator ()Ljava/lang/String;
+	public final fun getModulePath ()Ljava/util/List;
+	public final fun getParameter ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun legacyPath (Ljava/lang/String;)Ljava/lang/String;
+	public static synthetic fun legacyPath$default (Lsk/ainet/lang/tensor/TensorId;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+	public final fun view (Ljava/lang/String;)Lsk/ainet/lang/tensor/TensorId;
+	public final fun withDiscriminator (Ljava/lang/String;)Lsk/ainet/lang/tensor/TensorId;
+}
+
+public final class sk/ainet/lang/tensor/TensorId$Companion {
+	public final fun fromLegacyPath (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/lang/tensor/TensorId;
+	public static synthetic fun fromLegacyPath$default (Lsk/ainet/lang/tensor/TensorId$Companion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/tensor/TensorId;
+	public final fun parse (Ljava/lang/String;)Lsk/ainet/lang/tensor/TensorId;
+}
+
+public abstract interface class sk/ainet/lang/tensor/TensorIdBearer {
+	public abstract fun getId ()Lsk/ainet/lang/tensor/TensorId;
+	public abstract fun setId (Lsk/ainet/lang/tensor/TensorId;)V
+}
+
 public final class sk/ainet/lang/tensor/TensorSliceBuilder {
 	public fun <init> ()V
 	public final fun segment (Lkotlin/jvm/functions/Function1;)V
@@ -2853,6 +2910,7 @@ public abstract interface class sk/ainet/lang/tensor/TensorView : sk/ainet/lang/
 public final class sk/ainet/lang/tensor/TensorView$DefaultImpls {
 	public static fun accumulateGrad (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/Tensor;)V
 	public static fun getGrad (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun getId (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/TensorId;
 	public static fun getRank (Lsk/ainet/lang/tensor/TensorView;)I
 	public static fun getRequiresGrad (Lsk/ainet/lang/tensor/TensorView;)Z
 	public static fun getShape (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Shape;
@@ -2909,7 +2967,7 @@ public final class sk/ainet/lang/tensor/ViewManagementExtensionsKt {
 	public static final fun isContiguous (Lsk/ainet/lang/tensor/TensorView;)Z
 }
 
-public final class sk/ainet/lang/tensor/VoidOpsTensor : sk/ainet/lang/tensor/Tensor {
+public final class sk/ainet/lang/tensor/VoidOpsTensor : sk/ainet/lang/tensor/Tensor, sk/ainet/lang/tensor/TensorIdBearer {
 	public fun <init> (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;Lsk/ainet/lang/tensor/GradState;)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;Lsk/ainet/lang/tensor/GradState;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun accumulateGrad (Lsk/ainet/lang/tensor/Tensor;)V
@@ -2917,11 +2975,13 @@ public final class sk/ainet/lang/tensor/VoidOpsTensor : sk/ainet/lang/tensor/Ten
 	public fun getDtype ()Lkotlin/reflect/KClass;
 	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
 	public fun getGradState ()Lsk/ainet/lang/tensor/GradState;
+	public fun getId ()Lsk/ainet/lang/tensor/TensorId;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getRank ()I
 	public fun getRequiresGrad ()Z
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getVolume ()I
+	public fun setId (Lsk/ainet/lang/tensor/TensorId;)V
 	public fun zeroGrad ()V
 }
 
@@ -4123,7 +4183,7 @@ public final class sk/ainet/lang/tensor/operators/OperatorsKt {
 	public static final fun withOps (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/ops/TensorOps;)Lsk/ainet/lang/tensor/Tensor;
 }
 
-public final class sk/ainet/lang/tensor/operators/OpsBoundTensor : sk/ainet/lang/tensor/Tensor {
+public final class sk/ainet/lang/tensor/operators/OpsBoundTensor : sk/ainet/lang/tensor/Tensor, sk/ainet/lang/tensor/TensorIdBearer {
 	public static final field Companion Lsk/ainet/lang/tensor/operators/OpsBoundTensor$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/ops/TensorOps;)V
 	public fun accumulateGrad (Lsk/ainet/lang/tensor/Tensor;)V
@@ -4131,12 +4191,14 @@ public final class sk/ainet/lang/tensor/operators/OpsBoundTensor : sk/ainet/lang
 	public fun getDtype ()Lkotlin/reflect/KClass;
 	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
 	public fun getGradState ()Lsk/ainet/lang/tensor/GradState;
+	public fun getId ()Lsk/ainet/lang/tensor/TensorId;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public final fun getOrigin ()Lsk/ainet/lang/tensor/Tensor;
 	public fun getRank ()I
 	public fun getRequiresGrad ()Z
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun getVolume ()I
+	public fun setId (Lsk/ainet/lang/tensor/TensorId;)V
 	public fun zeroGrad ()V
 }
 
