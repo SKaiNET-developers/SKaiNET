@@ -19,12 +19,21 @@ public data class KernelKey(
     val op: String,
     val operands: List<OperandKey>,
     val placement: Placement = Placement.HOST,
+    /**
+     * Platform capabilities a kernel requires (`vector`, `dotprod`, `i8mm`, `ffm`, …). Empty means
+     * "no special requirement" — the portable kernel. A pack registers its key *with* the
+     * capabilities it needs so a device that lacks them never selects it (§5.2, #920).
+     */
+    val capabilities: Set<String> = emptySet(),
 ) {
     /** Where the operands live — host memory today; a device backend adds its own (PRD non-goal for M1). */
     public enum class Placement { HOST, DEVICE }
 
-    override fun toString(): String =
-        "$op(${operands.joinToString(" × ")})" + if (placement != Placement.HOST) " @${placement.name.lowercase()}" else " @host"
+    override fun toString(): String = buildString {
+        append(op); append('('); append(operands.joinToString(" × ")); append(')')
+        append(" @"); append(placement.name.lowercase())
+        if (capabilities.isNotEmpty()) { append(" ["); append(capabilities.sorted().joinToString(",")); append(']') }
+    }
 
     public companion object {
         /** The key of `matmul(activation, weight)` as the two views describe themselves. */
