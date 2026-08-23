@@ -80,6 +80,7 @@ include("skainet-test:skainet-test-java")
 // ====== APPS
 include("skainet-apps:skainet-grayscale-cli")
 include("skainet-apps:skainet-tensor-tools")
+include("skainet-apps:skainet-plan")
 include("skainet-io:skainet-io-safetensors")
 include("skainet-io:skainet-io-iree-params")
 
