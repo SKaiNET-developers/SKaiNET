@@ -6306,6 +6306,8 @@ public final class sk/ainet/lang/tensor/storage/DefaultBufferResolver : sk/ainet
 
 public final class sk/ainet/lang/tensor/storage/DefaultKvCacheStore : sk/ainet/lang/tensor/storage/KvCacheStore {
 	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;)V
+	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/memory/ModelScope;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/memory/ModelScope;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun appendToken (I[F[F)V
 	public fun clear ()V
 	public fun evict (I)V
@@ -6316,6 +6318,7 @@ public final class sk/ainet/lang/tensor/storage/DefaultKvCacheStore : sk/ainet/l
 	public fun getNumHeads ()I
 	public fun getNumLayers ()I
 	public fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getPreallocatedBytes ()J
 	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;

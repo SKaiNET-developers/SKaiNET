@@ -17,8 +17,17 @@ import sk.ainet.lang.types.FP32
  *
  * Append writes to position [currentSeqLen]; read returns a contiguous slice.
  */
-public class DefaultKvCacheStore(
-    private val config: KvCacheConfig
+/**
+ * @param scope when given, the per-layer K/V backing is allocated in that [sk.ainet.lang.memory.ModelScope]
+ *   instead of as plain GC-managed arrays (SKEEP-003 §4.5, PRD M1-F2): the allocation is tracked,
+ *   traced (`TraceEvent.Allocation` with the cache's `TensorId`) and released deterministically when
+ *   the model closes, which is what lets the memory plan be checked against reality (#1074). The
+ *   default keeps today's behaviour exactly.
+ */
+@OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
+    private val config: KvCacheConfig,
+    private val scope: sk.ainet.lang.memory.ModelScope? = null,
 ) : KvCacheStore {
 
     override val numLayers: Int get() = config.numLayers
@@ -33,13 +42,26 @@ public class DefaultKvCacheStore(
     override val currentSeqLen: Int get() = _currentSeqLen
 
     // Per-layer storage: keys[layer] and values[layer]
-    // Each is [numHeads, maxSeqLen, headDim] laid out as contiguous float array
-    private val keys: Array<FloatArray> = Array(numLayers) {
-        FloatArray(numHeads * maxSeqLen * headDim)
+    // Each is [numHeads, maxSeqLen, headDim] laid out as contiguous float array.
+    // With a ModelScope the arrays come from scope-owned storage (tracked, traced, freed with the
+    // model); without one they are plain arrays, exactly as before.
+    private val elementsPerLayer: Int = numHeads * maxSeqLen * headDim
+
+    private fun allocateLayer(kind: String, layer: Int): FloatArray {
+        val s = scope ?: return FloatArray(elementsPerLayer)
+        val storage = s.allocateFloats(
+            elementsPerLayer,
+            sk.ainet.lang.tensor.TensorId(listOf("kv", "layers[$layer]"), kind),
+        )
+        val array = storage.floats ?: FloatArray(elementsPerLayer)
+        return if (storage.arrayOffset == 0 && array.size == elementsPerLayer) array else FloatArray(elementsPerLayer)
     }
-    private val values: Array<FloatArray> = Array(numLayers) {
-        FloatArray(numHeads * maxSeqLen * headDim)
-    }
+
+    private val keys: Array<FloatArray> = Array(numLayers) { allocateLayer("k", it) }
+    private val values: Array<FloatArray> = Array(numLayers) { allocateLayer("v", it) }
+
+    /** Bytes of K/V backing this store preallocated (`layers × 2 × heads × maxSeqLen × headDim × 4`). */
+    public val preallocatedBytes: Long get() = numLayers.toLong() * 2 * elementsPerLayer * 4
 
     override fun appendToken(layer: Int, key: FloatArray, value: FloatArray) {
         requireLayerIndex(layer)
