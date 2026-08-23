@@ -42,6 +42,12 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies {
+            // the module declares its targets by hand (no sk.ainet.multiplatform convention plugin),
+            // so kotlin-test is wired here
+            implementation(libs.kotlin.test)
+        }
+
         commonMain.dependencies {
             // Neutral backend API is an `api` re-export of the tensor op and
             // storage interfaces already defined in skainet-lang-core. Any
