@@ -22,6 +22,14 @@ public interface ExecutionContext {
     @sk.ainet.lang.memory.ExperimentalMemoryApi
     public val traceSink: sk.ainet.lang.memory.trace.TraceSink get() = sk.ainet.lang.memory.trace.NoopTraceSink
 
+    /**
+     * The scope new activations and adapter outputs are allocated in (SKEEP-003 §4.5). Default
+     * [sk.ainet.lang.memory.Scope.Ambient] — GC-managed, today's behaviour; a generation loop opts
+     * in by providing a `ForwardScope` and calling `reset()` per step.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val memoryScope: sk.ainet.lang.memory.Scope get() = sk.ainet.lang.memory.Scope.Ambient
+
     public val ops: TensorOps
 
     // Optional forward hooks for recording or diagnostics (null → disabled)

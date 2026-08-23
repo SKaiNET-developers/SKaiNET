@@ -173,6 +173,7 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
 	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/KspTensorOps;
@@ -449,6 +450,7 @@ public final class sk/ainet/lang/graph/exec/GraphExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Z
 	public static fun getMemoryPlanner (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryScope (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
