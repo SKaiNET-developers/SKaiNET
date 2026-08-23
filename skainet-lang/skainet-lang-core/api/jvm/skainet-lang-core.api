@@ -709,6 +709,185 @@ public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
 	public static fun values ()[Lsk/ainet/lang/memory/ScopeKind;
 }
 
+public final class sk/ainet/lang/memory/plan/Budget {
+	public static final field Companion Lsk/ainet/lang/memory/plan/Budget$Companion;
+	public static final field RESERVE_ANDROID_JVM J
+	public static final field RESERVE_NATIVE J
+	public fun <init> (JLjava/lang/String;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (JLjava/lang/String;)Lsk/ainet/lang/memory/plan/Budget;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/Budget;JLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/Budget;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getDescription ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/Budget$Companion {
+	public final fun available (JJ)Lsk/ainet/lang/memory/plan/Budget;
+	public static synthetic fun available$default (Lsk/ainet/lang/memory/plan/Budget$Companion;JJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/Budget;
+	public final fun of (J)Lsk/ainet/lang/memory/plan/Budget;
+}
+
+public final class sk/ainet/lang/memory/plan/KvCacheMode : java/lang/Enum {
+	public static final field BF16 Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public static final field TURBOQUANT_4 Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public final fun bytes (J)J
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getLabel ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public static fun values ()[Lsk/ainet/lang/memory/plan/KvCacheMode;
+}
+
+public final class sk/ainet/lang/memory/plan/MemoryPlan {
+	public fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;)V
+	public final fun component1 ()Lsk/ainet/lang/memory/plan/PlanInput;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun component7 ()Lsk/ainet/lang/memory/plan/Budget;
+	public final fun copy (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBudget ()Lsk/ainet/lang/memory/plan/Budget;
+	public final fun getFits ()Ljava/lang/Boolean;
+	public final fun getForwardBytes ()J
+	public final fun getHeadroomBytes ()J
+	public final fun getInput ()Lsk/ainet/lang/memory/plan/PlanInput;
+	public final fun getKvBytes ()J
+	public final fun getKvBytesAlternate ()J
+	public final fun getLines ()Ljava/util/List;
+	public final fun getResidentBytes ()J
+	public final fun getTotalBytes ()J
+	public final fun getWeightsBytes ()J
+	public fun hashCode ()I
+	public final fun render ()Ljava/lang/String;
+	public final fun suggestions ()Ljava/util/List;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/MemoryPlans {
+	public static final field HEAP_HEADROOM_BYTES J
+	public static final field INSTANCE Lsk/ainet/lang/memory/plan/MemoryPlans;
+	public final fun formatBytes (J)Ljava/lang/String;
+	public final fun forwardBytes (Lsk/ainet/lang/memory/plan/ModelGeometry;II)J
+	public final fun kvElements (Lsk/ainet/lang/memory/plan/ModelGeometry;I)J
+	public final fun plan (Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/Budget;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public static synthetic fun plan$default (Lsk/ainet/lang/memory/plan/MemoryPlans;Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/Budget;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+}
+
+public final class sk/ainet/lang/memory/plan/ModelGeometry {
+	public fun <init> (IIIIIIIILjava/lang/Integer;)V
+	public synthetic fun <init> (IIIIIIIILjava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun component8 ()I
+	public final fun component9 ()Ljava/lang/Integer;
+	public final fun copy (IIIIIIIILjava/lang/Integer;)Lsk/ainet/lang/memory/plan/ModelGeometry;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/ModelGeometry;IIIIIIIILjava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/ModelGeometry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEmbeddingLength ()I
+	public final fun getFeedForwardLength ()I
+	public final fun getHeadDim ()I
+	public final fun getHeads ()I
+	public final fun getKvHeads ()I
+	public final fun getLayers ()I
+	public final fun getTrainedContextLength ()Ljava/lang/Integer;
+	public final fun getValueDim ()I
+	public final fun getVocabSize ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/PlanInput {
+	public static final field Companion Lsk/ainet/lang/memory/plan/PlanInput$Companion;
+	public static final field DEFAULT_PREFILL_CHUNK I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/memory/plan/ModelGeometry;IILsk/ainet/lang/memory/plan/KvCacheMode;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/memory/plan/ModelGeometry;IILsk/ainet/lang/memory/plan/KvCacheMode;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Lsk/ainet/lang/memory/plan/ModelGeometry;
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/memory/plan/ModelGeometry;IILsk/ainet/lang/memory/plan/KvCacheMode;)Lsk/ainet/lang/memory/plan/PlanInput;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanInput;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/memory/plan/ModelGeometry;IILsk/ainet/lang/memory/plan/KvCacheMode;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanInput;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArchitecture ()Ljava/lang/String;
+	public final fun getCtx ()I
+	public final fun getGeometry ()Lsk/ainet/lang/memory/plan/ModelGeometry;
+	public final fun getKvMode ()Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public final fun getModelName ()Ljava/lang/String;
+	public final fun getPrefillChunk ()I
+	public final fun getUnmappedWeights ()Ljava/util/List;
+	public final fun getWeights ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/PlanInput$Companion {
+}
+
+public final class sk/ainet/lang/memory/plan/PlanLine {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JZ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JZ)Lsk/ainet/lang/memory/plan/PlanLine;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanLine;Ljava/lang/String;Ljava/lang/String;JZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanLine;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getDetail ()Ljava/lang/String;
+	public final fun getResident ()Z
+	public final fun getSection ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/PlanTensor {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun component3 ()Lsk/ainet/lang/memory/Format;
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJ)Lsk/ainet/lang/memory/plan/PlanTensor;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanTensor;Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanTensor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllocation ()Lsk/ainet/lang/memory/AllocationSpec;
+	public final fun getBytes ()J
+	public final fun getElementCount ()J
+	public final fun getFormat ()Lsk/ainet/lang/memory/Format;
+	public final fun getId ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/Suggestion {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Lsk/ainet/lang/memory/plan/Suggestion;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/Suggestion;Ljava/lang/String;JILjava/lang/Object;)Lsk/ainet/lang/memory/plan/Suggestion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSavesBytes ()J
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/nn/AvgPool2d : sk/ainet/lang/nn/Module {
 	public fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZLjava/lang/String;)V
 	public synthetic fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
