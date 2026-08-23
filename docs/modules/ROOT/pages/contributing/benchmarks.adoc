@@ -75,8 +75,9 @@ follow-ups.
 
 == Reproducing a public run locally
 
-Prerequisites: JDK 21 or newer, Phoronix Test Suite (optional, only
-required to validate the local PTS profiles).
+Prerequisites: JDK 21 or newer, Phoronix Test Suite (required to
+actually publish a run — see below; optional if you only want the raw
+JSON records).
 
 [source,bash]
 ----
@@ -111,6 +112,41 @@ GH_RUNNER_TOKEN=<token from repo Settings -> Actions -> Runners> \
   REPO=SKaiNET-developers/SKaiNET \
   ./scripts/register_bench_runner.sh
 ----
+
+== Publishing to OpenBenchmarking.org
+
+One-time setup on the self-hosted bench host (not automated — this
+script never sees or handles OpenBenchmarking.org credentials):
+
+[source,bash]
+----
+./scripts/install_pts.sh
+phoronix-test-suite openbenchmarking-login   # interactive; stores the account session locally
+----
+
+To publish a full-mode run:
+
+[source,bash]
+----
+./scripts/run_engine_benchmarks.sh
+./scripts/upload_openbenchmarking.sh out/engine/<TIMESTAMP>          # dry run — prints what it would do
+./scripts/upload_openbenchmarking.sh out/engine/<TIMESTAMP> --confirm # actually publishes
+----
+
+`upload_openbenchmarking.sh` validates the JSON records against the
+schema, refuses to proceed if any record is `"unstable": true` (CoV
+over `stability.cov_limit_percent`), re-runs the suite through PTS
+itself (PTS needs its own native result file to upload — the JSON
+harness output is a parallel, richer record, not a PTS result), then
+uploads. It only performs the actual upload with `--confirm` (or
+`CONFIRM_PUBLISH=yes`) — publishing is public and effectively
+irreversible, so it's opt-in every time.
+
+In CI, this is the `full-self-hosted` job's last step, gated on a
+manual `workflow_dispatch` run with `confirm_publish: true`. A
+`release` publish event alone runs the benchmarks and uploads the
+JSON artifact, but never triggers a publish to OpenBenchmarking.org —
+that always requires an explicit, separate dispatch.
 
 == Result record schema
 

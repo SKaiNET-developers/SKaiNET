@@ -27,6 +27,11 @@ on:
       - 'scripts/check_engine_json.sh'
       - '.github/workflows/engine-benchmarks.yml'
   workflow_dispatch:
+    inputs:
+      confirm_publish:
+        description: 'Publish this run to OpenBenchmarking.org (full-self-hosted lane only). Requires a one-time `phoronix-test-suite openbenchmarking-login` on the runner.'
+        type: boolean
+        default: false
   release:
     types: [published]
 
@@ -94,8 +99,10 @@ jobs:
   full-self-hosted:
     # Full pack on the registered self-hosted runner. Only fires on release
     # publish or manual dispatch — never on PRs — so untrusted code cannot
-    # land on the maintainer machine. Results land as artifacts; this
-    # session does NOT upload to OpenBenchmarking.org (separate milestone).
+    # land on the maintainer machine. Results always land as artifacts;
+    # publishing to OpenBenchmarking.org is a separate, explicitly gated
+    # step below (workflow_dispatch with confirm_publish: true only — a
+    # release publish alone never auto-publishes to the public leaderboard).
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     runs-on: [self-hosted, linux, x86_64, skainet-bench-linux-x86]
     timeout-minutes: 120
@@ -137,3 +144,15 @@ jobs:
           name: engine-full-records-${{ github.run_id }}
           path: out/engine/**/*.json
           retention-days: 90
+
+      - name: Publish to OpenBenchmarking.org
+        # Explicitly gated — only a manual workflow_dispatch with
+        # confirm_publish: true reaches this step. A release publish event
+        # alone runs the benchmarks and uploads artifacts above, but never
+        # this step, so a bad release tag can't silently publish public
+        # numbers. Requires a one-time `phoronix-test-suite
+        # openbenchmarking-login` on this runner — see
+        # docs/modules/ROOT/pages/contributing/benchmarks.adoc.
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_publish == 'true'
+        run: |
+          ./scripts/upload_openbenchmarking.sh "$(ls -td out/engine/*/ | head -1)" --confirm
