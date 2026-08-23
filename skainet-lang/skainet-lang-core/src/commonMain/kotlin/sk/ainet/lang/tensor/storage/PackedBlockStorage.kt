@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -63,6 +65,7 @@ public interface PackedBlockStorage {
     /**
      * Convert this packed storage to a [TensorStorage] descriptor.
      */
+    @Deprecated(message = "Use toTensorStorage(dtype, placement) (SKEEP-003 decision #13).", replaceWith = ReplaceWith("toTensorStorage(dtype, placement)"))
     public fun toTensorStorage(
         logicalType: LogicalDType = LogicalDType.FLOAT32,
         placement: Placement = Placement.CPU_HEAP

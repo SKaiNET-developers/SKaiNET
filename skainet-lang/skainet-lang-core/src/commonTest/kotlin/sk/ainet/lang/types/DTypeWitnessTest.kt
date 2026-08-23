@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
+
 package sk.ainet.lang.types
 
 import sk.ainet.lang.tensor.storage.LogicalDType

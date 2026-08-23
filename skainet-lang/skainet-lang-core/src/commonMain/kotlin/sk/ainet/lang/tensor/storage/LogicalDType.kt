@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // this file *is* the deprecated type
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.types.BF16
@@ -23,6 +25,10 @@ import sk.ainet.lang.types.Ternary
  * values are physically stored. A tensor with logical type [FLOAT32] might
  * be encoded as [TensorEncoding.Dense], [TensorEncoding.Q4_K], etc.
  */
+@Deprecated(
+    message = "LogicalDType merges into DType (SKEEP-003 decision #13): use the DType objects (FP32, Int8, …) and the dtype-first constructors/overloads.",
+    replaceWith = ReplaceWith("DType", "sk.ainet.lang.types.DType"),
+)
 public enum class LogicalDType(
     public val sizeInBits: Int,
     public val isFloatingPoint: Boolean,
@@ -78,6 +84,10 @@ public enum class LogicalDType(
          * The [LogicalDType] for a [DType]. Inverse of [toDType]; prefer the extension
          * [sk.ainet.lang.tensor.storage.toLogicalDType] at call sites.
          */
+        @Deprecated(
+            message = "LogicalDType merges into DType (SKEEP-003 decision #13); the DType object itself is the logical type.",
+            replaceWith = ReplaceWith("dtype"),
+        )
         public fun fromDType(dtype: DType): LogicalDType = when (dtype) {
             is Ternary -> TERNARY
             is Int4 -> INT4

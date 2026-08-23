@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -10,6 +12,7 @@ import sk.ainet.lang.tensor.Shape
  */
 public data class StorageMemoryReport(
     val shape: Shape,
+    @Deprecated(message = "Use dtype (SKEEP-003 decision #13).", replaceWith = ReplaceWith("dtype"))
     val logicalType: LogicalDType,
     val encoding: TensorEncoding,
     val ownership: Ownership,
