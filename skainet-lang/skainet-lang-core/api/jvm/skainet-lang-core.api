@@ -799,6 +799,30 @@ public final class sk/ainet/lang/memory/Owner$Owned : sk/ainet/lang/memory/Owner
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/memory/PlatformStorage {
+	public static final field INSTANCE Lsk/ainet/lang/memory/PlatformStorage;
+	public final fun allocate (JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage;
+	public static synthetic fun allocate$default (Lsk/ainet/lang/memory/PlatformStorage;JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage;
+	public final fun getInfo ()Lsk/ainet/lang/memory/PlatformStorageInfo;
+	public final fun getSupportsMappedFiles ()Z
+	public final fun mapFile (Ljava/lang/String;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage;
+	public static synthetic fun mapFile$default (Lsk/ainet/lang/memory/PlatformStorage;Ljava/lang/String;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage;
+	public final fun supports (Lsk/ainet/lang/tensor/storage/MemoryDomain;)Z
+}
+
+public final class sk/ainet/lang/memory/PlatformStorageInfo {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/lang/memory/PlatformStorageInfo;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/PlatformStorageInfo;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/memory/PlatformStorageInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMapped ()Ljava/lang/String;
+	public final fun getOffHeap ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
 	public static final field AMBIENT Lsk/ainet/lang/memory/ScopeKind;
 	public static final field FORWARD Lsk/ainet/lang/memory/ScopeKind;
