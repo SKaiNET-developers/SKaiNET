@@ -676,6 +676,26 @@ public final class sk/ainet/lang/memory/DescribeKt {
 	public static synthetic fun describe$default (Lsk/ainet/lang/tensor/storage/TensorStorage;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/memory/DirectBufferStorage : sk/ainet/lang/memory/Storage$OffHeap {
+	public static final field Companion Lsk/ainet/lang/memory/DirectBufferStorage$Companion;
+	public synthetic fun <init> (JLjava/nio/ByteBuffer;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun buffer ()Ljava/nio/ByteBuffer;
+	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public fun getId-TPZW6QE ()J
+	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
+	public fun getSizeBytes ()J
+	public fun isMutable ()Z
+	public fun slice (JJ)Lsk/ainet/lang/memory/DirectBufferStorage;
+	public synthetic fun slice (JJ)Lsk/ainet/lang/memory/Storage;
+}
+
+public final class sk/ainet/lang/memory/DirectBufferStorage$Companion {
+	public final fun allocate (ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/DirectBufferStorage;
+	public static synthetic fun allocate$default (Lsk/ainet/lang/memory/DirectBufferStorage$Companion;ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/DirectBufferStorage;
+	public final fun borrow (Ljava/nio/ByteBuffer;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/DirectBufferStorage;
+	public static synthetic fun borrow$default (Lsk/ainet/lang/memory/DirectBufferStorage$Companion;Ljava/nio/ByteBuffer;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/DirectBufferStorage;
+}
+
 public abstract interface annotation class sk/ainet/lang/memory/ExperimentalMemoryApi : java/lang/annotation/Annotation {
 }
 
@@ -703,6 +723,47 @@ public final class sk/ainet/lang/memory/FormatKt {
 	public static final fun getFormat (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/Format;
 	public static final fun getFormat (Lsk/ainet/lang/tensor/storage/TensorStorage;)Lsk/ainet/lang/memory/Format;
 	public static final fun getFormatOrNull (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/Format;
+}
+
+public final class sk/ainet/lang/memory/MappedBufferStorage : sk/ainet/lang/memory/Storage$Mapped {
+	public static final field Companion Lsk/ainet/lang/memory/MappedBufferStorage$Companion;
+	public synthetic fun <init> (JLjava/nio/file/Path;JLjava/nio/ByteBuffer;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun buffer ()Ljava/nio/ByteBuffer;
+	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getFileOffset ()J
+	public fun getId-TPZW6QE ()J
+	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
+	public final fun getPath ()Ljava/nio/file/Path;
+	public fun getSizeBytes ()J
+	public fun isMutable ()Z
+	public fun slice (JJ)Lsk/ainet/lang/memory/MappedBufferStorage;
+	public synthetic fun slice (JJ)Lsk/ainet/lang/memory/Storage;
+}
+
+public final class sk/ainet/lang/memory/MappedBufferStorage$Companion {
+	public final fun map (Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/MappedBufferStorage;
+	public static synthetic fun map$default (Lsk/ainet/lang/memory/MappedBufferStorage$Companion;Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/MappedBufferStorage;
+}
+
+public final class sk/ainet/lang/memory/MappedFileStorage : sk/ainet/lang/memory/Storage$Mapped {
+	public static final field Companion Lsk/ainet/lang/memory/MappedFileStorage$Companion;
+	public synthetic fun <init> (JLjava/nio/file/Path;JLjava/lang/foreign/MemorySegment;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/foreign/Arena;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getFileOffset ()J
+	public fun getId-TPZW6QE ()J
+	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
+	public final fun getPath ()Ljava/nio/file/Path;
+	public fun getSizeBytes ()J
+	public fun isMutable ()Z
+	public final fun segment ()Ljava/lang/foreign/MemorySegment;
+	public fun slice (JJ)Lsk/ainet/lang/memory/MappedFileStorage;
+	public synthetic fun slice (JJ)Lsk/ainet/lang/memory/Storage;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/MappedFileStorage$Companion {
+	public final fun map (Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/MappedFileStorage;
+	public static synthetic fun map$default (Lsk/ainet/lang/memory/MappedFileStorage$Companion;Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/MappedFileStorage;
 }
 
 public abstract interface class sk/ainet/lang/memory/Owner {
@@ -745,6 +806,29 @@ public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/memory/ScopeKind;
 	public static fun values ()[Lsk/ainet/lang/memory/ScopeKind;
+}
+
+public final class sk/ainet/lang/memory/SegmentStorage : sk/ainet/lang/memory/Storage$OffHeap {
+	public static final field Companion Lsk/ainet/lang/memory/SegmentStorage$Companion;
+	public synthetic fun <init> (JLjava/lang/foreign/MemorySegment;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/foreign/Arena;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public fun getId-TPZW6QE ()J
+	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
+	public fun getSizeBytes ()J
+	public fun isMutable ()Z
+	public final fun segment ()Ljava/lang/foreign/MemorySegment;
+	public fun slice (JJ)Lsk/ainet/lang/memory/SegmentStorage;
+	public synthetic fun slice (JJ)Lsk/ainet/lang/memory/Storage;
+}
+
+public final class sk/ainet/lang/memory/SegmentStorage$Companion {
+	public final fun allocate (JLsk/ainet/lang/memory/ScopeKind;Ljava/lang/foreign/Arena;JLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/SegmentStorage;
+	public static synthetic fun allocate$default (Lsk/ainet/lang/memory/SegmentStorage$Companion;JLsk/ainet/lang/memory/ScopeKind;Ljava/lang/foreign/Arena;JLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/SegmentStorage;
+	public final fun borrow (Ljava/lang/foreign/MemorySegment;ZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/SegmentStorage;
+	public final fun borrow ([FLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/SegmentStorage;
+	public static synthetic fun borrow$default (Lsk/ainet/lang/memory/SegmentStorage$Companion;Ljava/lang/foreign/MemorySegment;ZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/SegmentStorage;
+	public static synthetic fun borrow$default (Lsk/ainet/lang/memory/SegmentStorage$Companion;[FLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/SegmentStorage;
+	public final fun getFLOAT ()Ljava/lang/foreign/ValueLayout$OfFloat;
 }
 
 public abstract class sk/ainet/lang/memory/Storage : java/lang/AutoCloseable {
