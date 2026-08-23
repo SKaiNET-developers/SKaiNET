@@ -705,6 +705,39 @@ public final class sk/ainet/lang/memory/FormatKt {
 	public static final fun getFormatOrNull (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/Format;
 }
 
+public abstract interface class sk/ainet/lang/memory/Owner {
+}
+
+public final class sk/ainet/lang/memory/Owner$Alias : sk/ainet/lang/memory/Owner {
+	public fun <init> (Lsk/ainet/lang/memory/Storage;)V
+	public final fun getParent ()Lsk/ainet/lang/memory/Storage;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/Owner$Borrowed : sk/ainet/lang/memory/Owner {
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Object;)V
+	public synthetic fun <init> (Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Object;
+	public final fun copy (Ljava/lang/Object;)Lsk/ainet/lang/memory/Owner$Borrowed;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/Owner$Borrowed;Ljava/lang/Object;ILjava/lang/Object;)Lsk/ainet/lang/memory/Owner$Borrowed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExternal ()Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/Owner$Owned : sk/ainet/lang/memory/Owner {
+	public fun <init> (Lsk/ainet/lang/memory/ScopeKind;)V
+	public final fun component1 ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun copy (Lsk/ainet/lang/memory/ScopeKind;)Lsk/ainet/lang/memory/Owner$Owned;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/Owner$Owned;Lsk/ainet/lang/memory/ScopeKind;ILjava/lang/Object;)Lsk/ainet/lang/memory/Owner$Owned;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
 	public static final field AMBIENT Lsk/ainet/lang/memory/ScopeKind;
 	public static final field FORWARD Lsk/ainet/lang/memory/ScopeKind;
@@ -712,6 +745,98 @@ public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/memory/ScopeKind;
 	public static fun values ()[Lsk/ainet/lang/memory/ScopeKind;
+}
+
+public abstract class sk/ainet/lang/memory/Storage : java/lang/AutoCloseable {
+	public final fun checkAlive ()V
+	public final fun close ()V
+	public abstract fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public abstract fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public abstract fun getId-TPZW6QE ()J
+	public abstract fun getOwner ()Lsk/ainet/lang/memory/Owner;
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	protected abstract fun getSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+	public abstract fun getSizeBytes ()J
+	public final fun isAlive ()Z
+	public abstract fun isMutable ()Z
+	protected fun onClose ()V
+	public abstract fun slice (JJ)Lsk/ainet/lang/memory/Storage;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract class sk/ainet/lang/memory/Storage$Device : sk/ainet/lang/memory/Storage {
+	public fun <init> ()V
+	public fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+}
+
+public final class sk/ainet/lang/memory/Storage$Heap : sk/ainet/lang/memory/Storage {
+	public static final field Companion Lsk/ainet/lang/memory/Storage$Heap$Companion;
+	public synthetic fun <init> (J[F[I[BIJLsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getArrayOffset ()I
+	public final fun getBytes ()[B
+	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public final fun getElementBytes ()I
+	public final fun getElementCount ()I
+	public final fun getFloats ()[F
+	public fun getId-TPZW6QE ()J
+	public final fun getInts ()[I
+	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
+	public fun getSizeBytes ()J
+	public fun isMutable ()Z
+	public fun slice (JJ)Lsk/ainet/lang/memory/Storage$Heap;
+	public synthetic fun slice (JJ)Lsk/ainet/lang/memory/Storage;
+}
+
+public final class sk/ainet/lang/memory/Storage$Heap$Companion {
+	public final fun bytes (ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun bytes$default (Lsk/ainet/lang/memory/Storage$Heap$Companion;ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+	public final fun floats (ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun floats$default (Lsk/ainet/lang/memory/Storage$Heap$Companion;ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+	public final fun ints (ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun ints$default (Lsk/ainet/lang/memory/Storage$Heap$Companion;ILsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+	public final fun wrap ([BIIZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage$Heap;
+	public final fun wrap ([FIIZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage$Heap;
+	public final fun wrap ([IIIZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun wrap$default (Lsk/ainet/lang/memory/Storage$Heap$Companion;[BIIZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun wrap$default (Lsk/ainet/lang/memory/Storage$Heap$Companion;[FIIZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun wrap$default (Lsk/ainet/lang/memory/Storage$Heap$Companion;[IIIZLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+}
+
+public abstract class sk/ainet/lang/memory/Storage$Mapped : sk/ainet/lang/memory/Storage {
+	public fun <init> ()V
+	public fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+}
+
+public abstract class sk/ainet/lang/memory/Storage$OffHeap : sk/ainet/lang/memory/Storage {
+	public fun <init> ()V
+	public fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
+}
+
+public final class sk/ainet/lang/memory/StorageClosedException : java/lang/IllegalStateException {
+	public synthetic fun <init> (JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getStorageId-TPZW6QE ()J
+}
+
+public final class sk/ainet/lang/memory/StorageId {
+	public static final field Companion Lsk/ainet/lang/memory/StorageId$Companion;
+	public static final synthetic fun box-impl (J)Lsk/ainet/lang/memory/StorageId;
+	public static fun constructor-impl (J)J
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (JLjava/lang/Object;)Z
+	public static final fun equals-impl0 (JJ)Z
+	public final fun getValue ()J
+	public fun hashCode ()I
+	public static fun hashCode-impl (J)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (J)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()J
+}
+
+public final class sk/ainet/lang/memory/StorageId$Companion {
+	public final fun next-TPZW6QE ()J
 }
 
 public final class sk/ainet/lang/memory/plan/Budget {
@@ -5910,6 +6035,7 @@ public final class sk/ainet/lang/tensor/storage/LogicalDType$Companion {
 public final class sk/ainet/lang/tensor/storage/MemoryDomain : java/lang/Enum {
 	public static final field DEVICE_LOCAL Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public static final field HOST_HEAP Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public static final field HOST_OFFHEAP Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public static final field HOST_PINNED Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public static final field MMAP_FILE Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public static final field UNIFIED Lsk/ainet/lang/tensor/storage/MemoryDomain;

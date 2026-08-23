@@ -54,6 +54,8 @@ public enum class DeviceKind {
 public enum class MemoryDomain {
     /** Standard JVM / native heap allocation. */
     HOST_HEAP,
+    /** Off-heap host memory: `MemorySegment` / direct `ByteBuffer` / `malloc` — not GC-managed, freed by its scope (SKEEP-003). */
+    HOST_OFFHEAP,
     /** Pinned (non-pageable) host memory for fast DMA transfers. */
     HOST_PINNED,
     /** Memory-mapped file (immutable, OS-paged). */
