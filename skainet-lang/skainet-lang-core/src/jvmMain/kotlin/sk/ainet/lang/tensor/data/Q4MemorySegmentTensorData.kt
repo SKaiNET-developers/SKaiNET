@@ -1,6 +1,7 @@
 package sk.ainet.lang.tensor.data
 
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.DType
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
@@ -43,6 +44,8 @@ public class Q4MemorySegmentTensorData(
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
+
+    override val encoding: TensorEncoding get() = TensorEncoding.Q4_0
 
     override val blockSize: Int = 32
     override val bytesPerBlock: Int = 18 // 2 scale + 16 codes
