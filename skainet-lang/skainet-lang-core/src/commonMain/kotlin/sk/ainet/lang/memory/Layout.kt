@@ -142,11 +142,20 @@ public class Layout(
         public fun blocked(shape: Shape, blockSize: Int, bytesPerBlock: Int, offsetBlocks: Long = 0L): Layout {
             require(blockSize > 0 && bytesPerBlock > 0) { "block geometry must be positive" }
             require(shape.rank >= 1) { "blocked layout needs rank >= 1" }
-            require(shape[shape.rank - 1] % blockSize == 0) { "last extent ${shape[shape.rank - 1]} is not a multiple of the block size $blockSize" }
-            val dims = shape.dimensions.copyOf()
-            dims[dims.size - 1] = dims[dims.size - 1] / blockSize
-            val blockShape = Shape(dims)
-            return Layout(blockShape, rowMajorStrides(blockShape), offsetBlocks, bytesPerBlock, blocked = true)
+            val last = shape[shape.rank - 1]
+            if (last % blockSize == 0) {
+                val dims = shape.dimensions.copyOf()
+                dims[dims.size - 1] = last / blockSize
+                val blockShape = Shape(dims)
+                return Layout(blockShape, rowMajorStrides(blockShape), offsetBlocks, bytesPerBlock, blocked = true)
+            }
+            // A block that spans rows (e.g. ternary, where the whole tensor is one block): address the
+            // flattened element sequence instead. Such a view decodes but cannot be sliced per axis.
+            require(shape.volume % blockSize == 0) {
+                "neither the last extent ($last) nor the volume (${shape.volume}) is a multiple of the block size $blockSize"
+            }
+            val flat = Shape(shape.volume / blockSize)
+            return Layout(flat, rowMajorStrides(flat), offsetBlocks, bytesPerBlock, blocked = true)
         }
     }
 }

@@ -51,6 +51,25 @@ public interface PackedBlockStorage {
      * Dequantize the entire tensor to a FloatArray.
      * Default implementation calls [dequantizeBlock] for each block.
      */
+    /**
+     * This packed data as a [sk.ainet.lang.memory.TensorView] — `Format(FP32, encoding)` over a
+     * blocked [sk.ainet.lang.memory.Layout] whose storage **borrows** [packedData] (SKEEP-003 §4.1
+     * façade, rule 5). Nothing is copied: slicing or transposing the view addresses whole blocks
+     * and the bytes stay exactly as the loader produced them, which is what keeps every packed
+     * kernel bit-identical.
+     *
+     * `view.get(...)` decodes through [dequantizeBlock] (rule 4) — it never returns a raw byte,
+     * unlike this data's own `get`, which stays as it is for source compatibility.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val packedView: sk.ainet.lang.memory.TensorView
+        get() = sk.ainet.lang.memory.TensorView.packed(
+            storage = sk.ainet.lang.memory.Storage.Heap.wrap(packedData, mutable = false),
+            shape = shape,
+            encoding = encoding,
+            decoder = sk.ainet.lang.memory.PackedBlockDecoder(this),
+        )
+
     public fun toFloatArray(): FloatArray {
         val result = FloatArray(shape.volume)
         var offset = 0

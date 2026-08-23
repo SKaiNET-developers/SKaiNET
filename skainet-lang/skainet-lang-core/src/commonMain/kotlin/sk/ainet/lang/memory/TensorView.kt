@@ -47,6 +47,7 @@ public class TensorView(
      */
     public fun narrow(axis: Int, from: Int, size: Int): TensorView {
         require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
+        check(!(layout.blocked && layout.shape.rank != shape.rank)) { "this view's blocks span rows; slice it after materialize()" }
         require(from >= 0 && size >= 0 && from + size <= shape[axis]) { "narrow($axis, $from, $size) outside extent ${shape[axis]}" }
         val onBlockAxis = layout.blocked && axis == shape.rank - 1
         val unit = if (onBlockAxis) blockSize() else 1
@@ -122,6 +123,16 @@ public class TensorView(
      */
     private fun flatLogicalIndex(indices: IntArray): Long {
         val bs = blockSize()
+        // A block spanning rows (layout flattened by Layout.blocked): plain row-major element index.
+        if (layout.blocked && layout.shape.rank != shape.rank) {
+            var flat = 0L
+            for (d in indices.indices) {
+                val i = indices[d]
+                require(i in 0 until shape[d]) { "index $i out of range for axis $d (extent ${shape[d]})" }
+                flat = flat * shape[d] + i
+            }
+            return layout.offsetElements * bs + flat
+        }
         val last = indices[indices.size - 1]
         val blockIdxWithinRow = last / bs
         val within = last % bs
