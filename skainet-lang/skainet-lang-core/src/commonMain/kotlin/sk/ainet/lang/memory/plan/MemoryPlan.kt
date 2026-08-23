@@ -68,6 +68,15 @@ public enum class KvCacheMode(public val label: String) {
 }
 
 /** What to plan for: the model (header only), the context length and the prefill chunk. */
+/**
+ * The KV byte width taken from a store's declared `Format` — what the planner should use instead of
+ * guessing a [KvCacheMode] (#1077). A dense FP32 ring reports 4 bytes per element, a bf16 ring 2, a
+ * TurboQuant ring its packed width.
+ */
+@ExperimentalMemoryApi
+public fun kvBytesFor(format: Format, elements: Long): Long =
+    format.physicalBytes(elements) ?: (format.dtype.sizeInBytes.toLong() * elements)
+
 @ExperimentalMemoryApi
 public data class PlanInput(
     val modelName: String,

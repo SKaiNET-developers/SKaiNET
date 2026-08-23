@@ -36,6 +36,13 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
     override val maxSeqLen: Int get() = config.maxSeqLen
     override val keyEncoding: TensorEncoding get() = config.keyEncoding
     override val valueEncoding: TensorEncoding get() = config.valueEncoding
+
+    /** The dense ring holds [KvCacheConfig.keyDType] elements (FP32 unless configured otherwise) — #1077. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val keyFormat: sk.ainet.lang.memory.Format get() = sk.ainet.lang.memory.Format(config.keyDType, config.keyEncoding)
+
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val valueFormat: sk.ainet.lang.memory.Format get() = sk.ainet.lang.memory.Format(config.valueDType, config.valueEncoding)
     override val placement: Placement get() = config.placement
 
     private var _currentSeqLen: Int = 0

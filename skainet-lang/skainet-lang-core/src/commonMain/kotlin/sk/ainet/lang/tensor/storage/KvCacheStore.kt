@@ -20,6 +20,21 @@ import sk.ainet.lang.tensor.ops.turboquant.TurboQuantPresets
  * - Asymmetric K/V policies (e.g., Q8_0 for keys, 4-bit for values)
  * - Backend-specific fused dequant+attention paths
  */
+@OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+private fun bytesPerElement(format: sk.ainet.lang.memory.Format): Double {
+    val probe = 1024L
+    val bytes = format.physicalBytes(probe) ?: return format.dtype.sizeInBytes.toDouble()
+    return bytes.toDouble() / probe
+}
+
+/** Average bytes per element of [format]; fractional for packed encodings. */
+@OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+internal fun kvBytesPerElement(format: sk.ainet.lang.memory.Format): Double {
+    val probe = 1024L
+    val bytes = format.physicalBytes(probe) ?: return format.dtype.sizeInBytes.toDouble()
+    return bytes.toDouble() / probe
+}
+
 public interface KvCacheStore {
 
     /** Number of transformer layers in this cache. */
@@ -42,6 +57,33 @@ public interface KvCacheStore {
 
     /** Encoding used for value storage. */
     public val valueEncoding: TensorEncoding
+
+    /**
+     * What the keys *are* and how they are stored: `Format(FP32, Dense(4))` for a dense ring,
+     * `Format(BF16, Dense(2))` for a narrow-float one, `Format(FP32, TurboQuantPolar(4, 128))` for a
+     * compressed one (#1077, SKEEP-003 §0 *Format*).
+     *
+     * The default derives from [keyEncoding] and assumes FP32 — what every store held before this
+     * existed — so no implementation breaks; a store that keeps something else overrides it. The
+     * memory planner reads this instead of guessing a byte width, and guessing is what made a dense
+     * FP32 ring be planned as bf16 and understated by 2× (#1074 caught it; this makes it impossible).
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val keyFormat: sk.ainet.lang.memory.Format
+        get() = sk.ainet.lang.memory.Format(sk.ainet.lang.types.FP32, keyEncoding)
+
+    /** What the values are and how they are stored; see [keyFormat]. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val valueFormat: sk.ainet.lang.memory.Format
+        get() = sk.ainet.lang.memory.Format(sk.ainet.lang.types.FP32, valueEncoding)
+
+    /** Bytes one key element occupies under [keyFormat] (fractional for sub-byte encodings). */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val keyBytesPerElement: Double get() = kvBytesPerElement(keyFormat)
+
+    /** Bytes one value element occupies under [valueFormat]. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val valueBytesPerElement: Double get() = kvBytesPerElement(valueFormat)
 
     /** Placement intent for the cache buffers. */
     public val placement: Placement
@@ -227,7 +269,14 @@ public data class KvCacheConfig(
     val maxSeqLen: Int,
     val keyEncoding: TensorEncoding = TensorEncoding.Dense(4),
     val valueEncoding: TensorEncoding = TensorEncoding.Dense(4),
-    val placement: Placement = Placement.CPU_HEAP.copy(residency = Residency.PERSISTENT)
+    val placement: Placement = Placement.CPU_HEAP.copy(residency = Residency.PERSISTENT),
+    /**
+     * The dtype the key ring stores; with [keyEncoding] it forms the store's `keyFormat` (#1077).
+     * `FP32` is what the dense store has always held; `BF16`/`FP16` halve the ring.
+     */
+    val keyDType: sk.ainet.lang.types.DType = sk.ainet.lang.types.FP32,
+    /** The dtype the value ring stores; see [keyDType]. */
+    val valueDType: sk.ainet.lang.types.DType = sk.ainet.lang.types.FP32,
 ) {
     init {
         require(numLayers > 0) { "numLayers must be positive: $numLayers" }
