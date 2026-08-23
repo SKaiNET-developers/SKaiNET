@@ -47,13 +47,21 @@ public data class ModelGeometry(
 /** How the KV cache is stored. */
 @ExperimentalMemoryApi
 public enum class KvCacheMode(public val label: String) {
-    /** 2 bytes per element (bf16/f16). */
+    /**
+     * 4 bytes per element — what `DefaultKvCacheStore` actually stores today (dense FloatArray
+     * rings). Planning a dense store as [BF16] understates it by 2×, which is the kind of drift
+     * the plan-vs-actual check exists to catch (#1074).
+     */
+    FP32("fp32"),
+
+    /** 2 bytes per element (bf16/f16) — a narrow-float KV store. */
     BF16("bf16"),
     /** TurboQuant 4-bit polar codes, block 128 (decision #11 default when the plan is tight). */
     TURBOQUANT_4("TurboQuant 4-bit");
 
     /** Bytes for [elements] cache elements under this mode. */
     public fun bytes(elements: Long): Long = when (this) {
+        FP32 -> 4L * elements
         BF16 -> 2L * elements
         TURBOQUANT_4 -> TensorEncoding.TurboQuantPolar(bitsPerElement = 4, blockSize = 128).physicalBytes(elements) ?: (elements / 2)
     }
@@ -164,7 +172,7 @@ public data class MemoryPlan(
         for (l in lines) {
             append("  "); append(l.section.padEnd(10)); append(l.detail.padEnd(26)); append(MemoryPlans.formatBytes(l.bytes).padStart(10))
             if (l.resident) append("   resident")
-            if (l.section == "kv cache") append("   (").append(MemoryPlans.formatBytes(kvBytesAlternate)).append(" with ").append(if (input.kvMode == KvCacheMode.BF16) KvCacheMode.TURBOQUANT_4.label else KvCacheMode.BF16.label).append(')')
+            if (l.section == "kv cache") append("   (").append(MemoryPlans.formatBytes(kvBytesAlternate)).append(" with ").append(if (input.kvMode == KvCacheMode.TURBOQUANT_4) KvCacheMode.BF16.label else KvCacheMode.TURBOQUANT_4.label).append(')')
             append('\n')
         }
         append("  "); append("total".padEnd(36)); append(MemoryPlans.formatBytes(totalBytes).padStart(10))
@@ -205,7 +213,7 @@ public object MemoryPlans {
         val g = input.geometry
         val kvElements = if (g != null) kvElements(g, input.ctx) else 0L
         val kv = input.kvMode.bytes(kvElements)
-        val kvAlt = (if (input.kvMode == KvCacheMode.BF16) KvCacheMode.TURBOQUANT_4 else KvCacheMode.BF16).bytes(kvElements)
+        val kvAlt = (if (input.kvMode == KvCacheMode.TURBOQUANT_4) KvCacheMode.BF16 else KvCacheMode.TURBOQUANT_4).bytes(kvElements)
         val forward = if (g != null) forwardBytes(g, input.ctx, input.prefillChunk) else 0L
         return MemoryPlan(input, weights, kv, kvAlt, forward, HEAP_HEADROOM_BYTES, budget)
     }

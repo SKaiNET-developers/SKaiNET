@@ -1212,6 +1212,7 @@ public final class sk/ainet/lang/memory/plan/Budget$Companion {
 
 public final class sk/ainet/lang/memory/plan/KvCacheMode : java/lang/Enum {
 	public static final field BF16 Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public static final field FP32 Lsk/ainet/lang/memory/plan/KvCacheMode;
 	public static final field TURBOQUANT_4 Lsk/ainet/lang/memory/plan/KvCacheMode;
 	public final fun bytes (J)J
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;

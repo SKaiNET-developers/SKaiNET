@@ -67,14 +67,33 @@ public class ModelScope(override val sink: TraceSink = NoopTraceSink, public val
     /** Map a file region (packed weights) into this scope; unmapped when the scope closes. */
     public fun mapFile(path: String, fileOffset: Long, length: Long, origin: TensorId? = null): Storage = track(PlatformStorage.mapFile(path, fileOffset, length, ScopeKind.MODEL, origin, sink))
 
-    /** Adopt a storage allocated elsewhere (e.g. by a loader) so the scope closes it. */
-    public fun adopt(storage: Storage): Storage = track(storage)
+    /**
+     * Adopt a storage allocated elsewhere (a loader's mapped weight, a borrowed array) so the scope
+     * closes it — and **count it**: this is the point where the model takes responsibility for those
+     * bytes. Mapped and borrowed weights emit no allocation event of their own (borrowing is not an
+     * allocation), yet decision #11 counts weights as resident because decode touches every weight
+     * every token, so without this the memory plan would be checked against a run that appears to
+     * hold nothing (#1074).
+     */
+    public fun adopt(storage: Storage): Storage {
+        val s = track(storage)
+        if (sink.isEnabled) sink.emit(TraceEvent.Allocation(s.id.value, ScopeKind.MODEL, s.sizeBytes, s.debugOrigin, site = "adopted"))
+        return s
+    }
 
     /** Close every owned storage (weights unmapped, off-heap freed) — exactly once. */
     override fun close() {
         if (closed) return
         closed = true
-        for (s in owned.asReversed()) s.close()
+        for (s in owned.asReversed()) {
+            val wasBorrowed = s.owner is Owner.Borrowed
+            val bytes = s.sizeBytes
+            val id = s.id
+            s.close()
+            // A borrowed storage does not emit Free on its own (we never freed anything), but the
+            // scope did stop counting it — keep the ledger balanced for plan-vs-actual.
+            if (wasBorrowed && sink.isEnabled) sink.emit(TraceEvent.Free(id.value, ScopeKind.MODEL, bytes))
+        }
         owned.clear()
     }
 }
