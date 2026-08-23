@@ -836,6 +836,59 @@ public final class sk/ainet/lang/memory/MappedFileStorage$Companion {
 	public static synthetic fun map$default (Lsk/ainet/lang/memory/MappedFileStorage$Companion;Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/MappedFileStorage;
 }
 
+public final class sk/ainet/lang/memory/MemoryDebug {
+	public static final field ENV Ljava/lang/String;
+	public static final field INSTANCE Lsk/ainet/lang/memory/MemoryDebug;
+	public static final field PROPERTY Ljava/lang/String;
+	public final fun describeClosed-3jxYLUQ (J)Ljava/lang/String;
+	public final fun entry-3jxYLUQ (J)Lsk/ainet/lang/memory/MemoryDebug$Entry;
+	public final fun getOnAdapter ()Lkotlin/jvm/functions/Function3;
+	public final fun getOnAllocate ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnClose ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnLeak ()Lkotlin/jvm/functions/Function1;
+	public final fun getOverrideEnabled ()Ljava/lang/Boolean;
+	public final fun isEnabled ()Z
+	public final fun liveBytes (Lsk/ainet/lang/memory/ScopeKind;)J
+	public final fun liveEntries ()Ljava/util/List;
+	public final fun peakBytes (Lsk/ainet/lang/memory/ScopeKind;)J
+	public final fun recordAdapter (Ljava/lang/String;JLsk/ainet/lang/tensor/TensorId;)V
+	public static synthetic fun recordAdapter$default (Lsk/ainet/lang/memory/MemoryDebug;Ljava/lang/String;JLsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)V
+	public final fun report ()Ljava/lang/String;
+	public final fun reportLeaks (Ljava/util/List;)Ljava/util/List;
+	public final fun reset ()V
+	public final fun setOnAdapter (Lkotlin/jvm/functions/Function3;)V
+	public final fun setOnAllocate (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOnClose (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOnLeak (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOverrideEnabled (Ljava/lang/Boolean;)V
+}
+
+public final class sk/ainet/lang/memory/MemoryDebug$Entry {
+	public synthetic fun <init> (JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-TPZW6QE ()J
+	public final fun component2 ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun component3 ()J
+	public final fun component4 ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Z
+	public final fun copy-IscwgJM (JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;Ljava/lang/String;Z)Lsk/ainet/lang/memory/MemoryDebug$Entry;
+	public static synthetic fun copy-IscwgJM$default (Lsk/ainet/lang/memory/MemoryDebug$Entry;JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Lsk/ainet/lang/memory/MemoryDebug$Entry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllocationSite ()Ljava/lang/String;
+	public final fun getBytes ()J
+	public final fun getClosed ()Z
+	public final fun getClosingSite ()Ljava/lang/String;
+	public final fun getOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun getStorageId-TPZW6QE ()J
+	public fun hashCode ()I
+	public final fun setClosed (Z)V
+	public final fun setClosingSite (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/memory/ModelScope : sk/ainet/lang/memory/Scope {
 	public fun <init> ()V
 	public fun <init> (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;)V
