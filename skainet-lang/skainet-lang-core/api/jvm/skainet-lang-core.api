@@ -205,6 +205,7 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
 	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
@@ -234,6 +235,7 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public fun getInTraining ()Z
 	public abstract fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
 	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public abstract fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public abstract fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
@@ -261,6 +263,7 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/ExecutionContext;)Z
 	public static fun getMemoryPlanner (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryScope (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
@@ -362,6 +365,7 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
 	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
@@ -411,6 +415,7 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/TrainingExecutionContext;)Z
 	public static fun getMemoryPlanner (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryScope (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
@@ -725,6 +730,27 @@ public final class sk/ainet/lang/memory/FormatKt {
 	public static final fun getFormatOrNull (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/Format;
 }
 
+public final class sk/ainet/lang/memory/ForwardScope : sk/ainet/lang/memory/Scope {
+	public fun <init> (ILsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;)V
+	public synthetic fun <init> (ILsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun allocate (JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage;
+	public fun allocateFloats (ILsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage$Heap;
+	public fun close ()V
+	public fun getKind ()Lsk/ainet/lang/memory/ScopeKind;
+	public fun getLiveBytes ()J
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOverflowBytes ()J
+	public final fun getPeakFloats ()I
+	public fun getSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+	public final fun getSlabFloats ()I
+	public final fun getSteps ()J
+	public final fun getUsedFloats ()I
+	public final fun isClosed ()Z
+	public final fun reset ()V
+	public final fun retain (Lsk/ainet/lang/memory/Storage$Heap;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun retain$default (Lsk/ainet/lang/memory/ForwardScope;Lsk/ainet/lang/memory/Storage$Heap;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+}
+
 public final class sk/ainet/lang/memory/MappedBufferStorage : sk/ainet/lang/memory/Storage$Mapped {
 	public static final field Companion Lsk/ainet/lang/memory/MappedBufferStorage$Companion;
 	public synthetic fun <init> (JLjava/nio/file/Path;JLjava/nio/ByteBuffer;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -764,6 +790,24 @@ public final class sk/ainet/lang/memory/MappedFileStorage : sk/ainet/lang/memory
 public final class sk/ainet/lang/memory/MappedFileStorage$Companion {
 	public final fun map (Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/MappedFileStorage;
 	public static synthetic fun map$default (Lsk/ainet/lang/memory/MappedFileStorage$Companion;Ljava/nio/file/Path;JJLsk/ainet/lang/memory/ScopeKind;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/MappedFileStorage;
+}
+
+public final class sk/ainet/lang/memory/ModelScope : sk/ainet/lang/memory/Scope {
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;)V
+	public synthetic fun <init> (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun adopt (Lsk/ainet/lang/memory/Storage;)Lsk/ainet/lang/memory/Storage;
+	public fun allocate (JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage;
+	public fun allocateFloats (ILsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage$Heap;
+	public fun close ()V
+	public fun getKind ()Lsk/ainet/lang/memory/ScopeKind;
+	public fun getLiveBytes ()J
+	public final fun getName ()Ljava/lang/String;
+	public fun getSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+	public final fun getStorageCount ()I
+	public final fun isClosed ()Z
+	public final fun mapFile (Ljava/lang/String;JJLsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage;
+	public static synthetic fun mapFile$default (Lsk/ainet/lang/memory/ModelScope;Ljava/lang/String;JJLsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage;
 }
 
 public abstract interface class sk/ainet/lang/memory/Owner {
@@ -821,6 +865,31 @@ public final class sk/ainet/lang/memory/PlatformStorageInfo {
 	public final fun getOffHeap ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/lang/memory/Scope : java/lang/AutoCloseable {
+	public abstract fun allocate (JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage;
+	public static synthetic fun allocate$default (Lsk/ainet/lang/memory/Scope;JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage;
+	public abstract fun allocateFloats (ILsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage$Heap;
+	public static synthetic fun allocateFloats$default (Lsk/ainet/lang/memory/Scope;ILsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
+	public abstract fun getKind ()Lsk/ainet/lang/memory/ScopeKind;
+	public abstract fun getLiveBytes ()J
+	public abstract fun getSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+}
+
+public final class sk/ainet/lang/memory/Scope$Ambient : sk/ainet/lang/memory/Scope {
+	public static final field INSTANCE Lsk/ainet/lang/memory/Scope$Ambient;
+	public fun allocate (JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage;
+	public fun allocateFloats (ILsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/Storage$Heap;
+	public fun close ()V
+	public fun getKind ()Lsk/ainet/lang/memory/ScopeKind;
+	public fun getLiveBytes ()J
+	public fun getSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+}
+
+public final class sk/ainet/lang/memory/Scope$DefaultImpls {
+	public static synthetic fun allocate$default (Lsk/ainet/lang/memory/Scope;JLsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage;
+	public static synthetic fun allocateFloats$default (Lsk/ainet/lang/memory/Scope;ILsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
 }
 
 public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
@@ -1501,6 +1570,7 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
 	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
@@ -1837,6 +1907,7 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun getHooks (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
 	public static fun getMemoryPlanner (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
+	public static fun getMemoryScope (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
