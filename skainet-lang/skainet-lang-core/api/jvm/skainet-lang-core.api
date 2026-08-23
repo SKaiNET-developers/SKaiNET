@@ -1294,10 +1294,25 @@ public final class sk/ainet/lang/memory/trace/CompositeTraceSink : sk/ainet/lang
 	public fun isEnabled ()Z
 }
 
+public final class sk/ainet/lang/memory/trace/JfrTraceSink : sk/ainet/lang/memory/trace/TraceSink {
+	public fun <init> ()V
+	public final fun anyEventEnabled ()Z
+	public fun emit (Lsk/ainet/lang/memory/trace/TraceEvent;)V
+	public fun isEnabled ()Z
+}
+
 public final class sk/ainet/lang/memory/trace/NoopTraceSink : sk/ainet/lang/memory/trace/TraceSink {
 	public static final field INSTANCE Lsk/ainet/lang/memory/trace/NoopTraceSink;
 	public fun emit (Lsk/ainet/lang/memory/trace/TraceEvent;)V
 	public fun isEnabled ()Z
+}
+
+public final class sk/ainet/lang/memory/trace/PerfettoTraceExporter {
+	public static final field INSTANCE Lsk/ainet/lang/memory/trace/PerfettoTraceExporter;
+	public final fun export (Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;
+	public final fun export (Lsk/ainet/lang/memory/trace/RecordingTraceSink;Ljava/lang/String;)Ljava/lang/String;
+	public static synthetic fun export$default (Lsk/ainet/lang/memory/trace/PerfettoTraceExporter;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+	public static synthetic fun export$default (Lsk/ainet/lang/memory/trace/PerfettoTraceExporter;Lsk/ainet/lang/memory/trace/RecordingTraceSink;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
 }
 
 public final class sk/ainet/lang/memory/trace/PlanTraceKt {
