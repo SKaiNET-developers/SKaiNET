@@ -182,6 +182,7 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public final fun getSession ()Lsk/ainet/lang/trace/TraceSession;
 	public fun getTapeStack ()Lsk/ainet/tape/TapeStack;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -450,6 +451,7 @@ public final class sk/ainet/lang/graph/exec/GraphExecutionContext$DefaultImpls {
 	public static fun getMemoryPlanner (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryTracker (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
+	public static fun getTraceSink (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)Z
 	public static fun ones (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun placeholder (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;

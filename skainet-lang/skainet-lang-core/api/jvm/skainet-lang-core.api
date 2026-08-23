@@ -211,6 +211,7 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -239,6 +240,7 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public abstract fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public abstract fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -261,6 +263,7 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun getMemoryPlanner (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryTracker (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
+	public static fun getTraceSink (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/context/ExecutionContext;)Z
 	public static fun ones (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun placeholder (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -365,6 +368,7 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -409,6 +413,7 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun getMemoryPlanner (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryTracker (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
+	public static fun getTraceSink (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/context/TrainingExecutionContext;)Z
 	public static fun ones (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun placeholder (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -888,6 +893,257 @@ public final class sk/ainet/lang/memory/plan/Suggestion {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/memory/trace/CompositeTraceSink : sk/ainet/lang/memory/trace/TraceSink {
+	public fun <init> (Ljava/util/List;)V
+	public fun <init> ([Lsk/ainet/lang/memory/trace/TraceSink;)V
+	public fun emit (Lsk/ainet/lang/memory/trace/TraceEvent;)V
+	public fun isEnabled ()Z
+}
+
+public final class sk/ainet/lang/memory/trace/NoopTraceSink : sk/ainet/lang/memory/trace/TraceSink {
+	public static final field INSTANCE Lsk/ainet/lang/memory/trace/NoopTraceSink;
+	public fun emit (Lsk/ainet/lang/memory/trace/TraceEvent;)V
+	public fun isEnabled ()Z
+}
+
+public final class sk/ainet/lang/memory/trace/PlanTraceKt {
+	public static final fun emit (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/trace/TraceSink;)V
+}
+
+public final class sk/ainet/lang/memory/trace/RecordingTraceSink : sk/ainet/lang/memory/trace/TraceSink {
+	public static final field Companion Lsk/ainet/lang/memory/trace/RecordingTraceSink$Companion;
+	public static final field DEFAULT_CAPACITY I
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun clear ()V
+	public fun emit (Lsk/ainet/lang/memory/trace/TraceEvent;)V
+	public final fun events ()Ljava/util/List;
+	public final fun getCapacity ()I
+	public final fun getDropped ()J
+	public final fun getEmitted ()J
+	public fun isEnabled ()Z
+}
+
+public final class sk/ainet/lang/memory/trace/RecordingTraceSink$Companion {
+}
+
+public final class sk/ainet/lang/memory/trace/TraceClock {
+	public static final field INSTANCE Lsk/ainet/lang/memory/trace/TraceClock;
+	public final fun nowNanos ()J
+}
+
+public abstract interface class sk/ainet/lang/memory/trace/TraceEvent {
+	public abstract fun getTimeNanos ()J
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$AdapterInserted : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/ScopeKind;J)V
+	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/ScopeKind;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/lang/memory/Format;
+	public final fun component3 ()Lsk/ainet/lang/memory/Format;
+	public final fun component4 ()J
+	public final fun component5 ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun component6 ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun component7 ()J
+	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/ScopeKind;J)Lsk/ainet/lang/memory/trace/TraceEvent$AdapterInserted;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$AdapterInserted;Ljava/lang/String;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/ScopeKind;JILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$AdapterInserted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getFrom ()Lsk/ainet/lang/memory/Format;
+	public final fun getKind ()Ljava/lang/String;
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun getTarget ()Lsk/ainet/lang/tensor/TensorId;
+	public fun getTimeNanos ()J
+	public final fun getTo ()Lsk/ainet/lang/memory/Format;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$Allocation : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;J)V
+	public synthetic fun <init> (JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun component3 ()J
+	public final fun component4 ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()J
+	public final fun copy (JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;J)Lsk/ainet/lang/memory/trace/TraceEvent$Allocation;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$Allocation;JLsk/ainet/lang/memory/ScopeKind;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;JILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$Allocation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun getSite ()Ljava/lang/String;
+	public final fun getStorageId ()J
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$Counter : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;JLjava/lang/String;J)V
+	public synthetic fun <init> (Ljava/lang/String;JLjava/lang/String;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;JLjava/lang/String;J)Lsk/ainet/lang/memory/trace/TraceEvent$Counter;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$Counter;Ljava/lang/String;JLjava/lang/String;JILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$Counter;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public fun getTimeNanos ()J
+	public final fun getUnit ()Ljava/lang/String;
+	public final fun getValue ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$Free : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (JLsk/ainet/lang/memory/ScopeKind;JJ)V
+	public synthetic fun <init> (JLsk/ainet/lang/memory/ScopeKind;JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun copy (JLsk/ainet/lang/memory/ScopeKind;JJ)Lsk/ainet/lang/memory/trace/TraceEvent$Free;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$Free;JLsk/ainet/lang/memory/ScopeKind;JJILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$Free;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()J
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun getStorageId ()J
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$KernelRun : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/TensorId;JJJJ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/TensorId;JJJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun component7 ()J
+	public final fun component8 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/TensorId;JJJJ)Lsk/ainet/lang/memory/trace/TraceEvent$KernelRun;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$KernelRun;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/TensorId;JJJJILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$KernelRun;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytesRead ()J
+	public final fun getBytesWritten ()J
+	public final fun getDurationNanos ()J
+	public final fun getInputs ()Ljava/util/List;
+	public final fun getKernel ()Ljava/lang/String;
+	public final fun getOp ()Ljava/lang/String;
+	public final fun getOutput ()Lsk/ainet/lang/tensor/TensorId;
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$PhaseBegin : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/util/Map;J)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;Ljava/util/Map;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()Ljava/util/Map;
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;Ljava/util/Map;J)Lsk/ainet/lang/memory/trace/TraceEvent$PhaseBegin;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$PhaseBegin;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/Map;JILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$PhaseBegin;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttributes ()Ljava/util/Map;
+	public final fun getPhase ()Ljava/lang/String;
+	public final fun getStep ()Ljava/lang/Integer;
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$PhaseEnd : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;JJ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;JJ)Lsk/ainet/lang/memory/trace/TraceEvent$PhaseEnd;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$PhaseEnd;Ljava/lang/String;Ljava/lang/Integer;JJILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$PhaseEnd;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationNanos ()J
+	public final fun getPhase ()Ljava/lang/String;
+	public final fun getStep ()Ljava/lang/Integer;
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$Plan : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;IJJJJLjava/lang/Long;Ljava/lang/Boolean;J)V
+	public synthetic fun <init> (Ljava/lang/String;IJJJJLjava/lang/Long;Ljava/lang/Boolean;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun component7 ()Ljava/lang/Long;
+	public final fun component8 ()Ljava/lang/Boolean;
+	public final fun component9 ()J
+	public final fun copy (Ljava/lang/String;IJJJJLjava/lang/Long;Ljava/lang/Boolean;J)Lsk/ainet/lang/memory/trace/TraceEvent$Plan;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$Plan;Ljava/lang/String;IJJJJLjava/lang/Long;Ljava/lang/Boolean;JILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$Plan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBudgetBytes ()Ljava/lang/Long;
+	public final fun getCtx ()I
+	public final fun getFits ()Ljava/lang/Boolean;
+	public final fun getForwardBytes ()J
+	public final fun getHeadroomBytes ()J
+	public final fun getKvBytes ()J
+	public final fun getModel ()Ljava/lang/String;
+	public fun getTimeNanos ()J
+	public final fun getTotalBytes ()J
+	public final fun getWeightsBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$ScopeReset : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Lsk/ainet/lang/memory/ScopeKind;JJJ)V
+	public synthetic fun <init> (Lsk/ainet/lang/memory/ScopeKind;JJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/lang/memory/ScopeKind;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun copy (Lsk/ainet/lang/memory/ScopeKind;JJJ)Lsk/ainet/lang/memory/trace/TraceEvent$ScopeReset;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$ScopeReset;Lsk/ainet/lang/memory/ScopeKind;JJJILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$ScopeReset;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLiveBytesAfter ()J
+	public final fun getLiveBytesBefore ()J
+	public final fun getScope ()Lsk/ainet/lang/memory/ScopeKind;
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/lang/memory/trace/TraceSink {
+	public abstract fun emit (Lsk/ainet/lang/memory/trace/TraceEvent;)V
+	public fun isEnabled ()Z
+}
+
+public final class sk/ainet/lang/memory/trace/TraceSink$DefaultImpls {
+	public static fun isEnabled (Lsk/ainet/lang/memory/trace/TraceSink;)Z
+}
+
+public final class sk/ainet/lang/memory/trace/TraceSinkKt {
+	public static final fun kernel (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/TensorId;JJLkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public static synthetic fun kernel$default (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/TensorId;JJLkotlin/jvm/functions/Function0;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun phase (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/Map;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public static synthetic fun phase$default (Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/Map;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
 public final class sk/ainet/lang/nn/AvgPool2d : sk/ainet/lang/nn/Module {
 	public fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZLjava/lang/String;)V
 	public synthetic fun <init> (Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -1018,6 +1274,7 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun getPhase ()Lsk/ainet/context/Phase;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
 	public fun isRecording ()Z
 	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
@@ -1349,6 +1606,7 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun getMemoryPlanner (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryTracker (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
+	public static fun getTraceSink (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
 	public static fun ones (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun placeholder (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
