@@ -1250,6 +1250,10 @@ public final class sk/ainet/lang/memory/plan/MemoryPlan {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/memory/plan/MemoryPlanKt {
+	public static final fun kvBytesFor (Lsk/ainet/lang/memory/Format;J)J
+}
+
 public final class sk/ainet/lang/memory/plan/MemoryPlans {
 	public static final field HEAP_HEADROOM_BYTES J
 	public static final field INSTANCE Lsk/ainet/lang/memory/plan/MemoryPlans;
@@ -6314,13 +6318,17 @@ public final class sk/ainet/lang/tensor/storage/DefaultKvCacheStore : sk/ainet/l
 	public fun evict (I)V
 	public fun getCurrentSeqLen ()I
 	public fun getHeadDim ()I
+	public fun getKeyBytesPerElement ()D
 	public fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getKeyFormat ()Lsk/ainet/lang/memory/Format;
 	public fun getMaxSeqLen ()I
 	public fun getNumHeads ()I
 	public fun getNumLayers ()I
 	public fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
 	public final fun getPreallocatedBytes ()J
+	public fun getValueBytesPerElement ()D
 	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getValueFormat ()Lsk/ainet/lang/memory/Format;
 	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readKeys (III)[F
@@ -6358,8 +6366,8 @@ public abstract interface annotation class sk/ainet/lang/tensor/storage/KvCacheB
 
 public final class sk/ainet/lang/tensor/storage/KvCacheConfig {
 	public static final field Companion Lsk/ainet/lang/tensor/storage/KvCacheConfig$Companion;
-	public fun <init> (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;)V
-	public synthetic fun <init> (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)V
+	public synthetic fun <init> (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()I
 	public final fun component2 ()I
 	public final fun component3 ()I
@@ -6367,15 +6375,19 @@ public final class sk/ainet/lang/tensor/storage/KvCacheConfig {
 	public final fun component5 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun component6 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun component7 ()Lsk/ainet/lang/tensor/storage/Placement;
-	public final fun copy (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/KvCacheConfig;IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public final fun component8 ()Lsk/ainet/lang/types/DType;
+	public final fun component9 ()Lsk/ainet/lang/types/DType;
+	public final fun copy (IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/KvCacheConfig;IIIILsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/KvCacheConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getHeadDim ()I
+	public final fun getKeyDType ()Lsk/ainet/lang/types/DType;
 	public final fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun getMaxSeqLen ()I
 	public final fun getNumHeads ()I
 	public final fun getNumLayers ()I
 	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun getValueDType ()Lsk/ainet/lang/types/DType;
 	public final fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -6430,12 +6442,16 @@ public abstract interface class sk/ainet/lang/tensor/storage/KvCacheStore {
 	public abstract fun evict (I)V
 	public abstract fun getCurrentSeqLen ()I
 	public abstract fun getHeadDim ()I
+	public fun getKeyBytesPerElement ()D
 	public abstract fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getKeyFormat ()Lsk/ainet/lang/memory/Format;
 	public abstract fun getMaxSeqLen ()I
 	public abstract fun getNumHeads ()I
 	public abstract fun getNumLayers ()I
 	public abstract fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public fun getValueBytesPerElement ()D
 	public abstract fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getValueFormat ()Lsk/ainet/lang/memory/Format;
 	public abstract fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public abstract fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun readKeyStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
@@ -6456,6 +6472,10 @@ public final class sk/ainet/lang/tensor/storage/KvCacheStore$Companion {
 }
 
 public final class sk/ainet/lang/tensor/storage/KvCacheStore$DefaultImpls {
+	public static fun getKeyBytesPerElement (Lsk/ainet/lang/tensor/storage/KvCacheStore;)D
+	public static fun getKeyFormat (Lsk/ainet/lang/tensor/storage/KvCacheStore;)Lsk/ainet/lang/memory/Format;
+	public static fun getValueBytesPerElement (Lsk/ainet/lang/tensor/storage/KvCacheStore;)D
+	public static fun getValueFormat (Lsk/ainet/lang/tensor/storage/KvCacheStore;)Lsk/ainet/lang/memory/Format;
 	public static synthetic fun readKeyStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun readKeys$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
 	public static synthetic fun readValueStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
@@ -6929,12 +6949,16 @@ public final class sk/ainet/lang/tensor/storage/TurboQuantKvCacheStore : sk/aine
 	public fun evict (I)V
 	public fun getCurrentSeqLen ()I
 	public fun getHeadDim ()I
+	public fun getKeyBytesPerElement ()D
 	public fun getKeyEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getKeyFormat ()Lsk/ainet/lang/memory/Format;
 	public fun getMaxSeqLen ()I
 	public fun getNumHeads ()I
 	public fun getNumLayers ()I
 	public fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
+	public fun getValueBytesPerElement ()D
 	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getValueFormat ()Lsk/ainet/lang/memory/Format;
 	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readKeys (III)[F

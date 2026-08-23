@@ -31,6 +31,13 @@ public class TurboQuantKvCacheStore(
     override val maxSeqLen: Int get() = config.maxSeqLen
     override val keyEncoding: TensorEncoding get() = config.keyEncoding
     override val valueEncoding: TensorEncoding get() = config.valueEncoding
+
+    /** Logically FP32 values held as TurboQuant codes — the encoding the config carries (#1077). */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val keyFormat: sk.ainet.lang.memory.Format get() = sk.ainet.lang.memory.Format(sk.ainet.lang.types.FP32, keyEncoding)
+
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override val valueFormat: sk.ainet.lang.memory.Format get() = sk.ainet.lang.memory.Format(sk.ainet.lang.types.FP32, valueEncoding)
     override val placement: Placement get() = config.placement
 
     private var _currentSeqLen: Int = 0
