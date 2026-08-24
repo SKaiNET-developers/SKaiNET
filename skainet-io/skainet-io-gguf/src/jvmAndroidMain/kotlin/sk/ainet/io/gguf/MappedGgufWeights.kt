@@ -11,6 +11,11 @@ import java.nio.channels.FileChannel
 /**
  * Memory-mapped GGUF weight access for the JVM and Android (#921).
  *
+ * Since #1037 this is the **per-tensor** face of `StagingPolicy.MAPPED`: to load a whole model
+ * from mapped pages, pass `staging = StagingPolicy.MAPPED` to [StreamingGgufParametersLoader] and
+ * get the same file-backed tensors through the ordinary loader. This class stays for callers that
+ * want to reach individual tensors (or their `TensorStorage` descriptors) without loading a model.
+ *
  * On Android every heap array counts against the hard ART cap (256 MB
  * default, 512 MB with `largeHeap`), which limits practical model size no
  * matter how good the kernels are. This helper keeps weight bytes in
@@ -114,7 +119,7 @@ public class MappedGgufWeights private constructor(
          * O(metadata)), then maps the whole file read-only.
          */
         public fun open(filePath: String): MappedGgufWeights {
-            val source = createRandomAccessSource(filePath)
+            val source = sk.ainet.io.openRandomAccessSource(filePath)
                 ?: throw IllegalArgumentException("Cannot open for random access: $filePath")
             val reader = StreamingGGUFReader.open(source)
             val raf = RandomAccessFile(filePath, "r")

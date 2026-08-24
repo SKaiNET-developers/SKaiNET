@@ -1,0 +1,30 @@
+package sk.ainet.io.onnx
+
+import org.w3c.files.Blob
+import sk.ainet.io.JsBlobRandomAccessSource
+
+/**
+ * Create a RandomAccessSource from a browser Blob or File.
+ *
+ * This is the browser-specific way to create streaming ONNX readers — a path means nothing in a
+ * browser, which is why `openRandomAccessSource` returns `null` there. Use with file input elements
+ * or the File System Access API.
+ *
+ * Example:
+ * ```kotlin
+ * // With file input
+ * val file = document.getElementById("fileInput").files[0]
+ * val source = createOnnxRandomAccessSourceFromBlob(file)
+ * val reader = StreamingOnnxReader.open(source)
+ * ```
+ *
+ * @param blob The Blob or File to read from
+ * @param preloadSize How much to preload for sync metadata access (default 50MB)
+ * @return JsBlobRandomAccessSource for streaming access
+ */
+public suspend fun createOnnxRandomAccessSourceFromBlob(
+    blob: Blob,
+    preloadSize: Int = JsBlobRandomAccessSource.DEFAULT_PRELOAD_SIZE
+): JsBlobRandomAccessSource {
+    return JsBlobRandomAccessSource.open(blob, preloadSize)
+}

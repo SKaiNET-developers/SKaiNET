@@ -30,7 +30,9 @@ import platform.posix.strerror
 @OptIn(ExperimentalForeignApi::class)
 public class PosixPreadRandomAccessSource private constructor(
     private val fd: Int,
-    override val size: Long
+    override val size: Long,
+    /** The file these bytes come from — what `StagingPolicy.MAPPED` would map (#1037). */
+    override val filePath: String? = null,
 ) : RandomAccessSource {
 
     private var closed = false
@@ -98,7 +100,7 @@ public class PosixPreadRandomAccessSource private constructor(
                 platform.posix.close(fd)
                 return@memScoped null
             }
-            PosixPreadRandomAccessSource(fd, st.st_size.toLong())
+            PosixPreadRandomAccessSource(fd, st.st_size.toLong(), path)
         }
     }
 }

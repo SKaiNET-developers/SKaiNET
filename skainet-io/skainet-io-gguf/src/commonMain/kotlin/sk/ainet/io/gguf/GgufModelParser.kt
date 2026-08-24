@@ -2,6 +2,7 @@ package sk.ainet.io.gguf
 
 import kotlinx.io.buffered
 import sk.ainet.io.model.*
+import sk.ainet.io.openRandomAccessSource
 
 /**
  * GGUF model parser extending BaseModelParser.
@@ -54,7 +55,7 @@ public class GgufModelParser : BaseModelParser(), AutoCloseable {
             _filePath = filePath
 
             // Try streaming mode first (JVM only)
-            val streamingSource = createRandomAccessSource(filePath)
+            val streamingSource = openRandomAccessSource(filePath)
 
             if (streamingSource != null) {
                 // Streaming mode: parse metadata only (~1 MB memory)

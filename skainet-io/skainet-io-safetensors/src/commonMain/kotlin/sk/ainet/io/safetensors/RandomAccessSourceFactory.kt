@@ -1,15 +1,16 @@
 package sk.ainet.io.safetensors
 
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.openRandomAccessSource
 
 /**
- * Platform-specific factory for creating RandomAccessSource instances.
+ * Open a safetensors file for positional reads, or `null` where the platform has no file system.
  *
- * On JVM/Android, this uses efficient file channel-based random access.
- * On other platforms (JS, Native), this returns null and the fallback
- * non-streaming mode should be used.
- *
- * @param filePath Path to the file
- * @return RandomAccessSource if platform supports it, null otherwise
+ * Note this now streams on Kotlin/Native too: the copy this delegates to uses `pread(2)`, while
+ * this module's own native actual used to return `null` — the drift #1037 removed.
  */
-public expect fun createRandomAccessSource(filePath: String): RandomAccessSource?
+@Deprecated(
+    message = "The per-format source factories are one function in skainet-io-core (SKEEP-003 §7, #1037).",
+    replaceWith = ReplaceWith("openRandomAccessSource(filePath)", "sk.ainet.io.openRandomAccessSource"),
+)
+public fun createRandomAccessSource(filePath: String): RandomAccessSource? = openRandomAccessSource(filePath)

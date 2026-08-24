@@ -1,18 +1,11 @@
 package sk.ainet.io.onnx
 
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.openRandomAccessSource
 
-/**
- * Platform-specific factory for creating [RandomAccessSource] instances for ONNX files.
- *
- * Returns null on platforms that don't support random file access,
- * allowing callers to fall back to legacy sequential loading.
- *
- * Supported platforms:
- * - JVM: Uses FileChannel for efficient random access
- * - JS/Native: Returns null (use legacy OnnxLoader instead)
- *
- * @param filePath Path to the file
- * @return A RandomAccessSource, or null if not supported on this platform
- */
-public expect fun createOnnxRandomAccessSource(filePath: String): RandomAccessSource?
+/** Open an ONNX file for positional reads, or `null` where the platform has no file system. */
+@Deprecated(
+    message = "The per-format source factories are one function in skainet-io-core (SKEEP-003 §7, #1037).",
+    replaceWith = ReplaceWith("openRandomAccessSource(filePath)", "sk.ainet.io.openRandomAccessSource"),
+)
+public fun createOnnxRandomAccessSource(filePath: String): RandomAccessSource? = openRandomAccessSource(filePath)

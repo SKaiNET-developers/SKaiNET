@@ -27,7 +27,7 @@ public class JsBlobRandomAccessSource private constructor(
     private val blob: Blob,
     private val preloadedBuffer: ByteArray,
     private val blobSize: Long
-) : RandomAccessSource {
+) : RandomAccessSource, SuspendingRandomAccessSource {
 
     override val size: Long = blobSize
 
@@ -86,6 +86,19 @@ public class JsBlobRandomAccessSource private constructor(
      *
      * Use this for loading tensor data that may be beyond the preloaded buffer.
      */
+    /**
+     * The suspending read (#1037): unlike [readAt], this is not limited to the preloaded window —
+     * a range outside it is fetched from the blob instead of failing.
+     */
+    override suspend fun read(position: Long, length: Int): ByteArray = readAtAsync(position, length)
+
+    /** Suspending read into [buffer]; see [readAt]. */
+    override suspend fun read(position: Long, buffer: ByteArray, offset: Int, length: Int): Int {
+        val bytes = readAtAsync(position, length)
+        bytes.copyInto(buffer, offset)
+        return bytes.size
+    }
+
     public suspend fun readAtAsync(position: Long, length: Int): ByteArray {
         require(position >= 0) { "Position must be non-negative: $position" }
         require(length >= 0) { "Length must be non-negative: $length" }
