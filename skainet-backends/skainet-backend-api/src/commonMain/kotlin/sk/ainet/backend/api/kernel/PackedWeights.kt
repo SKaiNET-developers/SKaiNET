@@ -41,6 +41,7 @@ public object PackedWeights {
     ): TensorView {
         require(weight.layout.blocked) { "prepackForMatmul takes a block-packed weight, got ${weight.format}" }
         require(weight.shape.rank == 2) { "a matmul weight is 2-D [out, in], got ${weight.shape}" }
+        requireOutIn(weight.shape[0], weight.shape[1], weight.format.encoding)
         return weight.prepack(BlockOrder.INPUT_BLOCK_MAJOR, scope, sink)
     }
 
@@ -91,6 +92,36 @@ public object PackedWeights {
             }
         }
         return out
+    }
+
+    /**
+     * Refuse a weight that looks transposed, instead of computing the wrong permutation from it
+     * (#973 census contradiction #6; #1098).
+     *
+     * A packed weight's blocks tile the **input** dimension, so for a correctly oriented
+     * `[out, in]` weight `in` is a multiple of the block size. When the *first* dimension is
+     * block-aligned and the second is not, the tensor is almost certainly `[in, out]` — the shape
+     * a GGUF's `ne` order produces — and relayouting it would silently permute the wrong grid.
+     *
+     * The check is a heuristic and says so: a square weight, or one where both dimensions are
+     * aligned, passes either way. It catches the case that actually shipped.
+     */
+    public fun requireOutIn(rows: Int, inputDim: Int, encoding: TensorEncoding) {
+        val spec = encoding.blockSpec ?: return
+        if (spec.isPerTensor) return
+        val blockSize = spec.blockSize
+        val inputAligned = inputDim % blockSize == 0
+        val rowsAligned = rows % blockSize == 0
+        require(inputAligned || !rowsAligned) {
+            "weight [$rows, $inputDim] looks like [in, out]: ${encoding.name} tiles the *input* dimension in " +
+                "blocks of $blockSize, and $inputDim is not a multiple of it while $rows is. A GGUF's ne order " +
+                "produces exactly this — load with WeightOrientation.OUT_IN, or transpose the label before " +
+                "relayouting (#973, docs/design/memory/packed-weight-layout.md)."
+        }
+        require(inputAligned) {
+            "weight [$rows, $inputDim] cannot be relayouted: ${encoding.name} needs the input dimension to be a " +
+                "multiple of $blockSize"
+        }
     }
 
     /** Block geometry of [encoding] — what a converter needs to call [toKernelOrder]. */

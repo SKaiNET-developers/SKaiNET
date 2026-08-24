@@ -6,6 +6,7 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.dequant.DequantOps
 import sk.ainet.io.model.QuantPolicy
 import sk.ainet.io.model.StagingPolicy
+import sk.ainet.io.model.WeightOrientation
 import sk.ainet.io.openMappedFile
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -84,6 +85,18 @@ public class StreamingGgufParametersLoader(
      *   source is not a file, so a browser build behaves exactly as before.
      */
     private val staging: StagingPolicy = StagingPolicy.HEAP,
+    /**
+     * Which way round a 2-D weight's shape comes out (#1098, #973 census contradiction #6).
+     *
+     * GGUF writes dimensions in `ne` order, so a weight the rest of the engine calls `[out, in]`
+     * arrives labelled `[in, out]` — while its *bytes* are already `[out, in]` row-major. Nothing
+     * about the data changes here; only the label. [WeightOrientation.OUT_IN] fixes the label,
+     * which is what the packed block relayout needs to compute the right permutation.
+     *
+     * Defaults to [WeightOrientation.AS_STORED], today's behaviour, because reversing shapes
+     * changes what every consumer sees. New code should ask for `OUT_IN`.
+     */
+    private val weightOrientation: WeightOrientation = WeightOrientation.AS_STORED,
 ) : ParametersLoader {
 
     init {
@@ -92,6 +105,17 @@ public class StreamingGgufParametersLoader(
                 "tensors are preserved as packed block TensorData (NATIVE_OPTIMIZED) or " +
                 "dequantized to dense FP32 (DEQUANTIZE_TO_FP32)."
         }
+    }
+
+    /**
+     * The shape this loader reports for [tensorInfo], honouring [weightOrientation]: a 2-D weight
+     * is reversed for `OUT_IN`, everything else is passed through as the file has it. Only 2-D
+     * tensors are touched — a 1-D bias or norm has no orientation to get wrong.
+     */
+    private fun shapeOf(tensorInfo: StreamingTensorInfo): Shape {
+        val dims = tensorInfo.shape.map { it.toInt() }
+        val ordered = if (weightOrientation == WeightOrientation.OUT_IN && dims.size == 2) dims.reversed() else dims
+        return Shape(*ordered.toIntArray())
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -112,7 +136,7 @@ public class StreamingGgufParametersLoader(
             var current = 0L
 
             for (tensorInfo in tensors) {
-                val shape = Shape(*tensorInfo.shape.map { it.toInt() }.toIntArray())
+                val shape = shapeOf(tensorInfo)
                 // A dense F32 tensor under MAPPED staging never reaches the heap: it is a view over
                 // file-backed pages. Everything else reads its bytes (out of the mapping when there
                 // is one — one page-cache copy instead of a channel read).

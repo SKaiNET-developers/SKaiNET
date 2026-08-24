@@ -76,6 +76,28 @@ green-CI hotfix.
 Every fixture is three blocks wide on purpose. At one block per row the two orders coincide, and a
 test built that way passes whichever convention the code holds.
 
+## Orientation at the load boundary
+
+A packed weight is logically `[out, in]`, and its blocks tile **`in`**. GGUF writes dimensions in
+`ne` order — fastest-varying first — so the same weight arrives labelled `[in, out]`, while its
+*bytes* are already `[out, in]` row-major. Only the label is wrong, and the label is what the
+relayout reads: driven by `[in, out]` it permutes the wrong grid, or refuses because `out` is not a
+multiple of the block size. Both failures are in #973's census.
+
+- `StreamingGgufParametersLoader(weightOrientation = WeightOrientation.OUT_IN)` fixes the label at
+  the boundary, reversing 2-D weights only. Nothing about the bytes changes. It defaults to
+  `AS_STORED` — today's behaviour — because reversing shapes changes what every consumer sees; new
+  code should ask for `OUT_IN`.
+- `PackedWeights.requireOutIn(rows, inputDim, encoding)` refuses a weight that looks transposed
+  instead of computing a wrong permutation from it, and names the fix. `prepackForMatmul` runs it.
+  The check is a heuristic and says so: it fires when the *first* dimension is block-aligned and the
+  second is not, which is exactly the shape `ne` order produces, and stays quiet when both are
+  aligned and it cannot tell.
+
+Note the two GGUF readers in this repository disagree about this today: the legacy `GGUFReader`
+reverses dimensions, the streaming one does not. `WeightOrientation` is how a caller states which it
+wants rather than discovering it.
+
 ## Rules
 
 1. **A file's bytes are `ROW_MAJOR`.** Anything loaded from GGUF, produced by a quantizer, or
@@ -108,8 +130,10 @@ registry through the ordered key since
 [#1095](https://github.com/SKaiNET-developers/SKaiNET/issues/1095); `PackedWeights` and
 `PackedLayoutFixtures` since [#1097](https://github.com/SKaiNET-developers/SKaiNET/issues/1097).
 
+Weight orientation at the load boundary is opt-in since
+[#1098](https://github.com/SKaiNET-developers/SKaiNET/issues/1098), with a guard that refuses a
+wrongly-labelled weight rather than mis-permuting it.
+
 Still open under #973: the weight-transposing matmul primitive that removes the packed
 `ops.transpose` entirely ([#1096](https://github.com/SKaiNET-developers/SKaiNET/issues/1096)), and
-normalizing weight orientation at the load boundary
-([#1098](https://github.com/SKaiNET-developers/SKaiNET/issues/1098)) — until that lands, a
-verbatim-loaded GGUF weight's `[in, out]` shape still disagrees with what the relayout assumes.
+making `OUT_IN` the default once downstream consumers have moved.

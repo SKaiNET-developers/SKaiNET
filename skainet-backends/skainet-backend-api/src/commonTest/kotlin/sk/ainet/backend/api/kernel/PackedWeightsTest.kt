@@ -106,6 +106,34 @@ class PackedWeightsTest {
         assertEquals(2, PackedWeights.blocksPerRow(TensorEncoding.Q4_K, 512))
     }
 
+
+    @Test
+    fun aWeightLabelledTheWrongWayRoundIsRefusedRatherThanMisPermuted() {
+        // #1098 / #973 census #6: a packed weight's blocks tile the *input* dimension, so
+        // relayouting an [in, out] label permutes the wrong grid — which is what a GGUF's ne order
+        // hands you today.
+        val failure = assertFailsWith<IllegalArgumentException> {
+            PackedWeights.requireOutIn(rows = 128, inputDim = 3, encoding = TensorEncoding.Q8_0)
+        }
+        assertTrue(failure.message!!.contains("looks like [in, out]"), failure.message!!)
+        assertTrue(failure.message!!.contains("WeightOrientation.OUT_IN"), "and says how to fix it")
+
+        PackedWeights.requireOutIn(rows = 3, inputDim = 128, encoding = TensorEncoding.Q8_0)
+    }
+
+    @Test
+    fun theOrientationGuardStaysQuietWhenItCannotTell() {
+        // both dimensions block-aligned: ambiguous, and a false refusal would be worse than none
+        PackedWeights.requireOutIn(rows = 64, inputDim = 128, encoding = TensorEncoding.Q8_0)
+        PackedWeights.requireOutIn(rows = 128, inputDim = 128, encoding = TensorEncoding.Q8_0)
+        // an unaligned input dimension cannot be relayouted whichever way round it is
+        assertFailsWith<IllegalArgumentException> {
+            PackedWeights.requireOutIn(rows = 5, inputDim = 7, encoding = TensorEncoding.Q8_0)
+        }
+        // a dense encoding has no block grid, so there is nothing to check
+        PackedWeights.requireOutIn(rows = 5, inputDim = 7, encoding = TensorEncoding.Dense(4))
+    }
+
     private fun blockSizeOf(encoding: TensorEncoding): Int = when (encoding) {
         TensorEncoding.Q4_0, TensorEncoding.Q5_0, TensorEncoding.Q5_1, TensorEncoding.Q8_0 -> 32
         else -> 256
