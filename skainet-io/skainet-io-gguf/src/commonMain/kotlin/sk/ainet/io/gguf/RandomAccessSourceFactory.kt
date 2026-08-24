@@ -1,18 +1,17 @@
 package sk.ainet.io.gguf
 
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.openRandomAccessSource
 
 /**
- * Platform-specific factory for creating [RandomAccessSource] instances.
+ * Open a GGUF file for positional reads, or `null` where the platform has no file system.
  *
- * Returns null on platforms that don't support random file access,
- * allowing callers to fall back to legacy sequential loading.
- *
- * Supported platforms:
- * - JVM: Uses FileChannel for efficient random access
- * - JS/Native: Returns null (use legacy GGUFReader instead)
- *
- * @param filePath Path to the file
- * @return A RandomAccessSource, or null if not supported on this platform
+ * @deprecated One declaration for every format now lives in `skainet-io-core` (#1037): this module,
+ *   `-safetensors` and `-onnx` each carried an identical `expect fun` with six platform actuals,
+ *   and they had already drifted apart on Kotlin/Native.
  */
-public expect fun createRandomAccessSource(filePath: String): RandomAccessSource?
+@Deprecated(
+    message = "The per-format source factories are one function in skainet-io-core (SKEEP-003 §7, #1037).",
+    replaceWith = ReplaceWith("openRandomAccessSource(filePath)", "sk.ainet.io.openRandomAccessSource"),
+)
+public fun createRandomAccessSource(filePath: String): RandomAccessSource? = openRandomAccessSource(filePath)

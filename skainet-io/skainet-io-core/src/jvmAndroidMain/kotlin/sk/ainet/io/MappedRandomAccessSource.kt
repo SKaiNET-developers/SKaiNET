@@ -10,7 +10,9 @@ import java.io.File
  * model weights that are read repeatedly.
  */
 public class MappedRandomAccessSource private constructor(
-    private val chunk: JvmMappedMemoryChunk
+    private val chunk: JvmMappedMemoryChunk,
+    /** The file these pages come from (#1037). */
+    override val filePath: String? = null,
 ) : RandomAccessSource {
 
     override val size: Long get() = chunk.size
@@ -44,9 +46,9 @@ public class MappedRandomAccessSource private constructor(
 
     public companion object {
         public fun open(file: File): MappedRandomAccessSource =
-            MappedRandomAccessSource(JvmMappedMemoryChunk.open(file))
+            MappedRandomAccessSource(JvmMappedMemoryChunk.open(file), file.absolutePath)
 
         public fun open(path: String): MappedRandomAccessSource =
-            MappedRandomAccessSource(JvmMappedMemoryChunk.open(path))
+            MappedRandomAccessSource(JvmMappedMemoryChunk.open(path), path)
     }
 }

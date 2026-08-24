@@ -5,6 +5,8 @@ import sk.ainet.io.ParametersLoader
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.dequant.DequantOps
 import sk.ainet.io.model.QuantPolicy
+import sk.ainet.io.model.StagingPolicy
+import sk.ainet.io.openMappedFile
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Bf16DenseTensorData
@@ -70,6 +72,18 @@ public class StreamingGgufParametersLoader(
      *   packed block storage instead) and is rejected eagerly.
      */
     private val quantPolicy: QuantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
+    /**
+     * Where tensor bytes live on their way into a tensor (#1037). [QuantPolicy] says *what* the
+     * values are; this says *where the bytes are* — the two axes of one loader.
+     *
+     * - [StagingPolicy.HEAP] (default — today's behaviour): every tensor is read onto the heap.
+     * - [StagingPolicy.MAPPED]: the file is mapped once and dense F32 tensors are served as
+     *   zero-heap views over its pages (what `MappedGgufWeights` did as a separate helper). Packed
+     *   tensors still come through as heap arrays, because that is what their kernels take until
+     *   #973; and the whole thing falls back to heap staging when the platform cannot map or the
+     *   source is not a file, so a browser build behaves exactly as before.
+     */
+    private val staging: StagingPolicy = StagingPolicy.HEAP,
 ) : ParametersLoader {
 
     init {
@@ -86,7 +100,12 @@ public class StreamingGgufParametersLoader(
         dtype: KClass<T>,
         onTensorLoaded: (String, Tensor<T, V>) -> Unit
     ) {
-        StreamingGGUFReader.open(sourceProvider()).use { reader ->
+        val source = sourceProvider()
+        // MAPPED staging needs a file to map; a Blob or an in-memory source has no path and
+        // silently stays on the heap, which is the documented fallback rather than a failure.
+        val mapped = if (staging == StagingPolicy.MAPPED) source.filePath?.let { openMappedFile(it) } else null
+        try {
+        StreamingGGUFReader.open(source).use { reader ->
             val tensors = reader.tensors
             failFastOnUnsupportedTensorTypes(tensors)
             val total = tensors.size.toLong()
@@ -94,7 +113,27 @@ public class StreamingGgufParametersLoader(
 
             for (tensorInfo in tensors) {
                 val shape = Shape(*tensorInfo.shape.map { it.toInt() }.toIntArray())
-                val rawBytes = reader.loadTensorData(tensorInfo)
+                // A dense F32 tensor under MAPPED staging never reaches the heap: it is a view over
+                // file-backed pages. Everything else reads its bytes (out of the mapping when there
+                // is one — one page-cache copy instead of a channel read).
+                val mappedFloats: Tensor<T, V>? =
+                    if (mapped != null && tensorInfo.tensorType == GGMLQuantizationType.F32 && dtype == FP32::class) {
+                        @Suppress("UNCHECKED_CAST")
+                        ctx.fromData(
+                            mapped.denseFloats<T>(tensorInfo.absoluteDataOffset, shape) as sk.ainet.lang.tensor.data.TensorData<T, V>,
+                            dtype,
+                        )
+                    } else {
+                        null
+                    }
+                if (mappedFloats != null) {
+                    onTensorLoaded(tensorInfo.name, mappedFloats)
+                    current += 1
+                    onProgress(current, total, tensorInfo.name)
+                    continue
+                }
+                val rawBytes = mapped?.bytes(tensorInfo.absoluteDataOffset, tensorInfo.nBytes.toInt())
+                    ?: reader.loadTensorData(tensorInfo)
 
                 val tensor: Tensor<T, V>? = when (tensorInfo.tensorType) {
                     GGMLQuantizationType.F32 -> {
@@ -165,6 +204,9 @@ public class StreamingGgufParametersLoader(
                 current += 1
                 onProgress(current, total, tensorInfo.name)
             }
+        }
+        } finally {
+            mapped?.close()
         }
     }
 

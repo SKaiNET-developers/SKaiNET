@@ -26,7 +26,9 @@ import java.nio.channels.FileChannel
 public class AndroidRandomAccessSource private constructor(
     private val channel: FileChannel,
     private val raf: RandomAccessFile,
-    override val size: Long
+    override val size: Long,
+    /** The file these bytes come from — what `StagingPolicy.MAPPED` maps (#1037). */
+    override val filePath: String? = null,
 ) : RandomAccessSource {
 
     override fun readAt(position: Long, length: Int): ByteArray {
@@ -97,7 +99,7 @@ public class AndroidRandomAccessSource private constructor(
 
             val raf = RandomAccessFile(file, "r")
             val channel = raf.channel
-            return AndroidRandomAccessSource(channel, raf, raf.length())
+            return AndroidRandomAccessSource(channel, raf, raf.length(), file.absolutePath)
         }
 
         /**

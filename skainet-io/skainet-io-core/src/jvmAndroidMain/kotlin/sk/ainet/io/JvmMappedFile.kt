@@ -1,0 +1,62 @@
+package sk.ainet.io
+
+import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.data.MmapTensorSource
+import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.types.DType
+import java.io.File
+import java.io.RandomAccessFile
+
+/**
+ * JVM and Android [MappedFile]: one read-only `FileChannel.map` over the whole file (available
+ * since API 1 — no JNI), tensors served as zero-copy views over its pages.
+ *
+ * Files larger than 2 GB are refused: a single mapped region is addressed with int offsets.
+ * Windowed mapping for bigger files is the follow-up SKEEP-003 §7 names.
+ */
+public class JvmMappedFile private constructor(
+    private val raf: RandomAccessFile,
+    private val mmap: MmapTensorSource,
+    override val sizeBytes: Long,
+) : MappedFile {
+
+    override fun <T : DType> denseFloats(byteOffset: Long, shape: Shape): TensorData<T, Float> =
+        mmap.floatTensorAt(byteOffset, shape)
+
+    override fun bytes(byteOffset: Long, length: Int): ByteArray {
+        require(byteOffset >= 0 && length >= 0) { "byteOffset and length must be non-negative" }
+        require(byteOffset + length <= sizeBytes) { "region [$byteOffset, ${byteOffset + length}) exceeds $sizeBytes bytes" }
+        val out = ByteArray(length)
+        raf.seek(byteOffset)
+        raf.readFully(out)
+        return out
+    }
+
+    /** Releases the channel; views already handed out keep working (the mapping outlives it). */
+    override fun close() {
+        try { mmap.close() } finally { raf.close() }
+    }
+
+    public companion object {
+        /** Map [filePath], or `null` if it is not a readable file or is larger than 2 GB. */
+        public fun openOrNull(filePath: String): JvmMappedFile? = try {
+            val file = File(filePath)
+            if (!file.isFile || !file.canRead() || file.length() > Int.MAX_VALUE) {
+                null
+            } else {
+                val raf = RandomAccessFile(file, "r")
+                try {
+                    JvmMappedFile(raf, MmapTensorSource.fromChannel(raf.channel), file.length())
+                } catch (t: Throwable) {
+                    raf.close()
+                    throw t
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
+/** JVM/Android: map with [JvmMappedFile]. */
+public actual fun openMappedFile(filePath: String): MappedFile? = JvmMappedFile.openOrNull(filePath)

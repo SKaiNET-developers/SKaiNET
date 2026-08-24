@@ -57,4 +57,14 @@ public interface RandomAccessSource : AutoCloseable {
      * Convenience method for reading single values.
      */
     public fun readByteAt(position: Long): Byte = readAt(position, 1)[0]
+
+    /**
+     * The path these bytes came from, when they came from a file — `null` for a Blob, a network
+     * stream or an in-memory source.
+     *
+     * This is what lets a loader honour `StagingPolicy.MAPPED` (#1037): the same source that reads
+     * the header positionally can name the file to map for the tensor payloads. Defaulted, so no
+     * existing implementation has to change.
+     */
+    public val filePath: String? get() = null
 }
