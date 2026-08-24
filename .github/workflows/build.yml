@@ -34,7 +34,12 @@ jobs:
       matrix:
         include:
           - name: jvm
-            tasks: jvmTest
+            # Plain-JVM modules (the skainet-plan CLI, the engine benchmark publisher) have a
+            # `test` task rather than `jvmTest`, so the repo-wide jvmTest never reaches them.
+            tasks: >-
+              jvmTest
+              :skainet-apps:skainet-plan:test
+              :skainet-backends:benchmarks:jvm-cpu-publish:test
           # verifyNpmPins guards the npm-* pins in gradle/libs.versions.toml against
           # lockfile drift; it belongs on the leg that already has the JS toolchain.
           - name: js-wasm

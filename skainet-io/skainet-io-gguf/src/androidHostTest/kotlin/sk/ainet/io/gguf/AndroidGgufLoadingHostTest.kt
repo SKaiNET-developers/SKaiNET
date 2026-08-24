@@ -6,6 +6,7 @@ import sk.ainet.io.model.QuantPolicy
 import sk.ainet.io.model.StagingPolicy
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.plan.DeviceMemory
+import sk.ainet.lang.memory.plan.PlannerProfile
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.MmapFloatTensorData
@@ -17,6 +18,7 @@ import java.nio.ByteOrder
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -118,6 +120,31 @@ class AndroidGgufLoadingHostTest {
             assertFalse(tight.fits, tight.render())
             assertEquals("managed heap", tight.blockingPool)
             assertTrue(tight.suggestions.isNotEmpty(), "a failing fit must say what to do")
+        } finally {
+            f.delete()
+        }
+    }
+
+    @Test
+    fun `the android plan follows the mobile profile by default`() {
+        val f = model()
+        try {
+            val phone = DeviceMemory(
+                totalRamBytes = 2048 * mb, availableRamBytes = 1600 * mb,
+                heapMaxBytes = 512 * mb, heapUsedBytes = 40 * mb, lowMemoryThresholdBytes = 180 * mb,
+            )
+            val profiled = AndroidGguf.profiledPlan(f.absolutePath, ctx = 512, device = phone)
+            assertEquals(PlannerProfile.MOBILE_2GB, profiled.profile, "Android plans as a 2 GB phone (#1039)")
+            assertEquals(256, profiled.plan.input.prefillChunk)
+            assertTrue(profiled.render().contains("profile mobile-2gb"), profiled.render())
+            profiled.requireFits(phone)
+
+            // and it refuses, before allocating anything, when the device cannot take it
+            val tiny = phone.copy(availableRamBytes = 780 * mb, heapMaxBytes = 8 * mb, heapUsedBytes = 7 * mb)
+            val refusal = assertFailsWith<IllegalStateException> {
+                AndroidGguf.profiledPlan(f.absolutePath, ctx = 8192, device = tiny).requireFits(tiny)
+            }
+            assertTrue(refusal.message!!.contains("mobile-2gb"), refusal.message!!)
         } finally {
             f.delete()
         }

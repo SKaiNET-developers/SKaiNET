@@ -56,6 +56,11 @@ step "assemble"
 step "Java consumer API tests"
 "${GRADLE[@]}" :skainet-test:skainet-test-java:test
 
+# Plain-JVM modules (CLI tools, the benchmark publisher) have `test`, not `jvmTest`, so the
+# repo-wide jvmTest leg never reaches them — their tests would otherwise only ever run locally.
+step "JVM tool tests (skainet-plan, engine benchmark publisher)"
+"${GRADLE[@]}" :skainet-apps:skainet-plan:test :skainet-backends:benchmarks:jvm-cpu-publish:test
+
 # The Android compilations have host-side (JVM) unit tests — the mmap weight path (#921) and the
 # Android loading facade (#1038). They compile against androidMain, so they are the only thing that
 # proves that code builds and runs on the Android variant; nothing else in the gate touches it.
