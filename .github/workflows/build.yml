@@ -41,6 +41,12 @@ jobs:
             tasks: verifyNpmPins jsTest wasmJsTest wasmWasiTest
           - name: native
             tasks: linuxX64Test
+          # Host-side (JVM) unit tests of the *Android* compilations: the mmap weight path (#921)
+          # and the Android loading facade + device fit check (#1038, SKEEP-002). They compile
+          # against androidMain, so no other leg proves that code builds — assemble compiles it but
+          # runs nothing.
+          - name: android
+            tasks: testAndroidHostTest
           # golden-parity: the SKEEP-003 packed-encoding gate (#1005). Bit-identical decode /
           # scalar-kernel / TurboQuant digests on JVM and Kotlin/Native plus the dispatch parity
           # tests, and the binary-compatibility check (apiCheck) that the contributing docs require

@@ -86,5 +86,14 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
+
+        // Host-side tests of the *Android* compilation (#1038): they drive the suspending loader,
+        // so they need coroutines like jvmTest does. The GGUF fixtures they write are their own —
+        // jvmTest's SyntheticGguf is not visible from this compilation.
+        getByName("androidHostTest") {
+            dependencies {
+                implementation(libs.kotlinx.coroutines)
+            }
+        }
     }
 }

@@ -56,6 +56,12 @@ step "assemble"
 step "Java consumer API tests"
 "${GRADLE[@]}" :skainet-test:skainet-test-java:test
 
+# The Android compilations have host-side (JVM) unit tests — the mmap weight path (#921) and the
+# Android loading facade (#1038). They compile against androidMain, so they are the only thing that
+# proves that code builds and runs on the Android variant; nothing else in the gate touches it.
+step "Android host tests"
+"${GRADLE[@]}" testAndroidHostTest
+
 if [[ "$mode" == "--bench" ]]; then
   step "benchmarks (compare against the committed baseline before/after)"
   "${GRADLE[@]}" :skainet-lang:skainet-lang-core:jvmBenchmark
