@@ -9,6 +9,17 @@ package sk.ainet.exec.golden
  */
 internal object Goldens {
     val expected: Map<String, String> = mapOf(
+        // #1095 — the packed kernels reached through the registry: a canonical weight relayouted
+        // into kernel order by the dispatcher. The `head` values are the first row of the existing
+        // scalar-matmul goldens, which is the point: the bridge changes nothing about the numbers.
+        "dispatch-bridge/Q4_0" to "n=4 fnv=5338c3fcbe1b41a0 head=3f15be82,3f0f4b4e,3e49fb8e,be220b31",
+        "dispatch-bridge/Q4_K" to "n=4 fnv=45ad612547bdb769 head=c29e9232,c3116957,c3a2cb4f,c2da54e5",
+        "dispatch-bridge/Q5_0" to "n=4 fnv=3504943a5a9d6a37 head=3ffafe21,4073853c,c0a97fbe,3e9fe3a0",
+        "dispatch-bridge/Q5_1" to "n=4 fnv=5ab4974269167da2 head=3fe5eab0,bfe35b0c,40821cc5,40ca2f5a",
+        "dispatch-bridge/Q5_K" to "n=4 fnv=f6d101a0033fc64e head=4317c800,c3350201,4380baa3,4286212d",
+        "dispatch-bridge/Q6_K" to "n=4 fnv=de59f18bcd4472af head=c41704aa,425d6ccb,4423cdf0,43bffcfd",
+        "dispatch-bridge/Q8_0" to "n=4 fnv=f1f93362776a955c head=bf462edd,3f92c634,c151b4cb,c0e14735",
+
         // #1034 — the zero-copy packed transpose: a TensorView whose block axis moved, decoding
         // the same matrix the block-grid permutation in DefaultCpuOps.transpose produces.
         "transpose/Q4_0" to "n=384 fnv=272715de48d49929 head=3c442000,3df90000,be8ed800,be2e0000",

@@ -4,6 +4,7 @@ import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.Format
 import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.FP32
 
 /**
@@ -14,15 +15,11 @@ import sk.ainet.lang.types.FP32
  * under the keys the dispatcher looks up, so the generic path gets the fast kernel instead of the
  * decoding reference whenever the operands' formats and layouts match what the pack declares.
  *
- * **Scope note (SKEEP-003 migration, #1029).** Only the dense FP32 kernel is bridged here. The
- * packed (Q4_0…Q6_K) SPI kernels take their weight bytes in **block-major** order — the layout
- * `DefaultCpuOpsBase.transposePackedBlocks` produces — while a packed `TensorView` describes the
- * canonical row-major block order of the file. That contract is exactly what #973 reports as
- * unwritten and contradictory across the engine and the converters, and getting it wrong is the
- * silent-wrong-numbers class of #968/#971. Bridging the packed kernels therefore waits until #973
- * pins the byte order down; until then the packed fast paths stay on their existing (working)
- * ladder in `DefaultCpuOps`/`DefaultCpuOpsJvm`, and the registry serves packed operands with the
- * decoding reference kernel, which is correct for any layout.
+ * **The packed kernels are bridged too, now that the order is in the key (#973.2, #1095).** They
+ * read their weight input-block-major; a packed `TensorView` from a file is canonical row-major;
+ * [sk.ainet.lang.memory.BlockOrder] says which is which, so the kernel declares what it takes and
+ * the dispatcher relayouts. That distinction is what #1029 was missing and what made mixing the two
+ * a silent-wrong-numbers bug rather than a crash (#968, #971).
  */
 @ExperimentalMemoryApi
 public object KernelPacks {
@@ -46,6 +43,30 @@ public object KernelPacks {
         val strided = OperandKey(Format.dense(FP32), LayoutClass.STRIDED)
         KernelDispatch.register(Fp32ViewMatmulKernel(p.name, fp32, KernelKey("matmul", listOf(dense, strided))))
         KernelDispatch.register(Fp32ViewMatmulKernel(p.name, fp32, KernelKey("matmul", listOf(dense, dense))))
+        installPacked(p)
+    }
+
+    /**
+     * Install [provider]'s packed matmul kernels as [PackedViewMatmulKernel]s, keyed on
+     * `BLOCKED_INPUT_MAJOR` — the order they actually read.
+     *
+     * A provider that offers no kernel for a format simply does not get one registered, and the
+     * decoding reference kernel keeps serving that format, as it does today.
+     */
+    public fun installPacked(provider: KernelProvider) {
+        fun register(encoding: TensorEncoding, kernel: ((FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit)?) {
+            if (kernel == null) return
+            KernelDispatch.register(
+                PackedViewMatmulKernel(provider.name, encoding.name, PackedViewMatmulKernel.keyFor(encoding), kernel),
+            )
+        }
+        register(TensorEncoding.Q4_0, provider.matmulQ4_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
+        register(TensorEncoding.Q5_0, provider.matmulQ5_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
+        register(TensorEncoding.Q5_1, provider.matmulQ5_1()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
+        register(TensorEncoding.Q8_0, provider.matmulQ8_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
+        register(TensorEncoding.Q4_K, provider.matmulQ4K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
+        register(TensorEncoding.Q5_K, provider.matmulQ5K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
+        register(TensorEncoding.Q6_K, provider.matmulQ6K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
     }
 
     /** The reference matmul for dense FP32 — always available, so a key is never unserved. */
