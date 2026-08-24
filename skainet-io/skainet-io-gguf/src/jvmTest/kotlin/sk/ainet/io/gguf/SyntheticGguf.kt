@@ -22,6 +22,12 @@ object SyntheticGguf {
         val type: GGMLQuantizationType,
         val elementCount: Long,
         val data: ByteArray,
+        /**
+         * Dimensions in GGUF `ne` order (fastest-varying first). Defaults to rank 1, which keeps
+         * element order unambiguous; a 2-D weight is written `[in, out]`, as a real file has it
+         * (#1098).
+         */
+        val dims: List<Long> = listOf(elementCount),
     )
 
     /** Bytes per block / elements per block for [type], from [GGML_QUANT_SIZES]. */
@@ -165,8 +171,8 @@ object SyntheticGguf {
             val name = t.name.encodeToByteArray()
             head.putLong(name.size.toLong())
             head.put(name)
-            head.putInt(1) // rank 1 keeps element order unambiguous
-            head.putLong(t.elementCount)
+            head.putInt(t.dims.size)
+            for (d in t.dims) head.putLong(d)
             head.putInt(t.type.value)
             head.putLong(dataOffset)
             // every payload here is already a multiple of 32 bytes or padded below
