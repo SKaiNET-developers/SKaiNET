@@ -1295,6 +1295,63 @@ public final class sk/ainet/lang/memory/plan/Budget$Companion {
 	public final fun of (J)Lsk/ainet/lang/memory/plan/Budget;
 }
 
+public final class sk/ainet/lang/memory/plan/DeviceFit {
+	public fun <init> (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;ZLsk/ainet/lang/memory/plan/PoolFit;Lsk/ainet/lang/memory/plan/PoolFit;Ljava/util/List;)V
+	public final fun component1 ()Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun component2 ()Lsk/ainet/lang/memory/plan/DeviceMemory;
+	public final fun component3 ()Z
+	public final fun component4 ()Lsk/ainet/lang/memory/plan/PoolFit;
+	public final fun component5 ()Lsk/ainet/lang/memory/plan/PoolFit;
+	public final fun component6 ()Ljava/util/List;
+	public final fun copy (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;ZLsk/ainet/lang/memory/plan/PoolFit;Lsk/ainet/lang/memory/plan/PoolFit;Ljava/util/List;)Lsk/ainet/lang/memory/plan/DeviceFit;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/DeviceFit;Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;ZLsk/ainet/lang/memory/plan/PoolFit;Lsk/ainet/lang/memory/plan/PoolFit;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/DeviceFit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlockingPool ()Ljava/lang/String;
+	public final fun getDevice ()Lsk/ainet/lang/memory/plan/DeviceMemory;
+	public final fun getFits ()Z
+	public final fun getHeap ()Lsk/ainet/lang/memory/plan/PoolFit;
+	public final fun getPlan ()Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun getRam ()Lsk/ainet/lang/memory/plan/PoolFit;
+	public final fun getSuggestions ()Ljava/util/List;
+	public final fun getWeightsMapped ()Z
+	public fun hashCode ()I
+	public final fun render ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/DeviceFitKt {
+	public static final fun fitOn (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;Z)Lsk/ainet/lang/memory/plan/DeviceFit;
+}
+
+public final class sk/ainet/lang/memory/plan/DeviceMemory {
+	public static final field Companion Lsk/ainet/lang/memory/plan/DeviceMemory$Companion;
+	public static final field RAM_RESERVE_FLOOR J
+	public fun <init> (JJJJZJ)V
+	public synthetic fun <init> (JJJJZJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun component6 ()J
+	public final fun copy (JJJJZJ)Lsk/ainet/lang/memory/plan/DeviceMemory;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/DeviceMemory;JJJJZJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/DeviceMemory;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAvailableRamBytes ()J
+	public final fun getHeapFreeBytes ()J
+	public final fun getHeapMaxBytes ()J
+	public final fun getHeapUsedBytes ()J
+	public final fun getLowMemory ()Z
+	public final fun getLowMemoryThresholdBytes ()J
+	public final fun getTotalRamBytes ()J
+	public final fun getUsableRamBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/DeviceMemory$Companion {
+}
+
 public final class sk/ainet/lang/memory/plan/KvCacheMode : java/lang/Enum {
 	public static final field BF16 Lsk/ainet/lang/memory/plan/KvCacheMode;
 	public static final field FP32 Lsk/ainet/lang/memory/plan/KvCacheMode;
@@ -1488,6 +1545,23 @@ public final class sk/ainet/lang/memory/plan/PlanVsActualLine {
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 	public final fun withinTolerance (D)Z
+}
+
+public final class sk/ainet/lang/memory/plan/PoolFit {
+	public fun <init> (Ljava/lang/String;JJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;JJ)Lsk/ainet/lang/memory/plan/PoolFit;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PoolFit;Ljava/lang/String;JJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PoolFit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBudgetBytes ()J
+	public final fun getFits ()Z
+	public final fun getHeadroomBytes ()J
+	public final fun getName ()Ljava/lang/String;
+	public final fun getNeededBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class sk/ainet/lang/memory/plan/Suggestion {

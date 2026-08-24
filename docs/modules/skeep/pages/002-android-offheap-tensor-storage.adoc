@@ -232,6 +232,44 @@ keeps working unchanged and the overload is purely opt-in. Expected consumers:
   (packed quant blocks) and a synthesized SafeTensors file (dense
   F32/F16/BF16) produce bit-identical tensors under either placement.
 
+== Implementation status (2026-08-24)
+
+Tracked by SKEEP-003's M2 slice
+https://github.com/SKaiNET-developers/SKaiNET/issues/1038[#1038]. This SKEEP stays *Draft*: the
+mechanism is in `develop`, the acceptance criteria that need a physical device are not met yet, and
+one of them cannot be met until an unrelated contract is fixed.
+
+Landed:
+
+* *Phase 1 and 2* — `JvmMappedMemoryChunk` / `MappedRandomAccessSource` and a readable
+  `BufferHandle.FileBacked` with `JvmFileBackedResolver`, shared between the JVM and Android
+  compilations, covered by `androidHostTest`
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921],
+  https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922]).
+* *Phase 3* — mapped loading is a *configuration of the ordinary loader* rather than a separate
+  helper: `StreamingGgufParametersLoader(staging = StagingPolicy.MAPPED)`
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1037[#1037]), with `AndroidGguf.loader()`
+  making it the Android default.
+* *The fit check this SKEEP did not have* — `MemoryPlan.fitOn(DeviceMemory, weightsMapped)` treats
+  a phone as two pools (the ART cap and physical RAM) instead of one total, and
+  `AndroidGguf.fits(context, path, ctx)` answers from the GGUF header before a byte of payload is
+  read, naming the pool that runs out and what to do about it.
+
+Not landed, and why:
+
+* *Packed weights still reach the managed heap.* Mapped staging serves dense F32 tensors as
+  zero-heap views, but every quantized tensor is still handed to its kernel as a `ByteArray`,
+  because the packed matmul SPI takes arrays. That is Phase 4, and it is blocked on
+  https://github.com/SKaiNET-developers/SKaiNET/issues/973[#973] — the packed-quant byte-order
+  contract — since a buffer-aware kernel first needs an unambiguous answer to *which* byte order it
+  is reading. Until then the heap ceiling is lifted for dense checkpoints, not for a Q4_K_M one,
+  which is exactly the acceptance criterion below that remains open.
+* *The device numbers.* "≤ 40 MB managed heap for SmolLM2-135M Q8_0" and "a ~600 MB Q4_K model
+  loads on a 256 MB heap" are measurements on a physical device; the repository's CI has none. They
+  belong to the `skainet-decode` sample in SKaiNET-transformers, which owns a model and a device
+  lane. `androidHostTest` covers what can be proven without hardware: the Android compilation
+  builds, maps, loads, and produces bit-identical tensors under either staging.
+
 == Risks
 
 * *Page-fault latency.* First-touch of cold pages during decode adds jitter.
