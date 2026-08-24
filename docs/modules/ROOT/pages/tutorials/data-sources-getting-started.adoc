@@ -120,6 +120,20 @@ val train = MNIST.loadTrain(
 val batches = train.batchIterator<sk.ainet.lang.types.Int8, Byte>(batchSize = 64)
 ----
 
+The Iris provider is different: the 150-row dataset ships embedded inside the
+library itself, so loading it needs no network access, no cache directory and
+works identically on every platform target.
+
+[source,kotlin]
+----
+import kotlinx.coroutines.runBlocking
+import sk.ainet.data.iris.Iris
+
+val (train, test) = runBlocking {
+    Iris.load().split(0.8, seed = 42L, stratified = true)
+}
+----
+
 === Cache behavior
 
 Use `CachePolicy.Use` for normal operation, `Refresh` to re-download,
