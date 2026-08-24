@@ -134,11 +134,15 @@ public class Ternary2BitTensorData(
         public fun fromTQ2_0Block(blockData: ByteArray, shape: Shape): Ternary2BitTensorData {
             require(blockData.size >= 66) { "TQ2_0 block must be at least 66 bytes" }
 
-            val qsData = blockData.copyOfRange(0, 64)
             val scaleBits = (blockData[65].toInt() and 0xFF shl 8) or (blockData[64].toInt() and 0xFF)
             val scale = halfToFloat(scaleBits)
 
-            return Ternary2BitTensorData(shape, qsData, scale)
+            // TQ2_0 interleaves: byte `j + m` holds four elements 32 apart, so the bytes cannot be
+            // adopted verbatim — decode them through the reference codec (#1033) and re-pack into
+            // this type's four-consecutive-elements-per-byte layout.
+            @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+            val codes = sk.ainet.lang.memory.TernaryCodec.codesTq2_0(blockData, minOf(shape.volume, 256))
+            return fromTernaryValues(shape, codes.copyOf(shape.volume), scale)
         }
 
         /**

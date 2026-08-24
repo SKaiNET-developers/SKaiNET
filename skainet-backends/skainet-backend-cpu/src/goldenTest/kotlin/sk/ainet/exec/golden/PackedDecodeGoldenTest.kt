@@ -10,7 +10,13 @@ import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Ternary2BitTensorData
+import sk.ainet.lang.memory.ExperimentalMemoryApi
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.memory.TernaryBlockDecoder
+import sk.ainet.lang.memory.TernaryCodec
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import kotlin.test.Test
 
 /**
@@ -18,6 +24,7 @@ import kotlin.test.Test
  * bit-identical floats for the same bytes. Guards the TensorData → TensorView façade migration
  * (M1) and every later refactor of the packed storage types.
  */
+@OptIn(ExperimentalMemoryApi::class)
 class PackedDecodeGoldenTest {
 
     private companion object {
@@ -64,6 +71,35 @@ class PackedDecodeGoldenTest {
         val decoded = decodeAll(t, n, t.blockSize)
         GoldenSupport.check("decode/TERNARY_values", GoldenSupport.digest(decoded))
         GoldenSupport.check("packed/TERNARY_values", GoldenSupport.digest(t.packedData))
+    }
+
+    /**
+     * #1033: the ternary encodings decode through [TernaryCodec], whose layout is the GGML one
+     * (`dequantize_row_tq{1,2}_0`, interleave included). Golden over *encoded* ternary values, so a
+     * change to either half of the codec — the packer or the unpacker — moves the digest.
+     */
+    private fun ternaryGolden(encoding: TensorEncoding, name: String, elements: Int) {
+        val rng = GoldenSupport.Rng(SEED + 23)
+        val values = FloatArray(elements) { (((rng.nextLong() ushr 40).toInt() and 0xFFFF) % 3 - 1) * 0.5f }
+        val bytes = TernaryCodec.encode(encoding, values)
+        GoldenSupport.check("packed/$name", GoldenSupport.digest(bytes))
+        GoldenSupport.check("decode/$name", GoldenSupport.digest(TernaryCodec.decode(encoding, bytes, elements)))
+    }
+
+    @Test fun tq1_0() = ternaryGolden(TensorEncoding.TQ1_0, "TQ1_0", 256 * 3)
+    @Test fun tq2_0() = ternaryGolden(TensorEncoding.TQ2_0, "TQ2_0", 256 * 3)
+    @Test fun bitnet() = ternaryGolden(TensorEncoding.BITNET_B1_58, "BITNET_B1_58", 256 * 3)
+
+    /** A ternary view decodes exactly like the codec it is driven by — the M2 kernel entry path. */
+    @Test
+    fun ternaryThroughATensorView() {
+        val rng = GoldenSupport.Rng(SEED + 29)
+        val values = FloatArray(512) { (((rng.nextLong() ushr 40).toInt() and 0xFFFF) % 3 - 1) * 0.5f }
+        for (encoding in listOf(TensorEncoding.TQ1_0, TensorEncoding.TQ2_0)) {
+            val bytes = TernaryCodec.encode(encoding, values)
+            val view = TensorView.packed(Storage.Heap.wrap(bytes), Shape(2, 256), encoding, TernaryBlockDecoder(encoding))
+            GoldenSupport.check("view/${encoding.name}", GoldenSupport.digest(view.toFloatArray()))
+        }
     }
 
     @Test

@@ -47,7 +47,14 @@ class GgufMemoryPlanTest {
         assertEquals(TensorEncoding.Q6_K, ggufFormat(GGMLQuantizationType.Q6_K, 0).encoding)
         assertEquals(FP32, ggufFormat(GGMLQuantizationType.Q6_K, 0).dtype)
         assertEquals(TensorEncoding.Dense(2), ggufFormat(GGMLQuantizationType.BF16, 0).encoding)
-        assertTrue(ggufFormat(GGMLQuantizationType.TQ1_0, 123).encoding is TensorEncoding.Opaque)
+        // #1033: the ternary types are described, not opaque — a TQ1_0 tensor plans at 54 B per
+        // 256 elements instead of falling back to "whatever the header said the bytes were".
+        assertEquals(TensorEncoding.TQ1_0, ggufFormat(GGMLQuantizationType.TQ1_0, 123).encoding)
+        assertEquals(TensorEncoding.TQ2_0, ggufFormat(GGMLQuantizationType.TQ2_0, 123).encoding)
+        assertEquals(FP32, ggufFormat(GGMLQuantizationType.TQ1_0, 123).dtype)
+        assertEquals(54L, ggufFormat(GGMLQuantizationType.TQ1_0, 0).physicalBytes(256))
+        assertEquals(66L, ggufFormat(GGMLQuantizationType.TQ2_0, 0).physicalBytes(256))
+        assertTrue(ggufFormat(GGMLQuantizationType.IQ2_XS, 123).encoding is TensorEncoding.Opaque, "still unmapped")
     }
 
     /** Real file, fixture-gated (see GgufNameMapFixtureTest): the plan must be consistent with the header. */

@@ -146,7 +146,9 @@ public class StreamingGgufParametersLoader(
                     GGMLQuantizationType.Q8_0,
                     GGMLQuantizationType.Q4_0,
                     GGMLQuantizationType.Q5_0,
-                    GGMLQuantizationType.Q5_1 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes)
+                    GGMLQuantizationType.Q5_1,
+                    GGMLQuantizationType.TQ1_0,
+                    GGMLQuantizationType.TQ2_0 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes)
 
                     else -> throw IllegalStateException(
                         "StreamingGgufParametersLoader: tensor '${tensorInfo.name}' of type " +
@@ -190,6 +192,18 @@ public class StreamingGgufParametersLoader(
             (dtype == FP32::class || dtype == FP16::class)
         ) {
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
+            return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
+        }
+        if (tensorInfo.tensorType == GGMLQuantizationType.TQ1_0 || tensorInfo.tensorType == GGMLQuantizationType.TQ2_0) {
+            // #1033: ternary tensors decode correctly, but there is no packed ternary `TensorData`
+            // with per-block scales yet — it arrives with the ternary kernels (#1040/#1041). Until
+            // then every policy widens them to FP32: right values, no memory saving.
+            require(dtype == FP32::class || dtype == FP16::class) {
+                "tensor '${tensorInfo.name}' is ${tensorInfo.tensorType}; ternary tensors currently " +
+                    "load as FP32, so the requested dtype $dtype is not supported"
+            }
+            val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
+            @Suppress("UNCHECKED_CAST")
             return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
         }
         val packed = when (tensorInfo.tensorType) {
@@ -270,6 +284,11 @@ public class StreamingGgufParametersLoader(
             GGMLQuantizationType.Q5_K,
             GGMLQuantizationType.Q6_K,
             GGMLQuantizationType.Q8_0,
+            // #1033: ternary. Decoded through the reference codec next to their
+            // TensorEncoding descriptor, so the loader and the ternary kernels
+            // cannot read the same bytes differently.
+            GGMLQuantizationType.TQ1_0,
+            GGMLQuantizationType.TQ2_0,
         )
 
         private const val MAX_LISTED_TENSORS = 8
