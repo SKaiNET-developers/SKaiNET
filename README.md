@@ -1,7 +1,5 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENCE)
 [![Maven Central](https://img.shields.io/maven-central/v/sk.ainet.core/skainet-lang-core.svg)](https://central.sonatype.com/artifact/sk.ainet.core/skainet-lang-core)
-[![GitHub Contributors](https://img.shields.io/github/contributors/SKaiNET-developers/SKaiNET)](https://github.com/SKaiNET-developers/SKaiNET/graphs/contributors)
-[![DeepWiki](https://img.shields.io/badge/DeepWiki-View%20Docs-blue?logo=readthedocs&logoColor=white)](https://deepwiki.com/SKaiNET-developers/SKaiNET)
 [![REUSE status](https://api.reuse.software/badge/github.com/SKaiNET-developers/SKaiNET)](https://api.reuse.software/badge/github.com/SKaiNET-developers/SKaiNET)
 [![OpenSSF Scorecard Score](https://api.scorecard.dev/projects/github.com/SKaiNET-developers/SKaiNET/badge)](https://scorecard.dev/viewer/?uri=github.com/SKaiNET-developers/SKaiNET)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14004/badge)](https://www.bestpractices.dev/projects/14004)
