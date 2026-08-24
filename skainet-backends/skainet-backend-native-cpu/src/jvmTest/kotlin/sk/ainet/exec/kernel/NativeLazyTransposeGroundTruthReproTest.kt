@@ -49,7 +49,7 @@ import sk.ainet.lang.types.FP32
  * doc comment). That claim is only true if the bytes were ALREADY
  * kernel-native (input-block-major) before the swap. If a weight is
  * genuinely row-major (canonical bytes, `blocksPerInputDim > 1`), the lazy
- * transpose does NOT reorder anything — so `ops.matmul(x, ops.transpose(w))`
+ * transpose does NOT reorder anything — so `ops.matmulWeightTransposed(x, w)`
  * on a canonically-packed weight hands the kernel bytes in the WRONG
  * physical order, silently, for every packed format with more than one
  * block per row.
@@ -185,7 +185,7 @@ class NativeLazyTransposeGroundTruthReproTest {
         val ctxClassic = DirectCpuExecutionContext()
         val wClassic = ctxClassic.fromData(build(Shape(outputDim, inputDim), canonicalBytes), FP32::class)
         val xClassic = ctxClassic.fromFloatArray<FP32, Float>(Shape(1, inputDim), FP32::class, xf)
-        val yClassic = ctxClassic.ops.matmul(xClassic, ctxClassic.ops.transpose(wClassic)).data.copyToFloatArray()
+        val yClassic = ctxClassic.ops.matmulWeightTransposed(xClassic, wClassic).data.copyToFloatArray()
 
         val ctxPre = DirectCpuExecutionContext()
         val wPre = ctxPre.fromData(build(Shape(inputDim, outputDim), kernelNativeBytes), FP32::class)
@@ -219,7 +219,7 @@ class NativeLazyTransposeGroundTruthReproTest {
                 "groundTruth[0..3]=${yGroundTruth.take(4)} classic[0..3]=${yClassic.take(4)}",
         )
 
-        // Regression contract (fixed): `ops.matmul(x, ops.transpose(w))` on a
+        // Regression contract (fixed): `ops.matmulWeightTransposed(x, w)` on a
         // canonically-packed weight — the "classic" path `linearProject` uses —
         // must match the SAME independent ground truth the "pre-transposed"
         // (skip-transpose, kernel-native-bytes) workaround already matched.

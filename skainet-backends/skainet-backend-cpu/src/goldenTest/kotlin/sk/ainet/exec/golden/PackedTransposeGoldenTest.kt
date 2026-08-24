@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 /**
  * #1034: a packed transpose is metadata.
  *
- * `DefaultCpuOps.transpose` permutes the block grid byte by byte, because the packed matmul
+ * `relayoutPackedWeightForKernels` permutes the block grid byte by byte, because the packed matmul
  * kernels read their weight as input-block-major regardless of its declared shape — the contract
  * that made #968/#971 read garbage from a bare shape swap, and that #973 exists to write down.
  * A `TensorView` needs no such permutation: transposing swaps two strides and moves the block axis
@@ -73,18 +73,18 @@ class PackedTransposeGoldenTest {
         }
 
         // 2. and it describes the same matrix as the physical block-grid permutation the kernels
-        // still need. `DefaultCpuOps.transpose` reorders the blocks to *input-block-major* —
+        // still need. `relayoutPackedWeightForKernels` reorders the blocks to *input-block-major* —
         // block (bI, o) at index `bI * rows + o` — because that is how the packed kernels read a
         // weight, whatever shape it declares (#968/#971; the contract #973 exists to write down).
         // So the permuted bytes are not the row-major encoding of the transposed matrix, and the
         // two paths are not interchangeable until #973 lands: decoded *as block-major*, they carry
         // exactly the values the zero-copy view exposes.
-        val physical = tensor.t()
-        assertEquals(Shape(shape[1], shape[0]), physical.shape, "${p.name}: ops.transpose shape")
+        val physical = ctx.ops.relayoutPackedWeightForKernels(tensor)
+        assertEquals(Shape(shape[1], shape[0]), physical.shape, "${p.name}: relayout shape")
         val permutedBytes = (physical.data as PackedBlockStorage).packedData
         assertTrue(
             permutedBytes.contentEquals(GoldenSupport.blockMajor(GoldenSupport.weightBlocks(p, ROWS, BLOCKS_PER_ROW, SEED))),
-            "${p.name}: ops.transpose must produce input-block-major bytes",
+            "${p.name}: the relayout must produce input-block-major bytes",
         )
         val permuted = build(p, shape, permutedBytes)
         val block = FloatArray(p.blockSize)

@@ -58,7 +58,7 @@ class RegistryMatmulDispatchTest {
         // #993: the first post-prefill decode step passes a rank-1 [hidden] activation
         val (w, wf) = packedWeight(4)
         val x = ctx.fromFloatArray<FP32, Float>(Shape(32), FP32::class, FloatArray(32) { (it % 7) * 0.5f })
-        val out = ctx.ops.matmul(x, ctx.ops.transpose(w))       // [32] x [32, 4] -> [4]
+        val out = ctx.ops.matmulWeightTransposed(x, w)       // [32] x [32, 4] -> [4]
         val got = out.data.copyToFloatArray()
         assertTrue(out.shape.rank == 1 && out.shape[0] == 4, "expected [4], was ${out.shape}")
         for (j in 0 until 4) {
@@ -73,7 +73,7 @@ class RegistryMatmulDispatchTest {
     fun registryAndLegacyPathsAgreeOnAPackedWeight() {
         val (w, _) = packedWeight(3)
         val x = ctx.fromFloatArray<FP32, Float>(Shape(2, 32), FP32::class, FloatArray(64) { (it % 5) * 0.25f })
-        val wt = ctx.ops.transpose(w)
+        val wt = ctx.ops.relayoutPackedWeightForKernels(w)
 
         DispatchMode.overrideEnabled = true
         val viaRegistry = ctx.ops.matmul(x, wt).data.copyToFloatArray()
@@ -90,7 +90,7 @@ class RegistryMatmulDispatchTest {
     fun batchedActivationsFlattenAndReshape() {
         val (w, wf) = packedWeight(2)
         val x = ctx.fromFloatArray<FP32, Float>(Shape(2, 3, 32), FP32::class, FloatArray(192) { (it % 4).toFloat() })
-        val out = ctx.ops.matmul(x, ctx.ops.transpose(w))
+        val out = ctx.ops.matmulWeightTransposed(x, w)
         assertTrue(out.shape.dimensions.toList() == listOf(2, 3, 2), "expected [2, 3, 2], was ${out.shape}")
         val got = out.data.copyToFloatArray()
         var expect = 0f
@@ -107,7 +107,7 @@ class RegistryMatmulDispatchTest {
         @Suppress("UNCHECKED_CAST")
         val w = ctx.fromData(data as TensorData<FP32, Float>, FP32::class)
         val x = ctx.fromFloatArray<FP32, Float>(Shape(256), FP32::class, FloatArray(256) { 0.125f })
-        val got = ctx.ops.matmul(x, ctx.ops.transpose(w)).data.copyToFloatArray()
+        val got = ctx.ops.matmulWeightTransposed(x, w).data.copyToFloatArray()
         var expect = 0f
         for (t in 0 until 256) expect += 0.125f * data.toFloatArray()[t]
         assertTrue(got[0].isFinite()); assertTrue(abs(got[0] - expect) < 1e-2f, "${got[0]} vs $expect")
