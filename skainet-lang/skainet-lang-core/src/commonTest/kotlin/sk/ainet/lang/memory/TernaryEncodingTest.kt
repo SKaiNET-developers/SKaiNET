@@ -55,7 +55,7 @@ class TernaryEncodingTest {
     fun theTernaryFamilyIsDescribedAsTernaryWithInt8Activations() {
         for (e in listOf(TensorEncoding.TQ1_0, TensorEncoding.TQ2_0, TensorEncoding.TernaryPacked, TensorEncoding.BITNET_B1_58)) {
             assertTrue(e.isTernary, "${e.name} must be ternary")
-            assertEquals(Format(Int8, TensorEncoding.Dense(1)), e.blockSpec?.activation, "${e.name}: W1.58A8")
+            assertEquals(Format(Int8, TensorEncoding.DENSE_I8_ABSMAX), e.blockSpec?.activation, "${e.name}: W1.58A8")
         }
         assertTrue(!TensorEncoding.Q4_K.isTernary)
         assertNull(TensorEncoding.Dense(4).blockSpec, "dense is not block-structured")

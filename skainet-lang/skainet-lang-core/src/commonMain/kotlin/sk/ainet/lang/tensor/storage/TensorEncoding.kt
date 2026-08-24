@@ -264,6 +264,27 @@ public sealed interface TensorEncoding {
     }
 
     /**
+     * Int8 activations with a **per-row (per-token) absmax scale** — the companion format of the
+     * ternary weights (`W1.58A8`, #1040).
+     *
+     * Layout of a `[rows, cols]` activation: `rows * cols` int8 codes in row-major order, followed
+     * by `rows` little-endian FP32 scales. A value is `code * scale(row)`; the scale is
+     * `absmax(row) / 127`, so a row of zeros has scale zero and decodes to zeros.
+     *
+     * Deliberately not parameterized by the row length: kernel selection keys on the [Format], and
+     * a per-shape encoding would make every hidden size a different key. The row count comes from
+     * the view's shape, which is where it belongs. [physicalBytes] is therefore `null` — the byte
+     * count needs the row length, and [sk.ainet.lang.memory.I8Absmax.bytesFor] computes it.
+     */
+    public data object DENSE_I8_ABSMAX : TensorEncoding {
+        /** Largest magnitude an int8 code may take; the scale is `absmax / this`. */
+        public const val CODE_RANGE: Int = 127
+
+        override val name: String get() = "I8-absmax"
+        override fun physicalBytes(elementCount: Long): Long? = null
+    }
+
+    /**
      * Opaque / unknown encoding. Used as a fallback for formats the runtime
      * cannot yet interpret but still wants to carry through without error.
      */

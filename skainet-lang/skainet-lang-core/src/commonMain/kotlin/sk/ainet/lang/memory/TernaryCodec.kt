@@ -307,18 +307,28 @@ public object TernaryCodec {
  * (SKEEP-003 §4.4: `get()` decodes, never a raw byte).
  */
 @ExperimentalMemoryApi
-public class TernaryBlockDecoder(private val encoding: TensorEncoding) : BlockDecoder {
+public class TernaryBlockDecoder private constructor(
+    private val encoding: TensorEncoding,
+    override val blockSize: Int,
+    override val bytesPerBlock: Int,
+) : BlockDecoder {
 
-    private val spec: BlockSpec = encoding.blockSpec
-        ?: throw IllegalArgumentException("$encoding has no block spec")
+    /** A decoder for a block-structured ternary encoding ([TensorEncoding.TQ1_0], [TensorEncoding.TQ2_0]). */
+    public constructor(encoding: TensorEncoding) : this(
+        encoding,
+        blockSize = requireBlocked(encoding).blockSize,
+        bytesPerBlock = requireBlocked(encoding).bytesPerBlock,
+    )
 
-    init {
-        require(encoding.isTernary) { "$encoding is not a ternary encoding" }
-        require(!spec.isPerTensor) { "${encoding.name} is a per-tensor encoding; decode it through its TensorData" }
-    }
-
-    override val blockSize: Int get() = spec.blockSize
-    override val bytesPerBlock: Int get() = spec.bytesPerBlock
+    /**
+     * A decoder for a **per-tensor** ternary encoding ([TensorEncoding.BITNET_B1_58]), whose single
+     * scale covers all [elementCount] elements: the whole tensor is one block (#1040).
+     */
+    public constructor(encoding: TensorEncoding, elementCount: Int) : this(
+        encoding,
+        blockSize = elementCount,
+        bytesPerBlock = requirePerTensor(encoding, elementCount),
+    )
 
     override fun decodeBlock(storage: Storage, blockIndex: Long, out: FloatArray, outOffset: Int) {
         val heap = storage as? Storage.Heap
@@ -326,5 +336,25 @@ public class TernaryBlockDecoder(private val encoding: TensorEncoding) : BlockDe
         val bytes = heap.bytes ?: throw UnsupportedOperationException("ternary views need byte storage")
         val off = heap.arrayOffset + (blockIndex * bytesPerBlock).toInt()
         TernaryCodec.decode(encoding, bytes, blockSize, off).copyInto(out, outOffset)
+    }
+
+    private companion object {
+        fun requireBlocked(encoding: TensorEncoding): BlockSpec {
+            val spec = encoding.blockSpec ?: throw IllegalArgumentException("$encoding has no block spec")
+            require(encoding.isTernary) { "$encoding is not a ternary encoding" }
+            require(!spec.isPerTensor) {
+                "${encoding.name} is a per-tensor encoding; give this constructor the element count"
+            }
+            return spec
+        }
+
+        fun requirePerTensor(encoding: TensorEncoding, elementCount: Int): Int {
+            val spec = encoding.blockSpec ?: throw IllegalArgumentException("$encoding has no block spec")
+            require(encoding.isTernary) { "$encoding is not a ternary encoding" }
+            require(spec.isPerTensor) { "${encoding.name} is block-structured; use the single-argument constructor" }
+            require(elementCount > 0) { "elementCount must be > 0" }
+            return (encoding.physicalBytes(elementCount.toLong())
+                ?: throw IllegalArgumentException("${encoding.name} cannot size $elementCount elements")).toInt()
+        }
     }
 }
