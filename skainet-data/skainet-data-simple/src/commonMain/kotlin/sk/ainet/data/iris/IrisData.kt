@@ -212,7 +212,7 @@ internal fun parseIrisCsv(csv: String): List<IrisSample> {
             val speciesField = fields[featureCount].trim()
             val label = Iris.classNames.indexOf(speciesField)
             require(label >= 0) {
-                "Iris CSV line $lineNumber has unknown species '$speciesField'; expected one of $Iris.classNames"
+                "Iris CSV line $lineNumber has unknown species '$speciesField'; expected one of ${Iris.classNames}"
             }
 
             IrisSample(

@@ -133,6 +133,8 @@ class IrisDatasetTest {
         }
         assertTrue("line 1" in unknownSpecies.message!!)
         assertTrue("Iris-unknown" in unknownSpecies.message!!)
+        // The valid class names must actually be interpolated into the message.
+        assertTrue("Iris-setosa" in unknownSpecies.message!!)
 
         val badNumber = assertFailsWith<IllegalArgumentException> {
             parseIrisCsv("abc,3.5,1.4,0.2,Iris-setosa")
