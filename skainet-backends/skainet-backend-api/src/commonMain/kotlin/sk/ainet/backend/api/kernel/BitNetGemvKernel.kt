@@ -20,7 +20,7 @@ import sk.ainet.lang.tensor.storage.TensorEncoding
  * exactly as the vector kernels will factor them.
  *
  * Operands: `[rows, k]` activations in [I8Absmax.FORMAT] × `[n, k]` ternary weights in canonical
- * (row-major block) order — the order [TernaryCodec] produces and GGUF stores. Output `[rows, n]`.
+ * ([sk.ainet.lang.memory.BlockOrder.ROW_MAJOR]) block order — the order [TernaryCodec] produces and GGUF stores. Output `[rows, n]`.
  *
  * The weight's codes are read once per call, not once per row: a decode step is one row against
  * the whole matrix, so hoisting it is the difference between O(rows·n·k) decodes and O(n·k).
@@ -108,7 +108,7 @@ public class BitNetGemvKernel(override val key: KernelKey) : ViewKernel {
             op = "matmul",
             operands = listOf(
                 OperandKey.contiguous(I8Absmax.FORMAT),
-                OperandKey(weightFormat, LayoutClass.BLOCKED),
+                OperandKey(weightFormat, LayoutClass.BLOCKED_ROW_MAJOR),
             ),
         )
 
