@@ -53,6 +53,29 @@ wearing transpose's name and a swapped shape label that lied about the data
 (see #973, "the deeper semantic problem"); replacing that with a weight-transposing matmul
 primitive is [#1096](https://github.com/SKaiNET-developers/SKaiNET/issues/1096).
 
+## For a downstream repository
+
+Two things are published with the engine so a converter never has to reimplement this:
+
+- **`PackedWeights`** — `prepackForMatmul(view)` / `toCanonical(view)` for views, and
+  `toKernelOrder(bytes, rows, blocksPerRow, bytesPerBlock)` / `toCanonicalOrder(...)` for a
+  converter that holds bytes. This is the *only* sanctioned implementation of the permutation. A
+  private copy is what #973 exists to stop: the census found one that had drifted from the shared
+  packer it was copied from, and layout knowledge living in the wrong repository.
+- **`PackedLayoutFixtures`** — canonical and kernel-order fixtures per format, in `main` rather than
+  a test source set, so the artifact a downstream repository already depends on carries them.
+  `disagreement(bytes, encoding, kernelOrder)` returns `null` when the bytes agree, or names the
+  first block that is in the wrong place.
+
+A downstream test asserting `disagreement(myConverterOutput, Q4_K, kernelOrder = true) == null` is
+running against the same bytes the engine's own tests run against. That is what makes a layout
+change fail somewhere rather than ship: previously each repository's suite proved only its own
+convention, and neither crossed the boundary — which is how a byte-layout change shipped as a
+green-CI hotfix.
+
+Every fixture is three blocks wide on purpose. At one block per row the two orders coincide, and a
+test built that way passes whichever convention the code holds.
+
 ## Rules
 
 1. **A file's bytes are `ROW_MAJOR`.** Anything loaded from GGUF, produced by a quantizer, or
@@ -66,12 +89,27 @@ primitive is [#1096](https://github.com/SKaiNET-developers/SKaiNET/issues/1096).
    minor/major change, never a patch — this is what let a byte-layout change ship as a green-CI
    hotfix once already.
 
+## Prepack once, at load
+
+The relayout is O(bytes). A weight prepacked at load hits the packed kernel's key directly and the
+dispatcher copies nothing per call; a canonical weight handed straight to the dispatcher gets the
+decoding reference kernel — correct, and slower.
+
+`KernelDispatch.matmul(..., prepackWeights = true)` will relayout for you, and it is **off by
+default** because doing it inside a decode step copies the whole weight per token. That is the same
+per-forward copy #973 objects to in `ops.transpose`, merely moved; wiring it on by default broke
+M1-A3 in exactly that way during #1095, which is how the default was chosen.
+
 ## Status
 
-`Layout.blockOrder`, the `LayoutClass` split, `prepack` and this document land with
-[#1094](https://github.com/SKaiNET-developers/SKaiNET/issues/1094). The remaining work is tracked
-as sub-issues of #973: bridging the packed SPI kernels through the ordered key
-([#1095](https://github.com/SKaiNET-developers/SKaiNET/issues/1095)), the weight-transposing matmul
-primitive (#1096), engine-owned prepacking and cross-repo contract fixtures
-([#1097](https://github.com/SKaiNET-developers/SKaiNET/issues/1097)), and normalizing weight
-orientation at the load boundary ([#1098](https://github.com/SKaiNET-developers/SKaiNET/issues/1098)).
+`Layout.blockOrder`, the `LayoutClass` split, `prepack` and this document landed with
+[#1094](https://github.com/SKaiNET-developers/SKaiNET/issues/1094); the packed SPI kernels reach the
+registry through the ordered key since
+[#1095](https://github.com/SKaiNET-developers/SKaiNET/issues/1095); `PackedWeights` and
+`PackedLayoutFixtures` since [#1097](https://github.com/SKaiNET-developers/SKaiNET/issues/1097).
+
+Still open under #973: the weight-transposing matmul primitive that removes the packed
+`ops.transpose` entirely ([#1096](https://github.com/SKaiNET-developers/SKaiNET/issues/1096)), and
+normalizing weight orientation at the load boundary
+([#1098](https://github.com/SKaiNET-developers/SKaiNET/issues/1098)) — until that lands, a
+verbatim-loaded GGUF weight's `[in, out]` shape still disagrees with what the relayout assumes.
