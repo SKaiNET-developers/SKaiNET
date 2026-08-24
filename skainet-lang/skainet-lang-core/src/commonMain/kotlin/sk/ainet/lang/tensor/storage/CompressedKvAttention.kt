@@ -86,6 +86,29 @@ public class CompressedKvAttention(
     }
 
     /**
+     * The key window `[startPos, endPos)` as the one or two runs the cache physically holds
+     * (#1036, M2-F5) — the pair `WindowedAttention.decodeStep` iterates without copying.
+     *
+     * For a compressed cache each half is an ordinary view of the decoded window, so a quantized
+     * KV store needs no special case here; for the dense ring the halves are views over the ring
+     * itself and nothing is copied at all.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public fun keyWindowForAttention(
+        layer: Int,
+        startPos: Int = 0,
+        endPos: Int = cache.currentSeqLen,
+    ): sk.ainet.lang.memory.WindowedKV = cache.keyWindow(layer, startPos, endPos)
+
+    /** The value window; see [keyWindowForAttention]. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public fun valueWindowForAttention(
+        layer: Int,
+        startPos: Int = 0,
+        endPos: Int = cache.currentSeqLen,
+    ): sk.ainet.lang.memory.WindowedKV = cache.valueWindow(layer, startPos, endPos)
+
+    /**
      * Load raw [TensorStorage] for keys, preserving the cache's native encoding.
      *
      * This is the zero-copy path for backends that can fuse decompression

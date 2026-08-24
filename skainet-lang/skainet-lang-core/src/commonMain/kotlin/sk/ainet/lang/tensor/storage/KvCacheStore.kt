@@ -85,6 +85,37 @@ public interface KvCacheStore {
     @sk.ainet.lang.memory.ExperimentalMemoryApi
     public val valueBytesPerElement: Double get() = kvBytesPerElement(valueFormat)
 
+    /**
+     * The attention window `[from, to)` of this layer's keys, as the one or two runs it physically
+     * occupies (#1036, M2-F5). A ring that has wrapped holds its newest positions in two runs; the
+     * pair is handed to attention instead of being copied together first.
+     *
+     * The default implementation copies the range once through [readKeys], which is correct for
+     * every store; [DefaultKvCacheStore] overrides it with zero-copy views over the ring itself.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public fun keyWindow(layer: Int, from: Int = 0, to: Int = currentSeqLen): sk.ainet.lang.memory.WindowedKV =
+        copiedWindow(readKeys(layer, from, to), to - from, keyFormat.dtype)
+
+    /** The attention window of this layer's values; see [keyWindow]. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public fun valueWindow(layer: Int, from: Int = 0, to: Int = currentSeqLen): sk.ainet.lang.memory.WindowedKV =
+        copiedWindow(readValues(layer, from, to), to - from, valueFormat.dtype)
+
+    /** A single-run window over an already-materialized `[heads, positions, headDim]` array. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    private fun copiedWindow(
+        values: FloatArray,
+        positions: Int,
+        dtype: sk.ainet.lang.types.DType,
+    ): sk.ainet.lang.memory.WindowedKV = sk.ainet.lang.memory.WindowedKV(
+        sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.Storage.Heap.wrap(values),
+            sk.ainet.lang.tensor.Shape(numHeads, positions, headDim),
+            dtype,
+        ),
+    )
+
     /** Placement intent for the cache buffers. */
     public val placement: Placement
 

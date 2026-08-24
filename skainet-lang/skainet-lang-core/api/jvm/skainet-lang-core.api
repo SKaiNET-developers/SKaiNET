@@ -1246,6 +1246,35 @@ public final class sk/ainet/lang/memory/ViewsKt {
 	public static final fun viewOrNull (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/TensorView;
 }
 
+public final class sk/ainet/lang/memory/WindowedAttention {
+	public static final field INSTANCE Lsk/ainet/lang/memory/WindowedAttention;
+	public final fun decodeStep ([FLsk/ainet/lang/memory/WindowedKV;Lsk/ainet/lang/memory/WindowedKV;[FF)V
+	public static synthetic fun decodeStep$default (Lsk/ainet/lang/memory/WindowedAttention;[FLsk/ainet/lang/memory/WindowedKV;Lsk/ainet/lang/memory/WindowedKV;[FFILjava/lang/Object;)V
+	public final fun decodeStepGathered ([FLsk/ainet/lang/memory/WindowedKV;Lsk/ainet/lang/memory/WindowedKV;[FLsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;F)V
+	public static synthetic fun decodeStepGathered$default (Lsk/ainet/lang/memory/WindowedAttention;[FLsk/ainet/lang/memory/WindowedKV;Lsk/ainet/lang/memory/WindowedKV;[FLsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;FILjava/lang/Object;)V
+}
+
+public final class sk/ainet/lang/memory/WindowedKV {
+	public static final field Companion Lsk/ainet/lang/memory/WindowedKV$Companion;
+	public static final field POSITION_AXIS I
+	public fun <init> (Lsk/ainet/lang/memory/TensorView;Lsk/ainet/lang/memory/TensorView;)V
+	public synthetic fun <init> (Lsk/ainet/lang/memory/TensorView;Lsk/ainet/lang/memory/TensorView;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun gather (Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/TensorView;
+	public static synthetic fun gather$default (Lsk/ainet/lang/memory/WindowedKV;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
+	public final fun get (III)F
+	public final fun getHead ()Lsk/ainet/lang/memory/TensorView;
+	public final fun getHeadDim ()I
+	public final fun getHeads ()I
+	public final fun getLength ()I
+	public final fun getParts ()Ljava/util/List;
+	public final fun getTail ()Lsk/ainet/lang/memory/TensorView;
+	public final fun getWrapped ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/WindowedKV$Companion {
+}
+
 public final class sk/ainet/lang/memory/plan/ActualMemory {
 	public static final field Companion Lsk/ainet/lang/memory/plan/ActualMemory$Companion;
 	public fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
@@ -6625,6 +6654,8 @@ public final class sk/ainet/lang/tensor/storage/CompressedKvAttention {
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheStore;Lsk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun isKeyCompressed ()Z
 	public final fun isValueCompressed ()Z
+	public final fun keyWindowForAttention (III)Lsk/ainet/lang/memory/WindowedKV;
+	public static synthetic fun keyWindowForAttention$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)Lsk/ainet/lang/memory/WindowedKV;
 	public final fun loadKeyStorageRaw (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun loadKeyStorageRaw$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun loadKeysForAttention (III)[F
@@ -6634,6 +6665,8 @@ public final class sk/ainet/lang/tensor/storage/CompressedKvAttention {
 	public final fun loadValuesForAttention (III)[F
 	public static synthetic fun loadValuesForAttention$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)[F
 	public final fun storeKeyValue (I[F[F)V
+	public final fun valueWindowForAttention (III)Lsk/ainet/lang/memory/WindowedKV;
+	public static synthetic fun valueWindowForAttention$default (Lsk/ainet/lang/tensor/storage/CompressedKvAttention;IIIILjava/lang/Object;)Lsk/ainet/lang/memory/WindowedKV;
 }
 
 public final class sk/ainet/lang/tensor/storage/CompressedKvAttention$DequantStrategy : java/lang/Enum {
@@ -6671,7 +6704,8 @@ public final class sk/ainet/lang/tensor/storage/DefaultBufferResolver : sk/ainet
 public final class sk/ainet/lang/tensor/storage/DefaultKvCacheStore : sk/ainet/lang/tensor/storage/KvCacheStore {
 	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;)V
 	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/memory/ModelScope;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/memory/ModelScope;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/memory/ModelScope;Z)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/KvCacheConfig;Lsk/ainet/lang/memory/ModelScope;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun appendToken (I[F[F)V
 	public fun clear ()V
 	public fun evict (I)V
@@ -6685,14 +6719,18 @@ public final class sk/ainet/lang/tensor/storage/DefaultKvCacheStore : sk/ainet/l
 	public fun getNumLayers ()I
 	public fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
 	public final fun getPreallocatedBytes ()J
+	public final fun getSlidingWindow ()Z
 	public fun getValueBytesPerElement ()D
 	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getValueFormat ()Lsk/ainet/lang/memory/Format;
+	public final fun getWindowStart ()I
+	public fun keyWindow (III)Lsk/ainet/lang/memory/WindowedKV;
 	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readKeys (III)[F
 	public fun readValueStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readValues (III)[F
+	public fun valueWindow (III)Lsk/ainet/lang/memory/WindowedKV;
 }
 
 public final class sk/ainet/lang/tensor/storage/DeviceKind : java/lang/Enum {
@@ -6811,6 +6849,8 @@ public abstract interface class sk/ainet/lang/tensor/storage/KvCacheStore {
 	public fun getValueBytesPerElement ()D
 	public abstract fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getValueFormat ()Lsk/ainet/lang/memory/Format;
+	public fun keyWindow (III)Lsk/ainet/lang/memory/WindowedKV;
+	public static synthetic fun keyWindow$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/memory/WindowedKV;
 	public abstract fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public abstract fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun readKeyStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
@@ -6820,6 +6860,8 @@ public abstract interface class sk/ainet/lang/tensor/storage/KvCacheStore {
 	public static synthetic fun readValueStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public abstract fun readValues (III)[F
 	public static synthetic fun readValues$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
+	public fun valueWindow (III)Lsk/ainet/lang/memory/WindowedKV;
+	public static synthetic fun valueWindow$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/memory/WindowedKV;
 }
 
 public final class sk/ainet/lang/tensor/storage/KvCacheStore$Companion {
@@ -6835,10 +6877,14 @@ public final class sk/ainet/lang/tensor/storage/KvCacheStore$DefaultImpls {
 	public static fun getKeyFormat (Lsk/ainet/lang/tensor/storage/KvCacheStore;)Lsk/ainet/lang/memory/Format;
 	public static fun getValueBytesPerElement (Lsk/ainet/lang/tensor/storage/KvCacheStore;)D
 	public static fun getValueFormat (Lsk/ainet/lang/tensor/storage/KvCacheStore;)Lsk/ainet/lang/memory/Format;
+	public static fun keyWindow (Lsk/ainet/lang/tensor/storage/KvCacheStore;III)Lsk/ainet/lang/memory/WindowedKV;
+	public static synthetic fun keyWindow$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/memory/WindowedKV;
 	public static synthetic fun readKeyStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun readKeys$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
 	public static synthetic fun readValueStorage$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public static synthetic fun readValues$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)[F
+	public static fun valueWindow (Lsk/ainet/lang/tensor/storage/KvCacheStore;III)Lsk/ainet/lang/memory/WindowedKV;
+	public static synthetic fun valueWindow$default (Lsk/ainet/lang/tensor/storage/KvCacheStore;IIIILjava/lang/Object;)Lsk/ainet/lang/memory/WindowedKV;
 }
 
 public final class sk/ainet/lang/tensor/storage/LogicalDType : java/lang/Enum {
@@ -7350,11 +7396,13 @@ public final class sk/ainet/lang/tensor/storage/TurboQuantKvCacheStore : sk/aine
 	public fun getValueBytesPerElement ()D
 	public fun getValueEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getValueFormat ()Lsk/ainet/lang/memory/Format;
+	public fun keyWindow (III)Lsk/ainet/lang/memory/WindowedKV;
 	public fun memoryReport ()Lsk/ainet/lang/tensor/storage/KvCacheMemoryReport;
 	public fun readKeyStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readKeys (III)[F
 	public fun readValueStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readValues (III)[F
+	public fun valueWindow (III)Lsk/ainet/lang/memory/WindowedKV;
 }
 
 public abstract interface annotation class sk/ainet/lang/tensor/storage/Weights : java/lang/annotation/Annotation {
