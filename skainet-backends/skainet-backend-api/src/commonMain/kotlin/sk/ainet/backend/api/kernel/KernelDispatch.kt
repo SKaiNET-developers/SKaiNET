@@ -4,6 +4,7 @@ import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.Format
 import sk.ainet.lang.memory.Scope
 import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.memory.blockSpec
 import sk.ainet.lang.memory.trace.NoopTraceSink
 import sk.ainet.lang.memory.trace.TraceEvent
 import sk.ainet.lang.memory.trace.TraceSink
@@ -76,12 +77,38 @@ public object KernelDispatch {
             runTraced(exact, listOf(a, b), out, sink)
             return
         }
+        // The weight's encoding may *ask* for a different activation format — a ternary weight wants
+        // int8 with a per-token scale (`W1.58A8`, §5.3). Honour the request when a kernel exists for
+        // the requantized pair: the adapter costs bytes in the caller's scope every step, so it is
+        // allocated there and emitted as an AdapterInserted rather than hidden inside the kernel.
+        val wanted = b.format.encoding.blockSpec?.activation
+        if (wanted != null && wanted != a.format) {
+            val requantized = requantizeFor(wanted, a, scope, sink)
+            if (requantized != null) {
+                val ternaryKernel = find(KernelKey.matmul(requantized, b))
+                if (ternaryKernel != null) {
+                    runTraced(ternaryKernel, listOf(requantized, b), out, sink)
+                    return
+                }
+            }
+        }
         // No exact kernel: adapt the operands a kernel would accept, then fall back to the reference,
         // which reads any format through decoding get().
         val adaptedA = adapt(a, scope, sink, "gather")
         val reference = ReferenceMatmulKernel(KernelKey.matmul(adaptedA, b))
         runTraced(reference, listOf(adaptedA, b), out, sink)
     }
+
+    /**
+     * Convert [activation] into the [wanted] activation format, or `null` when no adapter for it
+     * exists. Today the only one is the int8 absmax requantization the ternary kernels ask for.
+     */
+    private fun requantizeFor(wanted: Format, activation: TensorView, scope: Scope, sink: TraceSink): TensorView? =
+        if (wanted == sk.ainet.lang.memory.I8Absmax.FORMAT && activation.shape.rank == 2) {
+            sk.ainet.lang.memory.I8Absmax.requantize(activation, scope, sink)
+        } else {
+            null
+        }
 
     /** Materialize [view] into a dense contiguous view when it is strided; emits an adapter event. */
     public fun adapt(view: TensorView, scope: Scope, sink: TraceSink, kind: String): TensorView {

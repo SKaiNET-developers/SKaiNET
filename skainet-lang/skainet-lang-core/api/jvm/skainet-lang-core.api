@@ -795,6 +795,20 @@ public final class sk/ainet/lang/memory/ForwardScope : sk/ainet/lang/memory/Scop
 	public static synthetic fun retain$default (Lsk/ainet/lang/memory/ForwardScope;Lsk/ainet/lang/memory/Storage$Heap;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/Storage$Heap;
 }
 
+public final class sk/ainet/lang/memory/I8Absmax {
+	public static final field INSTANCE Lsk/ainet/lang/memory/I8Absmax;
+	public final fun bytesFor (II)J
+	public final fun codeAt (Lsk/ainet/lang/memory/TensorView;II)I
+	public final fun getFORMAT ()Lsk/ainet/lang/memory/Format;
+	public final fun requantize (Lsk/ainet/lang/memory/TensorView;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/TensorView;
+	public static synthetic fun requantize$default (Lsk/ainet/lang/memory/I8Absmax;Lsk/ainet/lang/memory/TensorView;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
+	public final fun rowCodes (Lsk/ainet/lang/memory/TensorView;I)[B
+	public final fun scaleOf (Lsk/ainet/lang/memory/TensorView;I)F
+	public final fun valueAt (Lsk/ainet/lang/memory/TensorView;II)F
+	public final fun view (Lsk/ainet/lang/memory/Storage;IILsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/TensorView;
+	public static synthetic fun view$default (Lsk/ainet/lang/memory/I8Absmax;Lsk/ainet/lang/memory/Storage;IILsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
+}
+
 public final class sk/ainet/lang/memory/Layout {
 	public static final field Companion Lsk/ainet/lang/memory/Layout$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZI)V
@@ -1209,6 +1223,7 @@ public final class sk/ainet/lang/memory/TensorView$Companion {
 
 public final class sk/ainet/lang/memory/TernaryBlockDecoder : sk/ainet/lang/memory/BlockDecoder {
 	public fun <init> (Lsk/ainet/lang/tensor/storage/TensorEncoding;)V
+	public fun <init> (Lsk/ainet/lang/tensor/storage/TensorEncoding;I)V
 	public fun decodeBlock (Lsk/ainet/lang/memory/Storage;J[FI)V
 	public fun decodeElement (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/memory/Layout;J)F
 	public fun getBlockSize ()I
@@ -7124,6 +7139,16 @@ public abstract interface class sk/ainet/lang/tensor/storage/TensorEncoding {
 public final class sk/ainet/lang/tensor/storage/TensorEncoding$BITNET_B1_58 : sk/ainet/lang/tensor/storage/TensorEncoding {
 	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$BITNET_B1_58;
 	public static final field SCALE_BYTES I
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$DENSE_I8_ABSMAX : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field CODE_RANGE I
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$DENSE_I8_ABSMAX;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getName ()Ljava/lang/String;
 	public fun hashCode ()I

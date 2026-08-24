@@ -56,8 +56,12 @@ public data class BlockSpec(
         /** [blockSize] value meaning "the whole tensor is one block". */
         public const val PER_TENSOR_BLOCK: Int = 0
 
-        /** The activation format of the ternary kernels: int8, one byte per element (`W1.58A8`). */
-        public val INT8_ACTIVATION: Format = Format(Int8, TensorEncoding.Dense(1))
+        /**
+         * The activation format of the ternary kernels (`W1.58A8`): int8 codes with a per-token
+         * absmax scale — [TensorEncoding.DENSE_I8_ABSMAX], which is what the requant adapter of
+         * #1040 produces and what `bitnet_gemv` consumes.
+         */
+        public val INT8_ACTIVATION: Format = Format(Int8, TensorEncoding.DENSE_I8_ABSMAX)
     }
 }
 
@@ -74,6 +78,9 @@ public val TensorEncoding.blockSpec: BlockSpec?
     get() = when (this) {
         is TensorEncoding.Dense -> null
         is TensorEncoding.Opaque -> null
+        // Activations, not weights: the "block" is a row, whose length is the tensor's, not the
+        // encoding's — see the note on DENSE_I8_ABSMAX.
+        TensorEncoding.DENSE_I8_ABSMAX -> null
         TensorEncoding.Q4_0 -> BlockSpec(32, 18, 4.0, ScalePlacement.BLOCK_HEAD)
         TensorEncoding.Q5_0 -> BlockSpec(32, 22, 5.0, ScalePlacement.BLOCK_HEAD)
         TensorEncoding.Q5_1 -> BlockSpec(32, 24, 5.0, ScalePlacement.BLOCK_HEAD)
