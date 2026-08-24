@@ -17,6 +17,7 @@ set(SKAINET_KERNEL_SOURCES
     ${SKAINET_KERNELS_ROOT}/src/q4k_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q5k_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q6k_matmul.c
+    ${SKAINET_KERNELS_ROOT}/src/bitnet_gemv.c
 )
 
 set(SKAINET_JNI_SHIM ${CMAKE_CURRENT_SOURCE_DIR}/skainet_jni.c)

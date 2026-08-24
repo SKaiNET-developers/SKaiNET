@@ -142,3 +142,30 @@ Java_sk_ainet_exec_kernel_jni_JniKernels_q6kMatmul(
         skainet_q6k_matmul(in, inputOffset, (const uint8_t*) w, weightByteOffset,
                            inputDim, outputDim, out, outputOffset))
 }
+
+/*
+ * bitnet_gemv (SKEEP-003 §5.3, #1041): int8 activations against ternary TQ2_0
+ * weights. Its activation is a *byte* array, not floats, so it does not fit
+ * SKAINET_JNI_MATMUL_BODY's float-input shape and pins its three arrays here.
+ */
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_bitnetGemvTq20(
+    JNIEnv* env, jobject thiz,
+    jbyteArray activation, jint activationOffset, jfloat activationScale,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    jbyte* act = (*env)->GetPrimitiveArrayCritical(env, activation, NULL);
+    jbyte* w = act ? (*env)->GetPrimitiveArrayCritical(env, weight, NULL) : NULL;
+    jfloat* out = w ? (*env)->GetPrimitiveArrayCritical(env, output, NULL) : NULL;
+    if (out) {
+        skainet_bitnet_gemv_tq2_0((const int8_t*) act, activationOffset, activationScale,
+                                  (const uint8_t*) w, weightByteOffset,
+                                  inputDim, outputDim, out, outputOffset);
+    }
+    if (out) (*env)->ReleasePrimitiveArrayCritical(env, output, out, 0);
+    if (w) (*env)->ReleasePrimitiveArrayCritical(env, weight, w, JNI_ABORT);
+    if (act) (*env)->ReleasePrimitiveArrayCritical(env, activation, act, JNI_ABORT);
+}
