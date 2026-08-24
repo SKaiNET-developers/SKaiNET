@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // this file *is* the deprecated mechanism
+
 package sk.ainet.lang.tensor
 
 import sk.ainet.lang.types.DType
@@ -27,6 +29,13 @@ import sk.ainet.lang.types.DType
  * @param T the data type constraint extending DType, defining the numerical precision
  * @param V the actual value type that will be stored and accessed
  */
+@Deprecated(
+    message = "One view mechanism (SKEEP-003 §4.6, #1034): a view is a `sk.ainet.lang.memory.TensorView` — " +
+        "Shape + Format + Layout + Storage over the parent's bytes — built with `tensor.view()` and reshaped " +
+        "with `narrow`/`step`/`transpose`/`unsqueeze`/`squeeze`/`slice(slices)`. No ReplaceWith: the replacement " +
+        "is not type-parameterized, so an automatic fix would produce code that does not compile. This interface " +
+        "and its implementations keep working until the next major.",
+)
 public interface TensorView<T : DType, V> : Tensor<T, V> {
     
     /**

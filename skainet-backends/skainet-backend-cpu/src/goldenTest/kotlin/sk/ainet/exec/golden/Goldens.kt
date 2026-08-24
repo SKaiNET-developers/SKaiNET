@@ -9,6 +9,16 @@ package sk.ainet.exec.golden
  */
 internal object Goldens {
     val expected: Map<String, String> = mapOf(
+        // #1034 — the zero-copy packed transpose: a TensorView whose block axis moved, decoding
+        // the same matrix the block-grid permutation in DefaultCpuOps.transpose produces.
+        "transpose/Q4_0" to "n=384 fnv=272715de48d49929 head=3c442000,3df90000,be8ed800,be2e0000",
+        "transpose/Q4_K" to "n=3072 fnv=894ff6387d5c031f head=41ca6280,4129ccc0,414a2844,41d82e00",
+        "transpose/Q5_0" to "n=384 fnv=73c3dedcac1b0471 head=bd4ce000,3ddf7000,3e857000,3c2e0000",
+        "transpose/Q5_1" to "n=384 fnv=c7a3a894ff2b8d10 head=3ec3a800,be569800,3ef3fe00,bdc0f000",
+        "transpose/Q5_K" to "n=3072 fnv=9646306126643f2d head=41cc33a0,40480970,421ca022,41b5e2b8",
+        "transpose/Q6_K" to "n=3072 fnv=fee2e34031fb8e86 head=411c7680,c21b1e00,416739c0,4140f8c8",
+        "transpose/Q8_0" to "n=384 fnv=9c5a086e8bc0d528 head=40117580,bf912800,4014f800,3fb2db00",
+
         // #1033 — the ternary encodings, encoded and decoded by TernaryCodec (the GGML layout,
         // interleave included). TQ1_0 and TQ2_0 share a decode digest on purpose: the same ternary
         // values in two different byte layouts must come back identical.

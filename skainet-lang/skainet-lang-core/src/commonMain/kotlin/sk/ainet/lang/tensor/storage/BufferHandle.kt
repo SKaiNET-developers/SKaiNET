@@ -59,6 +59,11 @@ public sealed interface BufferHandle {
      * A slice/view into another [BufferHandle]. Shares the parent's backing
      * memory. Mutations (if the parent is mutable) are visible to both.
      */
+    @Deprecated(
+        message = "One view mechanism (SKEEP-003 §4.6, #1034): a byte range of someone else's buffer is " +
+            "`storage.slice(offsetBytes, lengthBytes)` — a Storage with `Owner.Alias`, addressed by a Layout. " +
+            "Kept until the next major.",
+    )
     public class Aliased(
         public val parent: BufferHandle,
         public val byteOffset: Long,

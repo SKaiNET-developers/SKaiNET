@@ -797,10 +797,11 @@ public final class sk/ainet/lang/memory/ForwardScope : sk/ainet/lang/memory/Scop
 
 public final class sk/ainet/lang/memory/Layout {
 	public static final field Companion Lsk/ainet/lang/memory/Layout$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZ)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZI)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun byteOffsetOf ([I)J
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlockAxis ()I
 	public final fun getBlocked ()Z
 	public final fun getElementBytes ()I
 	public final fun getElementCount ()J
@@ -814,6 +815,7 @@ public final class sk/ainet/lang/memory/Layout {
 	public final fun isRowMajor ()Z
 	public final fun narrow (III)Lsk/ainet/lang/memory/Layout;
 	public final fun squeeze (I)Lsk/ainet/lang/memory/Layout;
+	public final fun step (II)Lsk/ainet/lang/memory/Layout;
 	public fun toString ()Ljava/lang/String;
 	public final fun transpose (II)Lsk/ainet/lang/memory/Layout;
 	public static synthetic fun transpose$default (Lsk/ainet/lang/memory/Layout;IIILjava/lang/Object;)Lsk/ainet/lang/memory/Layout;
@@ -1190,6 +1192,7 @@ public final class sk/ainet/lang/memory/TensorView {
 	public final fun narrow (III)Lsk/ainet/lang/memory/TensorView;
 	public final fun set ([IF)V
 	public final fun squeeze (I)Lsk/ainet/lang/memory/TensorView;
+	public final fun step (II)Lsk/ainet/lang/memory/TensorView;
 	public final fun toFloatArray ()[F
 	public fun toString ()Ljava/lang/String;
 	public final fun transpose (II)Lsk/ainet/lang/memory/TensorView;
@@ -1234,6 +1237,13 @@ public final class sk/ainet/lang/memory/TernaryCodec {
 	public final fun encodeBitNet ([F)[B
 	public final fun encodeTq1_0 ([F)[B
 	public final fun encodeTq2_0 ([F)[B
+}
+
+public final class sk/ainet/lang/memory/ViewsKt {
+	public static final fun slice (Lsk/ainet/lang/memory/TensorView;Ljava/util/List;)Lsk/ainet/lang/memory/TensorView;
+	public static final fun slice (Lsk/ainet/lang/memory/TensorView;[Lsk/ainet/lang/tensor/Slice;)Lsk/ainet/lang/memory/TensorView;
+	public static final fun view (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/TensorView;
+	public static final fun viewOrNull (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/memory/plan/ActualMemory {

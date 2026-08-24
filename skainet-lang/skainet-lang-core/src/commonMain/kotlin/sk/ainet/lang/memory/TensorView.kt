@@ -49,17 +49,41 @@ public class TensorView(
         require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
         check(!(layout.blocked && layout.shape.rank != shape.rank)) { "this view's blocks span rows; slice it after materialize()" }
         require(from >= 0 && size >= 0 && from + size <= shape[axis]) { "narrow($axis, $from, $size) outside extent ${shape[axis]}" }
-        val onBlockAxis = layout.blocked && axis == shape.rank - 1
+        val onBlockAxis = layout.blocked && axis == layout.blockAxis
         val unit = if (onBlockAxis) blockSize() else 1
         if (onBlockAxis) require(from % unit == 0 && size % unit == 0) { "narrowing the block axis must align to the block size $unit" }
         return derive(narrowShape(axis, size), layout.narrow(axis, from / unit, size / unit), idSuffix = "$from..${from + size})")
     }
 
-    /** A transposed view — metadata only; packed bytes are untouched (the packed-transpose trick). */
+    /**
+     * A transposed view — metadata only; the bytes are untouched, packed ones included. For a
+     * block-packed view the block axis travels with its extent ([Layout.blockAxis]), so the
+     * transposed view decodes the same matrix, transposed, without the O(bytes) block-grid
+     * permutation `DefaultCpuOps.transpose` still performs for the kernels that demand block-major
+     * bytes (#968/#971, contract #973).
+     */
     public fun transpose(axis0: Int = shape.rank - 2, axis1: Int = shape.rank - 1): TensorView {
-        require(!format.isDense.not() || !layout.blocked || axis1 == shape.rank - 1) { "a blocked layout cannot move its block axis" }
+        require(shape.rank >= 2) { "transpose needs rank >= 2" }
+        require(axis0 in 0 until shape.rank && axis1 in 0 until shape.rank) { "axes out of range" }
+        check(!(layout.blocked && layout.shape.rank != shape.rank)) { "this view's blocks span rows; transpose it after materialize()" }
         val dims = shape.dimensions.copyOf(); val t = dims[axis0]; dims[axis0] = dims[axis1]; dims[axis1] = t
         return derive(Shape(dims), layout.transpose(axis0, axis1), idSuffix = "ᵀ")
+    }
+
+    /**
+     * Every [step]-th element along [axis] — zero-copy, the strided view (`Slice.Step`). Not
+     * available on the block axis of a packed view: a block's bytes are indivisible.
+     */
+    public fun step(axis: Int, step: Int): TensorView {
+        require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
+        require(step > 0) { "step must be positive, got $step" }
+        if (step == 1) return this
+        require(!(layout.blocked && axis == layout.blockAxis)) {
+            "cannot step the block axis of a ${format.encoding.name} view; materialize() first"
+        }
+        val dims = shape.dimensions.copyOf()
+        dims[axis] = (shape[axis] + step - 1) / step
+        return derive(Shape(dims), layout.step(axis, step), idSuffix = "::$step")
     }
 
     /** A view with a unit axis inserted at [axis]. */
@@ -133,16 +157,17 @@ public class TensorView(
             }
             return layout.offsetElements * bs + flat
         }
-        val last = indices[indices.size - 1]
-        val blockIdxWithinRow = last / bs
-        val within = last % bs
+        // The block axis is the one measured in blocks; after a transpose it is no longer the last.
+        val blockAxis = if (layout.blocked) layout.blockAxis else indices.size - 1
+        val along = indices[blockAxis]
+        require(along in 0 until shape[blockAxis]) { "index $along out of range for axis $blockAxis (extent ${shape[blockAxis]})" }
+        val within = along % bs
         var flat = layout.offsetElements
-        for (d in 0 until indices.size - 1) {
+        for (d in indices.indices) {
             val i = indices[d]
             require(i in 0 until shape[d]) { "index $i out of range for axis $d (extent ${shape[d]})" }
-            flat += i.toLong() * layout.strides[d]
+            flat += (if (d == blockAxis) (i / bs).toLong() else i.toLong()) * layout.strides[d]
         }
-        flat += blockIdxWithinRow.toLong() * layout.strides[indices.size - 1]
         return flat * bs + within
     }
 
