@@ -240,7 +240,7 @@ Runnable examples:
 
 ### Data and I/O
 
-- Built-in loaders: MNIST, Fashion-MNIST, CIFAR-10
+- Built-in loaders: MNIST, Fashion-MNIST, CIFAR-10, Iris
 - URI-backed data sources: `file://`, `https://`, `hf+https://`, and `hf://...`
 - Dataset operations: deterministic shuffle/split, stratified split, filter/map/transform views, batch flows, and epoch flows
 - Raw dataset parsers: CSV, TSV, JSON arrays/objects, JSON Lines (`.jsonl`, `.ndjson`)
