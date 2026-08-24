@@ -12,6 +12,8 @@ import sk.ainet.lang.memory.plan.DeviceFit
 import sk.ainet.lang.memory.plan.DeviceMemory
 import sk.ainet.lang.memory.plan.MemoryPlan
 import sk.ainet.lang.memory.plan.MemoryPlans
+import sk.ainet.lang.memory.plan.PlannerProfile
+import sk.ainet.lang.memory.plan.ProfiledPlan
 import sk.ainet.lang.memory.plan.fitOn
 
 /**
@@ -94,4 +96,29 @@ public object AndroidGguf {
     /** [fits] against an explicit [DeviceMemory] — the form a test or a simulation uses. */
     public fun fits(device: DeviceMemory, filePath: String, ctx: Int, weightsMapped: Boolean = true): DeviceFit =
         plan(filePath, ctx).fitOn(device, weightsMapped)
+
+    /**
+     * The plan under a device profile (#1039): [PlannerProfile.MOBILE_2GB] by default on Android —
+     * 700 MB reserved, weights mapped, the KV cache quantized automatically once the plan passes
+     * 80 % of the budget — with every decision it made recorded in the result.
+     *
+     * `profiledPlan(...).requireFits(device)` is the refusal that happens *before* a byte is
+     * allocated (M2-F6).
+     */
+    public fun profiledPlan(
+        filePath: String,
+        ctx: Int,
+        device: DeviceMemory,
+        profile: PlannerProfile = PlannerProfile.MOBILE_2GB,
+    ): ProfiledPlan = openSource(filePath).use { source ->
+        profile.plan(StreamingGGUFReader.open(source).planInput(ctx), device.availableRamBytes)
+    }
+
+    /** [profiledPlan] reading this device's memory itself. */
+    public fun profiledPlan(
+        context: Context,
+        filePath: String,
+        ctx: Int,
+        profile: PlannerProfile = PlannerProfile.MOBILE_2GB,
+    ): ProfiledPlan = profiledPlan(filePath, ctx, deviceMemory(context), profile)
 }

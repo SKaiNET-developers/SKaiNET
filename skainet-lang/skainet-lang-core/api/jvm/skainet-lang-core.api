@@ -1295,6 +1295,33 @@ public final class sk/ainet/lang/memory/plan/Budget$Companion {
 	public final fun of (J)Lsk/ainet/lang/memory/plan/Budget;
 }
 
+public final class sk/ainet/lang/memory/plan/DequantSeverity : java/lang/Enum {
+	public static final field ERROR Lsk/ainet/lang/memory/plan/DequantSeverity;
+	public static final field OK Lsk/ainet/lang/memory/plan/DequantSeverity;
+	public static final field WARN Lsk/ainet/lang/memory/plan/DequantSeverity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/memory/plan/DequantSeverity;
+	public static fun values ()[Lsk/ainet/lang/memory/plan/DequantSeverity;
+}
+
+public final class sk/ainet/lang/memory/plan/DequantVerdict {
+	public fun <init> (Lsk/ainet/lang/memory/plan/PlannerProfile;DLsk/ainet/lang/memory/plan/DequantSeverity;Ljava/lang/String;)V
+	public final fun component1 ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun component2 ()D
+	public final fun component3 ()Lsk/ainet/lang/memory/plan/DequantSeverity;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Lsk/ainet/lang/memory/plan/PlannerProfile;DLsk/ainet/lang/memory/plan/DequantSeverity;Ljava/lang/String;)Lsk/ainet/lang/memory/plan/DequantVerdict;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/DequantVerdict;Lsk/ainet/lang/memory/plan/PlannerProfile;DLsk/ainet/lang/memory/plan/DequantSeverity;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/DequantVerdict;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getProfile ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun getSeverity ()Lsk/ainet/lang/memory/plan/DequantSeverity;
+	public final fun getShare ()D
+	public fun hashCode ()I
+	public final fun requireAcceptable ()V
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/memory/plan/DeviceFit {
 	public fun <init> (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;ZLsk/ainet/lang/memory/plan/PoolFit;Lsk/ainet/lang/memory/plan/PoolFit;Ljava/util/List;)V
 	public final fun component1 ()Lsk/ainet/lang/memory/plan/MemoryPlan;
@@ -1547,6 +1574,49 @@ public final class sk/ainet/lang/memory/plan/PlanVsActualLine {
 	public final fun withinTolerance (D)Z
 }
 
+public final class sk/ainet/lang/memory/plan/PlannerProfile {
+	public static final field Companion Lsk/ainet/lang/memory/plan/PlannerProfile$Companion;
+	public static final field MOBILE_RAM_CEILING J
+	public static final field OFF_HEAP_THRESHOLD J
+	public fun <init> (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZ)V
+	public synthetic fun <init> (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun budget (J)Lsk/ainet/lang/memory/plan/Budget;
+	public final fun checkDequant (Ljava/lang/Double;)Lsk/ainet/lang/memory/plan/DequantVerdict;
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public final fun component5 ()D
+	public final fun component6 ()J
+	public final fun component7 ()D
+	public final fun component8 ()Z
+	public final fun component9 ()Z
+	public final fun copy (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZ)Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlannerProfile;Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun domainFor (J)Lsk/ainet/lang/tensor/storage/MemoryDomain;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDequantWarnFraction ()D
+	public final fun getKvAutoQuantizeAbove ()D
+	public final fun getKvMode ()Lsk/ainet/lang/memory/plan/KvCacheMode;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOffHeapThresholdBytes ()J
+	public final fun getPrefillChunk ()I
+	public final fun getReserveBytes ()J
+	public final fun getStrict ()Z
+	public final fun getWeightsMapped ()Z
+	public fun hashCode ()I
+	public final fun plan (Lsk/ainet/lang/memory/plan/PlanInput;J)Lsk/ainet/lang/memory/plan/ProfiledPlan;
+	public final fun strict ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/PlannerProfile$Companion {
+	public final fun forDevice (Lsk/ainet/lang/memory/plan/DeviceMemory;)Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun getDESKTOP ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun getMOBILE_2GB ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun getNATIVE ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+}
+
 public final class sk/ainet/lang/memory/plan/PoolFit {
 	public fun <init> (Ljava/lang/String;JJ)V
 	public final fun component1 ()Ljava/lang/String;
@@ -1561,6 +1631,25 @@ public final class sk/ainet/lang/memory/plan/PoolFit {
 	public final fun getName ()Ljava/lang/String;
 	public final fun getNeededBytes ()J
 	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/ProfiledPlan {
+	public fun <init> (Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/MemoryPlan;Ljava/util/List;)V
+	public final fun component1 ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun component2 ()Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/MemoryPlan;Ljava/util/List;)Lsk/ainet/lang/memory/plan/ProfiledPlan;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/ProfiledPlan;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/MemoryPlan;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/ProfiledPlan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFits ()Ljava/lang/Boolean;
+	public final fun getNotes ()Ljava/util/List;
+	public final fun getPlan ()Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun getProfile ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public fun hashCode ()I
+	public final fun render ()Ljava/lang/String;
+	public final fun requireFits (Lsk/ainet/lang/memory/plan/DeviceMemory;)V
+	public static synthetic fun requireFits$default (Lsk/ainet/lang/memory/plan/ProfiledPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;ILjava/lang/Object;)V
 	public fun toString ()Ljava/lang/String;
 }
 

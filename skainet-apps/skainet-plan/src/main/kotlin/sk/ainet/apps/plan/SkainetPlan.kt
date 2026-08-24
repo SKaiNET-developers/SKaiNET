@@ -14,16 +14,24 @@ import sk.ainet.lang.memory.plan.KvCacheMode
 import sk.ainet.lang.memory.plan.MemoryPlan
 import sk.ainet.lang.memory.plan.MemoryPlans
 import sk.ainet.lang.memory.plan.PlanInput
+import sk.ainet.lang.memory.plan.PlannerProfile
+import sk.ainet.lang.memory.plan.ProfiledPlan
 import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * `skainet plan <model.gguf> [--ctx N] [--budget 1.3G] [--kv bf16|turboquant] [--list <glob>]`
+ * `skainet plan <model.gguf> [--ctx N] [--budget 1.3G] [--kv bf16|turboquant] [--profile P] [--list <glob>]`
  *
  * Milestone M0 of SKEEP-003 ("know before you load"): prints the memory plan of a GGUF model at a
  * context length — weights (resident), KV cache, forward slab, heap headroom — against a budget,
  * with concrete suggestions when it does not fit, and lists tensors by `TensorId`. Reads the GGUF
  * header only; no tensor bytes are touched.
+ *
+ * `--profile` (M2-F6, #1039) plans under a device profile instead of raw defaults: `mobile` is the
+ * 2 GB phone (700 MB reserved, weights mapped, KV quantized automatically once the plan passes 80 %
+ * of the budget), `desktop` keeps today's behaviour, `native` reserves the smaller Kotlin/Native
+ * amount. The profile and every decision it made are printed above the table, so a plan can be read
+ * back later without guessing which rules produced it.
  */
 public fun main(args: Array<String>) {
     val parser = ArgParser("skainet-plan")
@@ -34,25 +42,46 @@ public fun main(args: Array<String>) {
     val prefill by parser.option(ArgType.Int, fullName = "prefill-chunk", description = "Prefill chunk size for the forward slab").default(PlanInput.DEFAULT_PREFILL_CHUNK)
     val list by parser.option(ArgType.String, fullName = "list", description = "List tensors whose TensorId matches this glob, e.g. 'model.layers[3].*'")
     val noBudget by parser.option(ArgType.Boolean, fullName = "no-budget", description = "Print the plan without a fit check").default(false)
+    val profileName by parser.option(
+        ArgType.Choice(listOf("none", "mobile", "desktop", "native"), { it }),
+        fullName = "profile",
+        description = "Device profile whose rules the plan follows (M2-F6): mobile = 2 GB phone, desktop, native",
+    ).default("none")
     parser.parse(args)
 
     val file = File(model)
     if (!file.isFile) { System.err.println("skainet plan: file not found: $model"); exitProcess(2) }
 
     val kvMode = if (kv == "turboquant") KvCacheMode.TURBOQUANT_4 else KvCacheMode.BF16
-    val plan = JvmRandomAccessSource.open(file).use { src ->
+    val profile = profileFor(profileName)
+    val profiled: ProfiledPlan = JvmRandomAccessSource.open(file).use { src ->
         val reader = StreamingGGUFReader.open(src)
         val input = reader.planInput(ctx = ctx, prefillChunk = prefill, kvMode = kvMode)
-        val b = when {
-            noBudget -> null
-            budget != null -> Budget.of(parseBytes(budget!!))
-            else -> Budget.available(Runtime.getRuntime().maxMemory())
+        val available = budget?.let { parseBytes(it) } ?: Runtime.getRuntime().maxMemory()
+        if (profile != null) {
+            // A profile owns the reserve, so --budget names what the *device* has, not what the
+            // plan may use; without a profile the flag keeps its original meaning.
+            profile.plan(input, available)
+        } else {
+            val b = when {
+                noBudget -> null
+                budget != null -> Budget.of(available)
+                else -> Budget.available(available)
+            }
+            ProfiledPlan(PlannerProfile("none", reserveBytes = 0), MemoryPlans.plan(input, b), emptyList())
         }
-        MemoryPlans.plan(input, b)
     }
-    print(plan.render())
-    list?.let { glob -> print(renderList(plan, glob)) }
-    exitProcess(if (plan.fits == false) 1 else 0)
+    print(if (profile != null) profiled.render() else profiled.plan.render())
+    list?.let { glob -> print(renderList(profiled.plan, glob)) }
+    exitProcess(if (profiled.plan.fits == false) 1 else 0)
+}
+
+/** The profile behind a `--profile` value; `null` for "none" (the plan's own defaults). */
+internal fun profileFor(name: String): PlannerProfile? = when (name) {
+    "mobile" -> PlannerProfile.MOBILE_2GB
+    "desktop" -> PlannerProfile.DESKTOP
+    "native" -> PlannerProfile.NATIVE
+    else -> null
 }
 
 /** `1.3G`, `900M`, `64K`, `123456` → bytes (decimal suffixes are binary multiples, as the plan prints them). */
