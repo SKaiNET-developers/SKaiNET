@@ -16,6 +16,9 @@ import sk.ainet.lang.tensor.Shape
  * @property strides one stride per dimension, in elements (or blocks for a blocked layout)
  * @property offsetElements element (or block) offset of the first element inside the storage
  * @property elementBytes bytes per element (dense) or per block (blocked)
+ * @property blockAxis for a [blocked] layout, the axis whose extent is measured in blocks. It is
+ *   the last axis as loaded, and it *moves* with [transpose]/[unsqueeze]/[squeeze] — which is what
+ *   lets a packed weight be transposed as metadata and still decode correctly (#1034).
  */
 @ExperimentalMemoryApi
 public class Layout(
@@ -24,11 +27,13 @@ public class Layout(
     public val offsetElements: Long = 0L,
     public val elementBytes: Int = 4,
     public val blocked: Boolean = false,
+    public val blockAxis: Int = shape.rank - 1,
 ) {
     init {
         require(strides.size == shape.rank) { "strides (${strides.size}) must match rank (${shape.rank})" }
         require(offsetElements >= 0) { "offsetElements must be >= 0" }
         require(elementBytes > 0) { "elementBytes must be > 0" }
+        if (blocked) require(blockAxis in 0 until shape.rank) { "blockAxis $blockAxis out of range for rank ${shape.rank}" }
     }
 
     /** Number of elements addressed (the shape's volume). */
@@ -74,7 +79,7 @@ public class Layout(
         require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
         require(from >= 0 && size >= 0 && from + size <= shape[axis]) { "narrow($axis, $from, $size) outside extent ${shape[axis]}" }
         val dims = shape.dimensions.copyOf(); dims[axis] = size
-        return Layout(Shape(dims), strides.copyOf(), offsetElements + from.toLong() * strides[axis], elementBytes, blocked)
+        return Layout(Shape(dims), strides.copyOf(), offsetElements + from.toLong() * strides[axis], elementBytes, blocked, blockAxis)
     }
 
     /** Swap two axes — metadata only; the bytes are untouched (the packed-transpose trick, rule 5). */
@@ -84,7 +89,26 @@ public class Layout(
         val dims = shape.dimensions.copyOf(); val st = strides.copyOf()
         val d = dims[axis0]; dims[axis0] = dims[axis1]; dims[axis1] = d
         val s = st[axis0]; st[axis0] = st[axis1]; st[axis1] = s
-        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked)
+        // The block axis travels with its extent: a transposed packed view still knows which index
+        // splits into (block, offset-within-block).
+        val movedBlockAxis = when (blockAxis) { axis0 -> axis1; axis1 -> axis0; else -> blockAxis }
+        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, movedBlockAxis)
+    }
+
+    /**
+     * Every [step]-th element along [axis] — a stride multiply, zero-copy. This is what makes the
+     * strided half of the old `Slice.Step` a layout operation rather than an index remapper
+     * (#1034): the bytes are untouched and the result is an ordinary [Layout].
+     */
+    public fun step(axis: Int, step: Int): Layout {
+        require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
+        require(step > 0) { "step must be positive, got $step" }
+        if (step == 1) return this
+        val dims = shape.dimensions.copyOf()
+        dims[axis] = (shape[axis] + step - 1) / step
+        val st = strides.copyOf()
+        st[axis] = strides[axis] * step
+        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, blockAxis)
     }
 
     /** Insert a unit axis at [axis] (stride 0 — it is never stepped). */
@@ -95,7 +119,7 @@ public class Layout(
         for (i in 0..shape.rank) {
             if (i == axis) { dims[i] = 1; st[i] = 0 } else { dims[i] = shape[j]; st[i] = strides[j]; j++ }
         }
-        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked)
+        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, if (axis <= blockAxis) blockAxis + 1 else blockAxis)
     }
 
     /** Drop the unit axis at [axis]. */
@@ -103,8 +127,9 @@ public class Layout(
         require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
         require(shape[axis] == 1) { "axis $axis has extent ${shape[axis]}, not 1" }
         val dims = ArrayList<Int>(shape.rank - 1); val st = ArrayList<Int>(shape.rank - 1)
+        require(!(blocked && axis == blockAxis)) { "cannot drop the block axis of a blocked layout" }
         for (i in 0 until shape.rank) if (i != axis) { dims += shape[i]; st += strides[i] }
-        return Layout(Shape(dims.toIntArray()), st.toIntArray(), offsetElements, elementBytes, blocked)
+        return Layout(Shape(dims.toIntArray()), st.toIntArray(), offsetElements, elementBytes, blocked, if (axis < blockAxis) blockAxis - 1 else blockAxis)
     }
 
     override fun toString(): String =
@@ -112,12 +137,12 @@ public class Layout(
 
     override fun equals(other: Any?): Boolean = other is Layout && other.shape == shape &&
         other.strides.contentEquals(strides) && other.offsetElements == offsetElements &&
-        other.elementBytes == elementBytes && other.blocked == blocked
+        other.elementBytes == elementBytes && other.blocked == blocked && other.blockAxis == blockAxis
 
     override fun hashCode(): Int {
         var h = shape.hashCode()
         h = 31 * h + strides.contentHashCode(); h = 31 * h + offsetElements.hashCode()
-        h = 31 * h + elementBytes; h = 31 * h + blocked.hashCode()
+        h = 31 * h + elementBytes; h = 31 * h + blocked.hashCode(); h = 31 * h + blockAxis
         return h
     }
 

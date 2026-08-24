@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // the pre-#1034 view mechanism: kept working until the next major
+
 package sk.ainet.lang.tensor.benchmark
 
 import sk.ainet.benchmark.BenchmarkCaseBuilder

@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // this file *is* the deprecated mechanism
+
 package sk.ainet.lang.tensor
 
 import sk.ainet.lang.tensor.GradState
@@ -40,6 +42,11 @@ import kotlin.reflect.KClass
  * @param parentTensor the parent tensor to create a view of
  * @param slices list of slice operations, one per dimension
  */
+@Deprecated(
+    message = "One view mechanism (SKEEP-003 §4.6, #1034): index remapping is layout arithmetic — " +
+        "`tensor.view().slice(slices)` produces a `sk.ainet.lang.memory.TensorView` over the same Storage, " +
+        "the same type every other view operation returns. Kept until the next major.",
+)
 public class SlicedTensorView<T : DType, V>(
     override val parentTensor: Tensor<T, V>,
     private val slices: List<Slice<T, V>>
