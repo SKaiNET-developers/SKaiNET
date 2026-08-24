@@ -16,7 +16,11 @@ import sk.ainet.lang.memory.plan.PlanInput
 import sk.ainet.lang.memory.plan.PlanTensor
 import sk.ainet.lang.memory.trace.RecordingTraceSink
 import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.memory.trace.decodeStep
+import sk.ainet.lang.memory.trace.module
 import sk.ainet.lang.memory.trace.phase
+import sk.ainet.lang.memory.trace.prefill
+import sk.ainet.lang.memory.trace.sample
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.TensorId
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
@@ -105,27 +109,50 @@ public class DecodeHarness(
         return MemoryPlans.plan(PlanInput("harness", "llama", tensors, geometry, ctx, prefillChunk = 1, kvMode = KvCacheMode.FP32))
     }
 
+    /**
+     * The prompt pass: [tokens] positions through the same stack, inside a `prefill` span so
+     * [metrics] can price it (#1035). Deliberately the same work as a decode step — the harness is
+     * about memory behaviour, not about being a fast prefill.
+     */
+    public fun prefill(tokens: Int) {
+        sink.prefill(tokens) {
+            repeat(tokens) { runStack(step = 0) }
+        }
+    }
+
     /** Run [steps] decode steps; each allocates activations, runs the stack and resets the scope. */
     public fun decode(steps: Int) {
-        val x = FloatArray(hidden) { (it % 7) * 0.125f }
         for (step in 1..steps) {
-            sink.phase("decode", step) {
-                val act = forward.allocateFloats(hidden, TensorId(listOf("model"), "hidden", "step=$step"))
-                x.copyInto(act.floats!!, act.arrayOffset)
-                val actView = TensorView.dense(act, Shape(1, hidden), FP32, TensorId(listOf("model"), "hidden", "step=$step"))
-                for (w in weights) {
-                    if (w.shape[1] != hidden) continue
-                    val out = forward.allocateFloats(w.shape[0], TensorId(listOf("model"), "proj", "step=$step"))
-                    val outView = TensorView.dense(out, Shape(1, w.shape[0]), FP32)
-                    KernelDispatch.matmul(actView, w, outView, forward, sink)
-                }
+            sink.decodeStep(step) {
+                runStack(step)
                 // one token into the KV ring (all layers), as a decode step does
                 val k = FloatArray(kvHeads * (hidden / heads)) { 0.5f }
                 if (kv.currentSeqLen < ctx) for (l in 0 until layers) kv.appendToken(l, k, k)
                 forward.reset()
             }
+            sink.sample(step) { /* argmax over a synthetic logit row: nothing to allocate */ }
         }
     }
+
+    /** One pass over the weight stack, each weight timed as its own module span. */
+    private fun runStack(step: Int) {
+        val x = FloatArray(hidden) { (it % 7) * 0.125f }
+        val act = forward.allocateFloats(hidden, TensorId(listOf("model"), "hidden", "step=$step"))
+        x.copyInto(act.floats!!, act.arrayOffset)
+        val actView = TensorView.dense(act, Shape(1, hidden), FP32, TensorId(listOf("model"), "hidden", "step=$step"))
+        for (w in weights) {
+            if (w.shape[1] != hidden) continue
+            sink.module(w.id!!, step) {
+                val out = forward.allocateFloats(w.shape[0], TensorId(listOf("model"), "proj", "step=$step"))
+                val outView = TensorView.dense(out, Shape(1, w.shape[0]), FP32)
+                KernelDispatch.matmul(actView, w, outView, forward, sink)
+            }
+        }
+    }
+
+    /** The generation metrics this run produced (#1035); [peakBytesPerSecond] enables utilization. */
+    public fun metrics(peakBytesPerSecond: Long? = null): sk.ainet.lang.memory.trace.GenerationMetrics =
+        sk.ainet.lang.memory.trace.GenerationMetrics.from(sink, peakBytesPerSecond)
 
     /** Live bytes per scope as the event stream saw them after the last step. */
     public fun liveBytes(): Map<ScopeKind, Long> {

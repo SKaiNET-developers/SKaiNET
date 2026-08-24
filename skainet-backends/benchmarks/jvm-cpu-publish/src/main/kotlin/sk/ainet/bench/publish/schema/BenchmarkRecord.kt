@@ -17,4 +17,10 @@ public data class BenchmarkRecord(
     val metrics: MetricSet,
     val samples: List<Double>,
     val unstable: Boolean = false,
+    /**
+     * Generation-loop metrics (#1035), present only for scenarios that run one — TTFT, tok/s,
+     * effective bandwidth, page faults, per-module breakdown. `scripts/check_engine_json.sh`
+     * validates the block whenever it appears.
+     */
+    val generation: GenerationMetricsRecord? = null,
 )
