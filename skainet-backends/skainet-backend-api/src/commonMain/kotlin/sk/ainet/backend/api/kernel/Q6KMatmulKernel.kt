@@ -23,7 +23,10 @@ package sk.ainet.backend.api.kernel
  * write the `outputDim` floats starting at `output[outputOffset]`.
  *
  * Packed-weight **block-major** row contract: blocks laid out
- * `(blockIdx * outputDim + o) * 210`. Matches `Q6_KBlockTensorData.packedData`.
+ * The weight is **input-block-major** (Q6_KBlockTensorData's bytes are canonical
+ * row-major — a weight reaches this kernel through `TensorView.prepack`, not by
+ * reinterpretation). One contract, written down in
+ * `docs/design/memory/packed-weight-layout.md` (#973).
  *
  * `inputDim` MUST be a multiple of 256 (the Q6_K super-block size).
  */

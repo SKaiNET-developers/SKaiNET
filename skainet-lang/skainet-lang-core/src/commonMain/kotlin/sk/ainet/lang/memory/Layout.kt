@@ -3,6 +3,30 @@ package sk.ainet.lang.memory
 import sk.ainet.lang.tensor.Shape
 
 /**
+ * Which order a block-packed buffer's blocks are in — the contract #973 reports as unwritten and
+ * contradictory across the engine and its converters.
+ *
+ * Two orders exist for a 2-D `[out, in]` weight whose blocks tile the input dimension:
+ *
+ * - [ROW_MAJOR] — flat block index `o * blocksPerRow + b`. What a GGUF holds, what a quantizer
+ *   emits, what `toFloatArray()` and every `get()` assume.
+ * - [INPUT_BLOCK_MAJOR] — flat block index `b * outputDim + o`: all output rows' blocks for one
+ *   input block, contiguous. What every packed matmul kernel actually reads.
+ *
+ * The two coincide only when a row is a single block, which is why mixing them produced *plausible
+ * but wrong numbers* rather than a crash (#968, #971). Carrying the order on the [Layout] is what
+ * makes it knowable from the value instead of guessed from the type: a kernel declares the order it
+ * reads, and the dispatcher inserts a visible relayout when the two disagree.
+ */
+public enum class BlockOrder {
+    /** `o * blocksPerRow + b` — canonical, as stored in a file. */
+    ROW_MAJOR,
+
+    /** `b * outputDim + o` — the order the packed matmul kernels feed on. */
+    INPUT_BLOCK_MAJOR,
+}
+
+/**
  * Strides, byte offset and contiguity of a view over a [Storage] (SKEEP-003 §0 *Layout*). Pure
  * metadata: it says *where* the elements of a shape live inside a byte range, never what they mean
  * (that is [Format]) and never who owns them (that is [Storage]).
@@ -19,6 +43,9 @@ import sk.ainet.lang.tensor.Shape
  * @property blockAxis for a [blocked] layout, the axis whose extent is measured in blocks. It is
  *   the last axis as loaded, and it *moves* with [transpose]/[unsqueeze]/[squeeze] — which is what
  *   lets a packed weight be transposed as metadata and still decode correctly (#1034).
+ * @property blockOrder for a [blocked] layout, the order its blocks are in ([BlockOrder]). Default
+ *   [BlockOrder.ROW_MAJOR]: what a file holds. A buffer in kernel feed order says so here instead
+ *   of leaving the next reader to guess (#973).
  */
 @ExperimentalMemoryApi
 public class Layout(
@@ -28,6 +55,7 @@ public class Layout(
     public val elementBytes: Int = 4,
     public val blocked: Boolean = false,
     public val blockAxis: Int = shape.rank - 1,
+    public val blockOrder: BlockOrder = BlockOrder.ROW_MAJOR,
 ) {
     init {
         require(strides.size == shape.rank) { "strides (${strides.size}) must match rank (${shape.rank})" }
@@ -79,7 +107,7 @@ public class Layout(
         require(axis in 0 until shape.rank) { "axis $axis out of range for rank ${shape.rank}" }
         require(from >= 0 && size >= 0 && from + size <= shape[axis]) { "narrow($axis, $from, $size) outside extent ${shape[axis]}" }
         val dims = shape.dimensions.copyOf(); dims[axis] = size
-        return Layout(Shape(dims), strides.copyOf(), offsetElements + from.toLong() * strides[axis], elementBytes, blocked, blockAxis)
+        return Layout(Shape(dims), strides.copyOf(), offsetElements + from.toLong() * strides[axis], elementBytes, blocked, blockAxis, blockOrder)
     }
 
     /** Swap two axes — metadata only; the bytes are untouched (the packed-transpose trick, rule 5). */
@@ -92,7 +120,7 @@ public class Layout(
         // The block axis travels with its extent: a transposed packed view still knows which index
         // splits into (block, offset-within-block).
         val movedBlockAxis = when (blockAxis) { axis0 -> axis1; axis1 -> axis0; else -> blockAxis }
-        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, movedBlockAxis)
+        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, movedBlockAxis, blockOrder)
     }
 
     /**
@@ -108,7 +136,7 @@ public class Layout(
         dims[axis] = (shape[axis] + step - 1) / step
         val st = strides.copyOf()
         st[axis] = strides[axis] * step
-        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, blockAxis)
+        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, blockAxis, blockOrder)
     }
 
     /** Insert a unit axis at [axis] (stride 0 — it is never stepped). */
@@ -119,7 +147,7 @@ public class Layout(
         for (i in 0..shape.rank) {
             if (i == axis) { dims[i] = 1; st[i] = 0 } else { dims[i] = shape[j]; st[i] = strides[j]; j++ }
         }
-        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, if (axis <= blockAxis) blockAxis + 1 else blockAxis)
+        return Layout(Shape(dims), st, offsetElements, elementBytes, blocked, if (axis <= blockAxis) blockAxis + 1 else blockAxis, blockOrder)
     }
 
     /** Drop the unit axis at [axis]. */
@@ -129,20 +157,24 @@ public class Layout(
         val dims = ArrayList<Int>(shape.rank - 1); val st = ArrayList<Int>(shape.rank - 1)
         require(!(blocked && axis == blockAxis)) { "cannot drop the block axis of a blocked layout" }
         for (i in 0 until shape.rank) if (i != axis) { dims += shape[i]; st += strides[i] }
-        return Layout(Shape(dims.toIntArray()), st.toIntArray(), offsetElements, elementBytes, blocked, if (axis < blockAxis) blockAxis - 1 else blockAxis)
+        return Layout(Shape(dims.toIntArray()), st.toIntArray(), offsetElements, elementBytes, blocked, if (axis < blockAxis) blockAxis - 1 else blockAxis, blockOrder)
     }
 
     override fun toString(): String =
-        "Layout($shape, strides=${strides.joinToString(",", "[", "]")}, offset=$offsetElements${if (blocked) " blocks" else ""}, ${if (isContiguous) "contiguous" else "strided"})"
+        "Layout($shape, strides=${strides.joinToString(",", "[", "]")}, offset=$offsetElements" +
+            (if (blocked) " blocks/${blockOrder.name.lowercase()}" else "") +
+            ", ${if (isContiguous) "contiguous" else "strided"})"
 
     override fun equals(other: Any?): Boolean = other is Layout && other.shape == shape &&
         other.strides.contentEquals(strides) && other.offsetElements == offsetElements &&
-        other.elementBytes == elementBytes && other.blocked == blocked && other.blockAxis == blockAxis
+        other.elementBytes == elementBytes && other.blocked == blocked && other.blockAxis == blockAxis &&
+        other.blockOrder == blockOrder
 
     override fun hashCode(): Int {
         var h = shape.hashCode()
         h = 31 * h + strides.contentHashCode(); h = 31 * h + offsetElements.hashCode()
         h = 31 * h + elementBytes; h = 31 * h + blocked.hashCode(); h = 31 * h + blockAxis
+        h = 31 * h + blockOrder.hashCode()
         return h
     }
 
@@ -164,7 +196,13 @@ public class Layout(
          * "element" of the layout being one packed block of `bytesPerBlock` bytes. Used for the
          * GGML block formats, where a view addresses whole blocks (rule 5).
          */
-        public fun blocked(shape: Shape, blockSize: Int, bytesPerBlock: Int, offsetBlocks: Long = 0L): Layout {
+        public fun blocked(
+            shape: Shape,
+            blockSize: Int,
+            bytesPerBlock: Int,
+            offsetBlocks: Long = 0L,
+            blockOrder: BlockOrder = BlockOrder.ROW_MAJOR,
+        ): Layout {
             require(blockSize > 0 && bytesPerBlock > 0) { "block geometry must be positive" }
             require(shape.rank >= 1) { "blocked layout needs rank >= 1" }
             val last = shape[shape.rank - 1]
@@ -172,7 +210,16 @@ public class Layout(
                 val dims = shape.dimensions.copyOf()
                 dims[dims.size - 1] = last / blockSize
                 val blockShape = Shape(dims)
-                return Layout(blockShape, rowMajorStrides(blockShape), offsetBlocks, bytesPerBlock, blocked = true)
+                // The order *is* a stride pattern: input-block-major means "step one row to move
+                // one block index, step `rows` to move to the next input block". Expressing it in
+                // the strides rather than in a branch keeps every other operation — narrow,
+                // transpose, get — working unchanged on a prepacked view (#973).
+                val strides = if (blockOrder == BlockOrder.INPUT_BLOCK_MAJOR && blockShape.rank == 2) {
+                    intArrayOf(1, blockShape[0])
+                } else {
+                    rowMajorStrides(blockShape)
+                }
+                return Layout(blockShape, strides, offsetBlocks, bytesPerBlock, blocked = true, blockOrder = blockOrder)
             }
             // A block that spans rows (e.g. ternary, where the whole tensor is one block): address the
             // flattened element sequence instead. Such a view decodes but cannot be sliced per axis.
@@ -180,7 +227,7 @@ public class Layout(
                 "neither the last extent ($last) nor the volume (${shape.volume}) is a multiple of the block size $blockSize"
             }
             val flat = Shape(shape.volume / blockSize)
-            return Layout(flat, rowMajorStrides(flat), offsetBlocks, bytesPerBlock, blocked = true)
+            return Layout(flat, rowMajorStrides(flat), offsetBlocks, bytesPerBlock, blocked = true, blockOrder = blockOrder)
         }
     }
 }

@@ -21,10 +21,13 @@ import sk.ainet.lang.types.DType
  *   element[j]      = d * (lo + (bitLo shl 4)) + m
  *   element[j + 16] = d * (hi + (bitHi shl 4)) + m
  *
- * As packed by the GGUF converter for matmul, blocks are **input-block-major**
- * `(blockIdx * outputDim + o)`; `Q5_1MatmulKernel` indexes them that way and the
- * CPU-ops lazy transpose is a pure shape swap. The per-block [dequantizeBlock]
- * below is layout-agnostic (it dequantizes the block at a flat index).
+ * Block order: **canonical row-major** (`o * blocksPerRow + b`) — what a GGUF holds
+ * and what this type's [dequantizeBlock] and `toFloatArray` assume. `Q5_1MatmulKernel`
+ * reads *input-block-major* bytes instead, so a weight reaches it through a
+ * relayout (`TensorView.prepack`), never by reinterpreting these bytes in place.
+ * The contract is written down once in `docs/design/memory/packed-weight-layout.md`
+ * (#973); this kdoc used to claim the opposite, which is the confusion that issue
+ * exists to end.
  */
 public interface Q5_1TensorData : TensorData<DType, Byte> {
     public val blockCount: Int

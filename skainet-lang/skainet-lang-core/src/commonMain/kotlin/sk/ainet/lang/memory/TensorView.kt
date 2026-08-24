@@ -2,6 +2,9 @@ package sk.ainet.lang.memory
 
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.TensorId
+import sk.ainet.lang.memory.trace.NoopTraceSink
+import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.memory.trace.TraceSink
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.DType
@@ -107,6 +110,78 @@ public class TensorView(
     private fun narrowShape(axis: Int, size: Int): Shape { val d = shape.dimensions.copyOf(); d[axis] = size; return Shape(d) }
 
     private fun blockSize(): Int = decoder?.blockSize ?: 1
+
+    /**
+     * This view's blocks rearranged into [order] — the relayout #973 asks for, as a **visible
+     * adapter** rather than an operation wearing transpose's name.
+     *
+     * A packed `[out, in]` weight's blocks tile the input dimension, and two orders exist for them:
+     * [BlockOrder.ROW_MAJOR] (`o * blocksPerRow + b`, what a file holds) and
+     * [BlockOrder.INPUT_BLOCK_MAJOR] (`b * outputDim + o`, what every packed matmul kernel reads).
+     * They coincide only when a row is one block, which is why mixing them produced plausible wrong
+     * numbers instead of a crash (#968, #971).
+     *
+     * The bytes are copied — this is a real conversion, allocated in [scope] and emitted as an
+     * `AdapterInserted` so it appears in the trace with its price. Returning `this` when the order
+     * already matches is the only free case.
+     *
+     * The result carries [order] on its layout, so the next reader does not have to guess. Note the
+     * *decoded* content is unchanged: [get] and [toFloatArray] read through the order, so a
+     * prepacked view still describes the same matrix.
+     */
+    public fun prepack(
+        order: BlockOrder,
+        scope: Scope = Scope.Ambient,
+        sink: TraceSink = NoopTraceSink,
+    ): TensorView {
+        if (layout.blockOrder == order) return this
+        require(layout.blocked) { "block order only applies to a block-packed view, not $format" }
+        check(layout.shape.rank == shape.rank) { "this view's blocks span rows; prepack it after materialize()" }
+        require(shape.rank == 2) { "block relayout is defined for 2-D weights, got $shape" }
+        val decoder = decoderOrNull() ?: throw IllegalStateException("a packed view needs its decoder to be relayouted")
+        val bytesPerBlock = decoder.bytesPerBlock
+        val rows = shape[0]
+        val blocksPerRow = layout.shape[layout.blockAxis]
+        val source = (storage as? Storage.Heap)?.bytes
+            ?: throw UnsupportedOperationException("block relayout reads heap byte storage in this milestone")
+        val sourceOffset = (storage as Storage.Heap).arrayOffset + (layout.offsetElements * bytesPerBlock).toInt()
+
+        // Read through this view's own addressing and write through the target order's: the block
+        // holding (row o, block b) moves from wherever it is now to where `order` says it goes.
+        val out = ByteArray(rows * blocksPerRow * bytesPerBlock)
+        for (o in 0 until rows) {
+            for (b in 0 until blocksPerRow) {
+                val from = (layout.indexOf(o, b) - layout.offsetElements).toInt()
+                val to = if (order == BlockOrder.INPUT_BLOCK_MAJOR) b * rows + o else o * blocksPerRow + b
+                source.copyInto(out, to * bytesPerBlock, sourceOffset + from * bytesPerBlock, sourceOffset + (from + 1) * bytesPerBlock)
+            }
+        }
+        val heap = Storage.Heap.bytes(out.size, scope.kind, id, sink)
+        out.copyInto(heap.bytes!!, heap.arrayOffset)
+        if (sink.isEnabled) {
+            sink.emit(
+                TraceEvent.AdapterInserted(
+                    kind = "prepack-${order.name.lowercase()}",
+                    from = format,
+                    to = format,
+                    bytes = out.size.toLong(),
+                    target = id,
+                    scope = scope.kind,
+                ),
+            )
+        }
+        return TensorView(
+            shape,
+            format,
+            Layout.blocked(shape, decoder.blockSize, bytesPerBlock, blockOrder = order),
+            heap,
+            id,
+            RelayoutedBlockDecoder(decoder, rows, blocksPerRow, order),
+        )
+    }
+
+    /** The decoder this view was built with, if any — needed to know its block geometry. */
+    public fun decoderOrNull(): BlockDecoder? = decoder
 
     // ---- element access (rule 4: decode, never a raw byte) ----
 
@@ -248,6 +323,45 @@ public interface BlockDecoder {
         val buf = FloatArray(blockSize)
         decodeBlock(storage, block, buf, 0)
         return buf[within]
+    }
+}
+
+/**
+ * Decodes a **relayouted** view by translating block indices back to the order its delegate reads.
+ *
+ * `prepack` moves bytes into the order a kernel feeds on; the decoder that came with the original
+ * view still addresses blocks in the original order (the M1 [PackedBlockDecoder] decodes from the
+ * `TensorData` it wraps, not from the storage it is handed). Mapping the index instead of the bytes
+ * is what keeps rule 4 true across a relayout: `get()` on a prepacked view returns the same value
+ * it returned before (#973).
+ */
+@ExperimentalMemoryApi
+public class RelayoutedBlockDecoder(
+    private val delegate: BlockDecoder,
+    private val rows: Int,
+    private val blocksPerRow: Int,
+    private val order: BlockOrder,
+) : BlockDecoder {
+    override val blockSize: Int get() = delegate.blockSize
+    override val bytesPerBlock: Int get() = delegate.bytesPerBlock
+
+    override fun decodeBlock(storage: Storage, blockIndex: Long, out: FloatArray, outOffset: Int) {
+        delegate.decodeBlock(storage, sourceIndexOf(blockIndex), out, outOffset)
+    }
+
+    /** The index this block had before the relayout. */
+    private fun sourceIndexOf(blockIndex: Long): Long = when (order) {
+        // input-block-major index `b * rows + o` → row-major `o * blocksPerRow + b`
+        BlockOrder.INPUT_BLOCK_MAJOR -> {
+            val b = blockIndex / rows
+            val o = blockIndex % rows
+            o * blocksPerRow + b
+        }
+        BlockOrder.ROW_MAJOR -> {
+            val o = blockIndex / blocksPerRow
+            val b = blockIndex % blocksPerRow
+            b * rows + o
+        }
     }
 }
 

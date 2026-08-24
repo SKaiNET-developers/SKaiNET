@@ -68,8 +68,12 @@ class KernelKeyDispatchTest {
         val key = KernelKey.matmul(a, w)
         assertEquals("matmul", key.op); assertEquals(2, key.operands.size)
         assertEquals(OperandKey(Format.dense(FP32), LayoutClass.CONTIGUOUS), key.operands[0])
-        assertEquals(OperandKey(Format(FP32, TensorEncoding.Q8_0), LayoutClass.BLOCKED), key.operands[1])
-        assertEquals("matmul(Float32/Dense(4B) contiguous × Float32/Q8_0 blocked) @host", key.toString())
+        assertEquals(
+            OperandKey(Format(FP32, TensorEncoding.Q8_0), LayoutClass.BLOCKED_ROW_MAJOR),
+            key.operands[1],
+            "a weight loaded from a file is canonical, and the key says so (#973)",
+        )
+        assertEquals("matmul(Float32/Dense(4B) contiguous × Float32/Q8_0 blocked_row_major) @host", key.toString())
         // a strided operand is a different key — that is the point of keying on layout
         val strided = denseView(Shape(4, 8)) { it.toFloat() }.narrow(1, 0, 4)
         assertEquals(LayoutClass.STRIDED, OperandKey.of(strided).layout)

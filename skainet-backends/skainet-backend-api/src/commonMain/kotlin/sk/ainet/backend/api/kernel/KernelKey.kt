@@ -51,7 +51,10 @@ public data class OperandKey(val format: Format, val layout: LayoutClass) {
         /** Describe [view]: dense-and-gap-free is `CONTIGUOUS`, a packed layout is `BLOCKED`, anything else `STRIDED`. */
         public fun of(view: TensorView): OperandKey {
             val cls = when {
-                view.layout.blocked -> LayoutClass.BLOCKED
+                view.layout.blocked -> when (view.layout.blockOrder) {
+                    sk.ainet.lang.memory.BlockOrder.ROW_MAJOR -> LayoutClass.BLOCKED_ROW_MAJOR
+                    sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR -> LayoutClass.BLOCKED_INPUT_MAJOR
+                }
                 view.isContiguous -> LayoutClass.CONTIGUOUS
                 else -> LayoutClass.STRIDED
             }
@@ -65,12 +68,30 @@ public data class OperandKey(val format: Format, val layout: LayoutClass) {
 
 /**
  * How an operand's bytes are arranged, as far as kernel selection cares: one gap-free run
- * ([CONTIGUOUS]), a strided view over a larger buffer ([STRIDED]), or block-packed ([BLOCKED]).
+ * ([CONTIGUOUS]), a strided view over a larger buffer ([STRIDED]), or block-packed in one of the
+ * two orders that exist ([BLOCKED_ROW_MAJOR], [BLOCKED_INPUT_MAJOR]).
+ *
  * A kernel that declares `CONTIGUOUS` gets a gather adapter inserted for a `STRIDED` operand
- * (§5.1) — the adapter is visible in the trace, never hidden inside a kernel.
+ * (§5.1) — the adapter is visible in the trace, never hidden inside a kernel. The two blocked
+ * classes exist for the same reason: a packed kernel reads its weight in *one* of the two block
+ * orders, and #973 is what happens when that is left implicit. A kernel declares which one it
+ * takes, and the dispatcher relayouts when the operand disagrees.
  */
 @ExperimentalMemoryApi
-public enum class LayoutClass { CONTIGUOUS, STRIDED, BLOCKED }
+public enum class LayoutClass {
+    CONTIGUOUS,
+    STRIDED,
+
+    /** Blocks in file order: `o * blocksPerRow + b` ([sk.ainet.lang.memory.BlockOrder.ROW_MAJOR]). */
+    BLOCKED_ROW_MAJOR,
+
+    /** Blocks in kernel feed order: `b * outputDim + o` ([sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR]). */
+    BLOCKED_INPUT_MAJOR,
+    ;
+
+    /** True for either blocked class — when the question is "packed or not". */
+    public val isBlocked: Boolean get() = this == BLOCKED_ROW_MAJOR || this == BLOCKED_INPUT_MAJOR
+}
 
 /** Thrown when no registered kernel and no adapter chain can serve a key; lists what is registered. */
 @ExperimentalMemoryApi

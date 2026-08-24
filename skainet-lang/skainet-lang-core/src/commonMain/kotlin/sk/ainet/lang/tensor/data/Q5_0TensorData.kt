@@ -18,8 +18,11 @@ import sk.ainet.lang.types.DType
  *   element[j]      = d * (lo + (bitLo shl 4) - 16)
  *   element[j + 16] = d * (hi + (bitHi shl 4) - 16)
  *
- * Matmul packing is **input-block-major** `(blockIdx * outputDim + o)`; see
- * [Q5_1TensorData] for the layout/transpose contract.
+ * Block order: **canonical row-major** (`o * blocksPerRow + b`), like every other
+ * `Q*TensorData`; the kernels read input-block-major bytes and get there through a
+ * relayout, never by reinterpreting these. See
+ * `docs/design/memory/packed-weight-layout.md` (#973) — this kdoc used to claim the
+ * opposite.
  */
 public interface Q5_0TensorData : TensorData<DType, Byte> {
     public val blockCount: Int

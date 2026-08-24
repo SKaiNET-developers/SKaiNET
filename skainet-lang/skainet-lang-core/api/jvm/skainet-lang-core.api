@@ -686,6 +686,14 @@ public final class sk/ainet/lang/memory/BlockDecoder$DefaultImpls {
 	public static fun decodeElement (Lsk/ainet/lang/memory/BlockDecoder;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/memory/Layout;J)F
 }
 
+public final class sk/ainet/lang/memory/BlockOrder : java/lang/Enum {
+	public static final field INPUT_BLOCK_MAJOR Lsk/ainet/lang/memory/BlockOrder;
+	public static final field ROW_MAJOR Lsk/ainet/lang/memory/BlockOrder;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/memory/BlockOrder;
+	public static fun values ()[Lsk/ainet/lang/memory/BlockOrder;
+}
+
 public final class sk/ainet/lang/memory/BlockSpec {
 	public static final field Companion Lsk/ainet/lang/memory/BlockSpec$Companion;
 	public static final field PER_TENSOR_BLOCK I
@@ -811,11 +819,12 @@ public final class sk/ainet/lang/memory/I8Absmax {
 
 public final class sk/ainet/lang/memory/Layout {
 	public static final field Companion Lsk/ainet/lang/memory/Layout$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZI)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZILsk/ainet/lang/memory/BlockOrder;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[IJIZILsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun byteOffsetOf ([I)J
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBlockAxis ()I
+	public final fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public final fun getBlocked ()Z
 	public final fun getElementBytes ()I
 	public final fun getElementCount ()J
@@ -837,8 +846,8 @@ public final class sk/ainet/lang/memory/Layout {
 }
 
 public final class sk/ainet/lang/memory/Layout$Companion {
-	public final fun blocked (Lsk/ainet/lang/tensor/Shape;IIJ)Lsk/ainet/lang/memory/Layout;
-	public static synthetic fun blocked$default (Lsk/ainet/lang/memory/Layout$Companion;Lsk/ainet/lang/tensor/Shape;IIJILjava/lang/Object;)Lsk/ainet/lang/memory/Layout;
+	public final fun blocked (Lsk/ainet/lang/tensor/Shape;IIJLsk/ainet/lang/memory/BlockOrder;)Lsk/ainet/lang/memory/Layout;
+	public static synthetic fun blocked$default (Lsk/ainet/lang/memory/Layout$Companion;Lsk/ainet/lang/tensor/Shape;IIJLsk/ainet/lang/memory/BlockOrder;ILjava/lang/Object;)Lsk/ainet/lang/memory/Layout;
 	public final fun rowMajor (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Format;J)Lsk/ainet/lang/memory/Layout;
 	public static synthetic fun rowMajor$default (Lsk/ainet/lang/memory/Layout$Companion;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Format;JILjava/lang/Object;)Lsk/ainet/lang/memory/Layout;
 	public final fun rowMajorStrides (Lsk/ainet/lang/tensor/Shape;)[I
@@ -1057,6 +1066,14 @@ public final class sk/ainet/lang/memory/ProcessMemorySample {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/memory/RelayoutedBlockDecoder : sk/ainet/lang/memory/BlockDecoder {
+	public fun <init> (Lsk/ainet/lang/memory/BlockDecoder;IILsk/ainet/lang/memory/BlockOrder;)V
+	public fun decodeBlock (Lsk/ainet/lang/memory/Storage;J[FI)V
+	public fun decodeElement (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/memory/Layout;J)F
+	public fun getBlockSize ()I
+	public fun getBytesPerBlock ()I
+}
+
 public final class sk/ainet/lang/memory/ScalePlacement : java/lang/Enum {
 	public static final field BLOCK_HEAD Lsk/ainet/lang/memory/ScalePlacement;
 	public static final field BLOCK_TAIL Lsk/ainet/lang/memory/ScalePlacement;
@@ -1220,6 +1237,7 @@ public final class sk/ainet/lang/memory/TensorView {
 	public static final field Companion Lsk/ainet/lang/memory/TensorView$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Layout;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/BlockDecoder;)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Layout;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/BlockDecoder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun decoderOrNull ()Lsk/ainet/lang/memory/BlockDecoder;
 	public final fun get ([I)F
 	public final fun getElementCount ()J
 	public final fun getFormat ()Lsk/ainet/lang/memory/Format;
@@ -1232,6 +1250,8 @@ public final class sk/ainet/lang/memory/TensorView {
 	public final fun materialize (Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Scope;)Lsk/ainet/lang/memory/TensorView;
 	public static synthetic fun materialize$default (Lsk/ainet/lang/memory/TensorView;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/memory/Scope;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
 	public final fun narrow (III)Lsk/ainet/lang/memory/TensorView;
+	public final fun prepack (Lsk/ainet/lang/memory/BlockOrder;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;)Lsk/ainet/lang/memory/TensorView;
+	public static synthetic fun prepack$default (Lsk/ainet/lang/memory/TensorView;Lsk/ainet/lang/memory/BlockOrder;Lsk/ainet/lang/memory/Scope;Lsk/ainet/lang/memory/trace/TraceSink;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
 	public final fun set ([IF)V
 	public final fun squeeze (I)Lsk/ainet/lang/memory/TensorView;
 	public final fun step (II)Lsk/ainet/lang/memory/TensorView;
