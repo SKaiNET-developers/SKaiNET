@@ -1,5 +1,6 @@
 package sk.ainet.backend.api.kernel
 
+import sk.ainet.lang.memory.BlockOrder
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.Format
 import sk.ainet.lang.memory.Scope
@@ -70,6 +71,18 @@ public object KernelDispatch {
         out: TensorView,
         scope: Scope = Scope.Ambient,
         sink: TraceSink = NoopTraceSink,
+        /**
+         * Relayout a canonical packed weight into kernel order when that is what unlocks a packed
+         * kernel (#973/#1095).
+         *
+         * **Off by default, deliberately.** The relayout is O(bytes), so doing it inside a decode
+         * step would copy the whole weight on every token — the per-forward copy #973 objects to,
+         * merely moved. A weight is prepacked *once*, at load
+         * ([sk.ainet.lang.memory.TensorView.prepack]); a canonical weight handed straight to the
+         * dispatcher gets the decoding reference kernel, which is correct and slower. Pass `true`
+         * for a one-shot call where the copy is cheaper than the reference path.
+         */
+        prepackWeights: Boolean = false,
     ) {
         val key = KernelKey.matmul(a, b)
         val exact = find(key)
@@ -90,6 +103,19 @@ public object KernelDispatch {
                     runTraced(ternaryKernel, listOf(requantized, b), out, sink)
                     return
                 }
+            }
+        }
+        // A packed kernel reads its weight input-block-major; a weight loaded from a file is
+        // canonical. Now that the order is in the key (#973/#1094) the two can be bridged — but the
+        // relayout is O(bytes), so it happens only when the caller asks, and the right shape for a
+        // hot loop is a weight prepacked once at load, which hits the exact key above and copies
+        // nothing.
+        if (prepackWeights && b.layout.blocked && b.layout.blockOrder == BlockOrder.ROW_MAJOR) {
+            val prepacked = b.prepack(BlockOrder.INPUT_BLOCK_MAJOR, scope, sink)
+            val packedKernel = find(KernelKey.matmul(a, prepacked))
+            if (packedKernel != null) {
+                runTraced(packedKernel, listOf(a, prepacked), out, sink)
+                return
             }
         }
         // No exact kernel: adapt the operands a kernel would accept, then fall back to the reference,
