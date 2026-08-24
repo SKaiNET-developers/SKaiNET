@@ -94,6 +94,18 @@ public object JniKernels {
         output: FloatArray, outputOffset: Int,
     )
 
+    /**
+     * `bitnet_gemv` (#1041): int8 activations with one absmax scale against canonical TQ2_0
+     * ternary weights. The activation is a byte array of codes, not floats — a ternary matmul's
+     * whole point is that neither operand is wide.
+     */
+    public external fun bitnetGemvTq20(
+        activation: ByteArray, activationOffset: Int, activationScale: Float,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
     public external fun q40Matmul(
         input: FloatArray, inputOffset: Int,
         weight: ByteArray, weightByteOffset: Int,

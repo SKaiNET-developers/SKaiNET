@@ -270,6 +270,27 @@ SKAINET_API void skainet_q5_1_matmul(
     int32_t output_offset
 );
 
+/*
+ * `bitnet_gemv`: int8 activations (one absmax scale per token) against ternary
+ * TQ2_0 weights — the SKEEP-003 §5.3 kernel, matching
+ * sk.ainet.backend.api.kernel.BitNetGemvKernel.
+ *
+ * A ternary weight is an add, a subtract or nothing; the vector work is the
+ * unpacking, after which `sdot` accumulates sixteen products per instruction
+ * where the core has ARMv8.2 dotprod.
+ *
+ * @param activation        int8 codes of one token, `input_dim` of them
+ * @param activation_scale  the token's absmax scale (`absmax / 127`)
+ * @param weight            canonical TQ2_0 blocks, row-major per output row
+ * @param output            `output_dim` floats
+ */
+SKAINET_API void skainet_bitnet_gemv_tq2_0(
+    const int8_t* activation, int32_t activation_offset,
+    float activation_scale,
+    const uint8_t* weight, int32_t weight_byte_offset,
+    int32_t input_dim, int32_t output_dim,
+    float* output, int32_t output_offset);
+
 #ifdef __cplusplus
 }
 #endif
