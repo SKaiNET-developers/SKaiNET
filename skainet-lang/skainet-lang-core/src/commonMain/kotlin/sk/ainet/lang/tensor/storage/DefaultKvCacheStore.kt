@@ -28,6 +28,12 @@ import sk.ainet.lang.types.FP32
 public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
     private val config: KvCacheConfig,
     private val scope: sk.ainet.lang.memory.ModelScope? = null,
+    /**
+     * Treat the buffer as a **ring** (#1036, M2-F5): appending past [maxSeqLen] overwrites the
+     * oldest position instead of failing, and the live window is the newest [maxSeqLen] positions.
+     * Off by default — a cache that fills up still throws, exactly as before.
+     */
+    public val slidingWindow: Boolean = false,
 ) : KvCacheStore {
 
     override val numLayers: Int get() = config.numLayers
@@ -72,7 +78,7 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
 
     override fun appendToken(layer: Int, key: FloatArray, value: FloatArray) {
         requireLayerIndex(layer)
-        check(_currentSeqLen < maxSeqLen) {
+        check(slidingWindow || _currentSeqLen < maxSeqLen) {
             "KV cache is full: currentSeqLen=$_currentSeqLen, maxSeqLen=$maxSeqLen"
         }
         require(key.size == numHeads * headDim) {
@@ -82,7 +88,7 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
             "Value size mismatch: expected ${numHeads * headDim}, got ${value.size}"
         }
 
-        val pos = _currentSeqLen
+        val pos = slotOf(_currentSeqLen)
         val layerKeys = keys[layer]
         val layerValues = values[layer]
 
@@ -161,6 +167,80 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
 
     // --- Internal helpers ---
 
+    // --- the ring (#1036) ---------------------------------------------------------------------
+
+    /** Physical slot of an absolute position. Identity unless this store is a ring. */
+    private fun slotOf(position: Int): Int = if (slidingWindow) position % maxSeqLen else position
+
+    /** The oldest absolute position still held — everything before it has been overwritten. */
+    public val windowStart: Int
+        get() = if (slidingWindow) (_currentSeqLen - maxSeqLen).coerceAtLeast(0) else 0
+
+    /** Storage handles over the per-layer arrays, made once so a window costs no allocation. */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    private val keyStorages by lazy { List(numLayers) { sk.ainet.lang.memory.Storage.Heap.wrap(keys[it]) } }
+
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    private val valueStorages by lazy { List(numLayers) { sk.ainet.lang.memory.Storage.Heap.wrap(values[it]) } }
+
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override fun keyWindow(layer: Int, from: Int, to: Int): sk.ainet.lang.memory.WindowedKV =
+        window(keyStorages[layer], layer, from, to, config.keyDType)
+
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    override fun valueWindow(layer: Int, from: Int, to: Int): sk.ainet.lang.memory.WindowedKV =
+        window(valueStorages[layer], layer, from, to, config.valueDType)
+
+    /**
+     * `[from, to)` as one or two strided views over the layer's array — zero copies.
+     *
+     * The layer is laid out `[head, position, dim]`, so a run of positions is a view with the head
+     * stride left at `maxSeqLen * headDim`: contiguous per head, strided across heads. When the run
+     * crosses the end of the ring it becomes two such views, oldest first.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    private fun window(
+        storage: sk.ainet.lang.memory.Storage,
+        layer: Int,
+        from: Int,
+        to: Int,
+        dtype: sk.ainet.lang.types.DType,
+    ): sk.ainet.lang.memory.WindowedKV {
+        requireLayerIndex(layer)
+        require(from in windowStart..to) { "window [$from, $to) starts before the ring's oldest position ($windowStart)" }
+        require(to <= _currentSeqLen) { "window end $to exceeds currentSeqLen=$_currentSeqLen" }
+        val length = to - from
+        val startSlot = slotOf(from)
+        val firstRun = if (slidingWindow) minOf(length, maxSeqLen - startSlot) else length
+        val head = view(storage, startSlot, firstRun, dtype, layer, from)
+        val rest = length - firstRun
+        return if (rest <= 0) {
+            sk.ainet.lang.memory.WindowedKV(head)
+        } else {
+            sk.ainet.lang.memory.WindowedKV(head, view(storage, 0, rest, dtype, layer, from + firstRun))
+        }
+    }
+
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    private fun view(
+        storage: sk.ainet.lang.memory.Storage,
+        startSlot: Int,
+        positions: Int,
+        dtype: sk.ainet.lang.types.DType,
+        layer: Int,
+        firstPosition: Int,
+    ): sk.ainet.lang.memory.TensorView {
+        val shape = Shape(numHeads, positions, headDim)
+        val layout = sk.ainet.lang.memory.Layout(
+            shape = shape,
+            strides = intArrayOf(maxSeqLen * headDim, headDim, 1),
+            offsetElements = startSlot.toLong() * headDim,
+            elementBytes = dtype.sizeInBytes,
+        )
+        val id = sk.ainet.lang.tensor.TensorId(listOf("kv", "layers[$layer]"), "window", "from=$firstPosition")
+        return sk.ainet.lang.memory.TensorView(shape, sk.ainet.lang.memory.Format(dtype, config.keyEncoding), layout, storage, id)
+    }
+
     private fun readRange(
         layerData: FloatArray,
         layer: Int,
@@ -168,17 +248,27 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
         endPos: Int
     ): FloatArray {
         requireLayerIndex(layer)
-        require(startPos in 0..endPos) { "Invalid range: startPos=$startPos, endPos=$endPos" }
+        require(startPos in windowStart..endPos) { "Invalid range: startPos=$startPos, endPos=$endPos, oldest held position=$windowStart" }
         require(endPos <= _currentSeqLen) {
             "endPos=$endPos exceeds currentSeqLen=$_currentSeqLen"
         }
 
         val seqLen = endPos - startPos
         val result = FloatArray(numHeads * seqLen * headDim)
-        for (h in 0 until numHeads) {
-            val srcBase = h * maxSeqLen * headDim + startPos * headDim
-            val dstBase = h * seqLen * headDim
-            layerData.copyInto(result, dstBase, srcBase, srcBase + seqLen * headDim)
+        // A ring's window can cross the end of the buffer: copy it in the one or two runs it
+        // occupies, oldest first, so a wrapped read returns positions in order (#1036).
+        var written = 0
+        var position = startPos
+        while (written < seqLen) {
+            val slot = slotOf(position)
+            val run = if (slidingWindow) minOf(seqLen - written, maxSeqLen - slot) else seqLen - written
+            for (h in 0 until numHeads) {
+                val srcBase = h * maxSeqLen * headDim + slot * headDim
+                val dstBase = h * seqLen * headDim + written * headDim
+                layerData.copyInto(result, dstBase, srcBase, srcBase + run * headDim)
+            }
+            written += run
+            position += run
         }
         return result
     }
