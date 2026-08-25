@@ -14,7 +14,9 @@ import sk.ainet.lang.memory.plan.KvCacheMode
 import sk.ainet.lang.memory.plan.MemoryPlan
 import sk.ainet.lang.memory.plan.MemoryPlans
 import sk.ainet.lang.memory.plan.PlanInput
+import sk.ainet.lang.memory.plan.KernelCapabilities
 import sk.ainet.lang.memory.plan.PlannerProfile
+import sk.ainet.lang.memory.plan.resolveWeightForms
 import sk.ainet.lang.memory.plan.ProfiledPlan
 import java.io.File
 import kotlin.system.exitProcess
@@ -47,6 +49,13 @@ public fun main(args: Array<String>) {
         fullName = "profile",
         description = "Device profile whose rules the plan follows (M2-F6): mobile = 2 GB phone, desktop, native",
     ).default("none")
+    val kernels by parser.option(
+        ArgType.Choice(listOf("all", "dense"), { it }),
+        fullName = "kernels",
+        description = "What the target's kernels can feed (#1116): all = packed kernels for every " +
+            "shipped encoding (the default, and what SKaiNET's CPU backend carries); dense = FP32 " +
+            "only, so the plan prices dequantizing every quantized weight at load",
+    ).default("all")
     parser.parse(args)
 
     val file = File(model)
@@ -56,7 +65,16 @@ public fun main(args: Array<String>) {
     val profile = profileFor(profileName)
     val profiled: ProfiledPlan = JvmRandomAccessSource.open(file).use { src ->
         val reader = StreamingGGUFReader.open(src)
-        val input = reader.planInput(ctx = ctx, prefillChunk = prefill, kvMode = kvMode)
+        val stored = reader.planInput(ctx = ctx, prefillChunk = prefill, kvMode = kvMode)
+        // Which encodings the *target* can feed is not a property of this machine, so it is asked
+        // for rather than detected. `all` keeps the plan exactly as it was before #1116.
+        val input = when {
+            profile == null -> stored
+            else -> stored.resolveWeightForms(
+                profile,
+                if (kernels == "dense") KernelCapabilities.DENSE_ONLY else KernelCapabilities.EVERYTHING,
+            )
+        }
         val available = budget?.let { parseBytes(it) } ?: Runtime.getRuntime().maxMemory()
         if (profile != null) {
             // A profile owns the reserve, so --budget names what the *device* has, not what the
