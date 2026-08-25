@@ -3,6 +3,7 @@ package sk.ainet.exec.tensor.ops
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.matmulWeightTransposed
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.FP32
@@ -91,5 +92,25 @@ class MatmulWeightTransposedTest {
         for (i in viaPrimitive.indices) {
             assertTrue(abs(viaPrimitive[i] - viaTranspose[i]) < 1e-4f, "[$i]: ${viaPrimitive[i]} vs ${viaTranspose[i]}")
         }
+    }
+
+    @Test
+    fun `the extension is the ops call for packed and dense alike`() {
+        val x = activation()
+
+        val packed = weight()
+        assertContentEquals(
+            ctx.ops.matmulWeightTransposed(x, packed).data.copyToFloatArray(),
+            x.matmulWeightTransposed(packed).data.copyToFloatArray(),
+            "x.matmulWeightTransposed(w) must be ops.matmulWeightTransposed(x, w) for a packed weight",
+        )
+
+        val dense: Tensor<FP32, Float> =
+            ctx.fromFloatArray<FP32, Float>(Shape(outDim, inDim), FP32::class, FloatArray(outDim * inDim) { it * 0.01f })
+        assertContentEquals(
+            ctx.ops.matmulWeightTransposed(x, dense).data.copyToFloatArray(),
+            x.matmulWeightTransposed(dense).data.copyToFloatArray(),
+            "and for a dense one",
+        )
     }
 }

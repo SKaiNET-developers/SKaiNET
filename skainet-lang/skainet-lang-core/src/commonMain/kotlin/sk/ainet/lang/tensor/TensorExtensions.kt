@@ -36,6 +36,20 @@ public fun <T : DType, V> Tensor<T, V>.cosineDistance(
 // Tensor extension functions that delegate to the ops component
 public fun <T : DType, V> Tensor<T, V>.t(): Tensor<T, V> = ops.transpose(this)
 public fun <T : DType, V> Tensor<T, V>.matmul(other: Tensor<T, V>): Tensor<T, V> = ops.matmul(this, other)
+
+/**
+ * `this · Wᵀ` with [weight] as `[out, in]` — the fluent form of [sk.ainet.lang.tensor.ops.TensorOps.matmulWeightTransposed].
+ *
+ * Reads like `x.matmul(w.t())` and means the same product, but says it as one request instead of
+ * two steps. That matters for a block-quantized weight, where the two steps cannot express it:
+ * `t()` on packed data is a layout conversion, not a transpose, and doing it per call copies the
+ * whole weight every forward pass (#973/#1096). Asked for as a product, an implementation can
+ * relayout once and reuse, or skip the work entirely when the bytes are already in kernel order.
+ *
+ * For a dense weight this is exactly `matmul(this, weight.t())` — a free shape swap, as before.
+ */
+public fun <T : DType, V> Tensor<T, V>.matmulWeightTransposed(weight: Tensor<T, V>): Tensor<T, V> =
+    ops.matmulWeightTransposed(this, weight)
 public fun <T : DType, V> Tensor<T, V>.flatten(startDim: Int = 0, endDim: Int = -1): Tensor<T, V> = 
     ops.flatten(this, startDim, endDim)
 
