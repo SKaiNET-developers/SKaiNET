@@ -1848,7 +1848,8 @@ public final class sk/ainet/lang/memory/plan/WeightForm$Companion {
 
 public final class sk/ainet/lang/memory/plan/WeightFormResolver {
 	public static final field INSTANCE Lsk/ainet/lang/memory/plan/WeightFormResolver;
-	public final fun resolve (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/KernelCapabilities;)Lsk/ainet/lang/memory/plan/WeightForm;
+	public final fun resolve (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/KernelCapabilities;Z)Lsk/ainet/lang/memory/plan/WeightForm;
+	public static synthetic fun resolve$default (Lsk/ainet/lang/memory/plan/WeightFormResolver;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/KernelCapabilities;ZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/WeightForm;
 }
 
 public final class sk/ainet/lang/memory/plan/WeightFormResolverKt {

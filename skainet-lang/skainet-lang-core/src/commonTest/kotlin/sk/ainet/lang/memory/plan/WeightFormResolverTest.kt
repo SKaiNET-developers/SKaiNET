@@ -32,10 +32,12 @@ class WeightFormResolverTest {
         }
 
     @Test
-    fun `a weight whose kernel exists keeps its encoding and gets feed order`() {
+    fun `a weight whose kernel exists keeps its encoding and gets feed order when it can be produced`() {
         for (encoding in packed) {
             for (profile in listOf(PlannerProfile.DESKTOP, PlannerProfile.MOBILE_2GB)) {
-                val form = WeightFormResolver.resolve(encoding, profile, capableOf(encoding))
+                val form = WeightFormResolver.resolve(
+                    encoding, profile, capableOf(encoding), canProduceKernelFeedOrder = true,
+                )
                 assertEquals(
                     EncodingRequest.KeepAsStored, form.encoding,
                     "${encoding.name} on ${profile.name}: a feedable weight must not be re-encoded",
@@ -45,6 +47,22 @@ class WeightFormResolverTest {
                     "${encoding.name} on ${profile.name}: the kernel reads input-block-major, so load it that way",
                 )
             }
+        }
+    }
+
+    @Test
+    fun `feed order is not asked for by default because nothing can produce it yet`() {
+        // The gap #1118's end-to-end test found: the resolver asked for KERNEL_FEED and the loader
+        // had to reject it, for the *common* case of a target that has kernels. Wanting feed order
+        // is a fact about the kernel; producing it is a fact about the loader, and until #1120 the
+        // answer to the second is no. Neither slice's own tests could see this — only running them
+        // together could.
+        for (encoding in packed) {
+            val form = WeightFormResolver.resolve(encoding, PlannerProfile.DESKTOP, capableOf(encoding))
+            assertEquals(
+                WeightByteOrder.AS_STORED, form.order,
+                "${encoding.name}: the default resolution must be one a loader can actually honour",
+            )
         }
     }
 

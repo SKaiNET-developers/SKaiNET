@@ -84,6 +84,11 @@ kotlin {
                 implementation(libs.junit)
                 implementation(libs.kotlinx.coroutines)
                 implementation(libs.kotlinx.coroutines.test)
+                // #1118's acceptance test loads a model and *runs* it, so it needs a backend that
+                // computes: this module's own DefaultDataExecutionContext carries VoidTensorOps.
+                // Test-only, and not a cycle — the CPU backend does not know about GGUF.
+                implementation(project(":skainet-backends:skainet-backend-cpu"))
+                implementation(project(":skainet-backends:skainet-backend-api"))
             }
         }
 
