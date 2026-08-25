@@ -14,6 +14,7 @@ import sk.ainet.lang.tensor.data.RowDequantSource
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
 import sk.ainet.lang.tensor.data.NarrowFloatInputMajorTensorData
+import sk.ainet.lang.tensor.data.TransposedWeightTensorData
 import sk.ainet.lang.tensor.data.Q4_0TensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
@@ -595,6 +596,13 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         require(a.rank >= 1 && b.rank >= 1) { "Matrix multiplication requires tensors with at least 1 dimension per operand" }
         require(a.dtype == b.dtype) { "DType mismatch: ${a.dtype} vs ${b.dtype}" }
 
+        // `x · Wᵀ` written as two steps (#1108). Must be first: below this line the weight would be
+        // probed with `is PackedBlockStorage` and friends, and the marker deliberately answers no
+        // to all of them, so it would fall through to a dense path and read a packed payload as
+        // floats. Routing it here is what makes `x.matmul(w.t())` mean the same thing whatever the
+        // weight is stored as.
+        untransposedWeight(b)?.let { return matmulWeightTransposed(a, it) }
+
         // Packed-quant fast path (FP32 input × packed weight), resolved via KernelRegistry.
         KernelProfile.timeQuant { chooseQuantizedMatmulHeap(a, b) }?.let { return it }
 
@@ -895,6 +903,18 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
      * For a block-quantized weight this relayouts **once** and reuses the result; for anything else
      * it is the ordinary `matmul(x, transpose(w))`, which for dense data is a free shape swap.
      */
+    /**
+     * The weight behind a `Wᵀ` marker (#1108), or `null` when [b] is an ordinary operand.
+     *
+     * `protected` because every `matmul` override has to consult it *before* its own fast paths:
+     * the marker reports no packed storage by design, so any check that asks "is this packed?"
+     * gets the wrong answer and a dense path would read the packed payload as floats.
+     */
+    protected fun <T : DType, V> untransposedWeight(b: Tensor<T, V>): Tensor<T, V>? {
+        val marker = b.data as? TransposedWeightTensorData<T, V> ?: return null
+        return newTensor(marker.weight, b.dtype, b)
+    }
+
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         if (weight.shape.rank != 2 || !isHeapPackedWeight(weight.data)) return matmul(x, transpose(weight))
@@ -1004,23 +1024,30 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val rows = tensor.shape[rank - 2]
         val cols = tensor.shape[rank - 1]
 
+        // Transposing a transposed weight is the weight (#1108). Restoring this involution is half
+        // the point of the marker: `w.t().t()` has not been `w` for as long as packed data existed.
+        val alreadyTransposed = tensor.data as? TransposedWeightTensorData<T, V>
+        if (alreadyTransposed != null) {
+            return newTensor(alreadyTransposed.weight, tensor.dtype, tensor)
+        }
+
         // Only the *heap* packed types, whose kernels read input-block-major bytes. The
         // MemorySegment tier reads canonical bytes, so for those a shape swap is genuinely correct
         // and stays where it is — census contradiction #3, now stated instead of implied.
         val heapPacked = rank == 2 && isHeapPackedWeight(tensor.data)
         if (heapPacked) {
-            val packedData = tensor.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
-            // Transposing block-quantized data is not a representable operation (#973): blocks
-            // quantize runs along the input dimension, so a real transpose needs requantization.
-            // What used to happen here was a layout conversion wearing transpose's name — an
-            // O(bytes) copy per call, not an involution, and a lie about what the result means.
-            throw UnsupportedOperationException(
-                "transpose() is not defined for a ${packedData.encoding.name} weight: blocks quantize runs " +
-                    "along the input dimension, so transposing them needs requantization, and what this used to " +
-                    "do was a per-call layout copy that is not its own inverse (#973). Use " +
-                    "ops.matmulWeightTransposed(x, weight) with the weight as [out, in], or relayout explicitly " +
-                    "with PackedWeights.prepackForMatmul. See the Packed weight layout page in the docs site (explanation/packed-weight-layout).",
-            )
+            // Transposing block-quantized bytes is still not a representable operation (#973):
+            // blocks quantize runs along the input dimension, so a real transpose needs
+            // requantization. #1096 answered that by making `x · Wᵀ` a primitive and having this
+            // throw; #1108 keeps the primitive and drops the throw, because refusing here forced
+            // the *caller* to know how the weight was stored — which depends on the file loaded and
+            // the device it runs on, not on the model.
+            //
+            // So this returns `Wᵀ` as an unmaterialized marker instead. It carries no `packedData`,
+            // so no kernel can read the bytes through it as if they were the transpose's; `matmul`
+            // recognises it and asks `matmulWeightTransposed` for the product, which relayouts
+            // properly and once per weight. That is the distinction from the relabel this replaced.
+            return newTensor(TransposedWeightTensorData(tensor.data), tensor.dtype, tensor)
         }
 
         // Narrow floats (FP16/BF16) relaid input-major at load are a *view* rewrap, not a packed

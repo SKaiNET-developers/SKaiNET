@@ -6,11 +6,11 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.matmulWeightTransposed
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.tensor.data.TransposedWeightTensorData
 import sk.ainet.lang.types.FP32
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -71,13 +71,11 @@ class MatmulWeightTransposedTest {
     }
 
     @Test
-    fun `transpose refuses a packed weight and says what to use instead`() {
-        val failure = assertFailsWith<UnsupportedOperationException> { ctx.ops.transpose(weight()) }
-        val message = failure.message!!
-        assertTrue(message.contains("not defined for a Q8_0 weight"), message)
-        assertTrue(message.contains("matmulWeightTransposed"), "it names the primitive: $message")
-        assertTrue(message.contains("prepackForMatmul"), "and the explicit relayout: $message")
-        assertTrue(message.contains("requantization"), "and why: $message")
+    fun `transpose of a packed weight is the transposed-weight marker`() {
+        // #1108 replaced #1096's refusal: `t()` no longer throws, it returns `Wᵀ` unmaterialized.
+        val t = ctx.ops.transpose(weight())
+        assertTrue(t.shape == Shape(inDim, outDim), "the shape is the transpose: ${t.shape}")
+        assertTrue(t.data is TransposedWeightTensorData<*, *>, "and the data says so: ${t.data::class.simpleName}")
     }
 
     @Test

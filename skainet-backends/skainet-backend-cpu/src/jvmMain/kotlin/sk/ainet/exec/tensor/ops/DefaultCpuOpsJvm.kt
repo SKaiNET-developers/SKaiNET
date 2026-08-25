@@ -181,6 +181,10 @@ internal class DefaultCpuOpsJvm(
     }
 
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        // `x · Wᵀ` written as two steps (#1108) — before everything, including the strictness check
+        // below, which would otherwise report a missing kernel for an operand that has a perfectly
+        // good one behind the marker.
+        untransposedWeight(b)?.let { return matmulWeightTransposed(a, it) }
         // Try quantized matmul path first (FP32 input x quantized weights)
         chooseQuantizedMatmul(a, b)?.let { return it }
         // Fallback to standard FP32 matmul
