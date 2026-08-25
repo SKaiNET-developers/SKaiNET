@@ -180,6 +180,39 @@ internal class DefaultCpuOpsJvm(
         return super.divide(a, b)
     }
 
+    /**
+     * `x · Wᵀ` with the weight relayouted once into the order this backend's packed kernels read
+     * (#1096), which is the fast path the common implementation cannot take.
+     *
+     * `DefaultCpuOpsBase` decodes the weight where it lies instead, because it has no kernel that
+     * addresses `packedData` in feed order and relayouting for one that does not exist produced a
+     * tensor nothing could decode correctly (#1124). Here the kernels do exist, so the relayout
+     * pays: once per weight, cached by the identity of its bytes.
+     */
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
+        if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) return super.matmulWeightTransposed(x, weight)
+        val packed = weight.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
+        val source = packed.packedData
+        val cached = prepackedWeightsJvm.firstOrNull { it.first === source }?.second
+        val kernelOrder = cached ?: relayoutPackedWeightForKernels(weight).also { relayouted ->
+            if (prepackedWeightsJvm.size >= PREPACK_CACHE_LIMIT_JVM) prepackedWeightsJvm.removeAt(0)
+            prepackedWeightsJvm.add(Pair(source, relayouted as Tensor<*, *>))
+        }
+        return matmul(x, kernelOrder as Tensor<T, V>)
+    }
+
+    /** Relayouted weights keyed by the identity of the bytes they came from (#1096). */
+    private val prepackedWeightsJvm: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
+    private val PREPACK_CACHE_LIMIT_JVM: Int = 64
+
+    /** The heap packed types whose JVM kernels read input-block-major bytes. */
+    private fun isHeapPackedWeightForJvm(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
+        data is sk.ainet.lang.tensor.data.Q4_KTensorData || data is sk.ainet.lang.tensor.data.Q5_KTensorData ||
+            data is sk.ainet.lang.tensor.data.Q6_KTensorData || data is sk.ainet.lang.tensor.data.Q5_1TensorData ||
+            data is sk.ainet.lang.tensor.data.Q5_0TensorData || data is sk.ainet.lang.tensor.data.Q8_0TensorData ||
+            data is sk.ainet.lang.tensor.data.Q4_0TensorData
+
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         // `x · Wᵀ` written as two steps (#1108) — before everything, including the strictness check
         // below, which would otherwise report a missing kernel for an operand that has a perfectly

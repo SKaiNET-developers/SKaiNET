@@ -918,14 +918,53 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         if (weight.shape.rank != 2 || !isHeapPackedWeight(weight.data)) return matmul(x, transpose(weight))
-        val packed = weight.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
-        val source = packed.packedData
-        val cached = prepackedWeights.firstOrNull { it.first === source }?.second
-        val kernelOrder = cached ?: relayoutPackedWeightForKernels(weight).also { relayouted ->
-            if (prepackedWeights.size >= PREPACK_CACHE_LIMIT) prepackedWeights.removeAt(0)
-            prepackedWeights.add(Pair(source, relayouted as Tensor<*, *>))
+        // Decode the weight where it lies (#1124). The relayout below produces bytes for kernels
+        // that address `packedData` in feed order themselves; this implementation has no such
+        // kernel, so relayouting for it was pure harm — the result is a tensor whose shape says
+        // [in, out] while its blocks still run along the original input dimension, which no block
+        // order can describe, and decoding it read the wrong blocks and returned plausible garbage.
+        // `KernelDispatch.matmul` already wants the weight output-major, which is exactly the shape
+        // this weight has, so the canonical view goes straight in with nothing rearranged.
+        matmulWeightTransposedViaViews(x, weight)?.let { return it }
+        return matmul(x, transposePackedWeight(weight) ?: return matmulGeneric(x, transpose(weight)))
+    }
+
+    /**
+     * `x · Wᵀ` with [weight] as `[out, in]`, computed by decoding through views (#1124).
+     *
+     * Correct for any packed encoding, because the reference kernel reads through the decoding
+     * `get()`; slower than a packed kernel, which is why [DefaultCpuOpsJvm] overrides this with the
+     * relayout-and-cache path its vectorized kernels can use. `null` when the operands cannot
+     * describe themselves as views.
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    @Suppress("UNCHECKED_CAST")
+    protected fun <T : DType, V> matmulWeightTransposedViaViews(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V>? {
+        if (!sk.ainet.backend.api.kernel.DispatchMode.useRegistry()) return null
+        if (x.dtype != FP32::class) return null
+        val xView = x.data.view ?: return null
+        val wView = weight.data.view ?: return null
+        val (xNorm, leading) = try {
+            sk.ainet.backend.api.kernel.KernelDispatch.normalizeActivation(xView)
+        } catch (_: IllegalArgumentException) {
+            return null
         }
-        return matmul(x, kernelOrder as Tensor<T, V>)
+        val m = xNorm.shape[0]
+        val k = xNorm.shape[1]
+        val n = wView.shape[0]                       // weight is [out, in]; the dispatcher wants it that way
+        if (k != wView.shape[1]) return null
+        val outArray = FloatArray(m * n)
+        val outView = sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.Storage.Heap.wrap(outArray), Shape(m, n), FP32,
+        )
+        sk.ainet.backend.api.kernel.KernelDispatch.matmul(xNorm, wView, outView)
+        val outShape = when {
+            x.shape.rank == 1 -> Shape(n)
+            leading.isEmpty() -> Shape(m, n)
+            else -> Shape(*(leading + n))
+        }
+        val outData = dataFactory.fromFloatArray<T, Float>(outShape, x.dtype, outArray) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(outData, x.dtype, x, weight)
     }
 
 

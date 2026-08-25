@@ -32,6 +32,26 @@ public interface PackedBlockStorage {
     /** Raw packed byte data containing all blocks. */
     public val packedData: ByteArray
 
+    /**
+     * The order [packedData]'s blocks are physically in (#1120, #1124).
+     *
+     * Canonical storage — every GGUF-shaped producer — is
+     * [sk.ainet.lang.memory.BlockOrder.ROW_MAJOR]: block `(o, b)` at flat index `o * blocksPerRow + b`.
+     * A weight that has been relayouted for the packed matmul kernels is
+     * [sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR] instead, and the two coincide only at one
+     * block per row.
+     *
+     * Before this existed, a relayouted weight was wrapped in a data type that still claimed to be
+     * canonical. The kernels that read [packedData] directly were unaffected — they were addressing
+     * it in feed order deliberately — but anything decoding through [packedView] read the wrong
+     * blocks and returned plausible garbage (#1124, and #973/#968 before it). Declaring the order is
+     * what lets both readers be right about the same bytes.
+     *
+     * Defaults to `ROW_MAJOR`, so every existing implementation is unchanged.
+     */
+    public val blockOrder: sk.ainet.lang.memory.BlockOrder
+        get() = sk.ainet.lang.memory.BlockOrder.ROW_MAJOR
+
     /** Physical byte size of the packed data. */
     public val physicalBytes: Long get() = packedData.size.toLong()
 
@@ -68,6 +88,7 @@ public interface PackedBlockStorage {
             shape = shape,
             encoding = encoding,
             decoder = sk.ainet.lang.memory.PackedBlockDecoder(this),
+            blockOrder = blockOrder,
         )
 
     public fun toFloatArray(): FloatArray {

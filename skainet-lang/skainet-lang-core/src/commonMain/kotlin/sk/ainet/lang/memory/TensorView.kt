@@ -299,8 +299,23 @@ public class TensorView(
          * blocks in row-major block order, decoded by [decoder]. Slicing and transposing address
          * whole blocks — the bytes are never touched.
          */
-        public fun packed(storage: Storage, shape: Shape, encoding: TensorEncoding, decoder: BlockDecoder, dtype: DType = FP32, id: TensorId? = null): TensorView =
-            TensorView(shape, Format(dtype, encoding), Layout.blocked(shape, decoder.blockSize, decoder.bytesPerBlock), storage, id, decoder)
+        public fun packed(
+            storage: Storage,
+            shape: Shape,
+            encoding: TensorEncoding,
+            decoder: BlockDecoder,
+            dtype: DType = FP32,
+            id: TensorId? = null,
+            blockOrder: BlockOrder = BlockOrder.ROW_MAJOR,
+        ): TensorView =
+            TensorView(
+                shape,
+                Format(dtype, encoding),
+                Layout.blocked(shape, decoder.blockSize, decoder.bytesPerBlock, blockOrder = blockOrder),
+                storage,
+                id,
+                decoder,
+            )
     }
 }
 
