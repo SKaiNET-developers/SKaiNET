@@ -39,12 +39,28 @@ public object WeightFormResolver {
      *    cost — FP32 is roughly eight times a Q4_K tensor — and a profile that says [PlannerProfile.strict]
      *    means a missing kernel is a bug to surface, not a slow path to take quietly.
      *
+     * ## Why [canProduceKernelFeedOrder] exists
+     *
+     * *Wanting* feed order and being able to *produce* it are different facts about different
+     * components. [KernelCapabilities.wantsKernelFeedOrder] answers the first — a property of the
+     * kernel. The second is a property of whoever materializes the bytes, and today no loader can:
+     * packed `TensorData` addresses its payload as canonical row-major, so feed-order bytes would
+     * decode the wrong elements without failing (#1120, and #973/#968 before it).
+     *
+     * So the resolver does not ask for what nothing can deliver. The default is `false`, which
+     * makes every resolved form loadable; #1120 flips it by passing `true` from a pipeline that can
+     * honour it. Collapsing the two facts into one is what let slice 1 hand slice 2 a form it had
+     * to reject — caught by the end-to-end test in #1118 and not by either slice's own tests.
+     *
+     * @param canProduceKernelFeedOrder whether the caller's pipeline can actually write feed-order
+     *   bytes; `false` until #1120
      * @throws IllegalStateException when nothing can feed [stored] and the profile is strict
      */
     public fun resolve(
         stored: TensorEncoding?,
         profile: PlannerProfile,
         capabilities: KernelCapabilities,
+        canProduceKernelFeedOrder: Boolean = false,
     ): WeightForm {
         val residency = if (profile.weightsMapped) WeightResidency.MAPPED else WeightResidency.HEAP
 
@@ -54,7 +70,7 @@ public object WeightFormResolver {
 
         if (capabilities.canFeedMatmul(stored)) {
             val order =
-                if (capabilities.wantsKernelFeedOrder(stored)) WeightByteOrder.KERNEL_FEED
+                if (capabilities.wantsKernelFeedOrder(stored) && canProduceKernelFeedOrder) WeightByteOrder.KERNEL_FEED
                 else WeightByteOrder.AS_STORED
             return WeightForm(EncodingRequest.KeepAsStored, order, residency = residency)
         }
