@@ -50,7 +50,11 @@ class MemoryProbeTest {
         val delta = second.majorFaultsSince(first)
         if (delta != null) {
             assertTrue(delta >= 0, "major faults went backwards by $delta")
-            assertEquals(0L, delta, "touching freshly allocated anonymous memory must not fault to disk")
+            // Anonymous memory should not need the disk — but the counter is the *process's*, and on
+            // a shared machine something else in this JVM may fault while the test runs. The claim
+            // is that touching 8 MB of fresh memory does not fault per page, not that the number is
+            // exactly zero.
+            assertTrue(delta < 64, "touching freshly allocated anonymous memory should not fault to disk, saw $delta")
         }
         assertTrue(chunk.isNotEmpty())
     }
