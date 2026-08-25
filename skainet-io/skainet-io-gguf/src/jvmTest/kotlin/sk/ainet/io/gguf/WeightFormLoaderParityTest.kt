@@ -140,18 +140,26 @@ class WeightFormLoaderParityTest {
     }
 
     @Test
-    fun `KERNEL_FEED is refused for the reason it is refused`() {
-        // Not "unsupported": the bytes are the easy part. The refusal is because packed TensorData
-        // reads packedData as canonical row-major, so feed-order bytes decode wrong silently (#1120).
+    fun `KERNEL_FEED is accepted now that packed storage can declare its order`() {
+        // This slice refused it: packed TensorData read packedData as canonical row-major, so
+        // feed-order bytes decoded to the wrong elements silently. #1120 gave the bytes a way to
+        // say what order they are in, so the refusal is gone — replaced by the one constraint that
+        // remains real, since feed order is defined relative to an [out, in] weight.
+        StreamingGgufParametersLoader(
+            sourceProvider = { JvmRandomAccessSource.open(file()) },
+            weightForm = WeightForm(
+                order = WeightByteOrder.KERNEL_FEED,
+                shape = WeightShapeOrientation.OUT_IN,
+            ),
+        )
+
         val failure = assertFailsWith<IllegalArgumentException> {
             StreamingGgufParametersLoader(
                 sourceProvider = { JvmRandomAccessSource.open(file()) },
                 weightForm = WeightForm(order = WeightByteOrder.KERNEL_FEED),
             )
         }
-        val message = failure.message!!
-        assertTrue(message.contains("#1120"), "it names where this is being fixed: $message")
-        assertTrue(message.contains("canonical row-major"), "and why it cannot be faked: $message")
+        assertTrue(failure.message!!.contains("OUT_IN"), failure.message!!)
     }
 
     @Test

@@ -210,12 +210,10 @@ public class StreamingGgufParametersLoader(
                     "ignored; pass only the form."
             }
         }
-        require(form.order == WeightByteOrder.AS_STORED) {
-            "WeightByteOrder.KERNEL_FEED is not supported by this loader yet (#1120). The bytes are " +
-                "easy — TensorView.prepack(INPUT_BLOCK_MAJOR) does the permutation — but packed " +
-                "TensorData addresses packedData as canonical row-major in getBlockScale, getCode " +
-                "and dequantizeBlock, so feed-order bytes would decode the wrong elements without " +
-                "failing (#973, #968). Packed storage has to be able to declare its own order first."
+        require(form.order == WeightByteOrder.AS_STORED || form.shape == WeightShapeOrientation.OUT_IN) {
+            "WeightByteOrder.KERNEL_FEED needs WeightShapeOrientation.OUT_IN: feed order is defined " +
+                "relative to a [out, in] weight — which block is 'block b of output row o' has no " +
+                "answer while the tensor is still labelled in the file's `ne` order."
         }
         val requested = form.encoding
         require(requested !is EncodingRequest.RequantizeTo) {
@@ -433,7 +431,42 @@ public class StreamingGgufParametersLoader(
                 "quantizedTensor called for non-quantized type ${tensorInfo.tensorType}"
             )
         }
-        return ctx.fromData(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+        val delivered = if (form.order == WeightByteOrder.KERNEL_FEED) feedOrdered(packed, tensorInfo) else packed
+        return ctx.fromData(delivered as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+    }
+
+    /**
+     * [packed] with its blocks permuted into the order the packed matmul kernels read, and *saying
+     * so* (#1120).
+     *
+     * The permutation is `TensorView.prepack`, which already owns it and emits the conversion on
+     * the trace (#1117). What #1120 adds is the second half: the result is rebuilt as a
+     * `TensorData` carrying `BlockOrder.INPUT_BLOCK_MAJOR`, so every reader is right about the same
+     * bytes — the kernels address them in feed order deliberately, and anything decoding through
+     * the view or `toFloatArray()` walks the logical grid and fetches each block from where this
+     * order put it. Before that, feed-order bytes in a type claiming to be canonical decoded to
+     * plausible garbage (#1124, #973, #968).
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    private fun feedOrdered(
+        packed: sk.ainet.lang.tensor.storage.PackedBlockStorage,
+        tensorInfo: StreamingTensorInfo,
+    ): sk.ainet.lang.tensor.storage.PackedBlockStorage {
+        val shape = packed.shape
+        if (shape.rank != 2 || shape[1] % packed.blockSize != 0) return packed
+        val prepacked = packed.packedView.prepack(sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR, sink = traceSink)
+        val bytes = (prepacked.storage as? sk.ainet.lang.memory.Storage.Heap)?.bytes ?: return packed
+        val order = sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR
+        return when (tensorInfo.tensorType) {
+            GGMLQuantizationType.Q4_K -> Q4_KBlockTensorData(shape, bytes, order)
+            GGMLQuantizationType.Q5_K -> Q5_KBlockTensorData(shape, bytes, order)
+            GGMLQuantizationType.Q6_K -> Q6_KBlockTensorData(shape, bytes, order)
+            GGMLQuantizationType.Q8_0 -> Q8_0BlockTensorData(shape, bytes, order)
+            GGMLQuantizationType.Q4_0 -> Q4_0BlockTensorData(shape, bytes, order)
+            GGMLQuantizationType.Q5_0 -> Q5_0BlockTensorData(shape, bytes, order)
+            GGMLQuantizationType.Q5_1 -> Q5_1BlockTensorData(shape, bytes, order)
+            else -> packed
+        }
     }
 
     private fun bytesToFloatArray(bytes: ByteArray): FloatArray {

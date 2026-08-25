@@ -1002,6 +1002,36 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 "no packed relayout for ${weight.data::class.simpleName}",
             )
 
+    /**
+     * A weight already stored in kernel feed order, relabelled as the `[in, out]` tensor the packed
+     * kernels take — **sharing the same bytes** (#1120).
+     *
+     * This is the payoff of letting packed storage declare its order. `transposePackedWeight` is an
+     * O(bytes) permutation run once per weight and cached; when the loader already produced feed
+     * order there is nothing to permute, and all that is needed is the other shape label over the
+     * same array. `null` when [tensor] is not a feed-order packed weight.
+     */
+    @Suppress("UNCHECKED_CAST")
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    protected fun <T : DType, V> rewrapFeedOrderWeight(tensor: Tensor<T, V>): Tensor<T, V>? {
+        if (tensor.shape.rank != 2) return null
+        val packed = tensor.data as? sk.ainet.lang.tensor.storage.PackedBlockStorage ?: return null
+        if (packed.blockOrder != sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR) return null
+        val swapped = Shape(tensor.shape[1], tensor.shape[0])
+        val bytes = packed.packedData
+        val relabelled: TensorData<T, V> = when (tensor.data) {
+            is Q4_KTensorData -> Q4_KBlockTensorData(swapped, bytes) as TensorData<T, V>
+            is Q5_KTensorData -> Q5_KBlockTensorData(swapped, bytes) as TensorData<T, V>
+            is Q6_KTensorData -> Q6_KBlockTensorData(swapped, bytes) as TensorData<T, V>
+            is Q5_1TensorData -> Q5_1BlockTensorData(swapped, bytes) as TensorData<T, V>
+            is Q5_0TensorData -> Q5_0BlockTensorData(swapped, bytes) as TensorData<T, V>
+            is Q8_0TensorData -> Q8_0BlockTensorData(swapped, bytes) as TensorData<T, V>
+            is Q4_0TensorData -> Q4_0BlockTensorData(swapped, bytes) as TensorData<T, V>
+            else -> return null
+        }
+        return newTensor(relabelled, tensor.dtype, tensor)
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun <T : DType, V> transposePackedWeight(tensor: Tensor<T, V>): Tensor<T, V>? {
         val rank = tensor.shape.rank

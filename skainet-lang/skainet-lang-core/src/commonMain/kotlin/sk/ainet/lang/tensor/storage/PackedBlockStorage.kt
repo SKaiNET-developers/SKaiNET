@@ -93,6 +93,21 @@ public interface PackedBlockStorage {
 
     public fun toFloatArray(): FloatArray {
         val result = FloatArray(shape.volume)
+        if (blockOrder == sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR && shape.rank == 2) {
+            // Feed-order bytes hold block `(o, b)` at physical index `b * rows + o`, so decoding
+            // them in physical sequence would emit the matrix transposed-in-blocks. Walk the
+            // *logical* grid instead and fetch each block from where this order put it — which is
+            // what makes a feed-order weight decode to the same matrix as the canonical one it was
+            // permuted from (#1120).
+            val rows = shape[0]
+            val blocksPerRow = shape[1] / blockSize
+            for (o in 0 until rows) {
+                for (b in 0 until blocksPerRow) {
+                    dequantizeBlock(b * rows + o, result, (o * blocksPerRow + b) * blockSize)
+                }
+            }
+            return result
+        }
         var offset = 0
         for (i in 0 until blockCount) {
             val remaining = shape.volume - offset
