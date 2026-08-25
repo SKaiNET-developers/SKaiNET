@@ -5295,6 +5295,18 @@ public final class sk/ainet/lang/tensor/data/TernaryTensorDataKt {
 	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/TernaryTensorData;)[F
 }
 
+public final class sk/ainet/lang/tensor/data/TransposedWeightTensorData : sk/ainet/lang/tensor/data/TensorData {
+	public fun <init> (Lsk/ainet/lang/tensor/data/TensorData;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Object;
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
+	public final fun getWeight ()Lsk/ainet/lang/tensor/data/TensorData;
+	public fun set ([ILjava/lang/Object;)V
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/tensor/data/dense/DenseByteTensorArray : sk/ainet/lang/tensor/data/ItemsAccessor {
 	public fun <init> (Ljava/util/List;[B)V
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BI)V
