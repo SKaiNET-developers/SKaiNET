@@ -50,6 +50,7 @@ public class JfrTraceSink : TraceSink {
         @Label("From") var from: String? = null
         @Label("To") var to: String? = null
         @Label("Bytes") var bytes: Long = 0
+        @Label("Bytes before") var bytesBefore: Long = 0
         @Label("Target") var target: String? = null
     }
 
@@ -72,7 +73,8 @@ public class JfrTraceSink : TraceSink {
                 storageId = event.storageId; scope = event.scope.name; bytes = event.bytes; freed = true
             }.commit()
             is TraceEvent.AdapterInserted -> AdapterEvent().apply {
-                kind = event.kind; from = event.from.toString(); to = event.to.toString(); bytes = event.bytes; target = event.target?.canonical
+                kind = event.kind; from = event.from.toString(); to = event.to.toString()
+                bytes = event.bytes; bytesBefore = event.bytesBefore; target = event.target?.canonical
             }.commit()
             // PhaseBegin is covered by PhaseEnd's duration; counters/plans have no JFR analogue yet.
             else -> Unit

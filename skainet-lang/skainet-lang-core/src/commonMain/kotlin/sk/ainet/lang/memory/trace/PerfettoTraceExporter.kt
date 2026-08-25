@@ -64,7 +64,12 @@ public object PerfettoTraceExporter {
                 is TraceEvent.AdapterInserted -> emit(
                     instant(
                         "adapter:${e.kind}", "adapter", ts, MAIN_TID,
-                        mapOf("from" to e.from.toString(), "to" to e.to.toString(), "bytes" to e.bytes.toString(), "target" to (e.target?.canonical ?: "—")),
+                        mapOf(
+                            "from" to e.from.toString(), "to" to e.to.toString(),
+                            "bytes" to e.bytes.toString(), "bytesBefore" to e.bytesBefore.toString(),
+                            "bytesDelta" to e.bytesDelta.toString(),
+                            "target" to (e.target?.canonical ?: "—"),
+                        ),
                     ),
                 )
                 is TraceEvent.Allocation -> {

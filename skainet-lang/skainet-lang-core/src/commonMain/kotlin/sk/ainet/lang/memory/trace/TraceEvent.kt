@@ -36,7 +36,14 @@ public sealed interface TraceEvent {
         override val timeNanos: Long = TraceClock.nowNanos(),
     ) : TraceEvent
 
-    /** The dispatcher inserted a conversion (dequantize, requantize, gather) — always visible (§5.1). */
+    /**
+     * A conversion was inserted (dequantize, requantize, relayout, gather) — always visible (§5.1).
+     *
+     * Emitted by the dispatcher when it adapts an operand mid-forward, and by the loader when a
+     * resolved `WeightForm` re-encodes a weight on the way in (#1109/#1117). [bytes] is the size
+     * afterwards and [bytesBefore] the size before, so "why is this model 3 GB" has an answer in
+     * the trace: the two differ by exactly what the conversion cost.
+     */
     public data class AdapterInserted(
         val kind: String,
         val from: Format,
@@ -44,8 +51,13 @@ public sealed interface TraceEvent {
         val bytes: Long,
         val target: TensorId? = null,
         val scope: ScopeKind = ScopeKind.FORWARD,
+        /** Size before the conversion; defaults to [bytes] for conversions that do not change size. */
+        val bytesBefore: Long = bytes,
         override val timeNanos: Long = TraceClock.nowNanos(),
-    ) : TraceEvent
+    ) : TraceEvent {
+        /** What this conversion added (or, when negative, saved). */
+        public val bytesDelta: Long get() = bytes - bytesBefore
+    }
 
     /** A storage was allocated. [site] is the allocation site in debug mode, [origin] the TensorId it backs. */
     public data class Allocation(
