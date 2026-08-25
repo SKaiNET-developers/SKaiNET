@@ -192,6 +192,10 @@ internal class DefaultCpuOpsJvm(
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) return super.matmulWeightTransposed(x, weight)
+        // Already in feed order — the loader produced it that way (#1120). Nothing to permute and
+        // nothing to cache: the kernels want the other shape label over the same bytes, which costs
+        // an object rather than a copy of the weight.
+        rewrapFeedOrderWeight(weight)?.let { return matmul(x, it) }
         val packed = weight.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
         val source = packed.packedData
         val cached = prepackedWeightsJvm.firstOrNull { it.first === source }?.second
