@@ -116,7 +116,7 @@ public object PackedWeights {
             "weight [$rows, $inputDim] looks like [in, out]: ${encoding.name} tiles the *input* dimension in " +
                 "blocks of $blockSize, and $inputDim is not a multiple of it while $rows is. A GGUF's ne order " +
                 "produces exactly this — load with WeightOrientation.OUT_IN, or transpose the label before " +
-                "relayouting (#973, docs/design/memory/packed-weight-layout.md)."
+                "relayouting (#973, the Packed weight layout page in the docs site (explanation/packed-weight-layout))."
         }
         require(inputAligned) {
             "weight [$rows, $inputDim] cannot be relayouted: ${encoding.name} needs the input dimension to be a " +

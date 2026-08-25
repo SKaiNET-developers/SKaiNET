@@ -1,0 +1,101 @@
+= Eager execution: backends and kernels
+:description: A map of SKaiNET's eager compute path — the TensorOps backend, its pluggable kernel providers, what runs on which platform, and the gaps.
+
+The eager path is `DirectCpuExecutionContext → DefaultCpuOps* → KernelRegistry → KernelProvider`,
+distinct from the StableHLO/IREE export path. This page is the hand-authored overview; its
+companion xref:reference/kernel-support-matrix.adoc[kernel × platform matrix] is generated from
+the registered providers and gated against drift.
+
+Legend: ✅ available · ❌ missing.
+
+[mermaid]
+----
+mindmap
+  root((SKaiNET eager execution))
+    CPU backend
+      Scalar floor
+        commonMain — all KMP targets
+        FP32 BF16
+        Q8_0 Q4_0 Q4_K Q6_K Q5_K Q5_1 Q5_0
+        ternary TQ1_0 TQ2_0 BitNet
+      Panama Vector
+        JVM SIMD only — jdk.incubator.vector
+        dense and packed quant
+      Native FFM
+        JVM only — C kernels via CMake
+        Q4_K MemSeg zero-copy
+        Q6_K missing
+      Native JNI
+        Android only — same C kernels via JNI
+        two .so tiers, cpuinfo-gated armv8-a vs armv8.2+dotprod
+        packed quant and bitnet_gemv
+        dense FP32 missing
+      Apple Accelerate
+        Native macOS iOS — cinterop
+        dense FP32 and reductions
+      Native cinterop
+        Kotlin/Native — linux and Apple
+        packed quant, runtime FEAT_DotProd dispatch
+        manual registration via installNativeKernels
+    Platforms
+      JVM — scalar, Panama, Native-FFM
+      Android — scalar, Native-JNI
+      Native linux — scalar, Native-cinterop
+      Native apple — scalar, Accelerate, Native-cinterop
+      JS and WASM — scalar only
+----
+
+== Kernel × provider (matmul, FP32 activations)
+
+[cols="2,1,1,1,1,1",options="header"]
+|===
+| Weight format | Scalar (all targets) | Panama (JVM) | Native FFM (JVM) | Native JNI (Android) | Native cinterop (K/N)
+| FP32 | ✅ | ✅ | ✅ | ❌ | ❌
+| BF16 | ✅ | ✅ | ✅ | ❌ | ❌
+| Q8_0 | ✅ | ✅ | ✅ | ✅ | ✅
+| Q4_0 | ✅ | ✅ | ✅ | ✅ | ✅
+| Q4_K | ✅ | ✅ | ✅ | ✅ | ✅
+| Q6_K | ✅ | ✅ | ❌ | ✅ | ✅
+| Q5_K | ✅ | ✅ | ✅ | ✅ | ✅
+| Q5_1 | ✅ | ✅ | ✅ | ✅ | ✅
+| Q5_0 | ✅ | ✅ | ✅ | ✅ | ✅
+| TQ2_0 / BitNet b1.58 (int8 activations) | ✅ | — | — | ✅ NEON | —
+| Q2_K / Q3_K / Q8_K / IQ4 | ❌ (dequant to FP32 only) | ❌ | ❌ | ❌ | ❌
+|===
+
+Resolution is by priority: *Native (100 — whichever of FFM/JNI/cinterop applies to the target) →
+Panama (50, JVM only) → Scalar (0)*. The best *available* provider that carries the kernel wins;
+otherwise it cascades down. At most one native tier is compiled into a given target, so the native
+columns are mutually exclusive per platform rather than stacked.
+
+Packed weights reach a kernel through the registry by declaring their
+xref:explanation/packed-weight-layout.adoc[block order]; a canonical weight is relayouted once,
+not per call.
+
+== Platform × what runs
+
+[cols="1,1,2",options="header"]
+|===
+| Target | Providers available | Notes
+| *JVM* | Scalar + Panama + Native-FFM | Full SIMD/native acceleration.
+| *Android* | Scalar + Native-JNI | Panama (`jdk.incubator.vector`) and FFM (`java.lang.foreign`) are JDK-only — ART has neither, so Android's native tier is JNI, not a degraded JVM. Includes the NEON `bitnet_gemv` pack.
+| *Kotlin/Native — linux x64/arm64* | Scalar + Native-cinterop | Static archive embedded in the klib; manual `installNativeKernels()`, no ServiceLoader on K/N.
+| *Kotlin/Native — macOS/iOS* | Scalar + Apple Accelerate + Native-cinterop | Accelerate covers dense FP32 and reductions; cinterop covers packed quant with runtime `FEAT_DotProd` dispatch, so one archive serves A12 through M-series.
+| *JS / WASM (Js, Wasi)* | Scalar | No SIMD.
+|===
+
+Packed-quant matmul works on every target: those formats have a `commonMain` scalar kernel and
+`DefaultCpuOpsBase` dispatches packed weights through the registry.
+
+== Gaps
+
+* *Native FFM Q6_K* — the only packed format the FFM C kernel set does not cover.
+* *Native JNI dense FP32/BF16* — the Android JNI provider has no GEMM shim, so dense ops fall
+through to scalar there whichever `.so` tier loaded (SKaiNET#920).
+* *Dense FP32/BF16 SIMD on Kotlin/Native linux* — still the scalar floor; Apple has Accelerate
+(SKaiNET#722, #910).
+* *Other GGML quant formats* (Q2_K, Q3_K, Q8_K, IQ4_NL/XS) — loadable via dequantization to FP32,
+no packed matmul kernel on any provider.
+* *Non-CPU eager backends* (IREE, Metal, GPU) — the `KernelProvider` SPI anticipates them, none
+are implemented for the eager path. The *compiled* path (DSL → StableHLO → IREE) does reach GPU on
+Android via Vulkan, but that is a separate pipeline.

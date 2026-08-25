@@ -20,4 +20,4 @@ Each cell is the best (highest-priority) provider that serves `Float32 × format
 | `Q5_0` | native-ffm | native-jni | native-cinterop | native-cinterop | scalar 
 |===
 
-See also the eager backends & kernels mindmap (`docs/eager-execution-backends-and-kernels.md`) for the narrative overview and gaps.
+See also the eager backends & kernels mindmap (xref:explanation/eager-execution.adoc[]) for the narrative overview and gaps.

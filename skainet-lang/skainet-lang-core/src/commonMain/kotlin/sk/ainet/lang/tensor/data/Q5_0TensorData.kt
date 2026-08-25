@@ -21,7 +21,7 @@ import sk.ainet.lang.types.DType
  * Block order: **canonical row-major** (`o * blocksPerRow + b`), like every other
  * `Q*TensorData`; the kernels read input-block-major bytes and get there through a
  * relayout, never by reinterpreting these. See
- * `docs/design/memory/packed-weight-layout.md` (#973) — this kdoc used to claim the
+ * `the Packed weight layout page in the docs site (explanation/packed-weight-layout)` (#973) — this kdoc used to claim the
  * opposite.
  */
 public interface Q5_0TensorData : TensorData<DType, Byte> {

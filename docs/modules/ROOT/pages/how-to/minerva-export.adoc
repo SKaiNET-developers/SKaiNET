@@ -320,3 +320,45 @@ The sample graph is covered by `MinervaTinyMlpExportSampleTest`, which validates
 | Secret leak check fails
 | Remove real secrets from generated files and regenerate the bundle. Only placeholders belong in source control.
 |===
+
+== Generated bundle layout
+
+....
+build/minerva/TinySecureMlp/
+  manifest.json
+  generated/
+    model.npz
+    weights.c
+  include/
+    weights.h
+    secrets.example.h
+  host/
+    CMakeLists.txt
+    main.c
+    runtime_adapter.example.c
+    reference-input.txt
+    reference-output.txt
+    observed-output.txt   # optional, from a real host run
+  firmware/
+    main.c
+....
+
+== Where the graph comes from
+
+Minerva export starts from a supported SKaiNET `ComputeGraph`: the Kotlin DSL, a traced forward
+pass, a hand-built graph, or an imported model — anything that preserves the phase-one static MLP
+contract.
+
+For an ONNX input, use the ONNX loader as an *inspection* step before constructing a compatible
+SKaiNET graph; there is no general ONNX-to-Minerva importer:
+
+[source,kotlin]
+----
+val loaded = OnnxLoader.fromModelSource { File(path).inputStream().asSource() }.load()
+val graph = loaded.proto.graph ?: error("ONNX model has no graph")
+val ops = graph.node.map { it.opType }.toSet()
+require(ops.all { it in setOf("MatMul", "Gemm", "Add", "Relu", "Sigmoid", "Tanh") })
+----
+
+Keep `manifest.json` with the source-model artifact or training metadata, so a reviewer can compare
+provenance, the generated `model.npz` and the host verification fixtures.

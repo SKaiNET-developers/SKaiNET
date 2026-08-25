@@ -74,7 +74,7 @@ abstract class GenerateKernelMatrixTask : DefaultTask() {
             appendLine("")
             appendLine(
                 "See also the eager backends & kernels mindmap " +
-                    "(`docs/eager-execution-backends-and-kernels.md`) for the narrative overview and gaps.",
+                    "(xref:explanation/eager-execution.adoc[]) for the narrative overview and gaps.",
             )
         })
     }

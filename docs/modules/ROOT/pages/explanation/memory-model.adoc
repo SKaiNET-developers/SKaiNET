@@ -1,0 +1,252 @@
+= The memory model
+:description: How SKaiNET owns, describes and hands out tensor bytes — Storage, TensorView, Format, Layout, Scope, and the dispatch and tracing built on them.
+
+SKaiNET separates four questions that a tensor library usually answers with one type:
+
+[cols="1,3",options="header"]
+|===
+| Question | Answer
+| Who owns these bytes, and when do they go away? | `Storage` and the `Scope` that allocated it
+| What do the bytes *mean*? | `Format` — a `(DType, TensorEncoding)` pair
+| Where does element `(i, j)` live inside them? | `Layout` — strides, offset, block geometry
+| What does a kernel receive? | `TensorView` — `Shape + Format + Layout + Storage`, and nothing else
+|===
+
+`Tensor` remains the DSL handle you build models with; `TensorData` remains the API user code
+reads and writes. Both are façades over the model below, so a model written against the DSL did
+not change when this landed.
+
+== The types
+
+[mermaid]
+----
+classDiagram
+    class Storage {
+        <<sealed>>
+        +StorageId id
+        +Long sizeBytes
+        +Owner owner
+        +MemoryDomain domain
+        +slice(offset, length) Storage
+        +close()
+    }
+    class Heap
+    class OffHeap
+    class Mapped
+    class Device
+    Storage <|-- Heap
+    Storage <|-- OffHeap
+    Storage <|-- Mapped
+    Storage <|-- Device
+
+    class Format {
+        +DType dtype
+        +TensorEncoding encoding
+        +physicalBytes(count) Long
+    }
+    class Layout {
+        +Shape shape
+        +IntArray strides
+        +Long offsetElements
+        +Boolean blocked
+        +Int blockAxis
+        +BlockOrder blockOrder
+        +narrow(axis, from, size) Layout
+        +transpose(a, b) Layout
+    }
+    class TensorView {
+        +Shape shape
+        +get(indices) Float
+        +narrow() TensorView
+        +transpose() TensorView
+        +prepack(order) TensorView
+        +materialize(format, scope) TensorView
+    }
+    TensorView --> Storage : borrows
+    TensorView --> Format : means
+    TensorView --> Layout : addresses
+
+    class Scope {
+        <<interface>>
+        +ScopeKind kind
+        +allocate(bytes) Storage
+        +allocateFloats(count) Heap
+    }
+    class ModelScope
+    class ForwardScope
+    class Ambient
+    Scope <|.. ModelScope
+    Scope <|.. ForwardScope
+    Scope <|.. Ambient
+    Scope --> Storage : allocates
+----
+
+=== Storage owns bytes
+
+A `Storage` is a byte range with an owner and a lifetime: `Heap` (a Kotlin array, every target),
+`OffHeap` (FFM `MemorySegment` on the JVM, direct `ByteBuffer` on Android, `malloc` on
+Kotlin/Native), `Mapped` (a file mapping), `Device`. Slicing one produces another `Storage` with
+`Owner.Alias`, sharing the parent's memory — that is the only aliasing mechanism, and it is
+visible in the type rather than implied.
+
+=== Format never erases the dtype
+
+`Format(FP32, TensorEncoding.Q4_K)` says *"these values are FP32, stored as Q4_K blocks"*. A
+quantized weight is not "a byte tensor"; it is a float tensor with a packed encoding. `get()`
+returns the decoded value — never a raw byte — which is what lets one reference kernel serve any
+format correctly.
+
+=== Layout addresses elements
+
+Strides, an offset, and — for packed formats — the block geometry: how many elements per block,
+which axis carries them, and which of the two
+xref:explanation/packed-weight-layout.adoc[block orders] the bytes are in. Slicing, transposing,
+unsqueezing and striding are all layout arithmetic over the same `Storage`. Nothing is copied.
+
+=== Scope owns lifetime
+
+[cols="1,3",options="header"]
+|===
+| Scope | Lifetime
+| `ModelScope` | The model. Weights and the KV cache; freed deterministically when the model closes.
+| `ForwardScope` | One step. A pre-sized slab, bump-allocated, `reset()` between steps; `retain()` is the only way a value escapes.
+| `Scope.Ambient` | Whatever the GC decides. The default, and what everything used before.
+|===
+
+A decode step allocates activations in the forward scope and resets it at the end, which is why
+memory over a thousand steps is a flat line rather than a staircase.
+
+== What a decode step actually does
+
+[mermaid]
+----
+flowchart TD
+    A["ctx.ops.matmulWeightTransposed(x, W)"] --> B["KernelDispatch"]
+    B --> C{"exact KernelKey<br/>registered?"}
+    C -->|yes| D["run kernel on the views"]
+    C -->|no| E{"weight encoding<br/>asks for another<br/>activation format?"}
+    E -->|"ternary → int8"| F["I8Absmax.requantize<br/>into ForwardScope"]
+    F --> G["AdapterInserted event"]
+    G --> D
+    E -->|no| H["adapt operands<br/>(gather / materialize)"]
+    H --> I["ReferenceMatmulKernel<br/>decodes any format"]
+    D --> J["KernelRun event"]
+    I --> J
+    J --> K["output view in the caller's scope"]
+----
+
+Three properties of that picture are the point of the design:
+
+* *Kernels receive views.* A kernel declares what it takes — the `Format` and layout class of each
+operand, the placement, the CPU capabilities it needs — as a `KernelKey`. The dispatcher looks the
+key up instead of walking an `is`-ladder over storage classes, which is what turned every
+quantization bug into a dispatch bug.
+* *Every conversion is visible.* When the dispatcher has to gather a strided operand, decode a
+packed one, or requantize activations for a ternary kernel, it allocates in the caller's scope and
+emits an `AdapterInserted` event. A conversion that does not appear in the trace is a bug.
+* *The reference kernel is always correct.* It reads through `get()`, so it serves any format at
+any layout. Fast kernels are an optimization on top, never a correctness requirement.
+
+== Knowing before you load
+
+The plan comes from a model's *header* — no tensor bytes are read:
+
+[source,kotlin]
+----
+val plan = MemoryPlans.plan(reader.planInput(ctx = 2048), Budget.available(availableBytes))
+println(plan.render())
+----
+
+It totals weights (resident), the KV cache at that context length, the forward slab and heap
+headroom, checks them against a budget, and offers concrete alternatives with their savings when
+they do not fit. On a device it is checked against *two* pools rather than one total, because a
+phone's managed heap and its physical RAM are different resources:
+
+[mermaid]
+----
+flowchart LR
+    P["MemoryPlan"] --> H["managed heap<br/>KV + forward + headroom<br/>(+ weights if not mapped)"]
+    P --> R["device RAM<br/>everything, mapped pages included"]
+    H --> V{"fits?"}
+    R --> V
+    V -->|no| S["which pool ran out<br/>+ what would help"]
+    V -->|yes| L["load"]
+----
+
+See xref:how-to/plan-model-memory.adoc[] for the CLI and the profiles.
+
+== Observability
+
+The same event stream serves the debugger, the exporters and the benchmark report:
+
+* `TraceSink` receives phase spans (`prefill`, `decode`, `sample`, module spans), kernel runs with
+the bytes they read, adapter insertions, allocations and frees, scope resets, counters and the
+memory plan.
+* Exporters render it as Perfetto/Chrome JSON, JFR events, or `android.os.Trace` sections.
+* `GenerationMetrics` derives TTFT, prefill and decode tokens per second, the per-module
+breakdown, adapter cost, and *effective memory bandwidth* — bytes a decode step actually read
+divided by how long it took. Rates are `null` rather than infinite when a span is too short for
+the platform clock.
+* `MemoryProbe` reads RSS and page faults from the OS, so "the resident set is flat" and "nothing
+paged in during decode" are measurements rather than inferences.
+
+`SKAINET_MEMORY_DEBUG=1` adds allocation-site tags, use-after-close reporting with the closing
+stack, and a leak check at every forward-scope reset.
+
+== Where it stands
+
+The model is implemented across every KMP target and exercised on each of them, plus on an
+ARMv8.2 Cortex-A55 reference board.
+
+[cols="2,3",options="header"]
+|===
+| Delivered | Notes
+| `Storage` / `Scope` / `TensorView` / `Format` / `Layout` | All targets; `TensorData` implementations are façades over views
+| `KernelKey` dispatch for matmul | Reference kernel plus packed and ternary kernel packs
+| Ternary encodings and `bitnet_gemv` | `TQ1_0`, `TQ2_0`, BitNet b1.58; reference kernel plus a NEON pack on Android
+| Memory plan, device profiles, fit check | `skainet-plan`, mobile/desktop/native profiles, two-pool device check
+| Tracing, metrics, process probe | Perfetto/JFR/Android exporters; TTFT, tok/s, effective bandwidth, RSS and page faults
+| Mapped staging | `quantPolicy × staging` on one GGUF loader; dense FP32 tensors served from file-backed pages
+|===
+
+=== Measured
+
+On an ARMv8.2 Cortex-A55 reference board (two cores, 1.9 GB RAM), running the acceptance suites
+from the Kotlin/Native binary:
+
+[cols="2,3",options="header"]
+|===
+| What | Result
+| Page faults during steady-state decode | *0 major faults* over 12 steps
+| Resident set across a run | 14 MB before, 14 MB after; *0 bytes* of growth at both 4 and 48 steps
+| `bitnet_gemv`, NEON vs the portable kernel | 21.3 ms → 0.091 ms at k=1024, n=256 (the fallback timed in a debug Kotlin/Native build, so treat the multiple as an upper bound)
+| `bitnet_gemv`, NEON vs `-O3 -ffast-math` C | 1.08–1.24× — the large win is being native at all, not the intrinsics
+| Ternary decode parity | exact (relative error 0 — the arithmetic is integer until the block scale)
+|===
+
+Planning a real checkpoint, from geometry alone (BitNet-b1.58-2B-4T: 30 layers, 2560 hidden,
+128 256 vocab):
+
+[cols="3,1",options="header"]
+|===
+| Part | Bytes
+| Ternary linear weights (TQ2_0, 2.0625 bits/element) | 512 MB
+| Token embedding table (bf16, output head tied) | 657 MB
+| KV cache @ ctx 2048, bf16 | 150 MB
+| KV cache @ ctx 2048, TurboQuant-4 | 44 MB
+| *Resident, quantized cache* | *1.19 GB*
+|===
+
+Two things that table says out loud: the bf16 embedding table outweighs the entire ternary stack,
+so past a point a "2-bit model" is an embedding-table problem; and a 2 GB device does *not* hold
+this checkpoint once the mobile profile's reserve is taken out, which the planner reports before
+anything is loaded rather than after an OOM.
+
+Known limits, stated rather than implied:
+
+* *Packed weights still reach the managed heap under mapped staging.* The packed matmul SPI takes
+`ByteArray`s, so a buffer-aware kernel is future work. Mapping therefore lifts the Android heap
+ceiling for dense checkpoints, not yet for a Q4_K_M one.
+* *Whole-file mapping only.* Files larger than 2 GB are refused rather than mapped in windows.
+* *Device placement and graph-level planning* (allocating a whole forward pass at once) were
+always out of scope for this round.
