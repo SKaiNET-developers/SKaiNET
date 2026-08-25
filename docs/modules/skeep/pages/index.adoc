@@ -69,4 +69,8 @@ Every proposal should include:
 | xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003]
 | Accepted
 | Unifying the tensor storage model
+
+| xref:skeep:004-virtual-tensor-layout.adoc[SKEEP-004]
+| Draft
+| Virtual tensor layout — the logical/physical split through the compile pipeline
 |===
