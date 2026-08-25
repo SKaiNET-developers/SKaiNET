@@ -4,6 +4,12 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.io.ParametersLoader
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.dequant.DequantOps
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.ScopeKind
+import sk.ainet.lang.memory.trace.NoopTraceSink
+import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.memory.trace.TraceSink
+import sk.ainet.lang.tensor.TensorId
 import sk.ainet.lang.memory.plan.EncodingRequest
 import sk.ainet.lang.memory.plan.WeightByteOrder
 import sk.ainet.lang.memory.plan.WeightForm
@@ -115,7 +121,51 @@ public class StreamingGgufParametersLoader(
      * silently resolved, so nobody loses a setting they thought they had.
      */
     private val weightForm: WeightForm? = null,
+    /**
+     * Where conversions are reported (#1117).
+     *
+     * A weight that arrives in the form it will be used in costs nothing and says nothing. One that
+     * is re-encoded on the way in — dequantized because no kernel can feed its encoding, widened
+     * because it is a narrow float, or widened because ternary packed storage does not exist yet
+     * (#1033) — emits a `TraceEvent.AdapterInserted` naming the tensor and the sizes either side.
+     * That is the difference between "why is this model 3 GB" being answerable and being folklore.
+     *
+     * Defaults to [NoopTraceSink]: nothing is recorded and nothing is allocated.
+     */
+    private val traceSink: TraceSink = NoopTraceSink,
 ) : ParametersLoader {
+
+    /**
+     * Report that [tensorName] was re-encoded from [from] to [to] on the way in.
+     *
+     * Guarded on [TraceSink.isEnabled] so the common case builds no `Format`s and allocates
+     * nothing. The tensor is named by parsing its GGUF name as a [TensorId] — `blk.0.attn_q.weight`
+     * is already dotted, and renders back as itself.
+     */
+    private fun traceConversion(
+        kind: String,
+        tensorName: String,
+        from: Format,
+        to: Format,
+        bytesBefore: Long,
+        bytesAfter: Long,
+    ) {
+        if (!traceSink.isEnabled) return
+        traceSink.emit(
+            TraceEvent.AdapterInserted(
+                kind = kind,
+                from = from,
+                to = to,
+                bytes = bytesAfter,
+                target = runCatching { TensorId.parse(tensorName) }.getOrNull(),
+                scope = ScopeKind.MODEL,
+                bytesBefore = bytesBefore,
+            ),
+        )
+    }
+
+    /** The dense FP32 size of [elements] — what every widening in this loader converts to. */
+    private fun denseFp32Bytes(elements: Long): Long = elements * 4
 
     /** The three axes as one value: [weightForm] if given, otherwise what the three parameters say. */
     private val form: WeightForm = weightForm ?: WeightForm(
@@ -259,6 +309,10 @@ public class StreamingGgufParametersLoader(
                             ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                         } else {
                             // Loader-owned widened array — zero-copy wrap (#782).
+                            traceConversion(
+                                "widen-f16", tensorInfo.name, Format.dense(FP16), Format.dense(FP32),
+                                rawBytes.size.toLong(), denseFp32Bytes(tensorInfo.nElements),
+                            )
                             ctx.wrapFloatArray<T, Float>(shape, dtype, dequantF16(rawBytes)) as Tensor<T, V>
                         }
                         else -> null
@@ -271,6 +325,10 @@ public class StreamingGgufParametersLoader(
                             ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                         } else {
                             // Loader-owned widened array — zero-copy wrap (#782).
+                            traceConversion(
+                                "widen-bf16", tensorInfo.name, Format.dense(BF16), Format.dense(FP32),
+                                rawBytes.size.toLong(), denseFp32Bytes(tensorInfo.nElements),
+                            )
                             ctx.wrapFloatArray<T, Float>(shape, dtype, dequantBF16(rawBytes)) as Tensor<T, V>
                         }
                         else -> null
@@ -331,6 +389,14 @@ public class StreamingGgufParametersLoader(
             (dtype == FP32::class || dtype == FP16::class)
         ) {
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
+            traceConversion(
+                kind = "dequantize-on-load",
+                tensorName = tensorInfo.name,
+                from = ggufFormat(tensorInfo.tensorType, rawBytes.size.toLong()),
+                to = Format.dense(FP32),
+                bytesBefore = rawBytes.size.toLong(),
+                bytesAfter = denseFp32Bytes(tensorInfo.nElements),
+            )
             return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
         }
         if (tensorInfo.tensorType == GGMLQuantizationType.TQ1_0 || tensorInfo.tensorType == GGMLQuantizationType.TQ2_0) {
@@ -342,6 +408,16 @@ public class StreamingGgufParametersLoader(
                     "load as FP32, so the requested dtype $dtype is not supported"
             }
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
+            // Worth seeing precisely because no policy asked for it: a 1.6-bit weight arriving as
+            // FP32 is a ~20× widening that no flag on this loader can currently turn off (#1033).
+            traceConversion(
+                kind = "widen-ternary-no-packed-storage",
+                tensorName = tensorInfo.name,
+                from = ggufFormat(tensorInfo.tensorType, rawBytes.size.toLong()),
+                to = Format.dense(FP32),
+                bytesBefore = rawBytes.size.toLong(),
+                bytesAfter = denseFp32Bytes(tensorInfo.nElements),
+            )
             @Suppress("UNCHECKED_CAST")
             return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
         }
