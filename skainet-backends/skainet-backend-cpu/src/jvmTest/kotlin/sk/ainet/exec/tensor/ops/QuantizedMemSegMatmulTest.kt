@@ -145,7 +145,7 @@ class QuantizedMemSegMatmulTest {
         @Suppress("UNCHECKED_CAST")
         val tensor: Tensor<FP32, Float> = VoidOpsTensor(q4k as TensorData<FP32, Float>, FP32::class)
 
-        val transposed = ops.transpose(tensor)
+        val transposed = ops.relayoutPackedWeightForKernels(tensor)
         assertEquals(Shape(Q4_KTensorData.BLOCK_SIZE, numBlocks), transposed.shape)
         assertTrue(
             transposed.data is Q4_KTensorData,
@@ -179,7 +179,7 @@ class QuantizedMemSegMatmulTest {
         @Suppress("UNCHECKED_CAST")
         val tensor: Tensor<FP32, Float> = VoidOpsTensor(q6k as TensorData<FP32, Float>, FP32::class)
 
-        val transposed = ops.transpose(tensor)
+        val transposed = ops.relayoutPackedWeightForKernels(tensor)
         assertEquals(Shape(Q6_KTensorData.BLOCK_SIZE, numBlocks), transposed.shape)
         assertTrue(
             transposed.data is Q6_KTensorData,
@@ -243,7 +243,7 @@ class QuantizedMemSegMatmulTest {
             sum
         }
 
-        val result = ops.matmul(input, ops.transpose(weight))
+        val result = ops.matmulWeightTransposed(input, weight)
         val resultData = result.data.copyToFloatArray()
 
         assertEquals(outputDim, resultData.size)
@@ -297,7 +297,7 @@ class QuantizedMemSegMatmulTest {
             sum
         }
 
-        val result = ops.matmul(input, ops.transpose(weight))
+        val result = ops.matmulWeightTransposed(input, weight)
         val resultData = result.data.copyToFloatArray()
 
         assertEquals(outputDim, resultData.size)
@@ -322,7 +322,7 @@ class QuantizedMemSegMatmulTest {
         val weight = q4Tensor(Shape(outputDim, inputDim), weightBytes, arena)
         val input = fpTensor(Shape(batchSize, inputDim), FloatArray(batchSize * inputDim) { 1f })
 
-        val result = ops.matmul(input, ops.transpose(weight))
+        val result = ops.matmulWeightTransposed(input, weight)
         assertEquals(Shape(batchSize, outputDim), result.shape)
         arena.close()
     }
@@ -379,8 +379,8 @@ class QuantizedMemSegMatmulTest {
         )
         val input: Tensor<FP32, Float> = VoidOpsTensor(inputData, FP32::class)
 
-        val transposedWeight = ops.transpose(weight)
-        assertTrue(transposedWeight.data is Q6_KTensorData, "transpose must preserve Q6_K packed layout")
+        val transposedWeight = ops.relayoutPackedWeightForKernels(weight)
+        assertTrue(transposedWeight.data is Q6_KTensorData, "the relayout must preserve Q6_K packed layout")
 
         val result = ops.matmul(input, transposedWeight)
 
@@ -415,8 +415,8 @@ class QuantizedMemSegMatmulTest {
             Q4_KBlockTensorData(Shape(numBlocks, inputDim), weightBytes) as TensorData<FP32, Float>,
             FP32::class,
         )
-        val transposedWeight = ops.transpose(weight)
-        assertTrue(transposedWeight.data is Q4_KTensorData, "transpose must preserve Q4_K packed layout")
+        val transposedWeight = ops.relayoutPackedWeightForKernels(weight)
+        assertTrue(transposedWeight.data is Q4_KTensorData, "the relayout must preserve Q4_K packed layout")
 
         // Rank 1, not rank 2 — a single-token hidden-state vector, not a `[1, in]` batch.
         val input = fpTensor(Shape(inputDim), FloatArray(inputDim) { (it + 1).toFloat() / inputDim })

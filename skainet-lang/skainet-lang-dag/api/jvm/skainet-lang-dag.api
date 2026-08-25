@@ -34,6 +34,11 @@ public final class sk/ainet/lang/dag/GraphDslKt {
 public abstract interface class sk/ainet/lang/dag/GraphDslOps : sk/ainet/lang/tensor/ops/TensorOps {
 }
 
+public final class sk/ainet/lang/dag/GraphDslOps$DefaultImpls {
+	public static fun matmulWeightTransposed (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	public static fun relayoutPackedWeightForKernels (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+}
+
 public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static final fun abs (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun abs$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;

@@ -872,32 +872,82 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         return newTensor(outData, a.dtype, a, b)
     }
 
-    @TensorOp()
-    override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
+    /**
+     * Weights already relayouted into kernel feed order, keyed by the identity of the packed bytes
+     * they came from (#973/#1096).
+     *
+     * The relayout is O(bytes). Doing it inside [matmulWeightTransposed] once per weight instead of
+     * once per call is what removes the per-forward copy `Linear.onForward` used to pay: a model's
+     * weights are stable, so the first forward pass converts and every later one reuses. Bounded,
+     * because a cache that grows without limit on a 2 GB device is its own bug; a model with more
+     * than [PREPACK_CACHE_LIMIT] distinct packed weights simply converts the overflow each time,
+     * which is exactly the old behaviour.
+     */
+    private val prepackedWeights: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
+
+    /** How many relayouted weights to keep; beyond this the oldest is dropped and reconverted on demand. */
+    private val PREPACK_CACHE_LIMIT: Int = 64
+
+    /**
+     * `x · Wᵀ` with the weight as `[out, in]` — the primitive, and the way out of the per-forward
+     * copy (#973 "the deeper semantic problem", #1096).
+     *
+     * For a block-quantized weight this relayouts **once** and reuses the result; for anything else
+     * it is the ordinary `matmul(x, transpose(w))`, which for dense data is a free shape swap.
+     */
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
+        if (weight.shape.rank != 2 || !isHeapPackedWeight(weight.data)) return matmul(x, transpose(weight))
+        val packed = weight.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
+        val source = packed.packedData
+        val cached = prepackedWeights.firstOrNull { it.first === source }?.second
+        val kernelOrder = cached ?: relayoutPackedWeightForKernels(weight).also { relayouted ->
+            if (prepackedWeights.size >= PREPACK_CACHE_LIMIT) prepackedWeights.removeAt(0)
+            prepackedWeights.add(Pair(source, relayouted as Tensor<*, *>))
+        }
+        return matmul(x, kernelOrder as Tensor<T, V>)
+    }
+
+
+    /**
+     * The block-grid permutation that used to live in `transpose` (#973/#1096).
+     *
+     * The packed matmul kernels read `packedData` as **input-block-major** —
+     * `(blockIdx * outputDim + o)`, every output row's block for one input block contiguous —
+     * whatever shape the tensor declares. Canonical packed storage, as loaded from a GGUF or built
+     * by any row-major producer, is the other order. The two coincide only at one block per row, so
+     * for a real weight a bare shape relabel hands the kernel bytes in the wrong physical order and
+     * it reads garbage without failing (#968, and downstream SKaiNET-transformers#307).
+     *
+     * So this is a real O(bytes) permutation, and [matmulWeightTransposed] runs it **once** per
+     * weight rather than once per call — which is the difference #1096 exists to make.
+     *
+     * @return the relayouted weight, or `null` for a data type with no packed relayout
+     */
+    /** The heap packed data types whose kernels read input-block-major bytes. */
+    private fun isHeapPackedWeight(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
+        data is Q4_KTensorData || data is Q5_KTensorData || data is Q6_KTensorData ||
+            data is Q5_1TensorData || data is Q5_0TensorData || data is Q8_0TensorData || data is Q4_0TensorData
+
+    /**
+     * The block relayout by its own name (#973/#1096) — what `transpose` used to do to a packed
+     * weight, for the callers that genuinely want the permuted bytes rather than a product.
+     *
+     * Prefer [matmulWeightTransposed], which does this once per weight instead of once per call.
+     *
+     * @throws UnsupportedOperationException for a data type with no packed relayout
+     */
+    override fun <T : DType, V> relayoutPackedWeightForKernels(weight: Tensor<T, V>): Tensor<T, V> =
+        transposePackedWeight(weight)
+            ?: throw UnsupportedOperationException(
+                "no packed relayout for ${weight.data::class.simpleName}",
+            )
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> transposePackedWeight(tensor: Tensor<T, V>): Tensor<T, V>? {
         val rank = tensor.shape.rank
-        require(rank >= 2) { "Transpose requires at least 2 dimensions" }
         val rows = tensor.shape[rank - 2]
         val cols = tensor.shape[rank - 1]
-
-        // Transpose for heap-packed quant weights (Q4_K/Q5_K/Q6_K/Q5_1/Q5_0/Q8_0/Q4_0):
-        // the packed-quant matmul kernels (chooseQuantizedMatmulHeap, native/Panama/
-        // scalar alike) always read `packedData` as *input-block-major* —
-        // `(blockIdx * outputDim + o)`, all `outputDim` rows' blocks for a fixed
-        // input block contiguous (see e.g. q5_0_matmul.c) — regardless of the
-        // tensor's declared shape. Canonical packed storage (as loaded verbatim from
-        // GGUF, or as built by any other row-major producer) is instead *row-major*:
-        // for output row `o`, its `blocksPerInputDim` blocks are contiguous, then row
-        // `o + 1`. Those two orderings coincide only when there's a single block per
-        // row (`blocksPerInputDim == 1`); for any weight wider than one block — i.e.
-        // virtually every real model, since inputDim is almost always >> the 32/256-
-        // element block size — a bare shape relabel hands the kernel bytes in the
-        // WRONG physical order and it silently reads garbage (SKaiNET#968,
-        // surfaced downstream via SKaiNET-transformers#307's all-zero Q5_0/Q5_1
-        // matmul). So this performs the actual O(bytes) block-grid permutation
-        // (`transposePackedBlocks`) instead of a free shape swap. Still avoids the
-        // FP32 dequant round-trip `ops.matmul(x, ops.transpose(W))` was written to
-        // dodge — just not for free anymore.
-        if (rank == 2) {
             @Suppress("UNCHECKED_CAST")
             when (val d = tensor.data) {
                 is Q4_KTensorData -> {
@@ -941,18 +991,47 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q4_0TensorData.BYTES_PER_BLOCK)
                     return newTensor(Q4_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
                 }
-                // Narrow floats (FP16/BF16) relaid input-major at load: the transpose is the
-                // same buffer read with the other shape's strides, so hand back an ordinary
-                // dense narrow tensor over it. This is what lets a KEEP_NATIVE weight survive
-                // `Linear.onForward`'s `weight.t()` and reach the narrow matmul kernel — see
-                // issue #888. Note the asymmetry with the block-quant arms above: only the
-                // *input-major* type is safe to reinterpret. A row-major narrow buffer falls
-                // through to the generic path on purpose, because swapping its shape would
-                // silently yield a different matrix rather than the transpose.
-                // Lives only here: DefaultCpuOpsJvm.transpose intercepts nothing that would
-                // shadow this case, so the JVM falls through to this arm too.
-                is NarrowFloatInputMajorTensorData -> return newTensor(d.transposedView() as TensorData<T, V>, tensor.dtype, tensor)
                 else -> {}
+            }
+
+        return null
+    }
+
+    @TensorOp()
+    override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
+        val rank = tensor.shape.rank
+        require(rank >= 2) { "Transpose requires at least 2 dimensions" }
+        val rows = tensor.shape[rank - 2]
+        val cols = tensor.shape[rank - 1]
+
+        // Only the *heap* packed types, whose kernels read input-block-major bytes. The
+        // MemorySegment tier reads canonical bytes, so for those a shape swap is genuinely correct
+        // and stays where it is — census contradiction #3, now stated instead of implied.
+        val heapPacked = rank == 2 && isHeapPackedWeight(tensor.data)
+        if (heapPacked) {
+            val packedData = tensor.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
+            // Transposing block-quantized data is not a representable operation (#973): blocks
+            // quantize runs along the input dimension, so a real transpose needs requantization.
+            // What used to happen here was a layout conversion wearing transpose's name — an
+            // O(bytes) copy per call, not an involution, and a lie about what the result means.
+            throw UnsupportedOperationException(
+                "transpose() is not defined for a ${packedData.encoding.name} weight: blocks quantize runs " +
+                    "along the input dimension, so transposing them needs requantization, and what this used to " +
+                    "do was a per-call layout copy that is not its own inverse (#973). Use " +
+                    "ops.matmulWeightTransposed(x, weight) with the weight as [out, in], or relayout explicitly " +
+                    "with PackedWeights.prepackForMatmul. See docs/design/memory/packed-weight-layout.md.",
+            )
+        }
+
+        // Narrow floats (FP16/BF16) relaid input-major at load are a *view* rewrap, not a packed
+        // relayout: the transpose is the same buffer read with the other shape's strides, which is
+        // what lets a KEEP_NATIVE weight survive Linear's weight handling and reach the narrow
+        // matmul kernel (#888). Only the block-quantized types are refused above (#973).
+        if (rank == 2) {
+            val narrow = tensor.data as? NarrowFloatInputMajorTensorData
+            if (narrow != null) {
+                @Suppress("UNCHECKED_CAST")
+                return newTensor(narrow.transposedView() as TensorData<T, V>, tensor.dtype, tensor)
             }
         }
 

@@ -18,7 +18,7 @@ import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.FP32
 
 /**
- * End-to-end proof that packed-quant weights flow through `ctx.ops.matmul(x, ops.transpose(W))`
+ * End-to-end proof that packed-quant weights flow through `ctx.ops.matmulWeightTransposed(x, W)`
  * on EVERY platform — exercising the lazy-transpose shape-swap + `chooseQuantizedMatmulHeap` in
  * DefaultCpuOpsBase, resolving the registered kernel (scalar on Native/JS/WASM, Panama/FFM on JVM).
  * Runs on jvmTest AND linuxX64Test; a green linuxX64 run is the headline "Native packed matmul works".
@@ -45,7 +45,7 @@ class PackedMatmulDispatchTest {
      * .transpose` is responsible for the canonical → kernel-native block-grid
      * permutation (`DefaultCpuOpsBase.transposePackedBlocks`); this generator
      * must hand it genuinely canonical input or it isn't testing the real
-     * `ops.matmul(x, ops.transpose(W))` path — see SKaiNET-transformers#307.
+     * `ops.matmulWeightTransposed(x, W)` path — see SKaiNET-transformers#307.
      */
     private fun q5_1(inDim: Int, outDim: Int, rng: Random): Pair<ByteArray, FloatArray> {
         val blocks = inDim / 32; val bytes = ByteArray(outDim * blocks * 24); val wf = FloatArray(outDim * inDim)
@@ -135,7 +135,7 @@ class PackedMatmulDispatchTest {
         )
         val xf = FloatArray(inDim) { rng.nextFloat() - 0.5f }
         val x = ctx.fromFloatArray<FP32, Float>(Shape(1, inDim), FP32::class, xf)
-        val out = ctx.ops.matmul(x, ctx.ops.transpose(w)).data.copyToFloatArray()
+        val out = ctx.ops.matmulWeightTransposed(x, w).data.copyToFloatArray()
         val expected = FloatArray(outDim) { o -> var s = 0f; for (i in 0 until inDim) s += xf[i] * wf[o * inDim + i]; s }
         var maxErr = 0f; var maxAbs = 1f
         for (o in 0 until outDim) { maxErr = maxOf(maxErr, abs(expected[o] - out[o])); maxAbs = maxOf(maxAbs, abs(expected[o])) }
@@ -173,7 +173,7 @@ class PackedMatmulDispatchTest {
             val bytes = ByteArray(outDim * (inDim / blockElems) * bpb)
             val w = ctx.fromData(build(Shape(outDim, inDim), bytes), FP32::class)
             // The bug threw here for unhandled packed types.
-            val t = ctx.ops.transpose(w)
+            val t = ctx.ops.relayoutPackedWeightForKernels(w)
             assertEquals(Shape(inDim, outDim), t.shape, "$name: transpose did not flip shape")
             assertTrue(
                 t.data::class.simpleName?.contains("Block") == true,

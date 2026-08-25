@@ -52,6 +52,44 @@ public interface TensorOps {
     @Diff
     @DarcValidated(by = "SKaiNET docs maintainers", on = "2026-05-24")
     public fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>
+
+    /**
+     * `x · Wᵀ` with the weight given as `[out, in]` — the primitive every reference implementation
+     * actually has (ggml's `mul_mat`, BLAS's `op(B)`), and the one a `Linear` layer wants
+     * (#973/#1096).
+     *
+     * `matmul(x, transpose(w))` is not the same thing for a **block-quantized** weight. Blocks
+     * quantize runs along the input dimension, so a real transpose would need requantization; what
+     * `transpose` does to a packed weight is a *layout conversion* wearing transpose's name, and
+     * since it happens per forward pass it copies the whole weight on every call. Asking for
+     * `x · Wᵀ` directly lets an implementation do the right thing — or nothing at all, when the
+     * weight is already in the order its kernel reads.
+     *
+     * The default keeps today's behaviour exactly, so no implementation has to change: it is
+     * literally `matmul(x, transpose(w))`. Backends override it where they can do better.
+     *
+     * @param x activations, `[batch, in]` or `[in]`
+     * @param weight `[out, in]` — **not** pre-transposed
+     */
+    public fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> =
+        matmul(x, transpose(weight))
+
+    /**
+     * A block-packed weight's bytes rearranged into the order its kernels read (#973/#1096) — the
+     * operation `transpose` used to perform on packed data, under its own name.
+     *
+     * Callers who want a *product* should ask for [matmulWeightTransposed], which runs this once per
+     * weight rather than once per call. This exists for the ones who genuinely want the permuted
+     * bytes: a converter, a test, a benchmark.
+     *
+     * The default refuses, because a backend that has no packed kernels has no such order to
+     * produce.
+     */
+    public fun <T : DType, V> relayoutPackedWeightForKernels(weight: Tensor<T, V>): Tensor<T, V> =
+        throw UnsupportedOperationException(
+            "this backend has no packed kernel order to relayout ${weight.data::class.simpleName} into",
+        )
+
     @Diff
     public fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V>
 

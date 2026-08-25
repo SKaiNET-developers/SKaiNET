@@ -73,8 +73,10 @@ public open class Linear<T : DType, V> @kotlin.jvm.JvmOverloads constructor(
         val weight = params.weights().value
         val bias = params.biasOrNull()?.value
 
-        val weightTransposed = weight.t()
-        val matmulResult = input.matmul(weightTransposed)
+        // `x · Wᵀ` asked for directly (#973/#1096): the weight stays `[out, in]`, and a backend
+        // that would otherwise relayout a packed weight on every forward pass does it once.
+        // `matmul(x, weight.t())` is the same thing for dense data and a per-call copy for packed.
+        val matmulResult = ctx.ops.matmulWeightTransposed(input, weight)
         if (bias == null) return matmulResult
 
         // If input is a 1D vector, ensure bias is also 1D to avoid broadcasting to [1, out]

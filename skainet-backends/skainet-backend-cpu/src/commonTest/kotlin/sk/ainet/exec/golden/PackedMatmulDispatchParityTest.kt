@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 
 /**
  * SKEEP-003 golden gate, dispatch half (runs on every target): for all seven GGML packed
- * encodings, `ops.matmul(x, ops.transpose(w))` on a canonical row-major packed weight must agree
+ * encodings, `ops.matmulWeightTransposed(x, w)` on a canonical row-major packed weight must agree
  * with an FP32 reference computed from the decoded weight. Tolerance-based because the JVM may
  * pick SIMD / native / Q8-activation kernel tiers (#944), which are not bit-identical to the
  * scalar reference; the bit-identical guarantees live in the goldenTest source set.
@@ -74,7 +74,7 @@ class PackedMatmulDispatchParityTest {
         val xf = FloatArray(batch * inDim) { rng.nextFloat() * 2f - 1f }
         val x = ctx.fromFloatArray<FP32, Float>(Shape(batch, inDim), FP32::class, xf)
 
-        val actual = ctx.ops.matmul(x, ctx.ops.transpose(w)).data.copyToFloatArray()
+        val actual = ctx.ops.matmulWeightTransposed(x, w).data.copyToFloatArray()
 
         // FP32 reference from the decoded weight
         val wf = FloatArray(outDim * inDim); val tmp = FloatArray(f.blockSize)
