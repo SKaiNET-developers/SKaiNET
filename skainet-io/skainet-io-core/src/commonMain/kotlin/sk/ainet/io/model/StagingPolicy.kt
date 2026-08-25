@@ -7,6 +7,15 @@ package sk.ainet.io.model
  * bytes live*. The two are the axes of one loader — `quantPolicy × staging` — instead of the
  * separate code paths ("streaming loader" vs "mapped weights helper") they used to be.
  */
+@Deprecated(
+    "One of the three axes WeightForm replaces (#1109): this is the residency axis. Same two " +
+        "values, resolved from the device's PlannerProfile rather than set by the caller.",
+    ReplaceWith(
+        "WeightResidency",
+        "sk.ainet.lang.memory.plan.WeightResidency",
+    ),
+    DeprecationLevel.WARNING,
+)
 public enum class StagingPolicy {
     /** Read tensor bytes onto the heap. The historical behaviour, and the only option in a browser. */
     HEAP,

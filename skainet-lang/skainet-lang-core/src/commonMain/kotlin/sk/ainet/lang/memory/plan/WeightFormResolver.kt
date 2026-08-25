@@ -23,6 +23,11 @@ public object WeightFormResolver {
      *
      * The rules, in order:
      *
+     * The shape axis ([WeightShapeOrientation]) is deliberately not resolved here. Which way round
+     * a weight's dimensions are labelled is a property of the *checkpoint convention*, not of the
+     * device, and reversing it changes every consumer's idea of a tensor's shape — so it stays the
+     * caller's explicit choice, defaulting to what the file says.
+     *
      * 1. **Residency** comes from the profile alone. `weightsMapped` is a statement about the
      *    device — a 2 GB board cannot hold the weights on the heap whatever they are encoded as.
      * 2. **A dense weight** is already in the only form it has.
@@ -44,14 +49,14 @@ public object WeightFormResolver {
         val residency = if (profile.weightsMapped) WeightResidency.MAPPED else WeightResidency.HEAP
 
         if (stored == null || stored is TensorEncoding.Dense) {
-            return WeightForm(EncodingRequest.KeepAsStored, WeightByteOrder.AS_STORED, residency)
+            return WeightForm(EncodingRequest.KeepAsStored, WeightByteOrder.AS_STORED, residency = residency)
         }
 
         if (capabilities.canFeedMatmul(stored)) {
             val order =
                 if (capabilities.wantsKernelFeedOrder(stored)) WeightByteOrder.KERNEL_FEED
                 else WeightByteOrder.AS_STORED
-            return WeightForm(EncodingRequest.KeepAsStored, order, residency)
+            return WeightForm(EncodingRequest.KeepAsStored, order, residency = residency)
         }
 
         check(!profile.strict) {
@@ -62,7 +67,7 @@ public object WeightFormResolver {
         }
 
         // Once, at load, instead of once per forward pass.
-        return WeightForm(EncodingRequest.DequantizeTo(FP32), WeightByteOrder.AS_STORED, residency)
+        return WeightForm(EncodingRequest.DequantizeTo(FP32), WeightByteOrder.AS_STORED, residency = residency)
     }
 
     /** Roughly how much bigger [encoding] gets as dense FP32 — for the message, not for the plan. */

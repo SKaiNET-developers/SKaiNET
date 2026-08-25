@@ -5,6 +5,13 @@ package sk.ainet.io.model
  *
  * Shared across all weight loaders (LLaMA, Gemma, etc.).
  */
+@Deprecated(
+    "One of the three axes WeightForm replaces (#1109): this is the encoding axis. No ReplaceWith, " +
+        "because EncodingRequest is not a drop-in — NATIVE_OPTIMIZED becomes KeepAsStored, " +
+        "DEQUANTIZE_TO_FP32 becomes DequantizeTo(FP32), and RAW_BYTES has no counterpart because " +
+        "no loader ever supported it. A wrong ReplaceWith would be worse than none.",
+    level = DeprecationLevel.WARNING,
+)
 public enum class QuantPolicy {
     /** Keep quantized payloads as raw bytes (Int8 tensor) with quantized shape. */
     RAW_BYTES,

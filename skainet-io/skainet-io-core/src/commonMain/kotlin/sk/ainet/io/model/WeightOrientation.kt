@@ -12,6 +12,15 @@ package sk.ainet.io.model
  * computes the wrong permutation — or refuses, when `out` is not a multiple of the block size. Both
  * failures are in the census.
  */
+@Deprecated(
+    "One of the three axes WeightForm replaces (#1109): this is the shape axis. Same two values, " +
+        "asked as part of one resolved decision instead of a separate flag.",
+    ReplaceWith(
+        "WeightShapeOrientation",
+        "sk.ainet.lang.memory.plan.WeightShapeOrientation",
+    ),
+    DeprecationLevel.WARNING,
+)
 public enum class WeightOrientation {
     /**
      * The file's own order, unreversed — GGUF `ne`, so `[in, out]` for a 2-D weight. What the
