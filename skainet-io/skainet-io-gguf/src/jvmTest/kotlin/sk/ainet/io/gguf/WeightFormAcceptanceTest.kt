@@ -103,20 +103,19 @@ class WeightFormAcceptanceTest {
     fun `one model and one snippet of code run correctly on a desktop and on a 2 GB board`() {
         val f = modelFile()
         try {
-            // A workstation with the packed kernels SKaiNET ships.
-            val (desktopForm, desktopWeight) = loadFor(f, PlannerProfile.DESKTOP, KernelCapabilities.EVERYTHING)
-            // A 2 GB board: weights mapped, and — for the sake of the contrast — a build whose
-            // kernels cannot feed Q8_0, so the resolver must dequantize rather than dequantize
-            // per forward pass.
-            val (mobileForm, mobileWeight) = loadFor(f, PlannerProfile.MOBILE_2GB, KernelCapabilities.DENSE_ONLY)
+            // A desktop build without a Q8_0 kernel: it has the memory to absorb a widening, so
+            // the resolver dequantizes once at load rather than on every forward pass.
+            val (desktopForm, desktopWeight) = loadFor(f, PlannerProfile.DESKTOP, KernelCapabilities.DENSE_ONLY)
+            // A 2 GB board with the packed kernels SKaiNET ships: weights mapped, encoding kept.
+            val (mobileForm, mobileWeight) = loadFor(f, PlannerProfile.MOBILE_2GB, KernelCapabilities.EVERYTHING)
 
             // 1. The two devices resolved to different forms — asserted, not assumed.
             assertNotEquals(desktopForm, mobileForm, "if both devices got the same form this test proves nothing")
-            assertEquals(EncodingRequest.KeepAsStored, desktopForm.encoding, "the desktop can feed Q8_0, so it keeps it")
             assertEquals(
-                EncodingRequest.DequantizeTo(FP32), mobileForm.encoding,
-                "this board cannot feed Q8_0, so it pays once at load rather than every forward pass",
+                EncodingRequest.DequantizeTo(FP32), desktopForm.encoding,
+                "no kernel for Q8_0 here, and a desktop can afford to pay once at load",
             )
+            assertEquals(EncodingRequest.KeepAsStored, mobileForm.encoding, "the board can feed Q8_0, so it keeps it")
             assertEquals(WeightResidency.HEAP, desktopForm.residency)
             assertEquals(WeightResidency.MAPPED, mobileForm.residency, "a 2 GB board maps its weights")
 
@@ -150,7 +149,10 @@ class WeightFormAcceptanceTest {
             }
 
             val kept = stored.resolveWeightForms(PlannerProfile.MOBILE_2GB, KernelCapabilities.EVERYTHING)
-            val dequantized = stored.resolveWeightForms(PlannerProfile.MOBILE_2GB, KernelCapabilities.DENSE_ONLY)
+            // Strict is the point of MOBILE_2GB, so pricing a widening on it means opting out of
+            // the refusal first — which is exactly the decision the number is meant to inform.
+            val lenientMobile = PlannerProfile.MOBILE_2GB.copy(strict = false)
+            val dequantized = stored.resolveWeightForms(lenientMobile, KernelCapabilities.DENSE_ONLY)
 
             val keptPlan = MemoryPlans.plan(kept)
             val dequantizedPlan = MemoryPlans.plan(dequantized)
@@ -174,12 +176,17 @@ class WeightFormAcceptanceTest {
     fun `a strict board is told about a missing kernel instead of quietly paying for it`() {
         // MOBILE_2GB's own documentation calls dispatcher-inserted dequantization "the defect it
         // is". With strict set, the resolver refuses rather than resolving to a 4x load.
-        val strict = PlannerProfile.MOBILE_2GB.copy(strict = true)
         val failure = kotlin.runCatching {
-            WeightFormResolver.resolve(TensorEncoding.Q8_0, strict, KernelCapabilities.DENSE_ONLY)
+            WeightFormResolver.resolve(TensorEncoding.Q8_0, PlannerProfile.MOBILE_2GB, KernelCapabilities.DENSE_ONLY)
         }.exceptionOrNull()
 
-        assertTrue(failure is IllegalStateException, "expected a refusal, got $failure")
+        assertTrue(failure is IllegalStateException, "MOBILE_2GB is strict by default, so this must refuse: $failure")
         assertTrue(failure.message!!.contains("Q8_0"), failure.message!!)
+
+        // A build that would rather load slowly than not at all opts out explicitly.
+        val lenient = WeightFormResolver.resolve(
+            TensorEncoding.Q8_0, PlannerProfile.MOBILE_2GB.copy(strict = false), KernelCapabilities.DENSE_ONLY,
+        )
+        assertEquals(EncodingRequest.DequantizeTo(FP32), lenient.encoding)
     }
 }
