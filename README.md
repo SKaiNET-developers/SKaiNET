@@ -118,9 +118,9 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 |---|---|
 | Examples and sample projects | [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) |
 | Interactive notebooks | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook) |
-| Eager backends & kernels (what runs where) | [Backends & kernels mindmap](docs/eager-execution-backends-and-kernels.md) |
+| Eager backends & kernels (what runs where) | [Backends & kernels map](docs/modules/ROOT/pages/explanation/eager-execution.adoc) |
 | Design proposals and long-lived API decisions | [SKEEP proposals](docs/modules/skeep/pages/index.adoc) |
-| Memory & storage architecture (SKEEP-003 design record, milestones M0–M2) | [Proposal](docs/design/memory/memory-architecture-proposal.md) · [Milestones PRD](docs/design/memory/memory-architecture-milestones-prd.md) |
+| Memory & storage architecture (storage, views, scopes, planning) | [The memory model](docs/modules/ROOT/pages/explanation/memory-model.adoc) · [Packed weight layout](docs/modules/ROOT/pages/explanation/packed-weight-layout.adoc) |
 
 ---
 

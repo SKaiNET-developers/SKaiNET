@@ -25,7 +25,7 @@ import sk.ainet.lang.types.DType
  * and what this type's [dequantizeBlock] and `toFloatArray` assume. `Q5_1MatmulKernel`
  * reads *input-block-major* bytes instead, so a weight reaches it through a
  * relayout (`TensorView.prepack`), never by reinterpreting these bytes in place.
- * The contract is written down once in `docs/design/memory/packed-weight-layout.md`
+ * The contract is written down once in `the Packed weight layout page in the docs site (explanation/packed-weight-layout)`
  * (#973); this kdoc used to claim the opposite, which is the confusion that issue
  * exists to end.
  */

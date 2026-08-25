@@ -26,7 +26,7 @@ package sk.ainet.backend.api.kernel
  * The weight is **input-block-major** (Q6_KBlockTensorData's bytes are canonical
  * row-major — a weight reaches this kernel through `TensorView.prepack`, not by
  * reinterpretation). One contract, written down in
- * `docs/design/memory/packed-weight-layout.md` (#973).
+ * `the Packed weight layout page in the docs site (explanation/packed-weight-layout)` (#973).
  *
  * `inputDim` MUST be a multiple of 256 (the Q6_K super-block size).
  */

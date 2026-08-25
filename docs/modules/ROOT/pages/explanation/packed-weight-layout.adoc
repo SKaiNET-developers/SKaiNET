@@ -1,0 +1,128 @@
+= Packed weight layout
+:description: The normative contract for block-quantized weight bytes — the two block orders, where the order lives, how to convert, and the rules every producer and consumer follows.
+
+Every packed (block-quantized) weight in SKaiNET is stored in *one of exactly two block orders*,
+and which one it is in is a property of the value — not of the type it happens to have, and not of
+the module that produced it.
+
+This page is normative. Kdocs link here instead of restating it.
+
+== The two orders
+
+A 2-D weight is logically `[out, in]`. Its blocks tile the *input* dimension, so a row of `in`
+elements is `blocksPerRow = in / blockSize` blocks and the weight is an `out × blocksPerRow` grid.
+Flattening that grid is where the two orders come from:
+
+[mermaid]
+----
+flowchart LR
+    subgraph canonical["BlockOrder.ROW_MAJOR — what a file holds"]
+        direction LR
+        C0["(0,0)"] --> C1["(0,1)"] --> C2["(0,2)"] --> C3["(1,0)"] --> C4["(1,1)"] --> C5["(1,2)"]
+    end
+    subgraph kernel["BlockOrder.INPUT_BLOCK_MAJOR — what kernels read"]
+        direction LR
+        K0["(0,0)"] --> K1["(1,0)"] --> K2["(0,1)"] --> K3["(1,1)"] --> K4["(0,2)"] --> K5["(1,2)"]
+    end
+    canonical -->|"prepack"| kernel
+----
+
+[cols="1,1,2,2",options="header"]
+|===
+| Order | Flat block index | Produced by | Read by
+| `ROW_MAJOR` | `o * blocksPerRow + b` | GGUF files, quantizers, `TernaryCodec` | `toFloatArray()`, `get()`, the reference matmul, `bitnet_gemv`
+| `INPUT_BLOCK_MAJOR` | `b * out + o` | `TensorView.prepack` / `PackedWeights` | the packed matmul kernels — scalar, Panama, native C, JNI
+|===
+
+*They coincide only when `blocksPerRow == 1`.* For any weight wider than one block — that is,
+virtually every real weight — reading one order as the other produces a block-permuted matrix:
+finite, plausible numbers that are simply wrong, with nothing crashing. That is the entire reason
+this page exists.
+
+== Where the order lives
+
+`Layout.blockOrder`. A `TensorView` over packed bytes carries it, and the order is expressed *in
+the strides* rather than in a branch: input-block-major is `strides = [1, out]` over the block grid
+instead of `[blocksPerRow, 1]`. Everything else — `narrow`, `transpose`, `get`, `toFloatArray` —
+therefore works unchanged on a view in either order, and a prepacked view still describes the same
+matrix.
+
+`OperandKey`'s `LayoutClass` splits the same way: `BLOCKED_ROW_MAJOR` and `BLOCKED_INPUT_MAJOR`.
+A kernel *declares* which order it reads, in its `KernelKey`. That is what lets the dispatcher
+insert a relayout instead of the caller having to know.
+
+== Converting between them
+
+`TensorView.prepack(order, scope, sink)`:
+
+* returns `this` when the order already matches — the only free case;
+* otherwise copies the blocks into `scope` and emits `TraceEvent.AdapterInserted` with the byte
+count, so the conversion appears in the trace with its price;
+* the result carries the new order on its layout.
+
+It is a *conversion*, and it is named as one. It is not `transpose`: a true transpose of a
+block-quantized weight would need runs of quantized values along the other axis, i.e.
+requantization. `ops.transpose` therefore refuses a heap packed weight and names
+`ops.matmulWeightTransposed(x, weight)` — `x · Wᵀ` with the weight left as `[out, in]`, which is
+the primitive ggml (`mul_mat`) and BLAS (`op(B)`) actually have.
+
+== Orientation at the load boundary
+
+GGUF writes dimensions in `ne` order — fastest-varying first — so a weight the engine calls
+`[out, in]` arrives labelled `[in, out]`, while its *bytes* are already `[out, in]` row-major.
+Only the label is wrong, and the label is what the relayout reads: driven by `[in, out]` it
+permutes the wrong grid, or refuses because `out` is not a multiple of the block size.
+
+* `StreamingGgufParametersLoader(weightOrientation = WeightOrientation.OUT_IN)` fixes the label at
+the boundary, reversing 2-D weights only. Nothing about the bytes changes. It defaults to
+`AS_STORED` — the historical behaviour — because reversing shapes changes what every consumer
+sees; new code should ask for `OUT_IN`.
+* `PackedWeights.requireOutIn(rows, inputDim, encoding)` refuses a weight that looks transposed
+instead of computing a wrong permutation from it, and names the fix. It is a heuristic: it fires
+when the *first* dimension is block-aligned and the second is not — exactly what `ne` order
+produces — and stays quiet when both are aligned and it cannot tell.
+
+The two GGUF readers still disagree about this: the legacy `GGUFReader` reverses dimensions, the
+streaming one does not. `WeightOrientation` is how a caller states which it wants rather than
+discovering it.
+
+== For a downstream repository
+
+Two things are published with the engine so a converter never reimplements this:
+
+* *`PackedWeights`* — `prepackForMatmul(view)` / `toCanonical(view)` for views, and
+`toKernelOrder(bytes, …)` / `toCanonicalOrder(bytes, …)` for a converter that holds bytes. The
+only sanctioned implementation of the permutation, and idempotent by construction.
+* *`PackedLayoutFixtures`* — canonical and kernel-order fixtures per format, in `main` rather than
+a test source set, so the artifact a downstream repository already depends on carries them.
+`disagreement(bytes, encoding, kernelOrder)` returns `null` when the bytes agree, or names the
+first block in the wrong place.
+
+A downstream test asserting `disagreement(myConverterOutput, Q4_K, kernelOrder = true) == null`
+runs against the same bytes the engine's own tests run against. Previously each repository's suite
+proved only its own convention and neither crossed the boundary, which is how a byte-layout change
+once shipped green on both sides.
+
+Every fixture is three blocks wide on purpose. At one block per row the two orders coincide, and a
+test built that way passes whichever convention the code happens to hold.
+
+== Prepack once, at load
+
+The relayout is O(bytes). A weight prepacked at load hits the packed kernel's key directly and the
+dispatcher copies nothing per call; a canonical weight handed straight to the dispatcher gets the
+decoding reference kernel — correct, and slower.
+
+`KernelDispatch.matmul(..., prepackWeights = true)` will relayout for you, and it is *off by
+default* because doing it inside a decode step copies the whole weight per token.
+`ops.matmulWeightTransposed` does it once per weight and reuses the result.
+
+== Rules
+
+. *A file's bytes are `ROW_MAJOR`.* Anything loaded from GGUF, produced by a quantizer, or written
+by `TernaryCodec` is canonical. A loader never silently relayouts.
+. *A kernel declares its order in its key.* No kernel may assume; no caller may guess.
+. *A conversion is visible.* It allocates in a scope and emits an adapter event.
+. *`get()` and `toFloatArray()` always mean the same thing* in either order — they read through the
+layout. A view whose decoded content depends on which module produced it is a bug.
+. *`packedData` byte semantics are public API.* Changing the order a type holds is a minor/major
+change, never a patch.

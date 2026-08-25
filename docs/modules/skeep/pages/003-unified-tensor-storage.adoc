@@ -5,7 +5,7 @@ Status: Accepted (2026-08-22) +
 Audience: SKaiNET maintainers and contributors +
 Created: 2026-08-10 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] (umbrella) → https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001 M0] · https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002 M1] · https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003 M2] +
-Design record: https://github.com/SKaiNET-developers/SKaiNET/blob/develop/docs/design/memory/memory-architecture-proposal.md[memory-architecture-proposal.md] and https://github.com/SKaiNET-developers/SKaiNET/blob/develop/docs/design/memory/memory-architecture-milestones-prd.md[memory-architecture-milestones-prd.md] (repository `docs/design/memory/`)
+Implemented: the model as built is documented in xref:ROOT:explanation/memory-model.adoc[The memory model] and xref:ROOT:explanation/packed-weight-layout.adoc[Packed weight layout]; the proposal and milestone PRD that led there are in the pull requests and issues linked below (#932, #1001, #1002, #1003).
 
 == Decision (2026-08-22)
 
@@ -18,9 +18,9 @@ erased packed dtype and the `is`-ladder in place; pure A as a big-bang rewrite
 is the "third layer" risk named below.
 
 The full analysis, terminology and diagrams are in the repository file
-`docs/design/memory/memory-architecture-proposal.md` (revision 2); the
+the proposal (revision 2, tracked in #932); the
 milestone scoping, sample apps and acceptance numbers are in
-`docs/design/memory/memory-architecture-milestones-prd.md`. The thirteen
+the milestone PRD. The thirteen
 decisions recorded there:
 
 [cols="1,3",options="header"]
@@ -458,8 +458,9 @@ All resolved 2026-08-22 — see <<_decision_2026_08_22,Decision>>:
   milestone trackers https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001]
   (M0), https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002] (M1),
   https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003] (M2)
-* Design record: `docs/design/memory/memory-architecture-proposal.md`,
-  `docs/design/memory/memory-architecture-milestones-prd.md`
+* As-built documentation: xref:ROOT:explanation/memory-model.adoc[The memory model],
+  xref:ROOT:explanation/packed-weight-layout.adoc[Packed weight layout],
+  xref:ROOT:how-to/plan-model-memory.adoc[Plan a model's memory before loading]
 * Sibling proposal: SKEEP-002 (off-heap tensor storage on Android) — the
   mobile/mmap slice of improvement 4
 * Related issues: https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921]

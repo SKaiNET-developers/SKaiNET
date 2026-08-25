@@ -1,0 +1,119 @@
+= Plan a model's memory before loading it
+:description: Use skainet-plan and the planner profiles to find out what a model needs at a context length, whether it fits a device, and what to change when it does not.
+
+Loading a model to find out whether it fits is an expensive way to ask the question. SKaiNET
+answers it from the file's *header*: the tensor table and the metadata, no tensor bytes.
+
+== Print a plan from the command line
+
+[source,bash]
+----
+./gradlew :skainet-apps:skainet-plan:installDist
+./skainet-apps/skainet-plan/build/install/skainet-plan/bin/skainet-plan \
+    model.gguf --ctx 4096 --budget 1.3G
+----
+
+....
+llama-1b · llama · 16 layers · ctx 4096
+  weights   Mapped, packed                640 MB   resident
+  kv cache  bf16 @ ctx 4096               300 MB   resident   (84 MB with TurboQuant 4-bit)
+  forward   prefill chunk 256              70 MB
+  heap      headroom                       64 MB
+  total                                   1.0 GB   of 1.3 GB  ✔ fits
+....
+
+Useful flags:
+
+[cols="1,3",options="header"]
+|===
+| Flag | Effect
+| `--ctx N` | Plan for this context length (default: the model's trained length, or 2048)
+| `--budget 1.3G` | The memory available; without it, the JVM's own maximum is used
+| `--kv bf16\|turboquant` | KV cache format
+| `--profile mobile\|desktop\|native` | Plan under a device profile — see below
+| `--list 'model.layers[3].*'` | List matching tensors with their `TensorId`, format and size
+| `--no-budget` | Print the plan without a fit check
+|===
+
+The exit code is non-zero when the plan does not fit, so it works in a script.
+
+== Plan under a device profile
+
+A profile is the set of rules for a class of device, so the numbers are not retyped at every call
+site:
+
+[source,kotlin]
+----
+val profiled = PlannerProfile.MOBILE_2GB.plan(input, availableBytes = deviceRam)
+println(profiled.render())
+profiled.requireFits()          // throws, naming the pool that ran out
+----
+
+[cols="1,3",options="header"]
+|===
+| Profile | Rules
+| `MOBILE_2GB` | 700 MB reserved, prefill chunked at 256, off-heap above 256 KB, KV auto-quantized to TurboQuant-4 once the plan passes 80 % of the budget, dispatcher dequantization warns above 5 % of bytes read, weights mapped
+| `DESKTOP` | The same reserve, no automatic KV quantization, heap staging
+| `NATIVE` | The smaller 300 MB Kotlin/Native reserve
+| `PlannerProfile.forDevice(device)` | Picks `MOBILE_2GB` at or below 3 GB of RAM
+|===
+
+A `ProfiledPlan` records what the profile decided — the KV switch appears as a note, not a silent
+rewrite — so a plan read months later says which rules produced it.
+
+== Check a real device, before allocating
+
+A phone has two memory pools, and one total cannot express the difference: the managed heap is
+hard-capped per app, while mapped weights live in file-backed pages that never count against that
+cap.
+
+[source,kotlin]
+----
+val device = AndroidGguf.deviceMemory(context)          // ActivityManager + the ART cap
+val fit = AndroidGguf.fits(context, path, ctx = 2048)   // header-only, before any payload
+if (!fit.fits) {
+    log(fit.render())        // names the pool that ran out and what would help
+    return
+}
+----
+
+....
+llama-1b · ctx 2048 · weights mapped
+  managed heap      434 MB of    472 MB   ✔
+  device RAM        1.0 GB of    720 MB   ✘ short by 320 MB
+  suggestions: --kv turboquant (−216 MB) · --ctx 1024 (−42 MB)
+....
+
+Charging the heap for weights only when they are *not* mapped is the whole point: the same model
+can be impossible on the heap and unremarkable when mapped.
+
+== Load with mapped weights on Android
+
+[source,kotlin]
+----
+val loader = AndroidGguf.loader(path)   // staging = MAPPED, quantPolicy = NATIVE_OPTIMIZED
+loader.load<FP32, Float>(ctx, FP32::class) { name, tensor -> model.put(name, tensor) }
+----
+
+`staging` and `quantPolicy` are independent axes of one loader: `quantPolicy` decides *what the
+values are*, `staging` decides *where the bytes live*. `MAPPED` serves dense FP32 tensors as
+zero-heap views over file-backed pages, and falls back to `HEAP` when the platform cannot map or
+the source has no path.
+
+NOTE: Packed (quantized) tensors still arrive as heap arrays under `MAPPED`, because the packed
+matmul kernels take `ByteArray`s. Mapping lifts the heap ceiling for dense checkpoints today, not
+yet for a Q4_K_M one.
+
+== Check the plan against what actually happened
+
+The plan is an estimate until something compares it with reality:
+
+[source,kotlin]
+----
+val actual = ActualMemory.from(sink.events())
+val comparison = PlanVsActual.compare(plan, actual)
+check(comparison.withinTolerance) { comparison.render() }
+----
+
+The same trace also yields TTFT, tokens per second, the per-module breakdown and the effective
+memory bandwidth — see xref:explanation/memory-model.adoc#_observability[the memory model].

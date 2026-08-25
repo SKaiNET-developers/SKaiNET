@@ -190,7 +190,7 @@ the values recorded in `Goldens.kt`. They are compiled into the JVM and Kotlin/N
 (JS/Wasm compute `Float` in double precision and are covered by the tolerance-based
 `PackedMatmulDispatchParityTest` in `commonTest` instead). A mismatch means a decoder or kernel no
 longer produces the same bits; if that is the intent of a PR, re-baseline `Goldens.kt` in the same
-PR and say so. See SKEEP-003 and the memory-architecture design record under `docs/design/memory/`.
+PR and say so. See xref:explanation/memory-model.adoc[The memory model] and xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003].
 
 === Pinning npm Packages
 

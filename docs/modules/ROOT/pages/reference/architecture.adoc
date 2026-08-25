@@ -1,10 +1,10 @@
 = Architecture
 :description: Arc42-style architecture reference for SKaiNET — solution strategy, building blocks, runtime view, with focus on the kernel SPI and eager-execution pipeline.
 
-This page follows arc42's chapter ordering at a coarse grain. Sections
-that are still single-paragraph stubs ask for contributions; sections
-about the kernel SPI and eager execution pipeline are the deepest
-because that's where the 0.21.0 work landed.
+This page follows arc42's chapter ordering at a coarse grain. It
+describes SKaiNET as it is today; the deepest sections are the kernel
+SPI, the eager execution pipeline and the memory model, because that is
+where most of the architectural weight sits.
 
 == 1. Introduction and goals
 
@@ -87,7 +87,9 @@ between modes is part of the test contract.
 | `skainet-backends/skainet-backend-xnnpack` | Optional XNNPACK CPU backend (FP32 matmul / conv2d / pooling) on linuxX64 / linuxArm64 / Android.
 | `skainet-backends/benchmarks/jvm-cpu-jmh` | JMH harness — `MatmulBench`, `KernelMatmulBench`, `QuantizedMatmulBench`, `ElementwiseAdd1MBench`, `Reductions1MBench`.
 | `skainet-compile/*` | Tape recording, StableHLO emission, IREE export.
-| `skainet-io/*` | Model loaders (GGUF, SafeTensors, ONNX), tokenizers, IRPA writer.
+| `skainet-io/*` | Model loaders (GGUF, SafeTensors, ONNX), tokenizers, IRPA writer. One GGUF loader with two independent axes: `quantPolicy` (what the values are) × `staging` (where the bytes live).
+| `skainet-apps/skainet-plan` | `skainet plan <model.gguf>` — prints a model's memory plan from its header alone. See xref:how-to/plan-model-memory.adoc[].
+| `skainet-backends/benchmarks/jvm-cpu-publish` | Publishes benchmark records as JSON (schema-checked in CI), including generation metrics when a scenario runs a decode loop.
 |===
 
 === 5.2 Kernel SPI
@@ -175,69 +177,113 @@ mechanism, including why this does *not* contradict the FFM decision
 above.
 ====
 
+=== 5.3 Memory model
+
+Four questions that a tensor library often answers with one type are answered by four here.
+`Storage` owns bytes; `Format` — a `(DType, TensorEncoding)` pair — says what they mean; `Layout`
+says where element `(i, j)` lives inside them; `TensorView` is the combination, and the only thing
+a kernel receives. `Scope` owns lifetime.
+
+[mermaid]
+----
+classDiagram
+    class Tensor {
+        DSL handle
+    }
+    class TensorData {
+        user-facing read/write
+    }
+    class TensorView {
+        Shape + Format + Layout + Storage
+        +get(indices) Float
+        +materialize(format, scope) TensorView
+    }
+    class Storage {
+        <<sealed>>
+        Heap | OffHeap | Mapped | Device
+        +slice(offset, length) Storage
+    }
+    class Format {
+        DType + TensorEncoding
+    }
+    class Layout {
+        strides, offset, block geometry
+    }
+    class Scope {
+        <<interface>>
+        Model | Forward | Ambient
+    }
+    Tensor --> TensorData : holds
+    TensorData ..> TensorView : façade over
+    TensorView --> Storage
+    TensorView --> Format
+    TensorView --> Layout
+    Scope --> Storage : allocates and frees
+----
+
+Consequences that shape the rest of the system:
+
+* A quantized weight is `Format(FP32, Q4_K)` — a float tensor with a packed encoding, not a byte
+tensor. `get()` returns the decoded value, so one reference kernel serves every format.
+* Slicing, transposing and striding are `Layout` arithmetic over the same `Storage`; `materialize()`
+is the only copy point.
+* A `ForwardScope` is a pre-sized slab, bump-allocated and reset each step, which is what makes
+memory over a long generation a flat line rather than a staircase.
+
+Full treatment: xref:explanation/memory-model.adoc[].
+
 == 6. Runtime view — eager execution
 
-The eager pipeline for a single op:
+A single op, from user code to bytes:
 
-[source]
+[mermaid]
 ----
-User code
-   │
-   │  ctx.ops.matmul(a, b)
-   ▼
-DirectCpuExecutionContext
-   │
-   │  delegates to TensorOps implementation
-   ▼
-DefaultCpuOpsJvm.matmul                                (jvmMain)
-   │
-   ├─→ chooseQuantizedMatmul(a, b)?
-   │      │
-   │      │  matches Q4_K / Q6_K / Q8_0 / Q4_0 weights
-   │      ▼
-   │   ┌─ Q4_K branch: q4kMatmulKernel?.matmul(...) via SPI
-   │   │  fallback to JvmQuantizedVectorKernels.matmulQ4_KVec
-   │   ├─ Q6_K branch: JvmQuantizedVectorKernels.matmulQ6_KVec
-   │   ├─ Q8_0 / Q4_0 branches: per-format SIMD inner loops
-   │   └─ MemSeg variants: same kernels, ByteVector.fromMemorySegment
-   │
-   ├─→ chooseMatmul(a, b)?                             (FP32 path)
-   │      │
-   │      │  fp32MatmulKernel.matmul(...)              ← SPI dispatch
-   │      ▼
-   │   PanamaVectorMatmulKernel.matmul(...)
-   │      │  (or ScalarMatmulKernel when Panama unavailable)
-   │      │
-   │      │  tile-blocked FMA inner loop:
-   │      │    for each (m, n, k)-tile:
-   │      │      load FloatVector slices of A and B^T
-   │      │      acc = va.fma(vb, acc)
-   │      │      acc.reduceLanes(ADD) per output cell
-   │      ▼
-   │   FloatArray output                                ← back up the stack
-   │
-   └─→ super.matmul(a, b)                              (DefaultCpuOpsBase fallback)
+flowchart TD
+    U["ctx.ops.matmul(a, b)"] --> D["DefaultCpuOps* (TensorOps)"]
+    D --> Q{"packed weight?"}
+    Q -->|yes| QK["quantized fast path<br/>SPI kernel by format"]
+    Q -->|no| F{"dense FP32?"}
+    F -->|yes| FK["fp32MatmulKernel<br/>Panama / native / scalar"]
+    F -->|no| G["generic fallback<br/>DefaultCpuOpsBase"]
+    QK --> O["output tensor"]
+    FK --> O
+    G --> O
 ----
 
-Two specifics worth calling out:
+The kernel-facing half of the same call, for code that has already moved to views:
 
-* *Lazy provider resolution.* `DefaultCpuOpsJvm.fp32MatmulKernel` and
-`q4kMatmulKernel` are `by lazy` properties. First access triggers
-`KernelServiceLoader.installAll()` if the registry is empty, then
-caches the resolved kernel for the lifetime of the op set. Apps
-that pre-register custom providers via
-`KernelRegistry.register(...)` before constructing the op set bypass
-the auto-discovery path.
-* *Fall-through everywhere.* Each routing decision (`chooseQuantizedMatmul`
-→ `chooseMatmul` → `super.matmul`) returns `null` on a miss, never
-throws, so adding a new tensor type or a new SPI accessor is purely
-additive. The MemSeg arena leak fix in PR #556 made every per-op
-output use `Arena.ofAuto()`, so even the fast-path branches don't
-need explicit lifetime management.
+[mermaid]
+----
+flowchart TD
+    A["KernelDispatch.matmul(view_a, view_w, out)"] --> N["normalize rank as views<br/>[k] → [1, k], [b, s, k] → [b*s, k]"]
+    N --> K["build KernelKey<br/>(op, formats, layout classes, placement, capabilities)"]
+    K --> L{"kernel registered<br/>for this key?"}
+    L -->|yes| R["run it"]
+    L -->|no| AD["insert a visible adapter<br/>gather · requantize · relayout"]
+    AD --> L2{"kernel for the<br/>adapted key?"}
+    L2 -->|yes| R
+    L2 -->|no| REF["ReferenceMatmulKernel<br/>decodes any format"]
+    R --> T["TraceEvent.KernelRun"]
+    REF --> T
+----
 
-For shape inference, broadcasting, and the lazy shape-swap transpose
-specializations on `Q4_KTensorData` / `Q6_KTensorData` / `MemorySegmentBackedData`,
-see the same source file (`DefaultCpuOpsJvm.transpose`).
+Specifics worth calling out:
+
+* *Lazy provider resolution.* The kernel properties on the op set are `by lazy`; first access
+triggers `KernelServiceLoader.installAll()` when the registry is empty, then caches. Apps that
+pre-register providers via `KernelRegistry.register(...)` bypass auto-discovery. Kotlin/Native has
+no `ServiceLoader`, so it registers manually with `installNativeKernels()`.
+* *Fall-through everywhere.* Each routing decision returns `null` on a miss rather than throwing,
+so a new tensor type or SPI accessor is purely additive.
+* *Rank is normalized once.* A rank-1 decode step becomes `[1, k]` as a *view* before any kernel
+sees it, which is why a kernel written for rank 2 never meets a rank-1 tensor.
+* *Adapters are visible.* A gather, a dequantization, a requantization for a ternary kernel or a
+block relayout allocates in the caller's scope and emits `TraceEvent.AdapterInserted` with its
+byte count. The costs that used to hide inside kernels are events.
+
+A generation loop wraps this in phase spans — `prefill`, `decode(step)`, `sample`, and nested
+module spans — from which TTFT, tokens per second, the per-module breakdown and the effective
+memory bandwidth are derived. See xref:explanation/memory-model.adoc#_observability[].
 
 == 7. Deployment view
 
@@ -272,6 +318,26 @@ PR #556.
 respects `-Dskainet.cpu.vector.enabled=false` so a deployment can
 opt out of incubator code without a recompile. Same pattern for
 BLAS (`-Dskainet.cpu.blas.enabled=true`).
+* *Scoped memory.* Weights and the KV cache live in a `ModelScope`;
+one step's activations live in a pre-sized `ForwardScope` slab that is
+reset between steps. Allocation and free events carry the `TensorId`
+they back, so a plan can be compared with what a run actually did.
+See xref:explanation/memory-model.adoc[].
+* *Every conversion is an event.* A gather, a dequantization, a
+requantization or a block relayout allocates in the caller's scope and
+emits `AdapterInserted`. A conversion that does not appear in the trace
+is a bug — this is what turned the "hidden allocations" class of issue
+into something a test can assert.
+* *One block-order contract.* Packed weights exist in exactly two block
+orders, carried on the `Layout` and declared in each kernel's
+`KernelKey`. Mixing them yields plausible wrong numbers rather than a
+crash, so the contract is normative and published:
+xref:explanation/packed-weight-layout.adoc[].
+* *Observability is one stream.* Phases, kernel runs, adapters,
+allocations, scope resets, counters and the memory plan go to a
+`TraceSink`; the debugger, the Perfetto/JFR/`android.os.Trace`
+exporters, the derived generation metrics and the benchmark JSON are all
+consumers of it.
 
 == 9. Architecture decisions
 
@@ -283,6 +349,11 @@ BLAS (`-Dskainet.cpu.blas.enabled=true`).
 | ServiceLoader auto-discovery deferred until 2 providers exist | 2026-04 (PR #559) | Single-provider auto-discovery would have been ceremony for nothing; once Panama landed alongside Scalar, the trigger condition was met.
 | FFM over JNI for the JVM native provider | roadmap M5 | JNI's per-call overhead and global lock are wrong for hot per-token kernels — where FFM is available. This did not generalize to "JNI is rejected everywhere": ART has no FFM at all, so `skainet-backend-jni-cpu` (0.39.0) uses JNI on Android specifically because there is no FFM alternative there. See xref:explanation/perf/android-neon-jni-kernels.adoc[].
 | Antora docs (Diátaxis), not GitHub Wiki | 2025 | Source-controlled, branchable, ranked higher in search than wikis, ships with the repo.
+| Storage-first memory model (SKEEP-003) | 2026-08 | `TensorData` and `TensorStorage` were parallel layers with no answer to "who owns these bytes". Splitting ownership (`Storage`), meaning (`Format`), addressing (`Layout`) and lifetime (`Scope`) made mapped weights, scoped activations and honest memory plans expressible at all.
+| Kernels select on a declared `KernelKey`, not an `is`-ladder | 2026-08 | Every quantization bug was arriving as a dispatch bug. A kernel now declares the formats, layouts and capabilities it accepts, and the dispatcher inserts a visible adapter when an operand does not match.
+| Block order is part of the layout | 2026-08 | Two block orders for packed weights had been an unwritten contract, contradicting itself in seven places and shipping wrong numbers twice. It is now carried on `Layout`, declared in the key, and converted only by one engine-owned, idempotent function.
+| `matmulWeightTransposed` instead of transposing a packed weight | 2026-08 | Transposing block-quantized data is not representable — blocks quantize runs along the input dimension. What the engine called a packed transpose was a per-call layout copy that was not its own inverse; the primitive ggml and BLAS have takes the weight as `[out, in]` and converts once.
+| `quantPolicy × staging` as two axes of one loader | 2026-08 | "Streaming loader" and "mapped weights helper" were separate code paths that could disagree. What the values are and where the bytes live are independent questions.
 |===
 
 == 10. Quality requirements
@@ -296,6 +367,19 @@ reference within FP-rounding tolerance (`1e-5 * k` for matmul,
 * *Multi-target buildability.* `./gradlew allTests` (the release
 gate) must pass on every KMP target — JVM, JS, Wasm, macosArm64,
 iosSimulatorArm64, linuxX64, linuxArm64, Android.
+* *Flat memory during generation.* A decode step allocates nothing in
+the forward scope after warm-up, and the resident set does not grow
+with the number of steps. Asserted on every commit against a synthetic
+decode harness, and measured on an ARMv8.2 Cortex-A55 reference board:
+zero major page faults across a run, identical RSS after 4 and 48
+steps.
+* *Plan versus reality.* The header-derived memory plan matches what a
+run actually allocated within 10 %, checked in CI rather than by
+inspection.
+* *Bit-identical decode across refactors.* A golden gate pins the
+decoded bytes of every packed encoding and the output of every scalar
+kernel, on JVM and Kotlin/Native. Any change to a decoder, a kernel or
+a byte layout has to move a recorded digest deliberately.
 
 == 11. Risks and technical debt
 
@@ -304,10 +388,17 @@ through 2026; we depend on it heavily. If it breaks API in a future
 JDK, every `JvmVectorKernels` / `JvmQuantizedVectorKernels` file
 needs adjustment. Mitigation: thin wrappers, parity tests are a
 canary.
-* *No native FFM provider yet.* The literal M5 milestone metric
-(`≥2.5×` for Q4_K) is met by Panama in absolute terms but not in
-the "native vs JVM" framing the metric originally specified.
-The priority-100 native provider is designed but not yet shipped.
+* *Packed weights still reach the managed heap.* The packed matmul SPI
+takes `ByteArray`s, so mapped staging serves dense FP32 tensors from
+file-backed pages but not quantized ones. On Android that means the
+heap ceiling is lifted for dense checkpoints and not yet for a Q4_K_M
+one; a buffer-aware kernel SPI is the missing piece.
+* *Whole-file mapping only.* A file larger than 2 GB is refused rather
+than mapped in windows.
+* *Hand-written NEON is a modest win over the compiler.* On a
+Cortex-A55 the hand-written `bitnet_gemv` beats `-O3 -ffast-math` C by
+1.08–1.24×; the large win is being native at all. Worth knowing before
+investing in more intrinsics on that core.
 * *Two reverted optimizations on develop history.* MemSeg pool
 (commit 8642b322) and intra-op matmul parallelism (commit
 9ed633b6) were both tried and reverted. Re-attempts need a
@@ -322,7 +413,13 @@ explain why.
 | FFM | Foreign Function & Memory API (JEP 442 et seq.). Java 22 stable, 21 preview. Replaces JNI for native interop.
 | FMA | Fused multiply-add (`a · b + c` in one instruction). Supported by every modern x86_64 (FMA3) and ARMv8 CPU.
 | ggml | The C library underpinning llama.cpp; defines the canonical Q4_K / Q6_K / Q8_0 block layouts SKaiNET uses for GGUF compatibility.
-| Lazy transpose | Specialization in `DefaultCpuOpsJvm.transpose` that swaps a tensor's *shape* without reordering its packed bytes — works because the matmul kernel's byte-offset math is symmetric across the swap.
+| Block order | Which of the two orders a packed weight's blocks are in — `ROW_MAJOR` (what a file holds) or `INPUT_BLOCK_MAJOR` (what the kernels read). Carried on `Layout`, declared in each `KernelKey`. See xref:explanation/packed-weight-layout.adoc[].
+| Format | `(DType, TensorEncoding)` — what a tensor's values mean and how they are stored. A Q4_K weight is `Format(FP32, Q4_K)`.
+| Layout | Strides, offset and block geometry: where element `(i, j)` lives inside a `Storage`.
+| Prepack | Converting a packed weight's blocks into the order its kernels read. A copy, done once at load, emitted as a visible adapter — not a transpose.
+| Scope | Who owns an allocation and when it is freed: `Model` (the session), `Forward` (one step, reset between steps), `Ambient` (the GC).
+| Storage | A byte range with an owner and a lifetime — `Heap`, `OffHeap`, `Mapped` or `Device`.
+| TensorView | `Shape + Format + Layout + Storage`; the only thing a kernel receives.
 | MemSeg | Short for `java.lang.foreign.MemorySegment`. Off-heap memory abstraction used for mmap'd weight buffers.
 | Panama | Codename for the JDK Vector API (`jdk.incubator.vector`) and FFM. Both originate from Project Panama.
 | SPI | Service provider interface — a public interface with multiple registered implementations, looked up at runtime. SKaiNET uses it for backends and now for kernels.

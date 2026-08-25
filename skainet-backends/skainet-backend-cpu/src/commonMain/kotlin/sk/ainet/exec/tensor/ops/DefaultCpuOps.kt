@@ -1019,7 +1019,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     "along the input dimension, so transposing them needs requantization, and what this used to " +
                     "do was a per-call layout copy that is not its own inverse (#973). Use " +
                     "ops.matmulWeightTransposed(x, weight) with the weight as [out, in], or relayout explicitly " +
-                    "with PackedWeights.prepackForMatmul. See docs/design/memory/packed-weight-layout.md.",
+                    "with PackedWeights.prepackForMatmul. See the Packed weight layout page in the docs site (explanation/packed-weight-layout).",
             )
         }
 
