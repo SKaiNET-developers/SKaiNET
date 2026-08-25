@@ -97,7 +97,12 @@ public interface Q5_KTensorData : TensorData<DType, Byte> {
  */
 public class Q5_KBlockTensorData(
     initialShape: Shape,
-    private val data: ByteArray
+    private val data: ByteArray,
+    /**
+     * Which order [data]'s blocks are physically in (#1120/#1124). `ROW_MAJOR` — canonical, as
+     * every GGUF-shaped producer writes — unless this weight was relayouted for the packed kernels.
+     */
+    override val blockOrder: sk.ainet.lang.memory.BlockOrder = sk.ainet.lang.memory.BlockOrder.ROW_MAJOR,
 ) : Q5_KTensorData, PackedBlockStorage {
 
     /** The façade over the packed bytes (SKEEP-003 §4.1): see [PackedBlockStorage.packedView]. */
