@@ -20,7 +20,30 @@ public data class PlanTensor(
     val elementCount: Long,
     /** Physical bytes; falls back to the checkpoint's own byte count when the encoding cannot compute it. */
     val bytes: Long,
+    /**
+     * The form this weight was resolved to take in memory (#1109/#1116), or `null` when nothing has
+     * resolved one and the file's own bytes are what will be held.
+     */
+    val form: WeightForm? = null,
 ) {
+    /**
+     * What this weight actually costs in memory once [form] is honoured.
+     *
+     * [bytes] is what the *file* holds. They differ exactly when the resolved form re-encodes:
+     * a Q4_K tensor kept as Q4_K costs its packed bytes, and the same tensor dequantized to FP32
+     * costs roughly eight times that. Planning the first number while loading the second is how a
+     * dequantization becomes an OOM instead of a line in a table.
+     */
+    val residentBytes: Long
+        get() = when (val request = form?.encoding) {
+            null, EncodingRequest.KeepAsStored -> bytes
+            is EncodingRequest.DequantizeTo ->
+                Format.dense(request.dtype).physicalBytes(elementCount)
+                    ?: (request.dtype.sizeInBytes.toLong() * elementCount)
+            is EncodingRequest.RequantizeTo ->
+                Format(format.dtype, request.encoding).physicalBytes(elementCount) ?: bytes
+        }
+
     /** The allocation this weight needs: mapped, model-lifetime, read-only. */
     val allocation: AllocationSpec
         get() = AllocationSpec(format, elementCount, MemoryDomain.MMAP_FILE, ScopeKind.MODEL, mutable = false)
@@ -139,7 +162,18 @@ public data class MemoryPlan(
     val forwardBytes: Long,
     val headroomBytes: Long,
     val budget: Budget?,
+    /**
+     * What the weights occupy *in the file*, before any resolved [WeightForm] re-encodes them
+     * (#1116). Equal to [weightsBytes] when nothing was resolved, which is every plan built before
+     * forms existed — hence the default.
+     */
+    val weightsAsStoredBytes: Long = weightsBytes,
 ) {
+    /**
+     * Bytes the resolved forms add to the weights — a dequantization's price, made visible before
+     * it is paid rather than discovered as an OOM. Zero when the weights are held as stored.
+     */
+    val formConversionBytes: Long get() = weightsBytes - weightsAsStoredBytes
     val totalBytes: Long get() = weightsBytes + kvBytes + forwardBytes + headroomBytes
     val residentBytes: Long get() = weightsBytes + kvBytes
 
@@ -148,7 +182,13 @@ public data class MemoryPlan(
 
     val lines: List<PlanLine>
         get() = listOf(
-            PlanLine("weights", "Mapped, packed", weightsBytes, resident = true),
+            PlanLine(
+                "weights",
+                if (formConversionBytes == 0L) "Mapped, packed"
+                else "re-encoded at load (+${MemoryPlans.formatBytes(formConversionBytes)})",
+                weightsBytes,
+                resident = true,
+            ),
             PlanLine("kv cache", input.kvMode.label + " @ ctx ${input.ctx}", kvBytes, resident = true),
             PlanLine("forward", "prefill chunk ${input.prefillChunk}", forwardBytes, resident = false),
             PlanLine("heap", "headroom", headroomBytes, resident = false),
@@ -166,6 +206,14 @@ public data class MemoryPlan(
         if (halfCtx < input.ctx) {
             val half = MemoryPlans.plan(input.copy(ctx = halfCtx), budget)
             out += Suggestion("--ctx $halfCtx", totalBytes - half.totalBytes)
+        }
+        if (formConversionBytes > 0) {
+            // Worth saying first: unlike ctx or KV mode, this cost was not asked for — it is what
+            // the resolver chose because no kernel on the target could feed the stored encoding.
+            out += Suggestion(
+                "a build with kernels for the stored encoding: loading it as-is instead of re-encoding",
+                formConversionBytes,
+            )
         }
         val over = totalBytes - b.bytes
         out += Suggestion("a smaller model: weights must shrink by ≥ ${MemoryPlans.formatBytes(over)} (e.g. a lower-bit quantization of the same model)", over)
@@ -218,13 +266,14 @@ public object MemoryPlans {
      * - heap headroom: [HEAP_HEADROOM_BYTES].
      */
     public fun plan(input: PlanInput, budget: Budget? = null): MemoryPlan {
-        val weights = input.weights.sumOf { it.bytes }
+        val weights = input.weights.sumOf { it.residentBytes }
+        val weightsAsStored = input.weights.sumOf { it.bytes }
         val g = input.geometry
         val kvElements = if (g != null) kvElements(g, input.ctx) else 0L
         val kv = input.kvMode.bytes(kvElements)
         val kvAlt = (if (input.kvMode == KvCacheMode.TURBOQUANT_4) KvCacheMode.BF16 else KvCacheMode.TURBOQUANT_4).bytes(kvElements)
         val forward = if (g != null) forwardBytes(g, input.ctx, input.prefillChunk) else 0L
-        return MemoryPlan(input, weights, kv, kvAlt, forward, HEAP_HEADROOM_BYTES, budget)
+        return MemoryPlan(input, weights, kv, kvAlt, forward, HEAP_HEADROOM_BYTES, budget, weightsAsStored)
     }
 
     public fun kvElements(g: ModelGeometry, ctx: Int): Long =

@@ -1530,7 +1530,8 @@ public final class sk/ainet/lang/memory/plan/KvCacheMode : java/lang/Enum {
 }
 
 public final class sk/ainet/lang/memory/plan/MemoryPlan {
-	public fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;)V
+	public fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;J)V
+	public synthetic fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lsk/ainet/lang/memory/plan/PlanInput;
 	public final fun component2 ()J
 	public final fun component3 ()J
@@ -1538,11 +1539,13 @@ public final class sk/ainet/lang/memory/plan/MemoryPlan {
 	public final fun component5 ()J
 	public final fun component6 ()J
 	public final fun component7 ()Lsk/ainet/lang/memory/plan/Budget;
-	public final fun copy (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;)Lsk/ainet/lang/memory/plan/MemoryPlan;
-	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun component8 ()J
+	public final fun copy (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;J)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBudget ()Lsk/ainet/lang/memory/plan/Budget;
 	public final fun getFits ()Ljava/lang/Boolean;
+	public final fun getFormConversionBytes ()J
 	public final fun getForwardBytes ()J
 	public final fun getHeadroomBytes ()J
 	public final fun getInput ()Lsk/ainet/lang/memory/plan/PlanInput;
@@ -1551,6 +1554,7 @@ public final class sk/ainet/lang/memory/plan/MemoryPlan {
 	public final fun getLines ()Ljava/util/List;
 	public final fun getResidentBytes ()J
 	public final fun getTotalBytes ()J
+	public final fun getWeightsAsStoredBytes ()J
 	public final fun getWeightsBytes ()J
 	public fun hashCode ()I
 	public final fun render ()Ljava/lang/String;
@@ -1648,21 +1652,25 @@ public final class sk/ainet/lang/memory/plan/PlanLine {
 }
 
 public final class sk/ainet/lang/memory/plan/PlanTensor {
-	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJ)V
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;)V
+	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Lsk/ainet/lang/tensor/TensorId;
 	public final fun component3 ()Lsk/ainet/lang/memory/Format;
 	public final fun component4 ()J
 	public final fun component5 ()J
-	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJ)Lsk/ainet/lang/memory/plan/PlanTensor;
-	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanTensor;Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanTensor;
+	public final fun component6 ()Lsk/ainet/lang/memory/plan/WeightForm;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;)Lsk/ainet/lang/memory/plan/PlanTensor;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanTensor;Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanTensor;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAllocation ()Lsk/ainet/lang/memory/AllocationSpec;
 	public final fun getBytes ()J
 	public final fun getElementCount ()J
+	public final fun getForm ()Lsk/ainet/lang/memory/plan/WeightForm;
 	public final fun getFormat ()Lsk/ainet/lang/memory/Format;
 	public final fun getId ()Lsk/ainet/lang/tensor/TensorId;
 	public final fun getName ()Ljava/lang/String;
+	public final fun getResidentBytes ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1839,6 +1847,10 @@ public final class sk/ainet/lang/memory/plan/WeightForm$Companion {
 public final class sk/ainet/lang/memory/plan/WeightFormResolver {
 	public static final field INSTANCE Lsk/ainet/lang/memory/plan/WeightFormResolver;
 	public final fun resolve (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/KernelCapabilities;)Lsk/ainet/lang/memory/plan/WeightForm;
+}
+
+public final class sk/ainet/lang/memory/plan/WeightFormResolverKt {
+	public static final fun resolveWeightForms (Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/KernelCapabilities;)Lsk/ainet/lang/memory/plan/PlanInput;
 }
 
 public final class sk/ainet/lang/memory/plan/WeightResidency : java/lang/Enum {

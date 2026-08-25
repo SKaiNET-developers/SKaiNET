@@ -72,3 +72,28 @@ public object WeightFormResolver {
         return "${tenths / 10}.${tenths % 10}"
     }
 }
+
+/**
+ * Every weight in this input resolved to the form it will take on a device described by [profile]
+ * (#1116).
+ *
+ * The point of resolving *before* planning: `MemoryPlans.plan` prices `PlanTensor.residentBytes`,
+ * so a resolved dequantization shows up in the table and in the fit check, instead of being
+ * discovered when the load runs out of memory. Weights whose format has no encoding — dense ones —
+ * resolve to a pass-through form and change nothing.
+ */
+@ExperimentalMemoryApi
+public fun PlanInput.resolveWeightForms(
+    profile: PlannerProfile,
+    capabilities: KernelCapabilities,
+): PlanInput = copy(
+    weights = weights.map { tensor ->
+        tensor.copy(
+            form = WeightFormResolver.resolve(
+                stored = tensor.format.encoding.takeUnless { it is sk.ainet.lang.tensor.storage.TensorEncoding.Dense },
+                profile = profile,
+                capabilities = capabilities,
+            ),
+        )
+    },
+)
