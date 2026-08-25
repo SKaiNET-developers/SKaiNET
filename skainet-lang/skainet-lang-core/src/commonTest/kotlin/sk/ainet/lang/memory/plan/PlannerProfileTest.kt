@@ -66,7 +66,7 @@ class PlannerProfileTest {
         assertEquals(0.80, m.kvAutoQuantizeAbove, "KV auto-quantizes over 80 % of the budget")
         assertEquals(0.05, m.dequantWarnFraction, "dispatcher dequant warns over 5 %")
         assertTrue(m.weightsMapped, "on a phone the weights are mapped")
-        assertFalse(m.strict)
+        assertTrue(m.strict, "and a missing kernel fails rather than costing several times the weight")
 
         val d = PlannerProfile.DESKTOP
         assertEquals(1.0, d.kvAutoQuantizeAbove, "a desktop never silently re-quantizes the cache")
@@ -155,17 +155,22 @@ class PlannerProfileTest {
 
     @Test
     fun dequantizationOverTheLimitWarnsAndFailsUnderStrict() {
-        val lenient = PlannerProfile.MOBILE_2GB.checkDequant(0.31)
+        // A desktop has the memory to absorb a widening, so it is told and carries on.
+        val lenient = PlannerProfile.DESKTOP.checkDequant(0.31)
         assertEquals(DequantSeverity.WARN, lenient.severity)
         assertTrue(lenient.message.contains("31.0%"), lenient.message)
         assertTrue(lenient.message.contains("kernel for the on-disk format is missing"), lenient.message)
         lenient.requireAcceptable()   // a warning does not stop a desktop run
 
-        val strict = PlannerProfile.MOBILE_2GB.strict().checkDequant(0.31)
-        assertEquals(DequantSeverity.ERROR, strict.severity)
-        assertTrue(strict.profile.name.contains("strict"))
+        // A 2 GB board does not, so the same share is an error there without asking for strict.
+        val strict = PlannerProfile.MOBILE_2GB.checkDequant(0.31)
+        assertEquals(DequantSeverity.ERROR, strict.severity, "MOBILE_2GB is strict by default")
         val failure = assertFailsWith<IllegalStateException> { strict.requireAcceptable() }
         assertTrue(failure.message!!.contains("over the 5.0%"), failure.message!!)
+
+        // strict() stays available for turning a lenient profile into a failing one in CI.
+        assertTrue(PlannerProfile.DESKTOP.strict().checkDequant(0.31).profile.name.contains("strict"))
+        assertEquals(DequantSeverity.ERROR, PlannerProfile.DESKTOP.strict().checkDequant(0.31).severity)
     }
 
     // --- picking a profile ---------------------------------------------------------------------

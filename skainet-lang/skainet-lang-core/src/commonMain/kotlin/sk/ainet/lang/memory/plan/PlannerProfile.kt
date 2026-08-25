@@ -106,7 +106,10 @@ public data class PlannerProfile(
         /**
          * A 2 GB-class phone: 700 MB reserved for the OS and the app, weights mapped, KV
          * automatically quantized once the plan passes 80 % of the budget, and dequantization
-         * treated as the defect it is. The default on Android.
+         * treated as the defect it is — [strict], so a missing kernel fails rather than quietly
+         * costing several times the weight's size. The default on Android.
+         *
+         * Use `copy(strict = false)` for a build that would rather load slowly than not at all.
          */
         public val MOBILE_2GB: PlannerProfile = PlannerProfile(
             name = "mobile-2gb",
@@ -115,6 +118,11 @@ public data class PlannerProfile(
             kvMode = KvCacheMode.BF16,
             kvAutoQuantizeAbove = 0.80,
             weightsMapped = true,
+            // This profile has always *said* dequantization is "the defect it is"; the flag said
+            // otherwise. On a 2 GB board a missing kernel is not a slow path to take quietly — it
+            // is a weight arriving several times its size on the device least able to hold it, and
+            // the honest moment to say so is before the load rather than at the OOM.
+            strict = true,
         )
 
         /** A desktop or server JVM: the same reserve, no automatic KV quantization, heap staging. */

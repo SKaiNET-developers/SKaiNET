@@ -70,10 +70,17 @@ public fun main(args: Array<String>) {
         // for rather than detected. `all` keeps the plan exactly as it was before #1116.
         val input = when {
             profile == null -> stored
-            else -> stored.resolveWeightForms(
-                profile,
-                if (kernels == "dense") KernelCapabilities.DENSE_ONLY else KernelCapabilities.EVERYTHING,
-            )
+            else -> try {
+                stored.resolveWeightForms(
+                    profile,
+                    if (kernels == "dense") KernelCapabilities.DENSE_ONLY else KernelCapabilities.EVERYTHING,
+                )
+            } catch (e: IllegalStateException) {
+                // A strict profile refuses a weight nothing on the target can feed. That is an
+                // answer to the question the planner was asked, not a crash, so it reads as one.
+                System.err.println("skainet plan: ${e.message}")
+                exitProcess(1)
+            }
         }
         val available = budget?.let { parseBytes(it) } ?: Runtime.getRuntime().maxMemory()
         if (profile != null) {
