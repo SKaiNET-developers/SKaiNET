@@ -4,6 +4,11 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.io.ParametersLoader
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.gguf.dequant.DequantOps
+import sk.ainet.lang.memory.plan.EncodingRequest
+import sk.ainet.lang.memory.plan.WeightByteOrder
+import sk.ainet.lang.memory.plan.WeightForm
+import sk.ainet.lang.memory.plan.WeightResidency
+import sk.ainet.lang.memory.plan.WeightShapeOrientation
 import sk.ainet.io.model.QuantPolicy
 import sk.ainet.io.model.StagingPolicy
 import sk.ainet.io.model.WeightOrientation
@@ -97,13 +102,81 @@ public class StreamingGgufParametersLoader(
      * changes what every consumer sees. New code should ask for `OUT_IN`.
      */
     private val weightOrientation: WeightOrientation = WeightOrientation.AS_STORED,
+    /**
+     * The form weights should take in memory, as one decision instead of three (#1109, #1115).
+     *
+     * [quantPolicy], [staging] and [weightOrientation] are the same three axes asked separately,
+     * and asked of the *caller* — who has to answer for a device they may not be building for.
+     * `WeightFormResolver.resolve(stored, profile, capabilities)` answers instead, from what the
+     * file holds, what the device is, and what the backend's kernels can feed.
+     *
+     * `null` (the default) means "use the three parameters", so every existing caller is
+     * byte-identical. Passing a form while also setting any of the three is rejected rather than
+     * silently resolved, so nobody loses a setting they thought they had.
+     */
+    private val weightForm: WeightForm? = null,
 ) : ParametersLoader {
+
+    /** The three axes as one value: [weightForm] if given, otherwise what the three parameters say. */
+    private val form: WeightForm = weightForm ?: WeightForm(
+        encoding = when (quantPolicy) {
+            QuantPolicy.DEQUANTIZE_TO_FP32 -> EncodingRequest.DequantizeTo(FP32)
+            else -> EncodingRequest.KeepAsStored
+        },
+        order = WeightByteOrder.AS_STORED,
+        shape = when (weightOrientation) {
+            WeightOrientation.OUT_IN -> WeightShapeOrientation.OUT_IN
+            else -> WeightShapeOrientation.AS_STORED
+        },
+        residency = when (staging) {
+            StagingPolicy.MAPPED -> WeightResidency.MAPPED
+            else -> WeightResidency.HEAP
+        },
+    )
+
+    /** [QuantPolicy.DEQUANTIZE_TO_FP32] asked for through [form], whichever way it was set. */
+    private val dequantizeToDense: Boolean = form.encoding is EncodingRequest.DequantizeTo
+
+    /** [StagingPolicy.MAPPED] asked for through [form]. */
+    private val mapsTheFile: Boolean = form.residency == WeightResidency.MAPPED
+
+    /** [WeightOrientation.OUT_IN] asked for through [form]. */
+    private val reversesWeightShape: Boolean = form.shape == WeightShapeOrientation.OUT_IN
 
     init {
         require(quantPolicy != QuantPolicy.RAW_BYTES) {
             "StreamingGgufParametersLoader does not support QuantPolicy.RAW_BYTES — quantized " +
                 "tensors are preserved as packed block TensorData (NATIVE_OPTIMIZED) or " +
                 "dequantized to dense FP32 (DEQUANTIZE_TO_FP32)."
+        }
+        if (weightForm != null) {
+            require(
+                quantPolicy == QuantPolicy.NATIVE_OPTIMIZED &&
+                    staging == StagingPolicy.HEAP &&
+                    weightOrientation == WeightOrientation.AS_STORED,
+            ) {
+                "a WeightForm and the quantPolicy/staging/weightOrientation parameters were both " +
+                    "set. They are the same three axes, so one of them would have been silently " +
+                    "ignored; pass only the form."
+            }
+        }
+        require(form.order == WeightByteOrder.AS_STORED) {
+            "WeightByteOrder.KERNEL_FEED is not supported by this loader yet (#1120). The bytes are " +
+                "easy — TensorView.prepack(INPUT_BLOCK_MAJOR) does the permutation — but packed " +
+                "TensorData addresses packedData as canonical row-major in getBlockScale, getCode " +
+                "and dequantizeBlock, so feed-order bytes would decode the wrong elements without " +
+                "failing (#973, #968). Packed storage has to be able to declare its own order first."
+        }
+        val requested = form.encoding
+        require(requested !is EncodingRequest.RequantizeTo) {
+            "EncodingRequest.RequantizeTo(${requested.let { (it as? EncodingRequest.RequantizeTo)?.encoding?.name }}) " +
+                "is not supported by this loader: re-quantizing a weight the file does not already " +
+                "carry needs a quantizer per target encoding, and none of them exist here yet."
+        }
+        val dequantTarget = (requested as? EncodingRequest.DequantizeTo)?.dtype
+        require(dequantTarget == null || dequantTarget == FP32) {
+            "EncodingRequest.DequantizeTo(${dequantTarget?.name}) is not supported: this loader " +
+                "dequantizes to FP32 only."
         }
     }
 
@@ -114,7 +187,7 @@ public class StreamingGgufParametersLoader(
      */
     private fun shapeOf(tensorInfo: StreamingTensorInfo): Shape {
         val dims = tensorInfo.shape.map { it.toInt() }
-        val ordered = if (weightOrientation == WeightOrientation.OUT_IN && dims.size == 2) dims.reversed() else dims
+        val ordered = if (reversesWeightShape && dims.size == 2) dims.reversed() else dims
         return Shape(*ordered.toIntArray())
     }
 
@@ -127,7 +200,7 @@ public class StreamingGgufParametersLoader(
         val source = sourceProvider()
         // MAPPED staging needs a file to map; a Blob or an in-memory source has no path and
         // silently stays on the heap, which is the documented fallback rather than a failure.
-        val mapped = if (staging == StagingPolicy.MAPPED) source.filePath?.let { openMappedFile(it) } else null
+        val mapped = if (mapsTheFile) source.filePath?.let { openMappedFile(it) } else null
         try {
         StreamingGGUFReader.open(source).use { reader ->
             val tensors = reader.tensors
@@ -254,7 +327,7 @@ public class StreamingGgufParametersLoader(
         tensorInfo: StreamingTensorInfo,
         rawBytes: ByteArray,
     ): Tensor<T, V> {
-        if (quantPolicy == QuantPolicy.DEQUANTIZE_TO_FP32 &&
+        if (dequantizeToDense &&
             (dtype == FP32::class || dtype == FP16::class)
         ) {
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())

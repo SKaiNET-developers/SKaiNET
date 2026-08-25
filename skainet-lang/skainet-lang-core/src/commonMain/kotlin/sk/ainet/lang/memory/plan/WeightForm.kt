@@ -36,18 +36,21 @@ import sk.ainet.lang.types.DType
  *
  * @property encoding what the bytes should encode once loaded
  * @property order which way the packed blocks run
+ * @property shape which way round the dimensions are labelled
  * @property residency whether the bytes live on the heap or in file-backed pages
  */
 @ExperimentalMemoryApi
 public data class WeightForm(
     val encoding: EncodingRequest = EncodingRequest.KeepAsStored,
     val order: WeightByteOrder = WeightByteOrder.AS_STORED,
+    val shape: WeightShapeOrientation = WeightShapeOrientation.AS_STORED,
     val residency: WeightResidency = WeightResidency.HEAP,
 ) {
     /** True when this form asks for nothing — the bytes are used exactly as the file holds them. */
     public val isPassThrough: Boolean
         get() = encoding == EncodingRequest.KeepAsStored &&
             order == WeightByteOrder.AS_STORED &&
+            shape == WeightShapeOrientation.AS_STORED &&
             residency == WeightResidency.HEAP
 
     public companion object {
@@ -105,6 +108,27 @@ public enum class WeightByteOrder {
      * feed order and the first forward pass has nothing to convert.
      */
     KERNEL_FEED,
+}
+
+/**
+ * Which way round a 2-D weight's dimensions are labelled.
+ *
+ * Orthogonal to [WeightByteOrder], and easy to conflate with it: this is about the *shape*, that is
+ * about the *bytes*. Reversing the dimensions of a packed weight moves no data at all, while
+ * changing its block order moves every block and leaves the shape alone. A weight can need either,
+ * both, or neither.
+ */
+@ExperimentalMemoryApi
+public enum class WeightShapeOrientation {
+
+    /** The file's own order, unreversed — GGUF `ne`, so `[in, out]` for a 2-D weight. */
+    AS_STORED,
+
+    /**
+     * Logical `[out, in]`: the convention the engine, HF checkpoints and every kernel assume. The
+     * bytes are untouched, because they already are `[out, in]` row-major; only the label changes.
+     */
+    OUT_IN,
 }
 
 /** Where a weight's bytes live. The loader-side spelling of `StagingPolicy` (#1037). */
