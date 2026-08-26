@@ -131,7 +131,7 @@ class ConstantMaterializationPolicyTest {
     @Test
     fun testModuleAttrsHeaderStillEmittedAboveUtilGlobal() {
         // When a tensor carries a tensorEncoding we already emit a
-        // `module attributes { skainet.tensor_encodings = {...} } {`
+        // `module attributes { skainet.tensor_layouts = {...} } {`
         // header. The new util.global decls must slot in AFTER that
         // header, before func.func — otherwise IREE's parser chokes.
         // This test is aspirational for now: we only assert both

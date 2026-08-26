@@ -92,5 +92,13 @@ public data class ExternalParameterRef(
     val scope: String,
     val key: String,
     val encoding: TensorEncoding,
-    val source: BufferHandle
+    val source: BufferHandle,
+    /**
+     * Physical block order of the packed bytes as a stable string (`ROW_MAJOR` /
+     * `INPUT_BLOCK_MAJOR`), or `null` when unknown / not packed (#1179). Carried so a
+     * kernel-feed-ordered weight can be blitted into the `.irpa` verbatim *and say so* —
+     * a string rather than the storage-model enum, by the same no-import rule the
+     * `TensorSpec` metadata follows.
+     */
+    val blockOrder: String? = null,
 )

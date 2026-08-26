@@ -34,3 +34,24 @@ public fun TensorSpec.withTensorId(id: TensorId?): TensorSpec {
     }
     return copy(metadata = newMetadata)
 }
+
+/**
+ * Metadata key for the physical block order of packed storage, carried as a **stable string**
+ * (`ROW_MAJOR` / `INPUT_BLOCK_MAJOR`) rather than the `sk.ainet.lang.memory.BlockOrder` enum —
+ * deliberately, so the compile pipeline reads it without importing storage-model types (#1179).
+ */
+public const val TENSOR_BLOCK_ORDER_METADATA_KEY: String = "tensorBlockOrder"
+
+/** The packed block order carried on this spec, or `null` when unknown / not packed. */
+public val TensorSpec.blockOrder: String?
+    get() = metadata[TENSOR_BLOCK_ORDER_METADATA_KEY] as? String
+
+/** Return a copy of this spec with [order] stored in its metadata map (`null` removes the entry). */
+public fun TensorSpec.withBlockOrder(order: String?): TensorSpec {
+    val newMetadata: Map<String, Any> = if (order == null) {
+        metadata - TENSOR_BLOCK_ORDER_METADATA_KEY
+    } else {
+        metadata + (TENSOR_BLOCK_ORDER_METADATA_KEY to order)
+    }
+    return copy(metadata = newMetadata)
+}

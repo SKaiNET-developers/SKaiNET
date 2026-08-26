@@ -46,6 +46,7 @@ kotlin {
             api(project(":skainet-lang:skainet-lang-models"))
             api(project(":skainet-compile:skainet-compile-core"))
             api(project(":skainet-compile:skainet-compile-dag"))
+            api(project(":skainet-compile:skainet-compile-opt"))
         }
 
         commonTest.dependencies {

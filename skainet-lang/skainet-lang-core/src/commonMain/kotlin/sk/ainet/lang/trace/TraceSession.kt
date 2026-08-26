@@ -53,6 +53,7 @@ public open class TraceSession {
                 dtype = dtypeInstance,
                 tensorId = identities[key],
                 encoding = tensor.data.inferTensorEncoding(),
+                blockOrder = (tensor.data as? sk.ainet.lang.tensor.storage.PackedBlockStorage)?.blockOrder?.name,
             )
             refToId[ref.id] = tensor
             ref
