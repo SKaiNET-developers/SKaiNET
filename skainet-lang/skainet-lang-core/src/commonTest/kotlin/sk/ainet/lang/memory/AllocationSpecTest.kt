@@ -2,9 +2,6 @@ package sk.ainet.lang.memory
 
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.MemoryDomain
-import sk.ainet.lang.tensor.storage.Ownership
-import sk.ainet.lang.tensor.storage.Placement
-import sk.ainet.lang.tensor.storage.StorageSpec
 import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.FP32
@@ -16,9 +13,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** SKEEP-003 Phase 0: `AllocationSpec` replaces the never-consumed `StorageSpec`. */
+/** SKEEP-003 Phase 0: `AllocationSpec` replaced the never-consumed `StorageSpec` (deleted in #1142). */
 @OptIn(ExperimentalMemoryApi::class)
-@Suppress("DEPRECATION") // StorageSpec.toAllocationSpec is the migration path under test
 class AllocationSpecTest {
 
     @Test
@@ -62,20 +58,21 @@ class AllocationSpecTest {
     }
 
     @Test
-    fun storageSpecConvertsToAllocationSpec() {
-        val weights = StorageSpec.q4k(Placement.MMAP_WEIGHTS).toAllocationSpec(1024)
+    fun weightSpecCanBeExpressedDirectly() {
+        val weights = AllocationSpec(
+            Format(FP32, TensorEncoding.Q4_K), 1024,
+            domain = MemoryDomain.MMAP_FILE, scope = ScopeKind.MODEL, mutable = false
+        )
         assertEquals(Format(FP32, TensorEncoding.Q4_K), weights.format)
         assertEquals(1024L, weights.elementCount)
         assertEquals(MemoryDomain.MMAP_FILE, weights.domain)
-        assertEquals(ScopeKind.MODEL, weights.scope) // persistent placement → model lifetime
-        assertFalse(weights.mutable) // borrowed packed bytes
+        assertEquals(ScopeKind.MODEL, weights.scope)
+        assertFalse(weights.mutable)
 
-        val owned = StorageSpec.fromDType(BF16).toAllocationSpec(10)
-        assertEquals(Format.dense(BF16), owned.format)
+        val owned = AllocationSpec(Format.dense(BF16), 10)
         assertEquals(ScopeKind.AMBIENT, owned.scope)
         assertTrue(owned.mutable)
         assertEquals(20L, owned.bytes)
-        assertEquals(Ownership.OWNED, StorageSpec.fromDType(BF16).ownership)
     }
 
     @Test

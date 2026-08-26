@@ -10,7 +10,6 @@ import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -54,7 +53,6 @@ class AcceptanceCriteriaTest {
         assertTrue(storage.isFileBacked)
         assertFalse(storage.isMutable)
         assertEquals(MemoryDomain.MMAP_FILE, storage.placement.domain)
-        assertEquals(Residency.PERSISTENT, storage.placement.residency)
     }
 
     // --- AC3: Tensor views zero-copy, copies explicit ---
@@ -188,7 +186,6 @@ class AcceptanceCriteriaTest {
         assertTrue(report.isFileBacked)
         assertEquals(Ownership.FILE_BACKED, report.ownership)
         assertEquals(MemoryDomain.MMAP_FILE, report.placement.domain)
-        assertEquals(Residency.PERSISTENT, report.placement.residency)
         assertFalse(report.isMutable)
     }
 
@@ -205,7 +202,6 @@ class AcceptanceCriteriaTest {
         )
 
         assertFalse(weights.isMutable)
-        assertEquals(Residency.PERSISTENT, weights.placement.residency)
         assertTrue(weights.isFileBacked)
     }
 
@@ -220,23 +216,7 @@ class AcceptanceCriteriaTest {
         )
 
         assertTrue(activations.isMutable)
-        assertEquals(Residency.TRANSIENT, activations.placement.residency)
         assertFalse(activations.isFileBacked)
-    }
-
-    @Test
-    fun ac6_plannerDistinguishesWeightsFromActivations() {
-        val planner = MemoryPlanner()
-
-        val weightPlacement = planner.suggestWeightPlacement(isFileBacked = true)
-        assertEquals(MemoryDomain.MMAP_FILE, weightPlacement.domain)
-        assertEquals(Residency.PERSISTENT, weightPlacement.residency)
-
-        val activationPlacement = planner.suggestActivationPlacement()
-        assertEquals(MemoryDomain.HOST_HEAP, activationPlacement.domain)
-        assertEquals(Residency.TRANSIENT, activationPlacement.residency)
-
-        assertNotEquals(weightPlacement, activationPlacement)
     }
 
     // --- Aggregate observability ---

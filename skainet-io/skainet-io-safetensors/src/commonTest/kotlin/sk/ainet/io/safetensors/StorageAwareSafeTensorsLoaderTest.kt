@@ -6,7 +6,6 @@ import sk.ainet.io.RandomAccessSource
 import sk.ainet.lang.tensor.storage.LogicalDType
 import sk.ainet.lang.tensor.storage.MemoryDomain
 import sk.ainet.lang.tensor.storage.Ownership
-import sk.ainet.lang.tensor.storage.Residency
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -127,7 +126,6 @@ class StorageAwareSafeTensorsLoaderTest {
         assertTrue(storage.isFileBacked)
         assertEquals(Ownership.FILE_BACKED, storage.ownership)
         assertEquals(MemoryDomain.MMAP_FILE, storage.placement.domain)
-        assertEquals(Residency.PERSISTENT, storage.placement.residency)
         assertFalse(storage.isMutable)
     }
 

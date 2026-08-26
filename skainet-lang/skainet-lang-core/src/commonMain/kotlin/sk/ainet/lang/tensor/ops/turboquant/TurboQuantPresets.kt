@@ -2,7 +2,6 @@ package sk.ainet.lang.tensor.ops.turboquant
 
 import sk.ainet.lang.tensor.storage.KvCacheConfig
 import sk.ainet.lang.tensor.storage.Placement
-import sk.ainet.lang.tensor.storage.Residency
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
@@ -39,7 +38,7 @@ public object TurboQuantPresets {
             maxSeqLen = maxSeqLen,
             keyEncoding = TensorEncoding.Q8_0,
             valueEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = 4),
-            placement = Placement.CPU_HEAP.copy(residency = Residency.PERSISTENT)
+            placement = Placement.CPU_HEAP
         ),
         keyQuantConfig = null, // Q8_0 uses standard quantization, not TurboQuant
         valueQuantConfig = TurboQuantConfig.polarOnly(bits = 4)
@@ -65,7 +64,7 @@ public object TurboQuantPresets {
             maxSeqLen = maxSeqLen,
             keyEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = 4),
             valueEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = 4),
-            placement = Placement.CPU_HEAP.copy(residency = Residency.PERSISTENT)
+            placement = Placement.CPU_HEAP
         ),
         keyQuantConfig = TurboQuantConfig.polarOnly(bits = 4),
         valueQuantConfig = TurboQuantConfig.polarOnly(bits = 4)
@@ -92,7 +91,7 @@ public object TurboQuantPresets {
             maxSeqLen = maxSeqLen,
             keyEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = 3),
             valueEncoding = TensorEncoding.TurboQuantPolar(bitsPerElement = 3),
-            placement = Placement.CPU_HEAP.copy(residency = Residency.PERSISTENT)
+            placement = Placement.CPU_HEAP
         ),
         keyQuantConfig = TurboQuantConfig.polarOnly(bits = 3),
         valueQuantConfig = TurboQuantConfig.polarOnly(bits = 3)

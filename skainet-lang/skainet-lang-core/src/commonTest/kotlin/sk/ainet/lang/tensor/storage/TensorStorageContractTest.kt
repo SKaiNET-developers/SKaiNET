@@ -134,11 +134,9 @@ class TensorStorageContractTest {
         val cpuHeap = Placement.CPU_HEAP
         assertEquals(DeviceKind.CPU, cpuHeap.device)
         assertEquals(MemoryDomain.HOST_HEAP, cpuHeap.domain)
-        assertEquals(Residency.TRANSIENT, cpuHeap.residency)
 
         val mmapWeights = Placement.MMAP_WEIGHTS
         assertEquals(MemoryDomain.MMAP_FILE, mmapWeights.domain)
-        assertEquals(Residency.PERSISTENT, mmapWeights.residency)
 
         val gpuPreferred = Placement.GPU_PREFERRED
         assertEquals(DeviceKind.GPU, gpuPreferred.device)
@@ -196,7 +194,6 @@ class TensorStorageContractTest {
         )
         assertTrue(storage.isFileBacked)
         assertFalse(storage.isMutable)
-        assertEquals(Residency.PERSISTENT, storage.placement.residency)
         assertEquals(MemoryDomain.MMAP_FILE, storage.placement.domain)
     }
 

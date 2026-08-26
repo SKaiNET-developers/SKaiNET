@@ -94,12 +94,6 @@ class LogicalDTypeBridgeTest {
 
     @Test
     fun descriptorsExposeTheDType() {
-        assertSame(FP16, StorageSpec.fromDType(FP16).dtype)
-        assertSame(FP32, StorageSpec.q4k().dtype)
-        assertSame(FP32, StorageSpec.q80().dtype)
-        assertSame(BF16, StorageSpec.borrowed(BF16).dtype)
-        assertSame(Int8, StorageSpec.mmapWeights(Int8).dtype)
-
         val storage = TensorStorage(
             shape = Shape(2, 3),
             logicalType = LogicalDType.FLOAT32,

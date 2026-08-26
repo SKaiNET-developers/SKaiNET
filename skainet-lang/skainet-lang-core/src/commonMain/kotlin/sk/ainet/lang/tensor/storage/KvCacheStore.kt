@@ -300,7 +300,7 @@ public data class KvCacheConfig(
     val maxSeqLen: Int,
     val keyEncoding: TensorEncoding = TensorEncoding.Dense(4),
     val valueEncoding: TensorEncoding = TensorEncoding.Dense(4),
-    val placement: Placement = Placement.CPU_HEAP.copy(residency = Residency.PERSISTENT),
+    val placement: Placement = Placement.CPU_HEAP,
     /**
      * The dtype the key ring stores; with [keyEncoding] it forms the store's `keyFormat` (#1077).
      * `FP32` is what the dense store has always held; `BF16`/`FP16` halve the ring.
