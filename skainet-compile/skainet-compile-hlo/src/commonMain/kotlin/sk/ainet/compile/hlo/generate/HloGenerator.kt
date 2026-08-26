@@ -29,7 +29,15 @@ public object HloGenerator {
     public suspend fun <D : DType, V> generate(
         model: Model<D, V, Tensor<D, V>, Tensor<D, V>>,
         sampleInput: Tensor<D, V>,
-        functionName: String = "main"
+        functionName: String = "main",
+        /**
+         * The compile target (an IREE device name). `null` — the default, byte-identical to the
+         * pre-#1180 behaviour — runs no optimization pipeline. A named target runs
+         * `dagPipelineFor(target)` with [sk.ainet.compile.opt.passes.LayoutAssignmentPass] as a
+         * core pass, plus whatever the target registered via
+         * [sk.ainet.compile.opt.TargetOptimizers].
+         */
+        target: String? = null,
     ): StableHloModule {
         val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
         val traceInput = sampleInput.bind(ctx)
@@ -52,8 +60,20 @@ public object HloGenerator {
             inputTensorIds = setOf(inputRefId)
         ) ?: error("Failed to create compute graph: no execution tape was recorded")
 
+        // The optimizer pipeline joins the production path here (#1180): with no target named,
+        // nothing runs and the emitted module is what it always was; with one, the layout pass
+        // decides and every registered target optimizer gets its say.
+        val optimizedGraph = if (target == null) {
+            computeGraph
+        } else {
+            sk.ainet.compile.opt.dagPipelineFor(
+                target,
+                corePasses = listOf(sk.ainet.compile.opt.passes.LayoutAssignmentPass(target)),
+            ).optimize(computeGraph).graph
+        }
+
         val converter = StableHloConverterFactory.createExtended()
-        return converter.convert(computeGraph, functionName)
+        return converter.convert(optimizedGraph, functionName)
     }
 
     private suspend fun traceForwardPass(
