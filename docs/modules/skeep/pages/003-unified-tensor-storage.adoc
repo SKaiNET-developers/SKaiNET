@@ -302,6 +302,11 @@ end-state decision. The placement annotations are either wired to it or
 removed. Optionally, while touching `Shape`: allow attaching axis labels
 (batch/sequence/head-dim), purely additive, for attention-code readability.
 
+NOTE: *Discharged 2026-08-26* — see xref:003a-placement-and-planning-resolution.adoc[SKEEP-003a].
+The annotations and the dead planner were removed (#1142); the decision-maker landed as the
+stateless `AllocationResolver` (#1143) rather than a per-context planner object, and the
+creation path consults `ExecutionContext.memoryScope` (#1145).
+
 == Design Constraint — preserve the encoding system
 
 The packed-encoding capability must survive any outcome bit-identically:

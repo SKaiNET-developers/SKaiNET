@@ -1,0 +1,119 @@
+= SKEEP-003 addendum: placement, eager lifetime, and graph-level planning — resolved
+:navtitle: 003a: Placement & planning resolution
+
+*Status: Resolved 2026-08-26 · Issues #1131 / #1133 / #1134 / #1135 · Umbrella #932*
+
+SKEEP-003 shipped the storage model (M0–M2, then the #1109 weight-form arc) and left three
+questions open under the P7/P8 umbrella (#1131). This page records the answers and where each
+one landed. A terminology note first: the SKEEP's own phase list uses "P7" for _compiled parity_
+and "P8" for _façade removal_; the issues used "P7/P8" for _device placement_ and _graph-level
+memory planning_. This page names issues, not P-numbers.
+
+== 1. Who chooses a tensor's device placement? A resolver. (#1133)
+
+Placement joined `WeightForm` as a *resolved* decision — a pure function of three inputs, none of
+which the model author knows:
+
+* *what will be held* — the resolved `WeightForm` (encoding × order × shape × residency),
+* *what the profile says* — `PlannerProfile.domainFor` and its off-heap threshold,
+* *what the platform can do* — `StorageCapabilities` (mmap? off-heap?), injectable so a test can
+  resolve for a platform it is not running on.
+
+`AllocationResolver.resolve(weight, profile, platform)` produces the `AllocationSpec`;
+`AllocationResolver.explain(...)` renders the same decision with its reason, so a plan can say
+where every tensor lands and why, before a byte of payload is read. Consumers — the plan
+(`PlanTensor.allocation`), the loader (`ResolvedGguf`), a context — carry and obey; none decide.
+
+Mapping requires all three conditions: the form asks `MAPPED`, the platform can map, and the bytes
+really are the file's bytes — a dequantized or feed-ordered weight is a load-time copy, and a copy
+cannot be paged from a file it no longer matches. Everything else falls to the profile's
+heap/off-heap threshold over the bytes actually held.
+
+*No graph is needed.* Placement of weights is per-tensor and depends on nothing downstream;
+activations are a lifetime question (§2), not a device question. Every backend today is CPU;
+device arbitration policy would be untestable speculation, deferred until a second device exists.
+
+*The user always wins.* The precedence order, explicit and documented on the loader:
+per-tensor `weightFormFor` > uniform `weightForm` > the three legacy parameters > the resolver.
+`WeightForm(DequantizeTo(FP32), residency = HEAP)` — everything dense, on the managed heap — is a
+supported one-liner, not a fight with the planner.
+
+*Deleted, as this SKEEP scheduled:* `@Place`/`@Weights` (declared, retained, read by nothing — they
+asked the model author, who does not know the three deciding facts), the dead
+`tensor.storage.MemoryPlanner` (name-collided with the live `memory.plan.*`), `StorageSpec`, and
+`Placement.Residency`. Residency vocabulary reconciled by deletion: lifetime is `ScopeKind`
+(`MODEL`/`FORWARD`/`AMBIENT`, enforced by `Storage`/`Scope`), weight staging is
+`WeightForm.WeightResidency` (`HEAP`/`MAPPED`, decided by the resolver). `Placement` itself stays —
+the KV-cache stores carry it as device/domain intent.
+
+== 2. Does eager execution need its own buffer-lifetime mechanism? Yes — and it existed. (#1135)
+
+The Scope split *is* the mechanism. Eager lifetimes follow call structure — the generation loop
+knows where a step ends — so `ForwardScope.reset()` at step boundaries replaces graph liveness
+analysis: one pre-sized slab, bump allocation, overflow accounting for slab sizing, `retain()` as
+the sanctioned escape, and a use-after-reset that throws `StorageClosedException` instead of
+corrupting.
+
+What was missing was any reader of `ExecutionContext.memoryScope`. The creation path is now that
+reader: `zeros`/`ones`/`full`/`fromFloatArray` draw dense-FP32 bytes from the active scope
+(`StorageFloatTensorData`), opt-in via `ctx.forwardScope(slabFloats) { scoped, scope -> … }`,
+with `Scope.Ambient` — the default everywhere — byte-for-byte the old path.
+
+Two boundaries held on purpose:
+
+* *`ScratchPool` stays, unmerged.* It is untyped _intra-kernel_ workspace inside one op
+  invocation; `memoryScope` governs _inter-op_ activation lifetime across a step. Different
+  layers; neither replaces the other.
+* *`StorageFloatTensorData` is not a `FloatArrayTensorData`.* Slab slices have a nonzero
+  `arrayOffset`; the ops fast paths that unwrap `buffer` assume offset 0. Kernels that want
+  zero-copy take the view, which carries the offset.
+
+Op _outputs_ still allocate raw arrays; routing `DefaultCpuOps` through the active scope and
+adopting the loop in a real decode is #1146.
+
+== 3. Would graph-level memory planning duplicate IREE? Yes. (#1134)
+
+On the recorded path (tape → `ComputeGraph` → StableHLO text + `.irpa`), `iree-compile` performs
+buffer allocation, liveness and scheduling on the very MLIR SKaiNET emits — and it does so *after*
+fusion and layout decisions SKaiNET cannot see, so an upstream planner's liveness answers would be
+invalidated by the consumer. Meanwhile nothing in this repository executes IREE at all: the
+integration is a format contract (text-shape assertions in tests, `IrpaWriter` for the weights
+sidecar), with compilation and execution in external tooling.
+
+*Resolution: core decides and carries; planning stays downstream.* Decisions made by core
+resolvers (`WeightFormResolver`, `AllocationResolver`) must survive to the MLIR so the downstream
+compiler can honour them — that is carriage, not planning.
+
+[IMPORTANT]
+.Dependency rule
+====
+`sk.ainet.lang.memory` is never imported into `skainet-compile`. Carriage uses the
+`TensorSpecEncoding` precedent: an untyped `TensorSpec.metadata` entry with a typed accessor
+extension, emitted as a module attribute. There is no such import today; the first one would
+couple the compile pipeline to the storage model for no consumer's benefit — reject it in review.
+====
+
+The carry work itself (extend `TensorRef`, a `TensorSpecLayout` accessor, populating the
+pre-built `ResolvedComputeGraph.resolvedLayout`/`backendAssignment` seams, a structural
+`skainet.tensor_layouts` module attribute, `ExternalParameterRef.layout`) is #1147, deliberately
+gated on an in-repo IREE consumer — the `.vmfb` parity harness of #1148 — because metadata with no
+reader is write-only speculation.
+
+== Where everything landed
+
+|===
+| Question | Issue | Landed as
+
+| Delete the dead placement machinery | #1142 | PR #1152
+| `AllocationResolver` + `explain()` | #1143 | PR #1153 (re-landed #1155)
+| Loader consults the resolution (`ResolvedGguf`, `weightFormFor`) | #1144 | PR #1154 (re-landed #1155)
+| `memoryScope` wired into creation | #1145 | PR #1156
+| Op outputs through the scope + decode adoption | #1146 | open (follow-up)
+| Layout/placement carriage to StableHLO | #1147 | open (gated on #1148)
+| `.vmfb` parity acceptance run | #1148 | open (follow-up)
+|===
+
+The SKEEP-003 items "`StorageSpec`, `MemoryPlanner` and the annotations are deleted unless wired"
+and "one planner per context, consulted by the creation path" are both discharged — the first by
+#1142, the second in the resolver-owned form described above (a per-context planner object turned
+out to be the wrong shape; a stateless resolver plus the context's scope covers both halves).
