@@ -1360,6 +1360,17 @@ public final class sk/ainet/lang/memory/plan/ActualMemory$Companion {
 	public final fun from (Lsk/ainet/lang/memory/trace/RecordingTraceSink;)Lsk/ainet/lang/memory/plan/ActualMemory;
 }
 
+public final class sk/ainet/lang/memory/plan/AllocationResolver {
+	public static final field INSTANCE Lsk/ainet/lang/memory/plan/AllocationResolver;
+	public final fun explain (Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;)Ljava/lang/String;
+	public static synthetic fun explain$default (Lsk/ainet/lang/memory/plan/AllocationResolver;Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;ILjava/lang/Object;)Ljava/lang/String;
+	public final fun residentFormat (Lsk/ainet/lang/memory/plan/PlanTensor;)Lsk/ainet/lang/memory/Format;
+	public final fun resolve (Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;)Lsk/ainet/lang/memory/AllocationSpec;
+	public static synthetic fun resolve$default (Lsk/ainet/lang/memory/plan/AllocationResolver;Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;ILjava/lang/Object;)Lsk/ainet/lang/memory/AllocationSpec;
+	public final fun resolveTransient (Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;Lsk/ainet/lang/memory/ScopeKind;)Lsk/ainet/lang/memory/AllocationSpec;
+	public static synthetic fun resolveTransient$default (Lsk/ainet/lang/memory/plan/AllocationResolver;Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;Lsk/ainet/lang/memory/ScopeKind;ILjava/lang/Object;)Lsk/ainet/lang/memory/AllocationSpec;
+}
+
 public final class sk/ainet/lang/memory/plan/Budget {
 	public static final field Companion Lsk/ainet/lang/memory/plan/Budget$Companion;
 	public static final field RESERVE_ANDROID_JVM J
@@ -1649,6 +1660,8 @@ public final class sk/ainet/lang/memory/plan/PlanLine {
 public final class sk/ainet/lang/memory/plan/PlanTensor {
 	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;)V
 	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun allocation (Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;)Lsk/ainet/lang/memory/AllocationSpec;
+	public static synthetic fun allocation$default (Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;ILjava/lang/Object;)Lsk/ainet/lang/memory/AllocationSpec;
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Lsk/ainet/lang/tensor/TensorId;
 	public final fun component3 ()Lsk/ainet/lang/memory/Format;
@@ -1658,7 +1671,6 @@ public final class sk/ainet/lang/memory/plan/PlanTensor {
 	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;)Lsk/ainet/lang/memory/plan/PlanTensor;
 	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanTensor;Ljava/lang/String;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/Format;JJLsk/ainet/lang/memory/plan/WeightForm;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanTensor;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getAllocation ()Lsk/ainet/lang/memory/AllocationSpec;
 	public final fun getBytes ()J
 	public final fun getElementCount ()J
 	public final fun getForm ()Lsk/ainet/lang/memory/plan/WeightForm;
@@ -1793,6 +1805,27 @@ public final class sk/ainet/lang/memory/plan/ProfiledPlan {
 	public final fun requireFits (Lsk/ainet/lang/memory/plan/DeviceMemory;)V
 	public static synthetic fun requireFits$default (Lsk/ainet/lang/memory/plan/ProfiledPlan;Lsk/ainet/lang/memory/plan/DeviceMemory;ILjava/lang/Object;)V
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/StorageCapabilities {
+	public static final field Companion Lsk/ainet/lang/memory/plan/StorageCapabilities$Companion;
+	public fun <init> (ZZ)V
+	public synthetic fun <init> (ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Z
+	public final fun copy (ZZ)Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/StorageCapabilities;ZZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSupportsMappedFiles ()Z
+	public final fun getSupportsOffHeap ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/plan/StorageCapabilities$Companion {
+	public final fun current ()Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public final fun getFULL ()Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public final fun getHEAP_ONLY ()Lsk/ainet/lang/memory/plan/StorageCapabilities;
 }
 
 public final class sk/ainet/lang/memory/plan/Suggestion {

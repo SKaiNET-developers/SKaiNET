@@ -3,9 +3,7 @@ package sk.ainet.lang.memory.plan
 import sk.ainet.lang.memory.AllocationSpec
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.Format
-import sk.ainet.lang.memory.ScopeKind
 import sk.ainet.lang.tensor.TensorId
-import sk.ainet.lang.tensor.storage.MemoryDomain
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
@@ -44,9 +42,15 @@ public data class PlanTensor(
                 Format(format.dtype, request.encoding).physicalBytes(elementCount) ?: bytes
         }
 
-    /** The allocation this weight needs: mapped, model-lifetime, read-only. */
-    val allocation: AllocationSpec
-        get() = AllocationSpec(format, elementCount, MemoryDomain.MMAP_FILE, ScopeKind.MODEL, mutable = false)
+    /**
+     * The allocation this weight needs — resolved, not assumed (#1143). The old form of this
+     * property hardcoded mapped/model-lifetime for every weight regardless of what [form] asked,
+     * what the profile said, or whether the platform could map at all.
+     */
+    public fun allocation(
+        profile: PlannerProfile,
+        platform: StorageCapabilities = StorageCapabilities.current(),
+    ): AllocationSpec = AllocationResolver.resolve(this, profile, platform)
 }
 
 /** The transformer geometry the KV-cache and forward-slab estimates need (from the GGUF header). */
