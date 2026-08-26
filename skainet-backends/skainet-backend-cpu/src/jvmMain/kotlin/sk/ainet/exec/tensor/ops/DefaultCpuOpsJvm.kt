@@ -780,11 +780,13 @@ internal class DefaultCpuOpsJvm(
     }
 
     override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> {
-        val data = tensor.data as? FloatArrayTensorData<T> ?: return super.silu(tensor)
-        val buf = data.buffer
-        val out = FloatArray(buf.size)
-        for (i in buf.indices) {
-            val x = buf[i]
+        val win = floatWinOf(tensor.data) ?: return super.silu(tensor)
+        val buf = win.arr
+        val off = win.off
+        val n = tensor.shape.volume
+        val out = FloatArray(n)
+        for (i in 0 until n) {
+            val x = buf[off + i]
             out[i] = x / (1f + kotlin.math.exp(-x))
         }
         return floatResult(Shape(tensor.shape.dimensions.copyOf()), tensor.dtype, out)
@@ -822,8 +824,12 @@ internal class DefaultCpuOpsJvm(
         if (!supportsFloatOps(a) || !supportsFloatOps(b)) return null
         if (a.dtype != b.dtype) return null
 
-        val aData = a.data as? FloatArrayTensorData<T> ?: return null
-        val bData = b.data as? FloatArrayTensorData<T> ?: return null
+        val aWin = floatWinOf(a.data) ?: return null
+        val bWin = floatWinOf(b.data) ?: return null
+        val aBuf = aWin.arr
+        val aBase = aWin.off
+        val bBuf = bWin.arr
+        val bBase = bWin.off
 
         // Determine broadcasted output shape
         val outShape = try { broadcastShapes(a.shape, b.shape) } catch (e: IllegalArgumentException) { return null }
@@ -835,41 +841,41 @@ internal class DefaultCpuOpsJvm(
 
         // Case 1: exact shape match (fast path)
         if (a.shape == b.shape) {
-            JvmVectorKernels.binaryFloat(aData.buffer, bData.buffer, outBuffer, outVolume, vectorOp, scalarOp)
+            JvmVectorKernels.binaryFloat(aBuf, bBuf, outBuffer, outVolume, vectorOp, scalarOp, aOffset = aBase, bOffset = bBase)
             return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
 
         // Case 2: scalar broadcast
         if (aVol == 1) {
-            val aval = aData.buffer[0]
+            val aval = aBuf[aBase]
             val speciesLen = floatSpecies.length()
             var idx = 0
             val loopBound = floatSpecies.loopBound(outVolume)
             while (idx < loopBound) {
                 val va = FloatVector.broadcast(floatSpecies, aval)
-                val vb = FloatVector.fromArray(floatSpecies, bData.buffer, idx)
+                val vb = FloatVector.fromArray(floatSpecies, bBuf, bBase + idx)
                 vectorOp(va, vb).intoArray(outBuffer, idx)
                 idx += speciesLen
             }
             while (idx < outVolume) {
-                outBuffer[idx] = scalarOp(aval, bData.buffer[idx])
+                outBuffer[idx] = scalarOp(aval, bBuf[bBase + idx])
                 idx++
             }
             return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
         if (bVol == 1) {
-            val bval = bData.buffer[0]
+            val bval = bBuf[bBase]
             val speciesLen = floatSpecies.length()
             var idx = 0
             val loopBound = floatSpecies.loopBound(outVolume)
             while (idx < loopBound) {
-                val va = FloatVector.fromArray(floatSpecies, aData.buffer, idx)
+                val va = FloatVector.fromArray(floatSpecies, aBuf, aBase + idx)
                 val vb = FloatVector.broadcast(floatSpecies, bval)
                 vectorOp(va, vb).intoArray(outBuffer, idx)
                 idx += speciesLen
             }
             while (idx < outVolume) {
-                outBuffer[idx] = scalarOp(aData.buffer[idx], bval)
+                outBuffer[idx] = scalarOp(aBuf[aBase + idx], bval)
                 idx++
             }
             return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
@@ -895,13 +901,13 @@ internal class DefaultCpuOpsJvm(
                     val aOff = g * outLast
                     var idx = 0
                     while (idx < loopBoundTail) {
-                        val va = FloatVector.fromArray(floatSpecies, aData.buffer, aOff + idx)
-                        val vb = FloatVector.fromArray(floatSpecies, bData.buffer, idx)
+                        val va = FloatVector.fromArray(floatSpecies, aBuf, aBase + aOff + idx)
+                        val vb = FloatVector.fromArray(floatSpecies, bBuf, bBase + idx)
                         vectorOp(va, vb).intoArray(outBuffer, aOff + idx)
                         idx += step
                     }
                     while (idx < outLast) {
-                        outBuffer[aOff + idx] = scalarOp(aData.buffer[aOff + idx], bData.buffer[idx])
+                        outBuffer[aOff + idx] = scalarOp(aBuf[aBase + aOff + idx], bBuf[bBase + idx])
                         idx++
                     }
                 }
@@ -914,13 +920,13 @@ internal class DefaultCpuOpsJvm(
                     val bOff = g * outLast
                     var idx = 0
                     while (idx < loopBoundTail) {
-                        val va = FloatVector.fromArray(floatSpecies, aData.buffer, idx)
-                        val vb = FloatVector.fromArray(floatSpecies, bData.buffer, bOff + idx)
+                        val va = FloatVector.fromArray(floatSpecies, aBuf, aBase + idx)
+                        val vb = FloatVector.fromArray(floatSpecies, bBuf, bBase + bOff + idx)
                         vectorOp(va, vb).intoArray(outBuffer, bOff + idx)
                         idx += step
                     }
                     while (idx < outLast) {
-                        outBuffer[bOff + idx] = scalarOp(aData.buffer[idx], bData.buffer[bOff + idx])
+                        outBuffer[bOff + idx] = scalarOp(aBuf[aBase + idx], bBuf[bBase + bOff + idx])
                         idx++
                     }
                 }
@@ -938,11 +944,25 @@ internal class DefaultCpuOpsJvm(
         scalarOp: (Float) -> Float
     ): Tensor<T, V>? {
         if (!supportsFloatOps(tensor)) return null
-        val tensorData = tensor.data as? FloatArrayTensorData<T> ?: return null
+        val win = floatWinOf(tensor.data) ?: return null
         val volume = tensor.shape.volume
         val outBuffer = FloatArray(volume)
-        JvmVectorKernels.unaryFloat(tensorData.buffer, outBuffer, volume, vectorOp, scalarOp)
+        JvmVectorKernels.unaryFloat(win.arr, outBuffer, volume, vectorOp, scalarOp, inputOffset = win.off)
         return floatResult(Shape(tensor.shape.dimensions.copyOf()), tensor.dtype, outBuffer)
+    }
+
+    /** Dense-FP32 window (array + base offset): plain array data at 0, slab-backed data (#1173) at its arrayOffset. */
+    private class FloatWin(@JvmField val arr: FloatArray, @JvmField val off: Int)
+
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    private fun floatWinOf(d: sk.ainet.lang.tensor.data.TensorData<*, *>): FloatWin? = when (d) {
+        is FloatArrayTensorData<*> -> FloatWin(d.buffer, 0)
+        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> {
+            val st = d.storage
+            st.checkAlive()
+            FloatWin(st.floats!!, st.arrayOffset)
+        }
+        else -> null
     }
 
     private fun <T : DType> supportsFloatOps(a: Tensor<T, *>, b: Tensor<T, *>): Boolean {
@@ -1006,18 +1026,20 @@ internal class DefaultCpuOpsJvm(
             return CpuTensor(result as TensorData<T, V>, this, a.dtype)
         }
 
-        // ---- FloatArray path ----
-        val aData = a.data as? FloatArrayTensorData<T> ?: return null
-        val bData = b.data as? FloatArrayTensorData<T> ?: return null
+        // ---- FloatArray path (plain arrays at offset 0, slab windows at their base — #1173) ----
+        val aWin = floatWinOf(a.data) ?: return null
+        val bWin = floatWinOf(b.data) ?: return null
 
         val work = m.toLong() * n.toLong() * k.toLong()
         val outBuffer = FloatArray(m * n)
 
-        // Try BLAS for large sizes if enabled and available
-        if (JvmCpuBackendConfig.blasEnabled && JvmBlas.isAvailable()) {
+        // Try BLAS for large sizes if enabled and available. The JNI shim takes whole arrays, so
+        // it only serves offset-0 operands; slab windows go through the kernel SPI below, which
+        // takes offsets natively.
+        if (aWin.off == 0 && bWin.off == 0 && JvmCpuBackendConfig.blasEnabled && JvmBlas.isAvailable()) {
             val blasThreshold = 512L * 512L * 256L // tuneable
             if (work >= blasThreshold) {
-                val ok = JvmBlas.sgemmRowMajorNN(m, n, k, 1f, aData.buffer, bData.buffer, outBuffer)
+                val ok = JvmBlas.sgemmRowMajorNN(m, n, k, 1f, aWin.arr, bWin.arr, outBuffer)
                 if (ok) {
                     return floatResult(Shape(m, n), a.dtype, outBuffer)
                 }
@@ -1029,8 +1051,8 @@ internal class DefaultCpuOpsJvm(
         // handles small + large inputs in one path, so the previous
         // simple-vs-blocked fork is no longer needed.
         fp32MatmulKernel.matmul(
-            aData.buffer, 0, k,
-            bData.buffer, 0, n,
+            aWin.arr, aWin.off, k,
+            bWin.arr, bWin.off, n,
             outBuffer, 0, n,
             m, n, k,
         )
@@ -1039,16 +1061,17 @@ internal class DefaultCpuOpsJvm(
 
     private fun <T : DType, V> vectorFloatReduceAllSum(tensor: Tensor<T, V>): Tensor<T, V>? {
         if (!supportsFloatOps(tensor)) return null
-        val data = tensor.data as? FloatArrayTensorData<T> ?: return null
-        val buffer = data.buffer
-        val n = buffer.size
+        val win = floatWinOf(tensor.data) ?: return null
+        val buffer = win.arr
+        val base = win.off
+        val n = tensor.shape.volume
         if (n == 0) return null
         // NOTE: For numerical reproducibility with Kotlin's FloatArray.sum(),
         // perform strict left-to-right scalar accumulation.
         var acc = 0.0f
         var idx = 0
         while (idx < n) {
-            acc += buffer[idx]
+            acc += buffer[base + idx]
             idx++
         }
         val outData = DenseFloatArrayTensorData<T>(Shape(), floatArrayOf(acc))

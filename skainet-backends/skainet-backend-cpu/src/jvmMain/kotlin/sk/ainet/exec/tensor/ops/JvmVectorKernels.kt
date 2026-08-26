@@ -21,18 +21,20 @@ internal object JvmVectorKernels {
         length: Int,
         op: (FloatVector, FloatVector) -> FloatVector,
         scalarOp: (Float, Float) -> Float,
+        aOffset: Int = 0,
+        bOffset: Int = 0,
     ) {
         var index = 0
         val step = floatSpecies.length()
         val loopBound = floatSpecies.loopBound(length)
         while (index < loopBound) {
-            val va = FloatVector.fromArray(floatSpecies, a, index)
-            val vb = FloatVector.fromArray(floatSpecies, b, index)
+            val va = FloatVector.fromArray(floatSpecies, a, aOffset + index)
+            val vb = FloatVector.fromArray(floatSpecies, b, bOffset + index)
             op(va, vb).intoArray(out, index)
             index += step
         }
         while (index < length) {
-            out[index] = scalarOp(a[index], b[index])
+            out[index] = scalarOp(a[aOffset + index], b[bOffset + index])
             index++
         }
     }
@@ -43,17 +45,18 @@ internal object JvmVectorKernels {
         length: Int,
         op: (FloatVector) -> FloatVector,
         scalarOp: (Float) -> Float,
+        inputOffset: Int = 0,
     ) {
         var index = 0
         val step = floatSpecies.length()
         val loopBound = floatSpecies.loopBound(length)
         while (index < loopBound) {
-            val v = FloatVector.fromArray(floatSpecies, input, index)
+            val v = FloatVector.fromArray(floatSpecies, input, inputOffset + index)
             op(v).intoArray(out, index)
             index += step
         }
         while (index < length) {
-            out[index] = scalarOp(input[index])
+            out[index] = scalarOp(input[inputOffset + index])
             index++
         }
     }
