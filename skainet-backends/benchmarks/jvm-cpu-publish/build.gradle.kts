@@ -13,6 +13,10 @@ dependencies {
     implementation(project(":skainet-lang:skainet-lang-core"))
     implementation(project(":skainet-backends:skainet-backend-api"))
     implementation(project(":skainet-backends:skainet-backend-cpu"))
+    // The ternary scenario benches the vendored NeoGPU LUT kernel through its
+    // FFM face (#1141) — the native module bundles libskainet_kernels as a
+    // jar resource, so the benchmark runs it exactly as a consumer would.
+    implementation(project(":skainet-backends:skainet-backend-native-cpu"))
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotest.runner.junit5)
