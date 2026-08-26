@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 360" role="img" aria-label="Three TensorViews — dense, transposed, narrowed — share one Storage byte region; each carries its own Shape, Format and Layout. Only materialize() copies, producing a new Storage." font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
+  <defs>
+    <marker id="tva" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1F2733"/>
+    </marker>
+    <marker id="tvc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C2762A"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="940" height="360" fill="#FFFFFF"/>
+
+  <!-- three view cards -->
+  <g>
+    <rect x="40" y="36" width="240" height="108" rx="8" fill="#E3ECF6" stroke="#4C7FB8" stroke-width="1.5"/>
+    <text x="160" y="60" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1F2733">TensorView · dense</text>
+    <text x="160" y="82" text-anchor="middle" font-size="11" fill="#5C6675">shape [4, 6] · FP32</text>
+    <text x="160" y="100" text-anchor="middle" font-size="11" fill="#5C6675">strides [6, 1] · offset 0</text>
+    <text x="160" y="122" text-anchor="middle" font-size="10.5" fill="#4C7FB8">the loaded weight</text>
+  </g>
+  <g>
+    <rect x="350" y="36" width="240" height="108" rx="8" fill="#E3ECF6" stroke="#4C7FB8" stroke-width="1.5"/>
+    <text x="470" y="60" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1F2733">.transpose()</text>
+    <text x="470" y="82" text-anchor="middle" font-size="11" fill="#5C6675">shape [6, 4] · FP32</text>
+    <text x="470" y="100" text-anchor="middle" font-size="11" fill="#5C6675">strides [1, 6] · offset 0</text>
+    <text x="470" y="122" text-anchor="middle" font-size="10.5" fill="#4C7FB8">strides swapped — no bytes moved</text>
+  </g>
+  <g>
+    <rect x="660" y="36" width="240" height="108" rx="8" fill="#E3ECF6" stroke="#4C7FB8" stroke-width="1.5"/>
+    <text x="780" y="60" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1F2733">.narrow(row 2)</text>
+    <text x="780" y="82" text-anchor="middle" font-size="11" fill="#5C6675">shape [1, 6] · FP32</text>
+    <text x="780" y="100" text-anchor="middle" font-size="11" fill="#5C6675">strides [6, 1] · offset 12</text>
+    <text x="780" y="122" text-anchor="middle" font-size="10.5" fill="#4C7FB8">a window, not a copy</text>
+  </g>
+
+  <!-- shared storage strip -->
+  <g>
+    <rect x="190" y="226" width="560" height="40" rx="6" fill="#F6EADB" stroke="#C2762A" stroke-width="1.5"/>
+    <g stroke="#C2762A" stroke-width="0.75" opacity="0.4">
+      <path d="M225 226 V266 M260 226 V266 M295 226 V266 M330 226 V266 M365 226 V266 M400 226 V266 M435 226 V266 M470 226 V266 M505 226 V266 M540 226 V266 M575 226 V266 M610 226 V266 M645 226 V266 M680 226 V266 M715 226 V266"/>
+    </g>
+    <text x="470" y="251" text-anchor="middle" font-size="12" font-weight="600" fill="#1F2733">Storage — one byte region (Heap / Mapped / OffHeap)</text>
+  </g>
+  <text x="190" y="292" font-size="11" fill="#5C6675">owner · scope · isAlive — closing the scope invalidates every view</text>
+
+  <!-- arrows from views to the one storage -->
+  <line x1="160" y1="148" x2="330" y2="222" stroke="#1F2733" stroke-width="1.4" marker-end="url(#tva)"/>
+  <line x1="470" y1="148" x2="470" y2="222" stroke="#1F2733" stroke-width="1.4" marker-end="url(#tva)"/>
+  <line x1="780" y1="148" x2="612" y2="222" stroke="#1F2733" stroke-width="1.4" marker-end="url(#tva)"/>
+  <text x="300" y="182" font-size="10.5" fill="#5C6675">reads</text>
+  <text x="478" y="182" font-size="10.5" fill="#5C6675">reads</text>
+  <text x="640" y="182" font-size="10.5" fill="#5C6675">reads</text>
+
+  <!-- materialize: the only copy -->
+  <line x1="754" y1="246" x2="812" y2="246" stroke="#C2762A" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#tvc)"/>
+  <rect x="816" y="226" width="96" height="40" rx="6" fill="none" stroke="#C2762A" stroke-width="1.5"/>
+  <text x="864" y="245" text-anchor="middle" font-size="10.5" font-weight="600" fill="#C2762A">materialize()</text>
+  <text x="864" y="259" text-anchor="middle" font-size="10" fill="#5C6675">new Storage</text>
+  <text x="816" y="292" font-size="10.5" fill="#C2762A">the only copy point</text>
+</svg>

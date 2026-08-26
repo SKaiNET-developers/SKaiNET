@@ -1,0 +1,127 @@
+= Virtual tensors: one logical tensor, many physical forms
+:description: How SKaiNET decouples what a tensor means from where and how its bytes live — the TensorView split, the strides algebra, and the resolvers that choose a physical form per device.
+
+A kernel wants bytes in one particular arrangement. A file holds them in another. A phone
+wants them off the managed heap; a browser has no choice but on it. The classic failure mode
+is to let each of these parties reshape the tensor for themselves — and pay a copy, a
+transpose, or a dequantization at every boundary.
+
+SKaiNET's answer, in the spirit of ML Drift's _tensor virtualization_, is to make the
+arrangement a *described property* instead of a hard-coded fact: operators address a tensor by
+its logical coordinates, and a per-tensor `Layout` translates those coordinates to a physical
+position. Because the translation is data, the runtime is free to pick the optimal physical
+object per kernel and per device — and nobody upstream notices.
+
+This page is the map. The neighbouring pages hold the depth:
+xref:explanation/memory-model.adoc[] for `Storage`/`Scope`/ownership,
+xref:explanation/packed-weight-layout.adoc[] for block orders and prepacking, and
+xref:explanation/eager-execution.adoc[] for how kernels are dispatched.
+
+== The strides algebra
+
+The mechanism is one multiplication per axis. A logical index `(o, b)` reaches physical
+position `o·s[0] + b·s[1]` — and *which* strides `s` the layout carries decides where the
+bytes actually are:
+
+image::virtual-tensor-strides.svg[One logical cell mapping to two different physical positions depending on the strides the layout carries]
+
+The same logical cell lands at physical index 13 under row-major strides and at index 6 under
+input-block-major strides. Transpose, narrow, and block reorder all become *metadata edits* —
+a strides swap, an offset, a block-order tag — not copies. This is
+`sk.ainet.lang.memory.Layout`: `strides`, `offsetElements`, and the block geometry
+(`blocked`, `blockAxis`, `blockOrder`), hardened by the wrong-block bugs (#968, #971, #973)
+that made the distinction impossible to ignore: for a block-quantized weight, canonical
+storage and kernel feed order hold *the same blocks at different physical positions*, and
+they coincide only at one block per row.
+
+== The four-way split
+
+A tensor's identity is four orthogonal questions, answered by four types that compose into a
+`TensorView`:
+
+[cols="1,2,2",options="header"]
+|===
+| Type | Question it answers | What it deliberately does not know
+
+| `Storage`
+| Who owns which bytes, and for how long — `Heap`, `OffHeap`, `Mapped` (file pages), with
+  `Owner` (owned / borrowed / alias) and liveness (`checkAlive()` throws after the scope
+  closes)
+| What the bytes mean
+
+| `Format`
+| What the elements are — dtype × encoding. A Q4_K weight is _logically_ FP32; the encoding
+  says how it is stored and never replaces the dtype
+| Where the bytes live
+
+| `Layout`
+| How a logical index reaches a physical position — strides, offset, block geometry
+| Anything about lifetime or meaning
+
+| `Scope`
+| How long allocations live — `MODEL` (until the model closes), `FORWARD` (recycled every
+  step), `AMBIENT` (GC, the default)
+| Which bytes; it only tracks and frees
+|===
+
+`TensorView = Shape + Format + Layout + Storage` is the value kernels unwrap once per call.
+Several views can address the same storage:
+
+image::tensor-view-anatomy.svg[Three views — dense, transposed, narrowed — sharing one storage; materialize() is the only copy point]
+
+`narrow` and `transpose` hand out windows and relabelings over the same bytes;
+`materialize()` is the *single* sanctioned copy point, and `prepack()` the single visible
+relayout (it moves blocks once, at load, and the result says so via `blockOrder` — so a
+reader walking the logical grid still fetches each block from where the new order put it).
+
+== Who decides the physical form? Resolvers.
+
+The model author never declares any of this — they cannot know it. What the file holds, what
+the device has, and what the backend's kernels can feed are all knowable at load time, in one
+place:
+
+image::weight-form-resolution.svg[File, profile and device capabilities feed WeightFormResolver; the WeightForm flows to the loader and to AllocationResolver; a user override lane outranks the resolver]
+
+* `WeightFormResolver.resolve(stored, profile, capabilities)` produces the `WeightForm` —
+  encoding request × byte order × shape orientation × residency. A format with a packed
+  kernel stays packed (and arrives in kernel feed order if the kernel wants it); a format
+  with no kernel is dequantized *once, at load, with the cost stated* — under a strict
+  profile such as `MOBILE_2GB` it refuses instead.
+* `AllocationResolver.resolve(weight, profile, platform)` turns the resolved form into an
+  `AllocationSpec` — memory domain and scope. Mapping from file pages requires all three:
+  the form asks for it, the platform can map, and the bytes really are the file's bytes (a
+  dequantized or re-ordered weight is a load-time copy, and a copy cannot be paged from a
+  file it no longer matches). `AllocationResolver.explain()` renders each decision with its
+  reason, so a plan can print where every tensor lands *before a byte of payload is read*.
+* *You outrank both.* The loader's precedence is explicit: per-tensor `weightFormFor` >
+  uniform `weightForm` > the resolver. `WeightForm(DequantizeTo(FP32), residency = HEAP)` —
+  everything dense, on the managed heap — is a supported one-liner, not a fight with the
+  planner.
+
+Consumers — the memory plan, the GGUF loader (`ResolvedGguf`), an execution context — carry
+and obey. None of them decide.
+
+== Lifetime without a graph
+
+Eager execution has no graph to run liveness analysis on, and does not need one: lifetimes
+follow call structure. A generation loop knows where a step ends, so
+`ctx.forwardScope(slabFloats) { scoped, scope -> … }` bump-allocates activations from one
+pre-sized slab and `scope.reset()` recycles it per step — steady-state decode allocates zero
+new slab bytes, and a read of a previous step's tensor throws `StorageClosedException`
+naming the storage instead of returning garbage. `ModelScope` is the weights-lifetime
+counterpart; `Scope.Ambient` (plain GC) remains the default everywhere.
+
+== Known limits, stated rather than implied
+
+* The virtualization described here is the *eager and IO* side. The compile pipeline
+  (tape → StableHLO) does not carry `Layout` yet; by decision (#1134), graph-level memory
+  planning stays in the downstream compiler, and core's future obligation there is metadata
+  carriage only (#1147), gated on an in-repo consumer (#1148).
+* `Storage.OffHeap` exists on every platform that can honour it, but no tensor factory
+  allocates through it yet — off the managed heap today means *mapped, read-only* weights
+  (dense F32; packed formats still land on the heap until the buffer-aware kernel SPI of
+  #973).
+* `ForwardScope`'s slab is a *heap* slab: it flattens allocation churn, it does not move
+  activations off-heap.
+* Trainable parameters are heap-resident by construction — a mapped page is read-only, and
+  no optimizer allocates from `PlatformStorage`.

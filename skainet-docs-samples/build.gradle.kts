@@ -30,10 +30,13 @@ kotlin {
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-backends:skainet-backend-cpu"))
                 implementation(project(":skainet-compile:skainet-compile-dag"))
+                implementation(project(":skainet-data:skainet-data-api"))
+                implementation(project(":skainet-data:skainet-data-simple"))
             }
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

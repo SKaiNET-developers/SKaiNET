@@ -11,6 +11,7 @@
 ** xref:tutorials/minerva-getting-started.adoc[Minerva getting started]
 ** xref:tutorials/graph-dsl.adoc[Graph DSL]
 ** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
+** xref:tutorials/android-classifier-getting-started.adoc[Train a classifier on Android]
 * How-to guides
 ** xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
 ** xref:how-to/tensor-ops.adoc[Apply tensor operations]
@@ -32,6 +33,7 @@
 ** xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits]
 ** xref:explanation/operator-design.adoc[Operator documentation system]
 ** xref:explanation/memory-model.adoc[The memory model]
+** xref:explanation/virtual-tensors.adoc[Virtual tensors: one logical tensor, many physical forms]
 ** xref:explanation/packed-weight-layout.adoc[Packed weight layout]
 ** xref:explanation/eager-execution.adoc[Eager execution: backends and kernels]
 ** xref:explanation/quantization-process.adoc[The quantization process]
