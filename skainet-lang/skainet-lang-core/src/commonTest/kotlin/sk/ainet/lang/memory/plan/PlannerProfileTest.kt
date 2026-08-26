@@ -196,4 +196,12 @@ class PlannerProfileTest {
         assertTrue(text.contains("note: KV cache switched"), text)
         assertTrue(text.contains("note: weights are counted resident and mapped"), text)
     }
+
+    @Test
+    fun domainForSplitsExactlyAtTheOffHeapThreshold() {
+        val p = PlannerProfile.DESKTOP
+        assertEquals(sk.ainet.lang.tensor.storage.MemoryDomain.HOST_HEAP, p.domainFor(p.offHeapThresholdBytes - 1))
+        assertEquals(sk.ainet.lang.tensor.storage.MemoryDomain.HOST_OFFHEAP, p.domainFor(p.offHeapThresholdBytes))
+        assertEquals(sk.ainet.lang.tensor.storage.MemoryDomain.HOST_HEAP, p.domainFor(0))
+    }
 }

@@ -71,9 +71,14 @@ class MemoryPlanTest {
         assertEquals(listOf("weights", "kv cache", "forward", "heap"), plan.lines.map { it.section })
         assertTrue(plan.lines.first { it.section == "weights" }.resident)
         assertFalse(plan.lines.first { it.section == "forward" }.resident)
-        // every weight's allocation is a mapped, model-lifetime, read-only spec
-        val a = input.weights.first().allocation
-        assertEquals(MemoryDomain.MMAP_FILE, a.domain); assertEquals(ScopeKind.MODEL, a.scope); assertFalse(a.mutable)
+        // a weight's allocation is resolved, not assumed (#1143): mapped only when its form asks
+        // for MAPPED and the platform can map — these weights carry no form, so they fall to the
+        // profile's heap/off-heap threshold, model-lifetime, read-only
+        val a = input.weights.first().allocation(PlannerProfile.DESKTOP, StorageCapabilities.FULL)
+        assertEquals(MemoryDomain.HOST_OFFHEAP, a.domain); assertEquals(ScopeKind.MODEL, a.scope); assertFalse(a.mutable)
+        val mapped = input.weights.first().copy(form = WeightForm(residency = WeightResidency.MAPPED))
+            .allocation(PlannerProfile.MOBILE_2GB, StorageCapabilities.FULL)
+        assertEquals(MemoryDomain.MMAP_FILE, mapped.domain)
     }
 
     @Test
