@@ -291,6 +291,54 @@ SKAINET_API void skainet_bitnet_gemv_tq2_0(
     int32_t input_dim, int32_t output_dim,
     float* output, int32_t output_offset);
 
+/*
+ * Ternary f32 GEMV — exact FP32 activations against sequentially-packed
+ * ternary weights (the BitNet b1.58 / `BITNET_B1_58` payload: 4 codes per
+ * byte, low bit-pair first, code {0,1,2} → {-1,0,+1}; byte code 3 decodes
+ * to +2, loaders reject it at import).
+ *
+ *   output[output_offset + o] = sum_j input[input_offset + j] *
+ *                                decode(weight row o)
+ *
+ * NO scale is applied — the caller owns the per-tensor scale. Weights are
+ * row-major, input_dim/4 bytes per output row, at
+ *   weight + weight_byte_offset + o * (input_dim / 4)
+ *
+ * input_dim must be a multiple of 4. Unlike the int8 `bitnet_gemv` path
+ * there is no activation quantization: results are exact. Backed by the
+ * vendored NeoGPU LUT kernel (baseline NEON, no dotprod — the fast path for
+ * Cortex-A72/Pi-4 class cores); it threads internally with pthreads once
+ * output_dim >= 512. A portable scalar build stands in where the vendored
+ * file cannot compile (MSVC).
+ */
+SKAINET_API void skainet_ternary_f32_gemv(
+    const float* input, int32_t input_offset,
+    const uint8_t* weight, int32_t weight_byte_offset,
+    int32_t input_dim, int32_t output_dim,
+    float* output, int32_t output_offset);
+
+/*
+ * Fused 4-plane ternary lm_head, Stage 1 (NeoGPU multi-plane trit format).
+ *
+ *   output[output_offset + o] = f16(row_scale[row_scale_offset + o]) *
+ *       sum_{p=0}^{3} (1/3^p) * sum_j input[..+j] * decode(plane p, row o)
+ *
+ * Each plane is a full sequentially-packed ternary matrix (same payload rule
+ * as skainet_ternary_f32_gemv); plane p starts at
+ *   planes + planes_byte_offset + p * plane_stride_bytes
+ * so a single buffer of four concatenated planes uses
+ * plane_stride_bytes == output_dim * input_dim / 4. row_scale holds raw
+ * little-endian IEEE binary16 bit patterns, one per output row (sign
+ * ignored — encoders store max|row| >= 0). input_dim must be a multiple
+ * of 4. Threads internally with pthreads at any output_dim.
+ */
+SKAINET_API void skainet_ternary_lmhead_stage1(
+    const float* input, int32_t input_offset,
+    const uint8_t* planes, int32_t planes_byte_offset, int32_t plane_stride_bytes,
+    const uint16_t* row_scale, int32_t row_scale_offset,
+    int32_t input_dim, int32_t output_dim,
+    float* output, int32_t output_offset);
+
 #ifdef __cplusplus
 }
 #endif

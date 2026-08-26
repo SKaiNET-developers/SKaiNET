@@ -18,6 +18,10 @@ set(SKAINET_KERNEL_SOURCES
     ${SKAINET_KERNELS_ROOT}/src/q5k_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q6k_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/bitnet_gemv.c
+    ${SKAINET_KERNELS_ROOT}/src/skainet_ternary_f32.c
+    # Vendored NeoGPU ternary LUT kernel (MIT, verbatim). NDK toolchains are
+    # clang, and bionic bundles pthreads — no Threads link needed.
+    ${SKAINET_KERNELS_ROOT}/src/vendor/neogpu/hs_ml_ternary_neon.c
 )
 
 set(SKAINET_JNI_SHIM ${CMAKE_CURRENT_SOURCE_DIR}/skainet_jni.c)
@@ -34,6 +38,7 @@ function(skainet_add_jni_lib target)
     add_library(${target} SHARED ${SKAINET_JNI_SHIM} ${SKAINET_KERNEL_SOURCES})
     target_include_directories(${target} PRIVATE ${SKAINET_KERNELS_ROOT}/include)
     target_compile_options(${target} PRIVATE ${SKAINET_C_FLAGS})
+    target_compile_definitions(${target} PRIVATE SKAINET_HAVE_NEOGPU_TERNARY)
     target_link_options(${target} PRIVATE ${SKAINET_LINK_FLAGS})
 endfunction()
 
