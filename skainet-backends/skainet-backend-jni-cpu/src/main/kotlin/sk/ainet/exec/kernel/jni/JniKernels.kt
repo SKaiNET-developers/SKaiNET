@@ -106,6 +106,19 @@ public object JniKernels {
         output: FloatArray, outputOffset: Int,
     )
 
+    /**
+     * `ternary_f32_gemv` (#1139): exact FP32 activations against the sequential
+     * BITNET_B1_58 payload — the vendored NeoGPU LUT kernel (#1137). No scale
+     * is applied; the caller owns the per-tensor scale. Needs only baseline
+     * NEON, so the BASELINE library carries the full SIMD path.
+     */
+    public external fun ternaryF32Gemv(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
     public external fun q40Matmul(
         input: FloatArray, inputOffset: Int,
         weight: ByteArray, weightByteOffset: Int,

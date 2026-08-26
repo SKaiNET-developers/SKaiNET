@@ -169,3 +169,25 @@ Java_sk_ainet_exec_kernel_jni_JniKernels_bitnetGemvTq20(
     if (w) (*env)->ReleasePrimitiveArrayCritical(env, weight, w, JNI_ABORT);
     if (act) (*env)->ReleasePrimitiveArrayCritical(env, activation, act, JNI_ABORT);
 }
+
+/*
+ * ternary_f32_gemv (#1139): exact FP32 activations against the sequential
+ * BITNET_B1_58 payload — the vendored NeoGPU LUT kernel behind
+ * skainet_ternary_f32_gemv. Float input × byte weight × float output, so the
+ * shared body fits. The kernel threads internally (pthreads) once
+ * outputDim >= 512; the critical-section pins are held for the call's
+ * duration either way, same as every other matmul here.
+ */
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_ternaryF32Gemv(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_ternary_f32_gemv(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+                                 inputDim, outputDim, out, outputOffset))
+}

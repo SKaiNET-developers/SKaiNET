@@ -255,6 +255,39 @@ class JniKernelParityTest {
         reference = Q6_KQ8ActivationReferenceKernel::matmul, jni = JniKernels::q6kMatmul,
     )
 
+    /**
+     * ternary_f32_gemv (#1139): the vendored NeoGPU LUT kernel — exact math,
+     * so parity vs the local decode reference is tight on every tier
+     * (baseline-NEON arm64, v8.2 arm64, x86_64 emulator scalar). The
+     * 1024-row case crosses the kernel's internal pthread threshold (512).
+     */
+    private fun ternaryDecode(b: Byte, lane: Int): Float =
+        (((b.toInt() and 0xFF) shr (lane * 2)) and 3).toFloat() - 1f
+
+    private fun assertTernaryF32Parity(inputDim: Int, outputDim: Int, seed: Int) {
+        val rng = Random(seed)
+        val input = FloatArray(inputDim) { rng.nextFloat() - 0.5f }
+        val rowBytes = inputDim / 4
+        val weight = ByteArray(outputDim * rowBytes).also { rng.nextBytes(it) }
+        val out = FloatArray(outputDim)
+        JniKernels.ternaryF32Gemv(input, 0, weight, 0, inputDim, outputDim, out, 0)
+        for (o in 0 until outputDim) {
+            var want = 0.0
+            for (bi in 0 until rowBytes) {
+                val b = weight[o * rowBytes + bi]
+                for (lane in 0 until 4) want += ternaryDecode(b, lane) * input[bi * 4 + lane]
+            }
+            val diff = abs(want.toFloat() - out[o])
+            assertTrue("[$o]: reference=$want jni=${out[o]} diff=$diff", diff <= 1e-3f)
+        }
+    }
+
+    @Test
+    fun ternary_f32_parity() = assertTernaryF32Parity(inputDim = 2560, outputDim = 64, seed = 21)
+
+    @Test
+    fun ternary_f32_parity_threaded_regime() = assertTernaryF32Parity(inputDim = 256, outputDim = 1024, seed = 22)
+
     @Test
     fun smoke_roundtrip() {
         val input = floatArrayOf(1f, 2f, 3f, 4f)
