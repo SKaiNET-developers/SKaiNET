@@ -6,6 +6,9 @@ import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
+import sk.ainet.backend.api.kernel.TernaryF32GemvNative
+import sk.ainet.backend.api.kernel.TernaryF32KernelPack
+import sk.ainet.lang.memory.ExperimentalMemoryApi
 
 /**
  * Native (FFM) downcall to the vendored NeoGPU ternary LUT kernel.
@@ -30,14 +33,26 @@ import java.lang.invoke.MethodHandle
  * pinned by `NativeTernaryF32GemvKernelTest`.
  *
  * Refs SKaiNET issue #1137 (vendored from anjaustin/neogpu, MIT — see
- * native/src/vendor/neogpu/README.md). The `TernaryF32GemvNative` SPI
- * wiring into KernelDispatch follows in #1138.
+ * native/src/vendor/neogpu/README.md); implements the [TernaryF32GemvNative]
+ * seam so [install] can hand it to `TernaryF32KernelPack` (#1138) — the
+ * first ternary FFM consumer.
  */
-internal object NativeTernaryF32GemvKernel {
+@OptIn(ExperimentalMemoryApi::class)
+internal object NativeTernaryF32GemvKernel : TernaryF32GemvNative {
+
+    override val name: String get() = "ffm"
 
     fun isAvailable(): Boolean = handle != null
 
-    fun gemv(
+    /**
+     * Register this kernel with [TernaryF32KernelPack] when the bundled
+     * library resolves; without it the pack warns and dispatch keeps the
+     * int8-requantize path. Returns the serving kernel name.
+     */
+    fun install(warn: (String) -> Unit = {}): String =
+        TernaryF32KernelPack.install(if (isAvailable()) this else null, warn = warn)
+
+    override fun gemvPacked(
         input: FloatArray, inputOffset: Int,
         weight: ByteArray, weightByteOffset: Int,
         inputDim: Int, outputDim: Int,
