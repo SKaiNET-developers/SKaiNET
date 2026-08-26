@@ -408,9 +408,7 @@ internal class DefaultCpuOpsJvm(
             }
         }
 
-        val outData = DenseFloatArrayTensorData<T>(Shape(n, cOut, outH, outW), outBuffer)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
+        return floatResult(Shape(n, cOut, outH, outW), input.dtype, outBuffer)
     }
 
     override fun <T : DType, V> conv1d(
@@ -463,9 +461,7 @@ internal class DefaultCpuOpsJvm(
             outBuffer
         )
 
-        val outData = DenseFloatArrayTensorData<T>(Shape(n, cOut, outL), outBuffer)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
+        return floatResult(Shape(n, cOut, outL), input.dtype, outBuffer)
     }
 
     override fun <T : DType, V> conv3d(
@@ -531,9 +527,7 @@ internal class DefaultCpuOpsJvm(
             outBuffer
         )
 
-        val outData = DenseFloatArrayTensorData<T>(Shape(n, cOut, outD, outH, outW), outBuffer)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, input.dtype)
+        return floatResult(Shape(n, cOut, outD, outH, outW), input.dtype, outBuffer)
     }
 
     /**
@@ -616,9 +610,7 @@ internal class DefaultCpuOpsJvm(
                         )
                     }
                 }
-                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
             }
             is Q4_0TensorData -> {
                 val outBuffer = FloatArray(batchSize * outputDim)
@@ -632,9 +624,7 @@ internal class DefaultCpuOpsJvm(
                         outBuffer, batch * outputDim,
                     )
                 }
-                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
             }
             // Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
             // registry (block-major, shared with Native); not intercepted here.
@@ -662,9 +652,7 @@ internal class DefaultCpuOpsJvm(
                         )
                     }
                 }
-                val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
             }
             is NarrowFloatTensorData -> {
                 // Narrow floats are dense (not block-quantized) and the kernel SPI is a
@@ -688,9 +676,7 @@ internal class DefaultCpuOpsJvm(
                         outBuffer, 0, outputDim,
                         batchSize, outputDim, inputDim,
                     )
-                    val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-                    @Suppress("UNCHECKED_CAST")
-                    CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                    floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
                 }
             }
             // Q6_K / Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
@@ -750,8 +736,7 @@ internal class DefaultCpuOpsJvm(
             }
             else -> return null
         }
-        val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-        return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+        return floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
     }
 
     /**
@@ -781,8 +766,7 @@ internal class DefaultCpuOpsJvm(
                 batch * outputDim,
             )
         }
-        val outData = DenseFloatArrayTensorData<T>(Shape(batchSize, outputDim), outBuffer)
-        return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+        return floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
     }
 
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
@@ -803,9 +787,7 @@ internal class DefaultCpuOpsJvm(
             val x = buf[i]
             out[i] = x / (1f + kotlin.math.exp(-x))
         }
-        val outData = DenseFloatArrayTensorData<T>(Shape(tensor.shape.dimensions.copyOf()), out)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, tensor.dtype)
+        return floatResult(Shape(tensor.shape.dimensions.copyOf()), tensor.dtype, out)
     }
 
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
@@ -854,9 +836,7 @@ internal class DefaultCpuOpsJvm(
         // Case 1: exact shape match (fast path)
         if (a.shape == b.shape) {
             JvmVectorKernels.binaryFloat(aData.buffer, bData.buffer, outBuffer, outVolume, vectorOp, scalarOp)
-            val outData = DenseFloatArrayTensorData<T>(Shape(outShape.dimensions.copyOf()), outBuffer)
-            @Suppress("UNCHECKED_CAST")
-            return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
 
         // Case 2: scalar broadcast
@@ -875,9 +855,7 @@ internal class DefaultCpuOpsJvm(
                 outBuffer[idx] = scalarOp(aval, bData.buffer[idx])
                 idx++
             }
-            val outData = DenseFloatArrayTensorData<T>(Shape(outShape.dimensions.copyOf()), outBuffer)
-            @Suppress("UNCHECKED_CAST")
-            return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
         if (bVol == 1) {
             val bval = bData.buffer[0]
@@ -894,9 +872,7 @@ internal class DefaultCpuOpsJvm(
                 outBuffer[idx] = scalarOp(aData.buffer[idx], bval)
                 idx++
             }
-            val outData = DenseFloatArrayTensorData<T>(Shape(outShape.dimensions.copyOf()), outBuffer)
-            @Suppress("UNCHECKED_CAST")
-            return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+            return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
 
         // Case 3: last-dimension broadcasting (bias add). Supports arbitrary leading dims.
@@ -929,9 +905,7 @@ internal class DefaultCpuOpsJvm(
                         idx++
                     }
                 }
-                val outData = DenseFloatArrayTensorData<T>(Shape(outShape.dimensions.copyOf()), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
             }
             if (aIsBias && bVol == outVolume) {
                 val step = floatSpecies.length()
@@ -950,9 +924,7 @@ internal class DefaultCpuOpsJvm(
                         idx++
                     }
                 }
-                val outData = DenseFloatArrayTensorData<T>(Shape(outShape.dimensions.copyOf()), outBuffer)
-                @Suppress("UNCHECKED_CAST")
-                return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
             }
         }
 
@@ -970,9 +942,7 @@ internal class DefaultCpuOpsJvm(
         val volume = tensor.shape.volume
         val outBuffer = FloatArray(volume)
         JvmVectorKernels.unaryFloat(tensorData.buffer, outBuffer, volume, vectorOp, scalarOp)
-        val outData = DenseFloatArrayTensorData<T>(Shape(tensor.shape.dimensions.copyOf()), outBuffer)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, tensor.dtype)
+        return floatResult(Shape(tensor.shape.dimensions.copyOf()), tensor.dtype, outBuffer)
     }
 
     private fun <T : DType> supportsFloatOps(a: Tensor<T, *>, b: Tensor<T, *>): Boolean {
@@ -1049,9 +1019,7 @@ internal class DefaultCpuOpsJvm(
             if (work >= blasThreshold) {
                 val ok = JvmBlas.sgemmRowMajorNN(m, n, k, 1f, aData.buffer, bData.buffer, outBuffer)
                 if (ok) {
-                    val outData = DenseFloatArrayTensorData<T>(Shape(m, n), outBuffer)
-                    @Suppress("UNCHECKED_CAST")
-                    return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+                    return floatResult(Shape(m, n), a.dtype, outBuffer)
                 }
             }
         }
@@ -1066,9 +1034,7 @@ internal class DefaultCpuOpsJvm(
             outBuffer, 0, n,
             m, n, k,
         )
-        val outData = DenseFloatArrayTensorData<T>(Shape(m, n), outBuffer)
-        @Suppress("UNCHECKED_CAST")
-        return CpuTensor(outData as TensorData<T, V>, this, a.dtype)
+        return floatResult(Shape(m, n), a.dtype, outBuffer)
     }
 
     private fun <T : DType, V> vectorFloatReduceAllSum(tensor: Tensor<T, V>): Tensor<T, V>? {

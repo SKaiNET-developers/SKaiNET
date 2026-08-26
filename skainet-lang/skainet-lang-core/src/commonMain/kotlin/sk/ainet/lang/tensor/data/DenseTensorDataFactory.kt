@@ -704,6 +704,17 @@ public class DenseTensorDataFactory: TensorDataFactory {
         }
     }
 
+    /** Zero-copy adoption for the dtypes [wrapFloatArray] handles; the narrow-tagged rest go
+     *  through [fromFloatArray] exactly as before (#1146). */
+    override fun <T : DType, V> adoptFloatArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: FloatArray
+    ): TensorData<T, V> = when (dtype) {
+        FP32::class, FP16::class -> wrapFloatArray(shape, dtype, data)
+        else -> fromFloatArray(shape, dtype, data)
+    }
+
     override fun <T : DType, V> wrapIntArray(
         shape: Shape,
         dtype: KClass<T>,

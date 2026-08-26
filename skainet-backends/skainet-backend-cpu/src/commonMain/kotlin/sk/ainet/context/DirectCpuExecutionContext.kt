@@ -48,4 +48,8 @@ public class DirectCpuExecutionContext @kotlin.jvm.JvmOverloads constructor(
 
     override val hooks: sk.ainet.lang.nn.hooks.ForwardHooks?
         get() = _hooks
+
+    /** A sibling context whose cached ops allocate through [factory] (#1146). */
+    override fun withTensorDataFactory(factory: TensorDataFactory): ExecutionContext =
+        DirectCpuExecutionContext(executionStats, phase, _hooks, factory)
 }
