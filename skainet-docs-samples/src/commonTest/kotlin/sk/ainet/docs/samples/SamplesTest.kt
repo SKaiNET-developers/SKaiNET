@@ -1,5 +1,6 @@
 package sk.ainet.docs.samples
 
+import kotlinx.coroutines.test.runTest
 import sk.ainet.context.DirectCpuExecutionContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,6 +35,13 @@ class SamplesTest {
         val pixels = FloatArray(784) { 0f }
         val scores = Quickstart.classify(pixels)
         assertEquals(listOf(1, 10), scores.shape.dimensions.toList())
+    }
+
+    @Test
+    fun iris_classifier_learns_and_generalizes() = runTest {
+        val r = IrisClassifier.run()
+        assertTrue(r.lastLoss < r.firstLoss, "loss should decrease: ${r.firstLoss} -> ${r.lastLoss}")
+        assertTrue(r.accuracy >= 0.80f, "held-out accuracy should be high on Iris, got ${r.accuracy}")
     }
 
     @Test

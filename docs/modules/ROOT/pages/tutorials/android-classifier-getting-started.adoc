@@ -1,0 +1,154 @@
+= Train a classifier on Android
+:description: Define, train and evaluate a small Iris classifier with the Kotlin DSL on an Android device — and learn exactly where off-heap weights and the NEON kernels do and don't apply today.
+
+You will build a `[4, 16, 3]` multi-layer perceptron, train it on the embedded Iris dataset
+with cross-entropy, and evaluate it on a held-out split — all on-device, in Kotlin. Along the
+way this page is precise about two things people usually ask for on Android — *weights off
+the managed heap* and *NEON kernels* — because each applies to part of the story, and a
+tutorial that implies more would set you up for surprises.
+
+Every snippet below is real code: it lives in `skainet-docs-samples`, compiles in CI, and the
+training loop is executed with a held-out accuracy assertion. Every API used is `commonMain`
+and available on the Android target (minSdk 24); the Android-specific wiring (dependencies,
+`AndroidGguf`) is not exercised by CI — this repository has no device lane.
+
+== Prerequisites
+
+An Android project with Kotlin. Add the SKaiNET modules:
+
+[source,kotlin]
+----
+dependencies {
+    implementation("sk.ainet.core:skainet-lang-core:0.40.1")     // tensors, DSL, training
+    implementation("sk.ainet.core:skainet-backend-cpu:0.40.1")   // CPU ops
+    implementation("sk.ainet.core:skainet-compile-dag:0.40.1")   // autograd (training context)
+    implementation("sk.ainet.core:skainet-data-api:0.40.1")      // Dataset / DataBatch
+    implementation("sk.ainet.core:skainet-data-simple:0.40.1")   // embedded Iris
+    runtimeOnly("sk.ainet.core:skainet-backend-jni-cpu:0.40.1")  // NEON kernels (see below)
+}
+----
+
+The last line is optional for this tutorial and explained honestly in
+<<neon,the kernel section>>.
+
+== Step 1 — Data
+
+Iris ships embedded in `skainet-data-simple`: 150 rows, four measurements, three species.
+No download, no cache directory, works on every target. A stratified split keeps the class
+balance in both halves:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/IrisClassifier.kt[tag=data]
+----
+
+`dataBatch` tensorizes a range: features arrive as `[n, 4]` FP32, targets as `[n, 3]`
+one-hot FP32.
+
+== Step 2 — Model and training context
+
+Training needs an autograd context (`DefaultGraphExecutionContext`, which records the tape
+and computes gradients); inference just needs the plain CPU context. The model ends at
+logits — no softmax head — because the loss applies softmax itself:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/IrisClassifier.kt[tag=model]
+----
+
+[NOTE]
+.The training DSL is experimental
+====
+`training { }` is marked experimental in its own KDoc to avoid early API lock-in. The shapes
+below are what the in-repo end-to-end tests use; expect the spelling, not the concepts, to
+evolve.
+====
+
+== Step 3 — Train
+
+Cross-entropy over the one-hot targets, plain SGD, 300 epochs of full-batch steps — Iris is
+small enough that batching machinery would only obscure the loop:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/IrisClassifier.kt[tag=train]
+----
+
+== Step 4 — Evaluate
+
+Argmax of the logits on a fresh inference context, compared against the held-out one-hot
+targets. The CI assertion on this exact code requires at least 0.80 held-out accuracy;
+typical runs land well above it:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/IrisClassifier.kt[tag=evaluate]
+----
+
+On Android, run all of this off the main thread (`Iris.load()` is `suspend` for call-site
+symmetry with the downloading datasets; the training loop is ordinary CPU work).
+
+== Keeping memory flat: `forwardScope`
+
+A long-running loop that creates tensors every iteration produces a sawtooth of garbage on
+the ART heap. The Scope split gives you a flat line instead: one pre-sized slab, recycled
+every step —
+
+[source,kotlin]
+----
+ctx.forwardScope(slabFloats = 1 shl 16) { scoped, scope ->
+    while (running) {
+        val out = model.forward(scoped.fromFloatArray(Shape(1, 4), FP32::class, features), scoped)
+        consume(out)
+        scope.reset()   // steady state: zero new slab bytes per step
+    }
+}
+----
+
+Reading a previous step's tensor after `reset()` throws `StorageClosedException` — a loud
+error instead of silent garbage. Note what this is and isn't: the slab lives *on* the heap;
+it flattens allocation churn, it does not move activations off-heap.
+
+[#offheap]
+== Where "weights off the heap" applies today
+
+Off-heap applies to *loading*, not to training:
+
+* `AndroidGguf.loader(path)` serves dense F32 weights of a GGUF checkpoint from memory-mapped
+  file pages — bytes the OS pages in on demand, evicts under pressure, and that never count
+  against the ART heap cap. `AndroidGguf.profiledPlan(...).requireFits(device)` refuses
+  *before* a byte is allocated when the model won't fit.
+* Quantized tensors still land on the heap until the buffer-aware kernel SPI lands (#973) —
+  the packed matmul kernels take heap arrays today.
+* Trainable parameters are heap-resident by construction: a mapped page is read-only, and no
+  optimizer allocates through `PlatformStorage`. Off-heap `Storage` exists on Android (direct
+  `ByteBuffer`) and the planner can resolve to it, but no tensor factory allocates through it
+  yet.
+
+So: the classifier you just trained lives on the managed heap; a quantized GGUF you *load*
+for inference is where the off-heap machinery earns its keep. The full model of who decides
+placement is in xref:explanation/virtual-tensors.adoc[] and
+xref:explanation/memory-model.adoc[].
+
+[#neon]
+== Where the NEON kernels apply today
+
+Adding `skainet-backend-jni-cpu` costs one `runtimeOnly` line; the provider is discovered
+automatically via `ServiceLoader` (no registration call), smoke-tested at load, and picks a
+`+dotprod+fp16` build variant on CPUs that have it.
+
+What it accelerates is *quantized matmul*: Q8_0, Q4_0, Q4_K, Q5_0, Q5_1, Q5_K, Q6_K — the
+formats a GGUF checkpoint holds. Dense FP32 matmul — which is what this FP32 MLP uses — has
+no NEON kernel yet (#920) and runs on the scalar Kotlin path. On a Pixel 8a the difference
+for a quantized LLM decode is roughly 6× (see
+xref:explanation/perf/android-neon-jni-kernels.adoc[]); for this tutorial's model it changes
+nothing today. Add the line anyway: it is what makes the quantized-inference half of your app
+fast, and the dispatch is per-format, per-op — see
+xref:reference/kernel-support-matrix.adoc[] for the authoritative table.
+
+== Where to go next
+
+* xref:explanation/virtual-tensors.adoc[] — how one logical tensor takes many physical forms,
+  and who decides.
+* xref:tutorials/turboquant-getting-started.adoc[] — KV-cache compression for on-device LLMs.
+* xref:tutorials/kotlin-getting-started.adoc[] — the broader Kotlin API tour.

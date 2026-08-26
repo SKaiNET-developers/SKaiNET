@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 330" role="img" aria-label="One highlighted logical cell (o=2, b=1) maps through a strides formula to two different physical positions: index 13 under row-major strides, index 6 under input-block-major strides." font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1F2733"/>
+    </marker>
+    <marker id="arrP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C2762A"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="940" height="330" fill="#FFFFFF"/>
+
+  <!-- logical grid: 6 cols x 4 rows, cell 28 -->
+  <text x="42" y="52" font-size="12" font-weight="600" fill="#4C7FB8">LOGICAL VIEW</text>
+  <text x="42" y="70" font-size="11.5" fill="#5C6675">index (o, b) · shape [4, 6]</text>
+  <g>
+    <rect x="42" y="84" width="168" height="112" rx="4" fill="none" stroke="#4C7FB8" stroke-width="1.5"/>
+    <path d="M70 84 V196 M98 84 V196 M126 84 V196 M154 84 V196 M182 84 V196 M42 112 H210 M42 140 H210 M42 168 H210" stroke="#4C7FB8" stroke-width="0.75" opacity="0.45"/>
+    <rect x="70" y="140" width="28" height="28" fill="#4C7FB8"/>
+  </g>
+  <text x="42" y="222" font-size="12" fill="#1F2733">cell (o=2, b=1)</text>
+
+  <!-- layout box -->
+  <rect x="286" y="112" width="200" height="70" rx="8" fill="#EEF1F5" stroke="#C2762A" stroke-width="1.5"/>
+  <text x="386" y="138" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1F2733">Layout</text>
+  <text x="386" y="158" text-anchor="middle" font-size="11.5" fill="#5C6675">phys = o·s[0] + b·s[1]</text>
+  <line x1="216" y1="147" x2="280" y2="147" stroke="#1F2733" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- physical strip A: row-major -->
+  <text x="540" y="66" font-size="12" font-weight="600" fill="#C2762A">ROW_MAJOR · strides [6, 1]</text>
+  <g>
+    <rect x="540" y="76" width="360" height="26" rx="4" fill="none" stroke="#C2762A" stroke-width="1.25"/>
+    <g stroke="#C2762A" stroke-width="0.75" opacity="0.4">
+      <path d="M555 76 V102 M570 76 V102 M585 76 V102 M600 76 V102 M615 76 V102 M630 76 V102 M645 76 V102 M660 76 V102 M675 76 V102 M690 76 V102 M705 76 V102 M720 76 V102 M735 76 V102 M750 76 V102 M765 76 V102 M780 76 V102 M795 76 V102 M810 76 V102 M825 76 V102 M840 76 V102 M855 76 V102 M870 76 V102 M885 76 V102"/>
+    </g>
+    <rect x="735" y="76" width="15" height="26" fill="#C2762A"/>
+  </g>
+  <text x="742" y="118" text-anchor="middle" font-size="11.5" fill="#1F2733">idx 13</text>
+  <line x1="490" y1="132" x2="534" y2="96" stroke="#C2762A" stroke-width="1.5" marker-end="url(#arrP)"/>
+
+  <!-- physical strip B: input-block-major -->
+  <text x="540" y="196" font-size="12" font-weight="600" fill="#C2762A">INPUT_BLOCK_MAJOR · strides [1, 4]</text>
+  <g>
+    <rect x="540" y="206" width="360" height="26" rx="4" fill="none" stroke="#C2762A" stroke-width="1.25"/>
+    <g stroke="#C2762A" stroke-width="0.75" opacity="0.4">
+      <path d="M555 206 V232 M570 206 V232 M585 206 V232 M600 206 V232 M615 206 V232 M630 206 V232 M645 206 V232 M660 206 V232 M675 206 V232 M690 206 V232 M705 206 V232 M720 206 V232 M735 206 V232 M750 206 V232 M765 206 V232 M780 206 V232 M795 206 V232 M810 206 V232 M825 206 V232 M840 206 V232 M855 206 V232 M870 206 V232 M885 206 V232"/>
+    </g>
+    <rect x="630" y="206" width="15" height="26" fill="#C2762A"/>
+  </g>
+  <text x="637" y="248" text-anchor="middle" font-size="11.5" fill="#1F2733">idx 6</text>
+  <line x1="490" y1="162" x2="534" y2="212" stroke="#C2762A" stroke-width="1.5" marker-end="url(#arrP)"/>
+
+  <text x="540" y="290" font-size="11.5" fill="#5C6675">same kernel code · layout chosen per kernel, per device</text>
+</svg>
