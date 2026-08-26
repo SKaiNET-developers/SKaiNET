@@ -60,6 +60,12 @@ public interface ExecutionContext {
      * Callers MUST acquire inside an active [ScratchPool.scope] block;
      * acquires outside a scope succeed but the buffer is not returned to the
      * pool when dropped.
+     *
+     * Boundary with [memoryScope], on purpose (#1135): `scratch` is untyped *intra-kernel*
+     * workspace — raw arrays inside one op invocation, returned when its block exits.
+     * [memoryScope] governs *inter-op* activation lifetime — typed tensors that live across ops
+     * within a step and are recycled by `ForwardScope.reset()`. They are different layers and
+     * stay separate; neither replaces the other.
      */
     public val scratch: ScratchPool get() = NoopScratchPool
 
@@ -74,16 +80,46 @@ public interface ExecutionContext {
         observers.unregister(observer)
     }
 
+    /**
+     * Dense FP32 data drawn from [memoryScope] when a scope other than `Ambient` is active — the
+     * creation-path reader of the Scope split (#1145). `null` on the Ambient default, so the
+     * factory path is untouched for every context that never opts in. The region is *not* cleared:
+     * a slab slice after `reset()` holds old bytes, so callers fill it themselves.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    private fun <T : DType> scopedDenseFloats(
+        shape: Shape,
+        dtype: KClass<T>,
+    ): sk.ainet.lang.tensor.data.StorageFloatTensorData<T>? {
+        val scope = memoryScope
+        if (scope === sk.ainet.lang.memory.Scope.Ambient || dtype != sk.ainet.lang.types.FP32::class) return null
+        return sk.ainet.lang.tensor.data.StorageFloatTensorData(shape, scope.allocateFloats(shape.volume))
+    }
+
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     public fun <T : DType, V> full(shape: Shape, dtype: KClass<T>, value: Number): Tensor<T, V> {
+        scopedDenseFloats(shape, dtype)?.let { scoped ->
+            val s = scoped.storage
+            s.floats!!.fill(value.toFloat(), s.arrayOffset, s.arrayOffset + shape.volume)
+            @Suppress("UNCHECKED_CAST")
+            return fromData(scoped as TensorData<T, V>, dtype)
+        }
         val data = tensorDataFactory.full<T, V>(shape, dtype, value)
         return fromData(data, dtype)
     }
 
 
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     public fun <T : DType, V> zeros(
         shape: Shape,
         dtype: KClass<T>
     ): Tensor<T, V> {
+        scopedDenseFloats(shape, dtype)?.let { scoped ->
+            val s = scoped.storage
+            s.floats!!.fill(0f, s.arrayOffset, s.arrayOffset + shape.volume)
+            @Suppress("UNCHECKED_CAST")
+            return fromData(scoped as TensorData<T, V>, dtype)
+        }
         val data = tensorDataFactory.zeros<T, V>(shape, dtype)
         return fromData(data, dtype)
     }
@@ -102,10 +138,12 @@ public interface ExecutionContext {
         return fromData(data, dtype)
     }
 
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     public fun <T : DType, V> ones(
         shape: Shape,
         dtype: KClass<T>
     ): Tensor<T, V> {
+        if (memoryScope !== sk.ainet.lang.memory.Scope.Ambient) return full(shape, dtype, 1)
         val data = tensorDataFactory.ones<T, V>(shape, dtype)
         return fromData(data, dtype)
     }
@@ -116,11 +154,18 @@ public interface ExecutionContext {
         ops
     )
 
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     public fun <T : DType, V> fromFloatArray(
         shape: Shape,
         dtype: KClass<T>,
         data: FloatArray
     ): Tensor<T, V> {
+        scopedDenseFloats(shape, dtype)?.let { scoped ->
+            val s = scoped.storage
+            data.copyInto(s.floats!!, s.arrayOffset, 0, shape.volume)
+            @Suppress("UNCHECKED_CAST")
+            return fromData(scoped as TensorData<T, V>, dtype)
+        }
         val data = tensorDataFactory.fromFloatArray<T, V>(shape, dtype, data)
         return fromData(data, dtype)
     }

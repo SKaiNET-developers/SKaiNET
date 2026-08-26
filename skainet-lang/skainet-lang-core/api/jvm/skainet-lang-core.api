@@ -396,6 +396,40 @@ public final class sk/ainet/context/ResettableExecutionObserver$DefaultImpls {
 	public static fun onTensorMaterialized (Lsk/ainet/context/ResettableExecutionObserver;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
 }
 
+public final class sk/ainet/context/ScopedExecutionContext : sk/ainet/context/ExecutionContext {
+	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/memory/Scope;)V
+	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun fromData (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun fromIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun full (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
+	public fun getExecutionStats ()Lsk/ainet/context/ExecutionStats;
+	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
+	public fun getInTraining ()Z
+	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
+	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
+	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
+	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+	public fun isRecording ()Z
+	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/context/ScopedExecutionContextKt {
+	public static final fun forwardScope (Lsk/ainet/context/ExecutionContext;ILkotlin/jvm/functions/Function2;)Ljava/lang/Object;
+}
+
 public abstract interface class sk/ainet/context/TrainingExecutionContext : sk/ainet/context/ExecutionContext {
 	public abstract fun backward (Ljava/util/List;Ljava/util/List;)V
 	public abstract fun startRecording ()V
@@ -5359,6 +5393,19 @@ public final class sk/ainet/lang/tensor/data/Q8_0TensorDataKt {
 
 public abstract interface class sk/ainet/lang/tensor/data/RowDequantSource {
 	public abstract fun dequantRow (I)[F
+}
+
+public final class sk/ainet/lang/tensor/data/StorageFloatTensorData : sk/ainet/lang/tensor/data/TensorData {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Storage$Heap;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public final fun getStorage ()Lsk/ainet/lang/memory/Storage$Heap;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/TensorData : sk/ainet/lang/tensor/data/ItemsAccessor {
