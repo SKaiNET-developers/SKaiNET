@@ -1807,6 +1807,7 @@ public final class sk/ainet/lang/memory/plan/PlannerProfile {
 public final class sk/ainet/lang/memory/plan/PlannerProfile$Companion {
 	public final fun forDevice (Lsk/ainet/lang/memory/plan/DeviceMemory;)Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun getDESKTOP ()Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun getEDGE ()Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun getMOBILE_2GB ()Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun getNATIVE ()Lsk/ainet/lang/memory/plan/PlannerProfile;
 }
@@ -4657,6 +4658,36 @@ public final class sk/ainet/lang/tensor/data/Bf16TensorData$DefaultImpls {
 
 public final class sk/ainet/lang/tensor/data/Bf16TensorDataKt {
 	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Bf16TensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/BitNetB158TensorData : sk/ainet/lang/tensor/data/TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public static final field Companion Lsk/ainet/lang/tensor/data/BitNetB158TensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Byte;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
+	public fun getBlockSize ()I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
+	public fun getPhysicalBytes ()J
+	public final fun getScale ()F
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
+	public fun set ([IB)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/data/BitNetB158TensorData$Companion {
+	public final fun fromFloats (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/data/BitNetB158TensorData;
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/BitNetB158TensorData;
 }
 
 public final class sk/ainet/lang/tensor/data/DenseFloatArrayTensorData : sk/ainet/lang/tensor/data/FloatArrayTensorData {
