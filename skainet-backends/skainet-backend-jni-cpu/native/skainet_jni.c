@@ -191,3 +191,34 @@ Java_sk_ainet_exec_kernel_jni_JniKernels_ternaryF32Gemv(
         skainet_ternary_f32_gemv(in, inputOffset, (const uint8_t*) w, weightByteOffset,
                                  inputDim, outputDim, out, outputOffset))
 }
+
+/*
+ * ternary_lmhead_stage1 (#1150): fused 4-plane BITNET_PLANES lm_head — the
+ * vendored NeoGPU kernel behind skainet_ternary_lmhead_stage1. The FP16 row
+ * scales live inside the weight buffer, so the shim derives the uint16_t*
+ * from the pinned weight array at rowScaleByteOffset (2-byte aligned by the
+ * Kotlin seam's contract). Pins three arrays like the bitnet shim above.
+ */
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_ternaryLmheadStage1(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint planesByteOffset, jint planeStrideBytes, jint rowScaleByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    jfloat* in = (*env)->GetPrimitiveArrayCritical(env, input, NULL);
+    jbyte* w = in ? (*env)->GetPrimitiveArrayCritical(env, weight, NULL) : NULL;
+    jfloat* out = w ? (*env)->GetPrimitiveArrayCritical(env, output, NULL) : NULL;
+    if (out) {
+        skainet_ternary_lmhead_stage1(
+            in, inputOffset,
+            (const uint8_t*) w, planesByteOffset, planeStrideBytes,
+            (const uint16_t*) ((const uint8_t*) w + rowScaleByteOffset), 0,
+            inputDim, outputDim, out, outputOffset);
+    }
+    if (out) (*env)->ReleasePrimitiveArrayCritical(env, output, out, 0);
+    if (w) (*env)->ReleasePrimitiveArrayCritical(env, weight, w, JNI_ABORT);
+    if (in) (*env)->ReleasePrimitiveArrayCritical(env, input, in, JNI_ABORT);
+}
