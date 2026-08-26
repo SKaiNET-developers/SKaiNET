@@ -144,7 +144,7 @@ flowchart LR
     subgraph Selection["At JVM start: ServiceLoader scan"]
         P1["ScalarProvider<br/>priority 0, always"]
         P2["PanamaVectorProvider<br/>priority 50, JDK 21+"]
-        P3["NativeProvider<br/>priority 100, planned"]
+        P3["NativeProvider<br/>priority 100 (FFM)"]
         P1 --> Registry
         P2 --> Registry
         P3 --> Registry

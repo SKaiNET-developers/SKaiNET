@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.40.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.49.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -296,7 +296,39 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.40.1
+## What's New in 0.49.0
+
+The **SKEEP-jump release**: 0.40.1 → 0.49.0, ~100 merged PRs — the SKEEP-003 memory & storage
+architecture complete, from accepted proposal to shipped system. This is the release downstream
+repositories (SKaiNET-transformers, the IREE conformity pipeline) should build on. It **removes
+every façade the architecture replaced** — see the Breaking-changes section of
+[CHANGELOG.md](CHANGELOG.md) for the migration map (`QuantPolicy`/`StagingPolicy`/`WeightOrientation`
+→ `WeightForm`; `@Place`/`@Weights`/`StorageSpec`/old `MemoryPlanner` → `AllocationResolver`).
+
+- **One storage model** — `Storage` / `Scope` / `Format` / `Layout` / `TensorView`: enforced ownership
+  (use-after-free throws, loudly), scoped lifetimes, `prepack()` as the visible relayout,
+  `materialize()` as the single copy point.
+- **Decisions are resolved, not declared** — `WeightFormResolver` picks a weight's in-memory form from
+  *file × profile × kernels*; `AllocationResolver` picks domain and scope, and `explain()` says why,
+  per tensor, before a byte of payload is read. You always outrank the resolver
+  (per-tensor `weightFormFor` > uniform `weightForm` > resolver).
+- **Flat-memory decode** — `ctx.forwardScope(slabFloats) { … }` recycles one slab per step; creation
+  *and op outputs* draw from it, and the FP32 fast paths + JVM Panama vector kernels are offset-aware,
+  so scoped tensors keep SIMD speed. Steady-state decode allocates zero new slab bytes per step.
+- **"Will it fit?" in seconds, any format** — header-only footprint plans for GGUF, **safetensors and
+  ONNX** (external-data sidecars priced correctly), with `PlannerProfile.EDGE` for embedded devices:
+  `skainet-plan model.onnx --profile edge --budget 2.1G`, exit code 0/1.
+- **The compile lane carries what the runtime decides** — tensor identity, structural encodings
+  (`skainet.tensor_layouts`: block sizes and bit widths as integers, not names) and block order flow
+  into the exported MLIR and `.irpa`; `HloGenerator.generate(target = …)` runs the first layout pass
+  on the production path.
+- **BitNet / ternary compute** — `BITNET_PLANES` multi-plane packing, i2s GGUF import, and the vendored
+  NeoGPU ternary f32 NEON kernel through FFM, JNI and Kotlin/Native, including a fused lm_head kernel.
+- **Docs that cannot rot** — the Android classifier and ternary getting-started tutorials are compiled
+  *and executed* in CI (the Iris training loop asserts held-out accuracy ≥ 0.80), plus the
+  virtual-tensors explanation and SKEEP-003a resolution record.
+
+### Previously, in 0.40.1
 
 - **Correctness hotfix: packed-quant `transpose()` was silently wrong, not crashing.** `ops.matmul(x, ops.transpose(W))` on a packed-quantized weight (Q4_0/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K) with more than one quant block per row produced silently incorrect output — sometimes all-zero — across the scalar, Panama-vector, *and* native (FFM/JNI) kernel tiers, with no exception raised. `transpose()` now performs a real block-grid byte permutation instead of a shape-only relabel; a misaligned packed tensor now throws instead of silently truncating. Closes [#968](https://github.com/SKaiNET-developers/SKaiNET/issues/968). **Upgrading is strongly recommended** for anyone calling `ops.transpose()` on packed-quantized weights.
 
@@ -326,13 +358,6 @@ val withoutLabel = dataPipeline<RawDataset>()
 - **Both narrow formats now beat the FP32 SGEMM** — BF16 by 1.8–1.9x, FP16 by 1.5–1.7x on a 4096x11008 projection. Getting there took a zero-copy transpose for input-major weights (the per-token transpose previously widened the tensor elementwise, 4.4 s per projection), a native FFM FP16 kernel to match the existing BF16 one, and tiling both kernels so the weight is read once per matmul rather than once per input row.
 - **Allocation-free shape-only tracing** — `VoidTensorOps` propagates shapes through a `ShapeOnlyTensorData` that allocates no backing buffer, so a dynamic extent flows through a whole decode trace instead of throwing on a negative-size allocation.
 
-### Previously, in 0.37.0
-
-- **`Lstm` layer** — single-layer, batch-first LSTM built from existing primitives only, with `torch.nn.LSTM`-compatible gate order and a caller-owned `LstmState` + `step()` API.
-- **Training essentials** — real inverted `Dropout`, mutable optimizer `lr` plus `linearWarmupCosineDecay`, bias-less and `open` `Linear`.
-- **Attention scale fix** — `scaledDotProductAttention` at its default scale multiplied every score by zero on the CPU backend; it now resolves to `1/sqrt(headDim)` as documented.
-- **Autograd correctness** — `CrossEntropyLoss` no longer detaches the tape, and `softmax`/`logSoftmax`/`variance` backward now work for rank ≥ 3.
-
 See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
 
 ---
@@ -356,6 +381,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.49.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the SKEEP-003 memory & storage architecture end to end: M0/M1/M2 milestones, the weight-form and placement-resolution arcs, scope-recycled execution, multi-format footprint analysis, the compile-lane carriage arc, the BitNet/ternary kernel track, and the release docs
+- **Ajith Goveas** ([@AjithGoveas](https://github.com/AjithGoveas)) — Iris dataset provider (#1044, #1101), now powering the Android classifier tutorial
 
 ### Contributors (0.40.1)
 

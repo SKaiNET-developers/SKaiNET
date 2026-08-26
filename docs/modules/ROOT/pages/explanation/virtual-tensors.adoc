@@ -113,10 +113,12 @@ counterpart; `Scope.Ambient` (plain GC) remains the default everywhere.
 
 == Known limits, stated rather than implied
 
-* The virtualization described here is the *eager and IO* side. The compile pipeline
-  (tape → StableHLO) does not carry `Layout` yet; by decision (#1134), graph-level memory
-  planning stays in the downstream compiler, and core's future obligation there is metadata
-  carriage only (#1147), gated on an in-repo consumer (#1148).
+* By decision (#1134), graph-level memory *planning* stays in the downstream compiler; core's
+  obligation on the compile lane is metadata carriage, and that landed (#1147): tensor identity,
+  structural encodings and block order ride from the tape into the exported MLIR
+  (`skainet.tensor_layouts`) and `.irpa` references, with `LayoutAssignmentPass` making the first
+  layout decision on the production path. Validation against IREE waits for the conformity
+  pipeline (#1148).
 * `Storage.OffHeap` exists on every platform that can honour it, but no tensor factory
   allocates through it yet — off the managed heap today means *mapped, read-only* weights
   (dense F32; packed formats still land on the heap until the buffer-aware kernel SPI of

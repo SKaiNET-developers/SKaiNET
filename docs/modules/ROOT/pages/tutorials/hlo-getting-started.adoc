@@ -331,12 +331,14 @@ Use SKaiNET's built-in debugging tools:
 
 [source,kotlin]
 ----
-// Enable HLO debugging
-val optimizer = StableHloOptimizer(debugMode = true)
-val optimizedHlo = optimizer.optimize(hloModule)
+// Name a compile target to run the optimizer pipeline on the production path (0.49.0):
+// LayoutAssignmentPass assigns kernel-feed block order to packed weights, and any passes the
+// target registered via TargetOptimizers run after it. With no target, no pipeline runs and
+// the emitted module is unchanged.
+val module = HloGenerator.generate(model, sampleInput, target = "llvm-cpu")
 
-// Visualize computation graph
-optimizer.dumpGraphviz("rgb2gray.dot")
+// The emitted MLIR header carries machine-readable storage facts per tensor:
+// module attributes {skainet.tensor_layouts = {w = {kind = "Q4_K", block_elems = 256, ...}}}
 ----
 
 === Resources and References

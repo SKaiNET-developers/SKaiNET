@@ -242,6 +242,47 @@ include::partial$ops/tensorops/matmul.adoc[tag=examples,optional]
 
 include::partial$ops/tensorops/matmul.adoc[tag=references,optional]
 
+== matmulWeightTransposed
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun matmulWeightTransposed(x:Tensor, weight:Tensor): Tensor
+----
+
+=== Parameters
+
+* `x: Tensor`
+  activations, `[batch, in]` or `[in]`
+* `weight: Tensor`
+  `[out, in]` — **not** pre-transposed
+
+=== Return Type
+
+`Tensor`
+
+== relayoutPackedWeightForKernels
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun relayoutPackedWeightForKernels(weight:Tensor): Tensor
+----
+
+=== Parameters
+
+* `weight: Tensor`
+
+=== Return Type
+
+`Tensor`
+
 == transpose
 
 [.darc-none]#✖ Generated facts only (no human prose)#
@@ -807,6 +848,42 @@ fun variance(tensor:Tensor, dim:Int): Tensor
 === Return Type
 
 `Tensor`
+
+== argMax
+
+[.darc-stub]#⚠ Prose present but not DARC-validated#
+
+=== Signature
+
+[source,kotlin]
+----
+fun argMax(tensor:Tensor, dim:Int): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+* `dim: Int`
+
+=== Return Type
+
+`Tensor`
+
+=== Definition
+
+include::partial$ops/tensorops/argmax.adoc[tag=math,optional]
+
+=== Intuition
+
+include::partial$ops/tensorops/argmax.adoc[tag=intuition,optional]
+
+=== Examples
+
+include::partial$ops/tensorops/argmax.adoc[tag=examples,optional]
+
+=== References
+
+include::partial$ops/tensorops/argmax.adoc[tag=references,optional]
 
 == sqrt
 

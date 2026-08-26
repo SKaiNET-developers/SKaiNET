@@ -34,7 +34,7 @@ activations are a lifetime question (§2), not a device question. Every backend 
 device arbitration policy would be untestable speculation, deferred until a second device exists.
 
 *The user always wins.* The precedence order, explicit and documented on the loader:
-per-tensor `weightFormFor` > uniform `weightForm` > the three legacy parameters > the resolver.
+per-tensor `weightFormFor` > uniform `weightForm` > the resolver (the three legacy parameters were removed outright in #1159).
 `WeightForm(DequantizeTo(FP32), residency = HEAP)` — everything dense, on the managed heap — is a
 supported one-liner, not a fight with the planner.
 
@@ -68,8 +68,9 @@ Two boundaries held on purpose:
   `arrayOffset`; the ops fast paths that unwrap `buffer` assume offset 0. Kernels that want
   zero-copy take the view, which carries the offset.
 
-Op _outputs_ still allocate raw arrays; routing `DefaultCpuOps` through the active scope and
-adopting the loop in a real decode is #1146.
+Op _outputs_ draw from the active scope too since #1146 (`TensorDataFactory.adoptFloatArray`,
+`ScopedTensorDataFactory`), with offset-aware FP32 fast paths and Panama vector kernels (#1173)
+so slab-backed tensors keep SIMD speed.
 
 == 3. Would graph-level memory planning duplicate IREE? Yes. (#1134)
 
@@ -93,11 +94,13 @@ extension, emitted as a module attribute. There is no such import today; the fir
 couple the compile pipeline to the storage model for no consumer's benefit — reject it in review.
 ====
 
-The carry work itself (extend `TensorRef`, a `TensorSpecLayout` accessor, populating the
-pre-built `ResolvedComputeGraph.resolvedLayout`/`backendAssignment` seams, a structural
-`skainet.tensor_layouts` module attribute, `ExternalParameterRef.layout`) is #1147, deliberately
-gated on an in-repo IREE consumer — the `.vmfb` parity harness of #1148 — because metadata with no
-reader is write-only speculation.
+The carry work landed as the #1178/#1179/#1180 arc (0.49.0): `TensorRef` carries identity,
+encoding and block order; `TensorSpec` metadata accessors follow the untyped precedent; the
+structural `skainet.tensor_layouts` module attribute and `ExternalParameterRef.blockOrder` declare
+the facts to the consumer; and `LayoutAssignmentPass` runs on the production path via
+`HloGenerator.generate(target = …)`, populating the pre-built `ResolvedComputeGraph` seams. Until
+the conformity pipeline exists (#1148, the future IREE-validation SKEEP), the carriage tests are
+the metadata's reader.
 
 == Where everything landed
 
@@ -108,8 +111,8 @@ reader is write-only speculation.
 | `AllocationResolver` + `explain()` | #1143 | PR #1153 (re-landed #1155)
 | Loader consults the resolution (`ResolvedGguf`, `weightFormFor`) | #1144 | PR #1154 (re-landed #1155)
 | `memoryScope` wired into creation | #1145 | PR #1156
-| Op outputs through the scope + decode adoption | #1146 | open (follow-up)
-| Layout/placement carriage to StableHLO | #1147 | open (gated on #1148)
+| Op outputs through the scope + offset-aware SIMD | #1146, #1173 | landed (PRs #1168/#1175)
+| Layout/placement carriage to StableHLO | #1147 (#1178/#1179/#1180) | landed (PRs #1182/#1183/#1184)
 | `.vmfb` parity acceptance run | #1148 | open (follow-up)
 |===
 
