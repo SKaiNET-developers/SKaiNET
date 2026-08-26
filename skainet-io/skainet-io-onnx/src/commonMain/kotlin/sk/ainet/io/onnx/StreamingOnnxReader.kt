@@ -210,6 +210,9 @@ public class StreamingOnnxReader private constructor(
         var rawDataOffset = -1L
         var rawDataLength = 0
         var hasTypedData = false
+        var externalLocation: String? = null
+        var externalOffset = -1L
+        var externalLength = -1L
 
         while (reader.hasRemaining(endPos)) {
             val tag = reader.readVarint()
@@ -259,8 +262,27 @@ public class StreamingOnnxReader private constructor(
                     reader.skipField(wireType)
                 }
                 13 -> {
-                    // external_data (repeated) - indicates external storage
-                    reader.skipField(wireType)
+                    // external_data (repeated StringStringEntryProto): weights of >2 GB models
+                    // live in a sibling file, described by key/value pairs. Without parsing
+                    // these, exactly the models that do not fit reported ~0 bytes (#1169).
+                    val entryLength = reader.readVarint().toInt()
+                    val entryEnd = reader.position + entryLength
+                    var key = ""
+                    var value = ""
+                    while (reader.hasRemaining(entryEnd)) {
+                        val entryTag = reader.readVarint()
+                        when (ProtobufWireReader.fieldNumber(entryTag)) {
+                            1 -> key = reader.readString()
+                            2 -> value = reader.readString()
+                            else -> reader.skipField(ProtobufWireReader.wireType(entryTag))
+                        }
+                    }
+                    when (key) {
+                        "location" -> externalLocation = value
+                        "offset" -> externalOffset = value.toLongOrNull() ?: -1L
+                        "length" -> externalLength = value.toLongOrNull() ?: -1L
+                    }
+                    reader.seek(entryEnd)
                 }
                 else -> reader.skipField(wireType)
             }
@@ -269,12 +291,12 @@ public class StreamingOnnxReader private constructor(
         if (name.isNotEmpty()) {
             val nElements = if (dims.isEmpty()) 0L else dims.fold(1L) { acc, d -> acc * d }
             val typeSize = getDataTypeSize(dataType)
-            val estimatedBytes = if (rawDataLength > 0) {
-                rawDataLength
-            } else if (hasTypedData && nElements > 0 && typeSize > 0) {
-                (nElements * typeSize).toInt()
-            } else {
-                0
+            // Long throughout: a single >2 GB initializer must not wrap (#1169).
+            val estimatedBytesLong: Long = when {
+                rawDataLength > 0 -> rawDataLength.toLong()
+                externalLength > 0 -> externalLength
+                nElements > 0 && typeSize > 0 -> nElements * typeSize
+                else -> 0L
             }
 
             _tensors.add(
@@ -286,8 +308,12 @@ public class StreamingOnnxReader private constructor(
                     nElements = nElements,
                     rawDataOffset = rawDataOffset,
                     rawDataLength = rawDataLength,
-                    estimatedBytes = estimatedBytes,
-                    hasTypedArrayData = hasTypedData && rawDataLength <= 0
+                    estimatedBytes = estimatedBytesLong.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    hasTypedArrayData = hasTypedData && rawDataLength <= 0,
+                    externalLocation = externalLocation,
+                    externalOffset = externalOffset,
+                    externalLength = externalLength,
+                    estimatedBytesLong = estimatedBytesLong,
                 )
             )
         }
@@ -359,8 +385,16 @@ public data class StreamingOnnxTensorInfo(
     val rawDataOffset: Long,
     /** Length of raw_data in bytes (0 if not available) */
     val rawDataLength: Int,
-    /** Estimated size in bytes (from raw_data or calculated) */
+    /** Estimated size in bytes (from raw_data or calculated), clamped to Int.MAX_VALUE — prefer [estimatedBytesLong] */
     val estimatedBytes: Int,
     /** True if tensor data is in typed arrays (requires full parsing) */
-    val hasTypedArrayData: Boolean
+    val hasTypedArrayData: Boolean,
+    /** external_data `location` (a sibling file path), or null when the data is in this file */
+    val externalLocation: String? = null,
+    /** external_data `offset` within [externalLocation], -1 when absent */
+    val externalOffset: Long = -1L,
+    /** external_data `length` in bytes, -1 when absent */
+    val externalLength: Long = -1L,
+    /** Estimated size in bytes without the Int clamp — raw_data, external length, or elements × type size */
+    val estimatedBytesLong: Long = estimatedBytes.toLong()
 )

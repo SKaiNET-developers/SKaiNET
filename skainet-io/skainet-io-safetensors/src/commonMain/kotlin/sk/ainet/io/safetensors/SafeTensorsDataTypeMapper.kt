@@ -32,10 +32,10 @@ object SafeTensorsDataTypeMapper {
             "F64" -> DataType.FLOAT64
             "Q4" -> DataType.QUANT4
             "Q8" -> DataType.QUANT8
-            else -> {
-                println("WARNING: Unknown SafeTensors dtype: $safeTensorsType")
-                DataType.UNKNOWN
-            }
+            // No println here: this runs inside header parsing, and a diagnostic on stdout would
+            // corrupt machine-readable output (e.g. the skainet-plan table, #1169). UNKNOWN is
+            // the answer; callers who care can check for it.
+            else -> DataType.UNKNOWN
         }
     }
 

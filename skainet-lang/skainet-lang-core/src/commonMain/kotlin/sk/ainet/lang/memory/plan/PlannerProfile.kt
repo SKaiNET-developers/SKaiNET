@@ -125,6 +125,21 @@ public data class PlannerProfile(
             strict = true,
         )
 
+        /**
+         * An embedded device with limited memory and compute (#1169): the number the caller passes
+         * as available bytes IS the usable RAM — already net of what the OS holds — so
+         * [reserveBytes] is deliberately **zero and must stay zero**; adding a reserve here would
+         * double-count what the caller already subtracted. Weights are counted mapped, the KV
+         * cache auto-quantizes past 80 % of the budget, and the profile is not strict: this
+         * profile's job is a pre-flight verdict, not a refusal.
+         */
+        public val EDGE: PlannerProfile = PlannerProfile(
+            name = "edge",
+            reserveBytes = 0,
+            kvAutoQuantizeAbove = 0.80,
+            weightsMapped = true,
+        )
+
         /** A desktop or server JVM: the same reserve, no automatic KV quantization, heap staging. */
         public val DESKTOP: PlannerProfile = PlannerProfile(
             name = "desktop",

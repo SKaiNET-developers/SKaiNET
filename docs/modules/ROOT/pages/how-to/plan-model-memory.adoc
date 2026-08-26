@@ -55,11 +55,39 @@ profiled.requireFits()          // throws, naming the pool that ran out
 | `MOBILE_2GB` | 700 MB reserved, prefill chunked at 256, off-heap above 256 KB, KV auto-quantized to TurboQuant-4 once the plan passes 80 % of the budget, dispatcher dequantization warns above 5 % of bytes read, weights mapped
 | `DESKTOP` | The same reserve, no automatic KV quantization, heap staging
 | `NATIVE` | The smaller 300 MB Kotlin/Native reserve
+| `EDGE` | An embedded device with limited memory and compute: **zero reserve** — the number you pass is the *usable* RAM, already net of what the OS holds — weights mapped, KV auto-quantized past 80 %
 | `PlannerProfile.forDevice(device)` | Picks `MOBILE_2GB` at or below 3 GB of RAM
 |===
 
 A `ProfiledPlan` records what the profile decided — the KV switch appears as a note, not a silent
 rewrite — so a plan read months later says which rules produced it.
+
+== Will it fit on an embedded device? Any format, in seconds
+
+The planner answers the pre-conversion question — *is it worth spending a day converting this
+model for a device with ~2.1 GB of usable RAM?* — for **GGUF, safetensors and ONNX** files, from
+the header/metadata only. A multi-gigabyte file is answered in seconds, and tensor payloads are
+never read:
+
+[source,kotlin]
+----
+val input = when (ModelFormat.fromFilePath(path)) {
+    ModelFormat.GGUF        -> StreamingGGUFReader.open(src).planInput(ctx = 4096)
+    ModelFormat.SAFETENSORS -> StreamingSafeTensorsReader.open(src).planInput(modelName)
+    ModelFormat.ONNX        -> StreamingOnnxReader.open(src).planInput(modelName)
+    null -> error("not a model file")
+}
+val verdict = PlannerProfile.EDGE.plan(input, availableBytes = parse("2.1G"))
+println(verdict.render())        // ✔ fits / ✘ does not fit, with suggestions
+----
+
+`EDGE` treats the number you pass as the *usable* RAM — nothing is subtracted. ONNX weights kept
+in a sibling `external_data` file are priced by their declared lengths, so multi-gigabyte models
+report their real size. Two honest limits: safetensors and ONNX carry no architecture metadata,
+so their plans are weights-only (`geometry == null` — KV cache and forward slab are modelled for
+GGUF only); and file weights are a lower bound — leave headroom for the runtime's own buffers on
+top of the verdict. A standalone multi-format CLI over this API is incubating in the
+SKaiNET-research repository; the in-repo `skainet-plan` CLI covers GGUF.
 
 == Check a real device, before allocating
 
