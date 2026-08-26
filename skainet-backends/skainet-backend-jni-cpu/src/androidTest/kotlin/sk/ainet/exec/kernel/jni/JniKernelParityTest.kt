@@ -288,6 +288,49 @@ class JniKernelParityTest {
     @Test
     fun ternary_f32_parity_threaded_regime() = assertTernaryF32Parity(inputDim = 256, outputDim = 1024, seed = 22)
 
+    /**
+     * ternary_lmhead_stage1 (#1150): the fused 4-plane lm_head vs a local
+     * reimplementation of its contract, weights from a synthetic BITNET_PLANES
+     * buffer (8 planes of random codes + FP16 row scales pinned to 1.0).
+     */
+    @Test
+    fun ternary_lmhead_parity() {
+        val n = 16; val k = 256
+        val rng = Random(31)
+        val planeStride = n * k / 4
+        val scalesOffset = 8 * planeStride
+        val weight = ByteArray(scalesOffset + 2 * n)
+        for (i in 0 until scalesOffset) {
+            // pack four random codes {0,1,2} per byte
+            var b = 0
+            for (lane in 0 until 4) b = b or (rng.nextInt(3) shl (lane * 2))
+            weight[i] = b.toByte()
+        }
+        for (o in 0 until n) { // FP16 1.0 = 0x3C00 LE
+            weight[scalesOffset + o * 2] = 0x00
+            weight[scalesOffset + o * 2 + 1] = 0x3C
+        }
+        val input = FloatArray(k) { rng.nextFloat() - 0.5f }
+        val out = FloatArray(n)
+        JniKernels.ternaryLmheadStage1(input, 0, weight, 0, planeStride, scalesOffset, k, n, out, 0)
+        for (o in 0 until n) {
+            var want = 0.0
+            var w = 1.0
+            for (q in 0 until 4) {
+                val base = q * planeStride + o * (k / 4)
+                var dot = 0.0
+                for (i in 0 until k) {
+                    val code = ((weight[base + i / 4].toInt() and 0xFF) shr ((i % 4) * 2)) and 3
+                    dot += (code - 1) * input[i]
+                }
+                want += dot * w
+                w /= 3.0
+            }
+            val diff = abs(want.toFloat() - out[o])
+            assertTrue("[$o]: reference=$want jni=${out[o]} diff=$diff", diff <= 1e-3f)
+        }
+    }
+
     @Test
     fun smoke_roundtrip() {
         val input = floatArrayOf(1f, 2f, 3f, 4f)

@@ -119,6 +119,17 @@ public object JniKernels {
         output: FloatArray, outputOffset: Int,
     )
 
+    /**
+     * `ternary_lmhead_stage1` (#1150): fused 4-plane BITNET_PLANES lm_head — the vendored NeoGPU
+     * kernel. The FP16 row scales live inside [weight] at [rowScaleByteOffset] (2-byte aligned).
+     */
+    public external fun ternaryLmheadStage1(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, planesByteOffset: Int, planeStrideBytes: Int, rowScaleByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
     public external fun q40Matmul(
         input: FloatArray, inputOffset: Int,
         weight: ByteArray, weightByteOffset: Int,
