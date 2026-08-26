@@ -23,7 +23,16 @@ set(SKAINET_KERNEL_SOURCES
     src/q4_0_matmul.c
     src/q5_0_matmul.c
     src/q5_1_matmul.c
+    src/skainet_ternary_f32.c
 )
+
+# Vendored NeoGPU ternary LUT kernel (MIT, verbatim — src/vendor/neogpu/).
+# Needs pthreads + GNU/Clang builtins, so MSVC builds get the portable
+# scalar fallback inside skainet_ternary_f32.c instead.
+if(NOT MSVC)
+    list(APPEND SKAINET_KERNEL_SOURCES src/vendor/neogpu/hs_ml_ternary_neon.c)
+    find_package(Threads REQUIRED)
+endif()
 
 # SHARED: consumed by the JVM via java.lang.foreign (FFM), bundled as a JAR
 #         resource (libskainet_kernels.{so,dylib,dll}).
@@ -48,6 +57,12 @@ endif()
 
 foreach(tgt IN LISTS SKAINET_KERNEL_TARGETS)
     target_include_directories(${tgt} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    if(NOT MSVC)
+        # The adapter forwards to the vendored NeoGPU kernel (pthreads).
+        target_compile_definitions(${tgt} PRIVATE SKAINET_HAVE_NEOGPU_TERNARY)
+        target_link_libraries(${tgt} PRIVATE Threads::Threads)
+    endif()
 
     # Strip the "lib" prefix on Windows so the shared artifact name matches
     # the resource-bundle path skainet_kernels.{dll,so,dylib}.
@@ -82,6 +97,16 @@ foreach(tgt IN LISTS SKAINET_KERNEL_TARGETS)
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64" AND NOT APPLE)
             target_compile_options(${tgt} PRIVATE
                 -march=armv8.2-a+fp16+dotprod
+            )
+            # The vendored NeoGPU ternary LUT kernel exists FOR dotprod-less
+            # cores (Cortex-A72/Pi-4): pin it and its adapter back to the
+            # armv8-a baseline so the library-wide v8.2 flags above cannot
+            # emit instructions those cores lack. Source-level COMPILE_OPTIONS
+            # append after target options, so the later -march wins.
+            set_source_files_properties(
+                src/vendor/neogpu/hs_ml_ternary_neon.c
+                src/skainet_ternary_f32.c
+                PROPERTIES COMPILE_OPTIONS "-march=armv8-a"
             )
         endif()
         set_target_properties(${tgt} PROPERTIES C_VISIBILITY_PRESET hidden)
