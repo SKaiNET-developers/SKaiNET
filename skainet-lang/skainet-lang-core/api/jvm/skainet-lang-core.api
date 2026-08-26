@@ -1327,14 +1327,21 @@ public final class sk/ainet/lang/memory/TernaryCodec {
 	public static synthetic fun decode$default (Lsk/ainet/lang/memory/TernaryCodec;Lsk/ainet/lang/tensor/storage/TensorEncoding;[BIIILjava/lang/Object;)[F
 	public final fun decodeBitNet ([BII)[F
 	public static synthetic fun decodeBitNet$default (Lsk/ainet/lang/memory/TernaryCodec;[BIIILjava/lang/Object;)[F
+	public final fun decodeBitNetPlanes ([BIII)[F
+	public static synthetic fun decodeBitNetPlanes$default (Lsk/ainet/lang/memory/TernaryCodec;[BIIIILjava/lang/Object;)[F
+	public final fun decodeBitNetPlanesRow ([BIII[FII)V
+	public static synthetic fun decodeBitNetPlanesRow$default (Lsk/ainet/lang/memory/TernaryCodec;[BIII[FIIILjava/lang/Object;)V
 	public final fun decodeTq1_0 ([BII)[F
 	public static synthetic fun decodeTq1_0$default (Lsk/ainet/lang/memory/TernaryCodec;[BIIILjava/lang/Object;)[F
 	public final fun decodeTq2_0 ([BII)[F
 	public static synthetic fun decodeTq2_0$default (Lsk/ainet/lang/memory/TernaryCodec;[BIIILjava/lang/Object;)[F
 	public final fun encode (Lsk/ainet/lang/tensor/storage/TensorEncoding;[F)[B
 	public final fun encodeBitNet ([F)[B
+	public final fun encodeBitNetPlanes ([FII)[B
 	public final fun encodeTq1_0 ([F)[B
 	public final fun encodeTq2_0 ([F)[B
+	public final fun planesRowScale ([BIIII)F
+	public static synthetic fun planesRowScale$default (Lsk/ainet/lang/memory/TernaryCodec;[BIIIIILjava/lang/Object;)F
 }
 
 public final class sk/ainet/lang/memory/ViewsKt {
@@ -4690,6 +4697,38 @@ public final class sk/ainet/lang/tensor/data/BitNetB158TensorData$Companion {
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/BitNetB158TensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/BitNetPlanesTensorData : sk/ainet/lang/tensor/data/TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public static final field Companion Lsk/ainet/lang/tensor/data/BitNetPlanesTensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
+	public fun getBlockSize ()I
+	public final fun getCols ()I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
+	public fun getPhysicalBytes ()J
+	public final fun getRows ()I
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
+	public final fun rowScale (I)F
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
+public final class sk/ainet/lang/tensor/data/BitNetPlanesTensorData$Companion {
+	public final fun fromFloats (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/data/BitNetPlanesTensorData;
+	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/BitNetPlanesTensorData;
+}
+
 public final class sk/ainet/lang/tensor/data/DenseFloatArrayTensorData : sk/ainet/lang/tensor/data/FloatArrayTensorData {
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[F)V
 	public fun copyToFloatArray ()[F
@@ -7414,6 +7453,20 @@ public final class sk/ainet/lang/tensor/storage/TensorEncoding$BITNET_B1_58 : sk
 	public fun getName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun physicalBytes (J)Ljava/lang/Long;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/tensor/storage/TensorEncoding$BITNET_PLANES : sk/ainet/lang/tensor/storage/TensorEncoding {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorEncoding$BITNET_PLANES;
+	public static final field PLANES I
+	public static final field ROW_SCALE_BYTES I
+	public final fun bufferBytes (II)I
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun physicalBytes (J)Ljava/lang/Long;
+	public final fun planeStrideBytes (II)I
+	public final fun rowScalesByteOffset (II)I
 	public fun toString ()Ljava/lang/String;
 }
 
