@@ -12,6 +12,7 @@
 ** xref:tutorials/graph-dsl.adoc[Graph DSL]
 ** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
 ** xref:tutorials/android-classifier-getting-started.adoc[Train a classifier on Android]
+** xref:tutorials/ternary-getting-started.adoc[Ternary networks: getting started]
 * How-to guides
 ** xref:how-to/build-tensors.adoc[Build tensors with the data DSL]
 ** xref:how-to/tensor-ops.adoc[Apply tensor operations]
