@@ -82,6 +82,22 @@ public interface TensorDataFactory {
     ): TensorData<T, V>
 
     /**
+     * Adopts a freshly computed FloatArray as tensor data — the op-output entry point (#1146).
+     *
+     * Unlike [wrapFloatArray], [data] is *owned by nobody else*: the caller computed it, hands it
+     * over, and never touches it again. That transfer is what licenses a factory to relocate the
+     * values — a scope-aware factory copies them into its slab so they are recycled at
+     * `ForwardScope.reset()`; a dense factory adopts the array zero-copy. The interface default
+     * stays on the copying [fromFloatArray] so every dtype a factory accepts there is accepted
+     * here; factories with a wider zero-copy wrap override.
+     */
+    public fun <T : DType, V> adoptFloatArray(
+        shape: Shape,
+        dtype: KClass<T>,
+        data: FloatArray
+    ): TensorData<T, V> = fromFloatArray(shape, dtype, data)
+
+    /**
      * Wraps a FloatArray without copying. The caller must ensure the array
      * is not mutated while the returned TensorData is in use.
      * Default implementation falls back to [fromFloatArray] (which copies).

@@ -28,6 +28,36 @@ public class ScopedExecutionContext(
     override val memoryScope: Scope,
 ) : ExecutionContext by base {
 
+    /**
+     * The base rebuilt around a scope-aware factory, so *op outputs* allocate from the slab too
+     * (#1146). A base that cannot rebuild itself (default [ExecutionContext.withTensorDataFactory])
+     * returns itself — creation still draws from the scope, op outputs stay GC-allocated.
+     *
+     * Note the ops-binding rule: `a + b` dispatches through the ops instance that *created* `a`,
+     * so only tensors created through this context (or explicitly re-bound) produce scoped
+     * outputs. Tensors made before entering the scope keep their unscoped ops — deliberately, so
+     * their results do not die at `reset()`.
+     */
+    private val scopedBase: ExecutionContext =
+        base.withTensorDataFactory(
+            sk.ainet.lang.tensor.data.ScopedTensorDataFactory(base.tensorDataFactory) { memoryScope },
+        )
+
+    override val tensorDataFactory: sk.ainet.lang.tensor.data.TensorDataFactory
+        get() = scopedBase.tensorDataFactory
+
+    override val ops: sk.ainet.lang.tensor.ops.TensorOps
+        get() = scopedBase.ops
+
+    /**
+     * Bind tensors made through this context to the *scoped* ops — `a + b` dispatches through
+     * the ops that created `a`, and only the scoped ops allocate outputs from the slab.
+     */
+    override fun <T : DType, V> fromData(
+        data: sk.ainet.lang.tensor.data.TensorData<T, V>,
+        dtype: KClass<T>,
+    ): Tensor<T, V> = sk.ainet.lang.tensor.operators.OpsBoundTensor.fromData(data, dtype, ops)
+
     override fun <T : DType, V> zeros(shape: Shape, dtype: KClass<T>): Tensor<T, V> =
         super.zeros(shape, dtype)
 

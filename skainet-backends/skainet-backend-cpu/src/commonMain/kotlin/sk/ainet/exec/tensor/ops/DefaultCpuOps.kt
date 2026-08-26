@@ -191,17 +191,52 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
     // `inline` is load-bearing: a non-inlined `(Float, Float) -> Float` lambda
     // would box through `Function2` and reintroduce the very churn removed.
 
-    private fun <T : DType, V> floatBufferOf(t: Tensor<T, V>): FloatArray? =
-        (t.data as? FloatArrayTensorData<*>)?.buffer
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    private fun <T : DType, V> floatBufferOf(t: Tensor<T, V>): FloatArray? = when (val d = t.data) {
+        is FloatArrayTensorData<*> -> d.buffer
+        // Slab-backed data (#1145/#1146) has a nonzero base offset, so it cannot hand out its raw
+        // array — but its exact logical window as one copy still beats the boxed generic path by
+        // orders of magnitude (#949). The zero-copy path for the hot trio is [floatWindowOf].
+        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> d.copyToFloatArray()
+        else -> null
+    }
 
-    private fun <T : DType, V> floatResult(
+    /** Zero-copy dense-FP32 window: the backing array plus the base offset of element 0 (#1146). */
+    private class FloatWindow(val arr: FloatArray, val off: Int)
+
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    private fun <T : DType, V> floatWindowOf(t: Tensor<T, V>): FloatWindow? = when (val d = t.data) {
+        is FloatArrayTensorData<*> -> FloatWindow(d.buffer, 0)
+        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> {
+            val s = d.storage
+            s.checkAlive()
+            FloatWindow(s.floats!!, s.arrayOffset)
+        }
+        else -> null
+    }
+
+    /**
+     * The scope the factory is placing outputs in, or `Ambient` — passed to kernel dispatch so
+     * adapter allocations (requantized activations, prepacked weights) land in the slab too (#1146).
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    protected fun dispatchScope(): sk.ainet.lang.memory.Scope =
+        (dataFactory as? sk.ainet.lang.tensor.data.ScopedTensorDataFactory)?.currentScope
+            ?: sk.ainet.lang.memory.Scope.Ambient
+
+    /**
+     * A freshly computed dense-FP32 result, adopted through the factory — the single funnel a
+     * scope-aware factory (#1146) intercepts to place op outputs in the active scope. [buf] is
+     * ops-owned and never touched again; the default factory adopts it zero-copy.
+     */
+    protected fun <T : DType, V> floatResult(
         shape: Shape,
         dtype: kotlin.reflect.KClass<T>,
         buf: FloatArray,
         vararg inputs: Tensor<T, V>,
     ): Tensor<T, V> {
         @Suppress("UNCHECKED_CAST")
-        val outData = dataFactory.fromFloatArray<T, Float>(shape, dtype, buf)
+        val outData = dataFactory.adoptFloatArray<T, Float>(shape, dtype, buf)
             as sk.ainet.lang.tensor.data.TensorData<T, V>
         return newTensor(outData, dtype, *inputs)
     }
@@ -210,9 +245,12 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         t: Tensor<T, V>,
         op: (Float) -> Float,
     ): Tensor<T, V>? {
-        val src = floatBufferOf(t) ?: return null
-        val out = FloatArray(src.size)
-        for (i in src.indices) out[i] = op(src[i])
+        val src = floatWindowOf(t) ?: return null
+        val n = t.shape.volume
+        val sa = src.arr
+        val so = src.off
+        val out = FloatArray(n)
+        for (i in 0 until n) out[i] = op(sa[so + i])
         return floatResult(t.shape, t.dtype, out, t)
     }
 
@@ -222,8 +260,12 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         op: (Float, Float) -> Float,
     ): Tensor<T, V>? {
         if (a.dtype != b.dtype) return null
-        val ab = floatBufferOf(a) ?: return null
-        val bb = floatBufferOf(b) ?: return null
+        val aw = floatWindowOf(a) ?: return null
+        val bw = floatWindowOf(b) ?: return null
+        val ab = aw.arr
+        val ao = aw.off
+        val bb = bw.arr
+        val bo = bw.off
         val outShape = try {
             broadcastShapes(a.shape, b.shape)
         } catch (e: IllegalArgumentException) {
@@ -232,19 +274,19 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val n = outShape.volume
         if (a.shape == b.shape) {
             val out = FloatArray(n)
-            for (i in 0 until n) out[i] = op(ab[i], bb[i])
+            for (i in 0 until n) out[i] = op(ab[ao + i], bb[bo + i])
             return floatResult(outShape, a.dtype, out, a, b)
         }
         if (a.shape.volume == 1) {
-            val av = ab[0]
+            val av = ab[ao]
             val out = FloatArray(n)
-            for (i in 0 until n) out[i] = op(av, bb[i])
+            for (i in 0 until n) out[i] = op(av, bb[bo + i])
             return floatResult(outShape, a.dtype, out, a, b)
         }
         if (b.shape.volume == 1) {
-            val bv = bb[0]
+            val bv = bb[bo]
             val out = FloatArray(n)
-            for (i in 0 until n) out[i] = op(ab[i], bv)
+            for (i in 0 until n) out[i] = op(ab[ao + i], bv)
             return floatResult(outShape, a.dtype, out, a, b)
         }
         // Last-dim ("bias") broadcast, mirroring DefaultCpuOpsJvm.vectorFloatBinary.
@@ -259,7 +301,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val out = FloatArray(n)
             for (g in 0 until groups) {
                 val off = g * outLast
-                for (i in 0 until outLast) out[off + i] = op(ab[off + i], bb[i])
+                for (i in 0 until outLast) out[off + i] = op(ab[ao + off + i], bb[bo + i])
             }
             return floatResult(outShape, a.dtype, out, a, b)
         }
@@ -267,7 +309,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             val out = FloatArray(n)
             for (g in 0 until groups) {
                 val off = g * outLast
-                for (i in 0 until outLast) out[off + i] = op(ab[i], bb[off + i])
+                for (i in 0 until outLast) out[off + i] = op(ab[ao + i], bb[bo + off + i])
             }
             return floatResult(outShape, a.dtype, out, a, b)
         }
@@ -573,7 +615,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 kernel(bi, 0, packed, 0, inputDim, outputDim, out, batch * outputDim)
             }
             @Suppress("UNCHECKED_CAST")
-            val outData = dataFactory.fromFloatArray<T, Float>(Shape(batchSize, outputDim), a.dtype, out) as TensorData<T, V>
+            val outData = dataFactory.adoptFloatArray<T, Float>(Shape(batchSize, outputDim), a.dtype, out) as TensorData<T, V>
             return newTensor(outData, a.dtype, a, b)
         }
 
@@ -606,32 +648,36 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         // Packed-quant fast path (FP32 input × packed weight), resolved via KernelRegistry.
         KernelProfile.timeQuant { chooseQuantizedMatmulHeap(a, b) }?.let { return it }
 
-        // Fast path: 2D × 2D with FloatArray backing — direct buffer access, no per-element allocation
-        if (a.rank == 2 && b.rank == 2
-            && (a.dtype == FP32::class)
-            && a.data is FloatArrayTensorData<*> && b.data is FloatArrayTensorData<*>
-        ) {
-            return KernelProfile.timeFp32 {
-                val aBuf = (a.data as FloatArrayTensorData<*>).buffer
-                val bBuf = (b.data as FloatArrayTensorData<*>).buffer
-                val m = a.shape[0]
-                val k = a.shape[1]
-                val n = b.shape[1]
-                require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
-                val out = FloatArray(m * n)
-                for (i in 0 until m) {
-                    val aOff = i * k
-                    for (j in 0 until n) {
-                        var sum = 0f
-                        for (p in 0 until k) {
-                            sum += aBuf[aOff + p] * bBuf[p * n + j]
+        // Fast path: 2D × 2D with dense FP32 backing (array or slab window, #1146) — direct
+        // buffer access, no per-element allocation
+        if (a.rank == 2 && b.rank == 2 && (a.dtype == FP32::class)) {
+            val aWin = floatWindowOf(a)
+            val bWin = floatWindowOf(b)
+            if (aWin != null && bWin != null) {
+                return KernelProfile.timeFp32 {
+                    val aBuf = aWin.arr
+                    val aBase = aWin.off
+                    val bBuf = bWin.arr
+                    val bBase = bWin.off
+                    val m = a.shape[0]
+                    val k = a.shape[1]
+                    val n = b.shape[1]
+                    require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
+                    val out = FloatArray(m * n)
+                    for (i in 0 until m) {
+                        val aOff = aBase + i * k
+                        for (j in 0 until n) {
+                            var sum = 0f
+                            for (p in 0 until k) {
+                                sum += aBuf[aOff + p] * bBuf[bBase + p * n + j]
+                            }
+                            out[i * n + j] = sum
                         }
-                        out[i * n + j] = sum
                     }
+                    @Suppress("UNCHECKED_CAST")
+                    val outData = dataFactory.adoptFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+                    newTensor(outData, a.dtype, a, b)
                 }
-                @Suppress("UNCHECKED_CAST")
-                val outData = dataFactory.fromFloatArray<T, Float>(Shape(m, n), a.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
-                newTensor(outData, a.dtype, a, b)
             }
         }
 
@@ -674,13 +720,13 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
             Shape(m, n),
             FP32,
         )
-        sk.ainet.backend.api.kernel.KernelDispatch.matmul(aNorm, bT, outView)
+        sk.ainet.backend.api.kernel.KernelDispatch.matmul(aNorm, bT, outView, dispatchScope())
         val outShape = when {
             a.shape.rank == 1 -> Shape(n)                    // [k] x [k, n] -> [n]
             leading.isEmpty() -> Shape(m, n)
             else -> Shape(*(leading + n))
         }
-        val outData = dataFactory.fromFloatArray<T, Float>(outShape, a.dtype, outArray) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        val outData = dataFactory.adoptFloatArray<T, Float>(outShape, a.dtype, outArray) as sk.ainet.lang.tensor.data.TensorData<T, V>
         return newTensor(outData, a.dtype, a, b)
     }
 
@@ -957,13 +1003,13 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val outView = sk.ainet.lang.memory.TensorView.dense(
             sk.ainet.lang.memory.Storage.Heap.wrap(outArray), Shape(m, n), FP32,
         )
-        sk.ainet.backend.api.kernel.KernelDispatch.matmul(xNorm, wView, outView)
+        sk.ainet.backend.api.kernel.KernelDispatch.matmul(xNorm, wView, outView, dispatchScope())
         val outShape = when {
             x.shape.rank == 1 -> Shape(n)
             leading.isEmpty() -> Shape(m, n)
             else -> Shape(*(leading + n))
         }
-        val outData = dataFactory.fromFloatArray<T, Float>(outShape, x.dtype, outArray) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, outArray) as sk.ainet.lang.tensor.data.TensorData<T, V>
         return newTensor(outData, x.dtype, x, weight)
     }
 
@@ -1141,7 +1187,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 }
             }
             @Suppress("UNCHECKED_CAST")
-            val outData = dataFactory.fromFloatArray<T, Float>(Shape(cols, rows), tensor.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+            val outData = dataFactory.adoptFloatArray<T, Float>(Shape(cols, rows), tensor.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
             return newTensor(outData, tensor.dtype, tensor)
         }
 
@@ -1213,7 +1259,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 out[flatOut] = srcBuf[flatIn]
             }
             @Suppress("UNCHECKED_CAST")
-            val outData = dataFactory.fromFloatArray<T, Float>(outShape, tensor.dtype, out)
+            val outData = dataFactory.adoptFloatArray<T, Float>(outShape, tensor.dtype, out)
                 as sk.ainet.lang.tensor.data.TensorData<T, V>
             return newTensor(outData, tensor.dtype, tensor)
         }
@@ -2699,7 +2745,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         // real i32 tensor — see VoidTensorOps.argMax + ArgMaxOperationsConverter (emits stablehlo i32).
         val floats = FloatArray(outCount) { indices[it].toFloat() }
         @Suppress("UNCHECKED_CAST")
-        val outData = dataFactory.fromFloatArray<T, Float>(outShape, tensor.dtype, floats)
+        val outData = dataFactory.adoptFloatArray<T, Float>(outShape, tensor.dtype, floats)
             as sk.ainet.lang.tensor.data.TensorData<T, V>
         return CpuTensor(outData, this, tensor.dtype, GradState(requiresGrad = false))
     }
@@ -3343,7 +3389,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
         @Suppress("UNCHECKED_CAST")
         val outData = when (targetClass) {
-            FP32::class -> dataFactory.fromFloatArray<TTo, Float>(
+            FP32::class -> dataFactory.adoptFloatArray<TTo, Float>(
                 tensor.shape,
                 targetClass,
                 copyTensorValuesAsFloatArray(tensor)
@@ -3358,7 +3404,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 val codec = if (targetClass == BF16::class) Bf16Codec else Fp16Codec
                 val src = copyTensorValuesAsFloatArray(tensor)
                 val rounded = FloatArray(src.size) { codec.decode(codec.encode(src[it])) }
-                dataFactory.fromFloatArray<TTo, Float>(
+                dataFactory.adoptFloatArray<TTo, Float>(
                     tensor.shape,
                     targetClass,
                     rounded
@@ -3662,7 +3708,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
         val shape = Shape(batch, heads, seqQ, headDim)
         @Suppress("UNCHECKED_CAST")
-        val data = dataFactory.fromFloatArray<T, Float>(shape, query.dtype, outBuf) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        val data = dataFactory.adoptFloatArray<T, Float>(shape, query.dtype, outBuf) as sk.ainet.lang.tensor.data.TensorData<T, V>
         return newTensor(data, query.dtype, query, key, value)
     }
 

@@ -217,6 +217,7 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -246,6 +247,7 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -269,6 +271,7 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withTensorDataFactory (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapIntArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -374,6 +377,7 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -420,6 +424,7 @@ public final class sk/ainet/context/ScopedExecutionContext : sk/ainet/context/Ex
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -453,6 +458,7 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withTensorDataFactory (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapIntArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -2450,6 +2456,7 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -2782,6 +2789,7 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withTensorDataFactory (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapIntArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -4679,6 +4687,7 @@ public final class sk/ainet/lang/tensor/data/DenseIntArrayTensorData : sk/ainet/
 
 public final class sk/ainet/lang/tensor/data/DenseTensorDataFactory : sk/ainet/lang/tensor/data/TensorDataFactory {
 	public fun <init> ()V
+	public fun adoptFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
 	public final fun fromByteArray ([BLsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
@@ -4811,6 +4820,7 @@ public final class sk/ainet/lang/tensor/data/MemorySegmentTensorDataFactory : ja
 	public fun <init> ()V
 	public fun <init> (J)V
 	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun adoptFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun close ()V
 	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
 	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
@@ -5395,6 +5405,26 @@ public abstract interface class sk/ainet/lang/tensor/data/RowDequantSource {
 	public abstract fun dequantRow (I)[F
 }
 
+public final class sk/ainet/lang/tensor/data/ScopedTensorDataFactory : sk/ainet/lang/tensor/data/TensorDataFactory {
+	public fun <init> (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lkotlin/jvm/functions/Function0;)V
+	public fun adoptFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun fromIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun full (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/data/TensorData;
+	public final fun getCurrentScope ()Lsk/ainet/lang/memory/Scope;
+	public fun init (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun randn (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun randomInit (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function1;Lkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun uniform (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;FFLkotlin/random/Random;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
 public final class sk/ainet/lang/tensor/data/StorageFloatTensorData : sk/ainet/lang/tensor/data/TensorData {
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Storage$Heap;)V
 	public fun copyToFloatArray ()[F
@@ -5422,6 +5452,7 @@ public final class sk/ainet/lang/tensor/data/TensorData$DefaultImpls {
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/TensorDataFactory {
+	public fun adoptFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
 	public abstract fun fromIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/data/TensorData;
@@ -5439,6 +5470,7 @@ public abstract interface class sk/ainet/lang/tensor/data/TensorDataFactory {
 }
 
 public final class sk/ainet/lang/tensor/data/TensorDataFactory$DefaultImpls {
+	public static fun adoptFloatArray (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;
 	public static fun placeholder (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 	public static fun wrapByteArray (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/data/TensorData;
 	public static fun wrapFloatArray (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/data/TensorData;

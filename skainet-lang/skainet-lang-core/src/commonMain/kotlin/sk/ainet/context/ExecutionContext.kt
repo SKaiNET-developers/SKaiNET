@@ -50,6 +50,17 @@ public interface ExecutionContext {
     public val tensorDataFactory: TensorDataFactory
 
     /**
+     * This context rebuilt around [factory] — the seam that lets a decorator (notably
+     * `ScopedExecutionContext`, #1146) swap in a scope-aware [TensorDataFactory] and get an
+     * *ops instance that allocates through it*, since ops are constructed from the factory.
+     *
+     * The default returns `this` unchanged: a context that cannot rebuild itself simply keeps
+     * its own factory, and op outputs stay GC-allocated (correct, just not scope-recycled).
+     * Contexts that own their ops construction (e.g. `DirectCpuExecutionContext`) override.
+     */
+    public fun withTensorDataFactory(factory: TensorDataFactory): ExecutionContext = this
+
+    /**
      * Workspace allocator for short-lived intermediate buffers (attention
      * scratch, RoPE tables, KV-cache slice copies, padding scratch, etc.).
      *

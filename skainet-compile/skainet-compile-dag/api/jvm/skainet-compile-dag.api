@@ -194,6 +194,7 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun stopRecording ()Lsk/ainet/tape/ExecutionTape;
 	public final fun stopRecordingAndGet ()Lsk/ainet/tape/ExecutionTape;
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
@@ -457,6 +458,7 @@ public final class sk/ainet/lang/graph/exec/GraphExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withTensorDataFactory (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapIntArray (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
