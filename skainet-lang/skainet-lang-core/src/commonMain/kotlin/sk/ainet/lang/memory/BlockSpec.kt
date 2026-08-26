@@ -94,6 +94,12 @@ public val TensorEncoding.blockSpec: BlockSpec?
             BlockSpec(BlockSpec.PER_TENSOR_BLOCK, 0, 2.0, ScalePlacement.NONE, BlockSpec.INT8_ACTIVATION)
         TensorEncoding.BITNET_B1_58 ->
             BlockSpec(BlockSpec.PER_TENSOR_BLOCK, 0, 2.0, ScalePlacement.PER_TENSOR, BlockSpec.INT8_ACTIVATION)
+        // Deliberately no BlockSpec and — unlike the other ternary encodings — NO int8 activation
+        // hint: BITNET_PLANES is the f32-activation lm_head format (#1150); its geometry is
+        // row-scoped ([rows] FP16 scales after 8 plane payloads), which the row-count-free
+        // BlockSpec model cannot express, and without the planes kernel pack the dispatcher must
+        // fall to the decoding reference matmul, never the int8 requantize adapter.
+        TensorEncoding.BITNET_PLANES -> null
         is TensorEncoding.TurboQuantPolar ->
             BlockSpec(blockSize, (physicalBytes(blockSize.toLong()) ?: 0L).toInt(), bitsPerElement.toDouble(), ScalePlacement.BLOCK_HEAD)
         is TensorEncoding.TurboQuantPolarQjl ->
