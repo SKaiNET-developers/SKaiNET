@@ -127,6 +127,16 @@ public final class sk/ainet/compile/opt/passes/LLMFusionPass : sk/ainet/compile/
 	public fun getName ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/opt/passes/LayoutAssignmentPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public static final field Companion Lsk/ainet/compile/opt/passes/LayoutAssignmentPass$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/LayoutAssignmentPass$Companion {
+}
+
 public final class sk/ainet/compile/opt/passes/OperationFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;

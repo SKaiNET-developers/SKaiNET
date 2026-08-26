@@ -1,5 +1,6 @@
 package sk.ainet.lang.graph
 
+import sk.ainet.lang.tensor.ops.blockOrder
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -48,16 +49,26 @@ public class ResolvedComputeGraph(public val delegate: ComputeGraph) {
     }
 
     /**
-     * Placeholder for the resolved memory layout. Returns `null`
-     * today — populated by future layout-planning passes.
+     * The resolved memory layout for [edgeId], derived from the block order a layout pass (or
+     * the tape) stamped on the edge's spec (#1180) — `null` where no decision was made.
      */
-    public fun resolvedLayout(edgeId: String): Layout? = null
+    public fun resolvedLayout(edgeId: String): Layout? {
+        val edge = edges.firstOrNull { it.id == edgeId } ?: return null
+        val order = edge.tensorSpec.blockOrder ?: return null
+        return BlockOrderLayout(order)
+    }
 
     /**
-     * Placeholder for the backend assignment. Returns `null` today
-     * — populated by future multi-backend scheduling.
+     * The backend a layout/scheduling pass assigned [nodeId] to (#1180), or `null` where no
+     * pass made a decision. Read from [BACKEND_ASSIGNMENT_METADATA_KEY] node metadata.
      */
-    public fun backendAssignment(nodeId: String): String? = null
+    public fun backendAssignment(nodeId: String): String? =
+        nodes.firstOrNull { it.id == nodeId }?.metadata?.get(BACKEND_ASSIGNMENT_METADATA_KEY) as? String
+
+    public companion object {
+        /** Node metadata key a pass stamps with the target it decided for. */
+        public const val BACKEND_ASSIGNMENT_METADATA_KEY: String = "backendAssignment"
+    }
 
     /**
      * Precondition check for the resolved-DAG contract:
@@ -124,3 +135,9 @@ public data class ResolvedGraphValidation(
         }
     }
 }
+
+/**
+ * The one layout fact carried today (#1180): which way a packed weight's blocks run, as the
+ * stable string the whole carriage lane uses (`ROW_MAJOR` / `INPUT_BLOCK_MAJOR`).
+ */
+public data class BlockOrderLayout(public val blockOrder: String) : Layout
