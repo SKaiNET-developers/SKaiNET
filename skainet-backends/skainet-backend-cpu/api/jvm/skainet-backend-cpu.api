@@ -17,7 +17,6 @@ public final class sk/ainet/context/DirectCpuExecutionContext : sk/ainet/context
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
-	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;

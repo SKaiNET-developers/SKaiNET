@@ -4,15 +4,16 @@ package sk.ainet.lang.tensor.storage
  * High-level placement descriptor: where a tensor lives and how the runtime
  * should manage it.
  *
- * Placement is *intent* — it tells the planner what to aim for but does not
- * encode backend scratch-memory details. The planner resolves placement to
- * a concrete [BufferHandle] and falls back if the preferred target is
- * unavailable.
+ * Placement is *intent* — it tells the runtime what to aim for but does not
+ * encode backend scratch-memory details.
+ *
+ * Lifetime is deliberately not part of placement: how long bytes live is a
+ * scope decision (`sk.ainet.lang.memory.ScopeKind`), and how a weight is
+ * staged at load is a resolver decision (`WeightForm.WeightResidency`).
  */
 public data class Placement(
     val device: DeviceKind = DeviceKind.CPU,
     val domain: MemoryDomain = MemoryDomain.HOST_HEAP,
-    val residency: Residency = Residency.PERSISTENT,
     val requirement: Requirement = Requirement.PREFERRED,
     val fallback: DeviceKind = DeviceKind.CPU
 ) {
@@ -21,7 +22,6 @@ public data class Placement(
         public val CPU_HEAP: Placement = Placement(
             device = DeviceKind.CPU,
             domain = MemoryDomain.HOST_HEAP,
-            residency = Residency.TRANSIENT,
             requirement = Requirement.PREFERRED
         )
 
@@ -29,7 +29,6 @@ public data class Placement(
         public val MMAP_WEIGHTS: Placement = Placement(
             device = DeviceKind.CPU,
             domain = MemoryDomain.MMAP_FILE,
-            residency = Residency.PERSISTENT,
             requirement = Requirement.PREFERRED
         )
 
@@ -37,7 +36,6 @@ public data class Placement(
         public val GPU_PREFERRED: Placement = Placement(
             device = DeviceKind.GPU,
             domain = MemoryDomain.DEVICE_LOCAL,
-            residency = Residency.PERSISTENT,
             requirement = Requirement.PREFERRED,
             fallback = DeviceKind.CPU
         )
@@ -64,13 +62,6 @@ public enum class MemoryDomain {
     UNIFIED,
     /** Device-local memory (fastest for compute, not directly host-accessible). */
     DEVICE_LOCAL
-}
-
-public enum class Residency {
-    /** Short-lived: activations, temporaries, intermediate results. */
-    TRANSIENT,
-    /** Long-lived: model weights, embeddings, caches. */
-    PERSISTENT
 }
 
 public enum class Requirement {

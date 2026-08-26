@@ -8,7 +8,6 @@ import sk.ainet.lang.tensor.operators.OpsBoundTensor
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.tensor.scratch.NoopScratchPool
 import sk.ainet.lang.tensor.scratch.ScratchPool
-import sk.ainet.lang.tensor.storage.MemoryPlanner
 import sk.ainet.lang.tensor.storage.MemoryTracker
 import sk.ainet.lang.types.DType
 import kotlin.reflect.KClass
@@ -186,9 +185,6 @@ public interface ExecutionContext {
     // runtime information
     public val memoryInfo: MemoryInfo
     public val executionStats: ExecutionStats
-
-    /** Memory planner for resolving placement intents. Default: CPU-only. */
-    public val memoryPlanner: MemoryPlanner get() = MemoryPlanner()
 
     /** Memory tracker for observability and copy tracing. Default: no-op (not tracking). */
     public val memoryTracker: MemoryTracker? get() = null

@@ -204,7 +204,6 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
-	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
@@ -234,7 +233,6 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public abstract fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
-	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public abstract fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
@@ -262,7 +260,6 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun full (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun getHooks (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/ExecutionContext;)Z
-	public static fun getMemoryPlanner (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryScope (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
@@ -364,7 +361,6 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
-	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
@@ -414,7 +410,6 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun full (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun getHooks (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/context/TrainingExecutionContext;)Z
-	public static fun getMemoryPlanner (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryScope (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
@@ -2375,7 +2370,6 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public fun getInTraining ()Z
 	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
-	public fun getMemoryPlanner ()Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
 	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
@@ -2712,7 +2706,6 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun full (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun getHooks (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/nn/hooks/ForwardHooks;
 	public static fun getInTraining (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
-	public static fun getMemoryPlanner (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryPlanner;
 	public static fun getMemoryScope (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
 	public static fun getScratch (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
@@ -7150,15 +7143,6 @@ public final class sk/ainet/lang/tensor/storage/MemoryDomain : java/lang/Enum {
 	public static fun values ()[Lsk/ainet/lang/tensor/storage/MemoryDomain;
 }
 
-public final class sk/ainet/lang/tensor/storage/MemoryPlanner {
-	public fun <init> ()V
-	public fun <init> (Ljava/util/Set;)V
-	public synthetic fun <init> (Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun resolve (Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/ResolvedPlacement;
-	public final fun suggestActivationPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
-	public final fun suggestWeightPlacement (Z)Lsk/ainet/lang/tensor/storage/Placement;
-}
-
 public final class sk/ainet/lang/tensor/storage/MemoryTracker {
 	public fun <init> ()V
 	public final fun clear ()V
@@ -7210,30 +7194,22 @@ public final class sk/ainet/lang/tensor/storage/PackedBlockStorage$DefaultImpls 
 	public static synthetic fun toTensorStorage$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 }
 
-public abstract interface annotation class sk/ainet/lang/tensor/storage/Place : java/lang/annotation/Annotation {
-	public abstract fun device ()Lsk/ainet/lang/tensor/storage/DeviceKind;
-	public abstract fun memory ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
-	public abstract fun requirement ()Lsk/ainet/lang/tensor/storage/Requirement;
-}
-
 public final class sk/ainet/lang/tensor/storage/Placement {
 	public static final field Companion Lsk/ainet/lang/tensor/storage/Placement$Companion;
 	public fun <init> ()V
-	public fun <init> (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lsk/ainet/lang/tensor/storage/DeviceKind;
 	public final fun component2 ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
-	public final fun component3 ()Lsk/ainet/lang/tensor/storage/Residency;
-	public final fun component4 ()Lsk/ainet/lang/tensor/storage/Requirement;
-	public final fun component5 ()Lsk/ainet/lang/tensor/storage/DeviceKind;
-	public final fun copy (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;)Lsk/ainet/lang/tensor/storage/Placement;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Residency;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/Placement;
+	public final fun component3 ()Lsk/ainet/lang/tensor/storage/Requirement;
+	public final fun component4 ()Lsk/ainet/lang/tensor/storage/DeviceKind;
+	public final fun copy (Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;)Lsk/ainet/lang/tensor/storage/Placement;
+	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/Placement;Lsk/ainet/lang/tensor/storage/DeviceKind;Lsk/ainet/lang/tensor/storage/MemoryDomain;Lsk/ainet/lang/tensor/storage/Requirement;Lsk/ainet/lang/tensor/storage/DeviceKind;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/Placement;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDevice ()Lsk/ainet/lang/tensor/storage/DeviceKind;
 	public final fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public final fun getFallback ()Lsk/ainet/lang/tensor/storage/DeviceKind;
 	public final fun getRequirement ()Lsk/ainet/lang/tensor/storage/Requirement;
-	public final fun getResidency ()Lsk/ainet/lang/tensor/storage/Residency;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -7244,37 +7220,12 @@ public final class sk/ainet/lang/tensor/storage/Placement$Companion {
 	public final fun getMMAP_WEIGHTS ()Lsk/ainet/lang/tensor/storage/Placement;
 }
 
-public final class sk/ainet/lang/tensor/storage/PlacementUnavailableException : java/lang/RuntimeException {
-	public fun <init> (Ljava/lang/String;)V
-}
-
 public final class sk/ainet/lang/tensor/storage/Requirement : java/lang/Enum {
 	public static final field PREFERRED Lsk/ainet/lang/tensor/storage/Requirement;
 	public static final field REQUIRED Lsk/ainet/lang/tensor/storage/Requirement;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/Requirement;
 	public static fun values ()[Lsk/ainet/lang/tensor/storage/Requirement;
-}
-
-public final class sk/ainet/lang/tensor/storage/Residency : java/lang/Enum {
-	public static final field PERSISTENT Lsk/ainet/lang/tensor/storage/Residency;
-	public static final field TRANSIENT Lsk/ainet/lang/tensor/storage/Residency;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/Residency;
-	public static fun values ()[Lsk/ainet/lang/tensor/storage/Residency;
-}
-
-public final class sk/ainet/lang/tensor/storage/ResolvedPlacement {
-	public fun <init> (Lsk/ainet/lang/tensor/storage/Placement;Z)V
-	public final fun component1 ()Lsk/ainet/lang/tensor/storage/Placement;
-	public final fun component2 ()Z
-	public final fun copy (Lsk/ainet/lang/tensor/storage/Placement;Z)Lsk/ainet/lang/tensor/storage/ResolvedPlacement;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/ResolvedPlacement;Lsk/ainet/lang/tensor/storage/Placement;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/ResolvedPlacement;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getActual ()Lsk/ainet/lang/tensor/storage/Placement;
-	public final fun getUsedFallback ()Z
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class sk/ainet/lang/tensor/storage/StorageMemoryReport {
@@ -7306,37 +7257,6 @@ public final class sk/ainet/lang/tensor/storage/StorageMemoryReport {
 	public final fun isFileBacked ()Z
 	public final fun isMutable ()Z
 	public fun toString ()Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/tensor/storage/StorageSpec {
-	public static final field Companion Lsk/ainet/lang/tensor/storage/StorageSpec$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Lsk/ainet/lang/tensor/storage/LogicalDType;
-	public final fun component2 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
-	public final fun component3 ()Lsk/ainet/lang/tensor/storage/Ownership;
-	public final fun component4 ()Lsk/ainet/lang/tensor/storage/Placement;
-	public final fun copy (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/storage/StorageSpec;Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/Ownership;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getDtype ()Lsk/ainet/lang/types/DType;
-	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
-	public final fun getLogicalType ()Lsk/ainet/lang/tensor/storage/LogicalDType;
-	public final fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
-	public final fun getPlacement ()Lsk/ainet/lang/tensor/storage/Placement;
-	public fun hashCode ()I
-	public final fun toAllocationSpec (J)Lsk/ainet/lang/memory/AllocationSpec;
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/tensor/storage/StorageSpec$Companion {
-	public final fun borrowed (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public final fun fromDType (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public final fun mmapWeights (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public final fun q4k (Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public static synthetic fun q4k$default (Lsk/ainet/lang/tensor/storage/StorageSpec$Companion;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public final fun q80 (Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/StorageSpec;
-	public static synthetic fun q80$default (Lsk/ainet/lang/tensor/storage/StorageSpec$Companion;Lsk/ainet/lang/tensor/storage/Placement;ILjava/lang/Object;)Lsk/ainet/lang/tensor/storage/StorageSpec;
 }
 
 public abstract interface class sk/ainet/lang/tensor/storage/TensorEncoding {
@@ -7636,10 +7556,6 @@ public final class sk/ainet/lang/tensor/storage/TurboQuantKvCacheStore : sk/aine
 	public fun readValueStorage (III)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun readValues (III)[F
 	public fun valueWindow (III)Lsk/ainet/lang/memory/WindowedKV;
-}
-
-public abstract interface annotation class sk/ainet/lang/tensor/storage/Weights : java/lang/annotation/Annotation {
-	public abstract fun memory ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
 }
 
 public final class sk/ainet/lang/trace/CompositeSink : sk/ainet/lang/trace/OpSink {
