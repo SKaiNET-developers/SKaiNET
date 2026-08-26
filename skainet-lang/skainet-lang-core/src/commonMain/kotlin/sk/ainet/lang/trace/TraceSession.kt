@@ -1,6 +1,8 @@
 package sk.ainet.lang.trace
 
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.TensorId
+import sk.ainet.lang.tensor.ops.inferTensorEncoding
 import sk.ainet.lang.types.*
 
 /**
@@ -11,6 +13,19 @@ public open class TraceSession {
     private var nextId = 0
     private val tensorToRef = mutableMapOf<Any, TensorRef>()
     private val refToId = mutableMapOf<String, Tensor<*, *>>()
+    private val identities = mutableMapOf<Any, TensorId>()
+
+    /**
+     * Register [tensor]'s module-path identity so its [TensorRef] carries it (#1178).
+     *
+     * A tensor does not know which parameter it is — the module that owns it does. Whoever
+     * holds that knowledge (e.g. the HLO generator walking `trainableParameters()` before
+     * recording) calls this *before* the tensor's first [refOf]; refs are immutable and cached,
+     * so identities registered later do not retrofit existing refs.
+     */
+    public open fun identify(tensor: Tensor<*, *>, id: TensorId) {
+        identities[unwrap(tensor)] = id
+    }
     
     /**
      * Get or create a TensorRef for the given tensor.
@@ -35,7 +50,9 @@ public open class TraceSession {
             val ref = TensorRef(
                 id = "t${nextId++}",
                 shape = tensor.shape,
-                dtype = dtypeInstance
+                dtype = dtypeInstance,
+                tensorId = identities[key],
+                encoding = tensor.data.inferTensorEncoding(),
             )
             refToId[ref.id] = tensor
             ref
