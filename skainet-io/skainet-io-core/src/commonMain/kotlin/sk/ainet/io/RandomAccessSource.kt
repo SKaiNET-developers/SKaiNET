@@ -62,7 +62,7 @@ public interface RandomAccessSource : AutoCloseable {
      * The path these bytes came from, when they came from a file — `null` for a Blob, a network
      * stream or an in-memory source.
      *
-     * This is what lets a loader honour `StagingPolicy.MAPPED` (#1037): the same source that reads
+     * This is what lets a loader honour `WeightResidency.MAPPED` (#1037, #1159): the same source that reads
      * the header positionally can name the file to map for the tensor payloads. Defaulted, so no
      * existing implementation has to change.
      */

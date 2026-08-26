@@ -11,8 +11,8 @@ import java.nio.channels.FileChannel
 /**
  * Memory-mapped GGUF weight access for the JVM and Android (#921).
  *
- * Since #1037 this is the **per-tensor** face of `StagingPolicy.MAPPED`: to load a whole model
- * from mapped pages, pass `staging = StagingPolicy.MAPPED` to [StreamingGgufParametersLoader] and
+ * Since #1037 this is the **per-tensor** face of `WeightResidency.MAPPED`: to load a whole model
+ * from mapped pages, pass `WeightForm(residency = WeightResidency.MAPPED)` to [StreamingGgufParametersLoader] and
  * get the same file-backed tensors through the ordinary loader. This class stays for callers that
  * want to reach individual tensors (or their `TensorStorage` descriptors) without loading a model.
  *

@@ -4,8 +4,8 @@ import android.app.ActivityManager
 import android.content.Context
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.openRandomAccessSource
-import sk.ainet.io.model.QuantPolicy
-import sk.ainet.io.model.StagingPolicy
+import sk.ainet.lang.memory.plan.WeightForm
+import sk.ainet.lang.memory.plan.WeightResidency
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.plan.Budget
 import sk.ainet.lang.memory.plan.DeviceFit
@@ -22,7 +22,7 @@ import sk.ainet.lang.memory.plan.fitOn
  *
  * The managed heap is the binding constraint on a phone — hard-capped at 256 MB (512 MB with
  * `largeHeap`) no matter how much RAM the device has — so the Android configuration of the loader
- * is `staging = MAPPED`: weights come from file-backed pages the OS pages in on demand and evicts
+ * asks for `WeightResidency.MAPPED`: weights come from file-backed pages the OS pages in on demand and evicts
  * under pressure, and never count against the cap.
  *
  * What is *not* solved yet: packed (quantized) tensors still arrive as heap arrays, because the
@@ -36,20 +36,18 @@ public object AndroidGguf {
 
     /**
      * The loader Android should use: positional reads for the metadata, mapped pages for tensor
-     * payloads. [quantPolicy] is the caller's choice as usual; [staging] defaults to
-     * [StagingPolicy.MAPPED] and is a parameter only so a test or a benchmark can ask for the
-     * heap path explicitly.
+     * payloads. [weightForm] defaults to mapped residency — the managed heap is the binding
+     * constraint on a phone — and is a parameter only so a test or a benchmark can ask for the
+     * heap path (or a dequantizing form) explicitly.
      */
     public fun loader(
         filePath: String,
-        quantPolicy: QuantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
-        staging: StagingPolicy = StagingPolicy.MAPPED,
+        weightForm: WeightForm = WeightForm(residency = WeightResidency.MAPPED),
         onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
     ): StreamingGgufParametersLoader = StreamingGgufParametersLoader(
         sourceProvider = { openSource(filePath) },
         onProgress = onProgress,
-        quantPolicy = quantPolicy,
-        staging = staging,
+        weightForm = weightForm,
     )
 
     /**
@@ -88,7 +86,7 @@ public object AndroidGguf {
      * Will this model load on this device? Checks the header-derived plan against both pools —
      * managed heap and physical RAM — before a byte of payload is read.
      *
-     * @param weightsMapped whether the load will use [StagingPolicy.MAPPED] (what [loader] does)
+     * @param weightsMapped whether the load maps the file (`WeightResidency.MAPPED`, what [loader] does)
      */
     public fun fits(context: Context, filePath: String, ctx: Int, weightsMapped: Boolean = true): DeviceFit =
         fits(deviceMemory(context), filePath, ctx, weightsMapped)

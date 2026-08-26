@@ -3,7 +3,8 @@ package sk.ainet.io.gguf
 import kotlinx.coroutines.runBlocking
 import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.model.WeightOrientation
+import sk.ainet.lang.memory.plan.WeightForm
+import sk.ainet.lang.memory.plan.WeightShapeOrientation
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -30,13 +31,13 @@ class WeightOrientationTest {
         SyntheticGguf.tensor("blk.0.attn_q.weight", GGMLQuantizationType.Q8_0, elements = 384),
     )
 
-    private fun load(f: File, orientation: WeightOrientation): Map<String, Tensor<FP32, Float>> {
+    private fun load(f: File, form: WeightForm): Map<String, Tensor<FP32, Float>> {
         val ctx = DefaultDataExecutionContext()
         val out = LinkedHashMap<String, Tensor<FP32, Float>>()
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { JvmRandomAccessSource.open(f) },
-                weightOrientation = orientation,
+                weightForm = form,
             ).load<FP32, Float>(ctx, FP32::class) { name, t -> out[name] = t }
         }
         return out
@@ -47,8 +48,8 @@ class WeightOrientationTest {
         val f = SyntheticGguf.write(SyntheticGguf.tensor("w", GGMLQuantizationType.F32, elements = 12))
         try {
             // a 1-D tensor has no orientation to get wrong, and nothing changes for it either way
-            assertEquals(Shape(12), load(f, WeightOrientation.AS_STORED).getValue("w").shape)
-            assertEquals(Shape(12), load(f, WeightOrientation.OUT_IN).getValue("w").shape)
+            assertEquals(Shape(12), load(f, WeightForm()).getValue("w").shape)
+            assertEquals(Shape(12), load(f, WeightForm(shape = WeightShapeOrientation.OUT_IN)).getValue("w").shape)
         } finally {
             f.delete()
         }
@@ -58,8 +59,8 @@ class WeightOrientationTest {
     fun `OUT_IN reverses a 2-D weight's label and nothing else`() {
         val f = twoDimensionalFile()
         try {
-            val asStored = load(f, WeightOrientation.AS_STORED).getValue("w")
-            val outIn = load(f, WeightOrientation.OUT_IN).getValue("w")
+            val asStored = load(f, WeightForm()).getValue("w")
+            val outIn = load(f, WeightForm(shape = WeightShapeOrientation.OUT_IN)).getValue("w")
             assertEquals(Shape(64, 4), asStored.shape, "ne order: [in, out]")
             assertEquals(Shape(4, 64), outIn.shape, "logical order: [out, in]")
             assertContentEquals(

@@ -3,7 +3,8 @@ package sk.ainet.io.gguf
 import kotlinx.coroutines.runBlocking
 import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.model.QuantPolicy
+import sk.ainet.lang.memory.plan.EncodingRequest
+import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.TernaryCodec
 import sk.ainet.lang.memory.blockSpec
@@ -33,7 +34,7 @@ class GgufTernaryLoadTest {
         val (tq2, _, tq2Values) = SyntheticGguf.ternary("w_tq2", GGMLQuantizationType.TQ2_0, elements = 512)
         val file = SyntheticGguf.write(tq1, tq2)
         try {
-            val loaded = load(file, QuantPolicy.DEQUANTIZE_TO_FP32)
+            val loaded = load(file, WeightForm(encoding = EncodingRequest.DequantizeTo(FP32)))
             assertEquals(setOf("w_tq1", "w_tq2"), loaded.keys)
             for ((name, expected) in listOf("w_tq1" to tq1Values, "w_tq2" to tq2Values)) {
                 val data = loaded.getValue(name).data
@@ -72,7 +73,7 @@ class GgufTernaryLoadTest {
         val (tq2, bytes, values) = SyntheticGguf.ternary("w", GGMLQuantizationType.TQ2_0, elements = 256 * 3)
         val file = SyntheticGguf.write(tq2)
         try {
-            val loaded = load(file, QuantPolicy.DEQUANTIZE_TO_FP32).getValue("w").data
+            val loaded = load(file, WeightForm(encoding = EncodingRequest.DequantizeTo(FP32))).getValue("w").data
             val actual = (loaded as FloatArrayTensorData<*>).buffer.copyOf(values.size)
             assertContentEquals(TernaryCodec.decodeTq2_0(bytes, values.size), actual, "loader vs reference codec")
             assertContentEquals(values, actual)
@@ -81,13 +82,13 @@ class GgufTernaryLoadTest {
         }
     }
 
-    private fun load(file: File, policy: QuantPolicy): Map<String, Tensor<FP32, Float>> {
+    private fun load(file: File, form: WeightForm): Map<String, Tensor<FP32, Float>> {
         val ctx = DefaultDataExecutionContext()
         val loaded = mutableMapOf<String, Tensor<FP32, Float>>()
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { JvmRandomAccessSource.open(file) },
-                quantPolicy = policy,
+                weightForm = form,
             ).load<FP32, Float>(ctx, FP32::class) { name, tensor -> loaded[name] = tensor }
         }
         return loaded

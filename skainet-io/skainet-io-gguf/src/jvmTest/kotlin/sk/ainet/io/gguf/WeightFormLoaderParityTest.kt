@@ -3,9 +3,6 @@ package sk.ainet.io.gguf
 import kotlinx.coroutines.runBlocking
 import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.model.QuantPolicy
-import sk.ainet.io.model.StagingPolicy
-import sk.ainet.io.model.WeightOrientation
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.plan.EncodingRequest
 import sk.ainet.lang.memory.plan.WeightByteOrder
@@ -22,15 +19,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * #1115: the loader takes one `WeightForm` where it took three flags, and the change is a change of
- * *spelling only*.
- *
- * That is the claim worth testing, because it is the one that can quietly be false. Every
- * combination of the three deprecated parameters is loaded twice — once through them, once through
- * the `WeightForm` they map to — and the two must agree on shapes and on every element. If the
- * mapping is wrong anywhere, some cell of that product disagrees.
+ * #1115/#1159: `WeightForm` is the loader's whole configuration surface. The flags-vs-form parity
+ * matrix this file used to hold retired with the flags themselves; what remains pins the form
+ * axes the loader validates and honours.
  */
-@Suppress("DEPRECATION")
 @OptIn(ExperimentalMemoryApi::class)
 class WeightFormLoaderParityTest {
 
@@ -55,60 +47,6 @@ class WeightFormLoaderParityTest {
     }
 
     @Test
-    fun `every combination of the three flags loads identically through the form it maps to`() {
-        val f = file()
-        try {
-            for (quant in listOf(QuantPolicy.NATIVE_OPTIMIZED, QuantPolicy.DEQUANTIZE_TO_FP32)) {
-                for (staging in listOf(StagingPolicy.HEAP, StagingPolicy.MAPPED)) {
-                    for (orientation in listOf(WeightOrientation.AS_STORED, WeightOrientation.OUT_IN)) {
-                        val viaFlags = loadVia(f) { src ->
-                            StreamingGgufParametersLoader(
-                                sourceProvider = src,
-                                quantPolicy = quant,
-                                staging = staging,
-                                weightOrientation = orientation,
-                            )
-                        }
-                        val viaForm = loadVia(f) { src ->
-                            StreamingGgufParametersLoader(
-                                sourceProvider = src,
-                                weightForm = WeightForm(
-                                    encoding = when (quant) {
-                                        QuantPolicy.DEQUANTIZE_TO_FP32 -> EncodingRequest.DequantizeTo(FP32)
-                                        else -> EncodingRequest.KeepAsStored
-                                    },
-                                    shape = when (orientation) {
-                                        WeightOrientation.OUT_IN -> WeightShapeOrientation.OUT_IN
-                                        else -> WeightShapeOrientation.AS_STORED
-                                    },
-                                    residency = when (staging) {
-                                        StagingPolicy.MAPPED -> WeightResidency.MAPPED
-                                        else -> WeightResidency.HEAP
-                                    },
-                                ),
-                            )
-                        }
-
-                        val label = "$quant/$staging/$orientation"
-                        assertEquals(viaFlags.keys, viaForm.keys, "$label: different tensors came out")
-                        for ((name, flagsTensor) in viaFlags) {
-                            val formTensor = viaForm.getValue(name)
-                            assertEquals(flagsTensor.shape, formTensor.shape, "$label: $name shape")
-                            assertContentEquals(
-                                flagsTensor.data.copyToFloatArray(),
-                                formTensor.data.copyToFloatArray(),
-                                "$label: $name values",
-                            )
-                        }
-                    }
-                }
-            }
-        } finally {
-            f.delete()
-        }
-    }
-
-    @Test
     fun `the default loader is the default form`() {
         val f = file()
         try {
@@ -124,19 +62,6 @@ class WeightFormLoaderParityTest {
         } finally {
             f.delete()
         }
-    }
-
-    @Test
-    fun `setting both a form and a flag is refused rather than silently resolved`() {
-        // One of the two would have to lose, and a caller who set a flag believes it is in effect.
-        val failure = assertFailsWith<IllegalArgumentException> {
-            StreamingGgufParametersLoader(
-                sourceProvider = { JvmRandomAccessSource.open(file()) },
-                staging = StagingPolicy.MAPPED,
-                weightForm = WeightForm.AS_STORED_ON_HEAP,
-            )
-        }
-        assertTrue(failure.message!!.contains("pass only the form"), failure.message!!)
     }
 
     @Test

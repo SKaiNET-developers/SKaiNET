@@ -31,7 +31,7 @@ import platform.posix.strerror
 public class PosixPreadRandomAccessSource private constructor(
     private val fd: Int,
     override val size: Long,
-    /** The file these bytes come from — what `StagingPolicy.MAPPED` would map (#1037). */
+    /** The file these bytes come from — what `WeightResidency.MAPPED` would map (#1037, #1159). */
     override val filePath: String? = null,
 ) : RandomAccessSource {
 

@@ -27,7 +27,7 @@ public class AndroidRandomAccessSource private constructor(
     private val channel: FileChannel,
     private val raf: RandomAccessFile,
     override val size: Long,
-    /** The file these bytes come from — what `StagingPolicy.MAPPED` maps (#1037). */
+    /** The file these bytes come from — what `WeightResidency.MAPPED` maps (#1037, #1159). */
     override val filePath: String? = null,
 ) : RandomAccessSource {
 
