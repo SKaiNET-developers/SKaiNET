@@ -63,7 +63,7 @@ class NativeTernaryF32GemvKernelTest {
         val weight = ByteArray(256) { it.toByte() }
         val expected = referenceGemv(input, weight, 0, inputDim, 1)
         val out = FloatArray(1)
-        NativeTernaryF32GemvKernel.gemv(input, 0, weight, 0, inputDim, 1, out, 0)
+        NativeTernaryF32GemvKernel.gemvPacked(input, 0, weight, 0, inputDim, 1, out, 0)
         assertEquals(expected[0], out[0], "all-bytes golden must match bit-exactly")
     }
 
@@ -71,7 +71,7 @@ class NativeTernaryF32GemvKernelTest {
     fun byte_code_3_decodes_to_plus_two() {
         // 0xFF = four 2-bit codes of 3 → each lane decodes to +2.0.
         val out = FloatArray(1)
-        NativeTernaryF32GemvKernel.gemv(
+        NativeTernaryF32GemvKernel.gemvPacked(
             floatArrayOf(1f, 1f, 1f, 1f), 0,
             byteArrayOf(0xFF.toByte()), 0,
             4, 1, out, 0,
@@ -88,7 +88,7 @@ class NativeTernaryF32GemvKernelTest {
         val weight = ByteArray(outputDim * inputDim / 4).also { rng.nextBytes(it) }
         val expected = referenceGemv(input, weight, 0, inputDim, outputDim)
         val out = FloatArray(outputDim)
-        NativeTernaryF32GemvKernel.gemv(input, 0, weight, 0, inputDim, outputDim, out, 0)
+        NativeTernaryF32GemvKernel.gemvPacked(input, 0, weight, 0, inputDim, outputDim, out, 0)
         for (i in out.indices) {
             val diff = abs(expected[i] - out[i])
             assertTrue(
@@ -112,11 +112,11 @@ class NativeTernaryF32GemvKernelTest {
         val weight = ByteArray(outputDim * rowBytes).also { rng.nextBytes(it) }
 
         val threaded = FloatArray(outputDim)
-        NativeTernaryF32GemvKernel.gemv(input, 0, weight, 0, inputDim, outputDim, threaded, 0)
+        NativeTernaryF32GemvKernel.gemvPacked(input, 0, weight, 0, inputDim, outputDim, threaded, 0)
 
         val perRow = FloatArray(outputDim)
         for (n in 0 until outputDim) {
-            NativeTernaryF32GemvKernel.gemv(
+            NativeTernaryF32GemvKernel.gemvPacked(
                 input, 0, weight, n * rowBytes, inputDim, 1, perRow, n,
             )
         }
@@ -139,7 +139,7 @@ class NativeTernaryF32GemvKernelTest {
         weight[5] = 0x22
         weight[6] = 0x22
         val out = FloatArray(4) { -1f }
-        NativeTernaryF32GemvKernel.gemv(input, pad, weight, 5, inputDim, 2, out, 2)
+        NativeTernaryF32GemvKernel.gemvPacked(input, pad, weight, 5, inputDim, 2, out, 2)
         // in (after offset) = 1..8; row0 decode = {+1,-1,+1,-1, +1,-1,+1,-1}
         // → 1-2+3-4+5-6+7-8 = -4; row1 all zeros → 0.
         assertEquals(-1f, out[0]); assertEquals(-1f, out[1])
@@ -149,7 +149,7 @@ class NativeTernaryF32GemvKernelTest {
     @Test
     fun rejects_non_multiple_of_4_input_dim() {
         assertFailsWith<IllegalArgumentException> {
-            NativeTernaryF32GemvKernel.gemv(
+            NativeTernaryF32GemvKernel.gemvPacked(
                 FloatArray(6), 0, ByteArray(2), 0, 6, 1, FloatArray(1), 0,
             )
         }
@@ -157,7 +157,7 @@ class NativeTernaryF32GemvKernelTest {
 
     @Test
     fun zero_output_dim_is_no_op() {
-        NativeTernaryF32GemvKernel.gemv(
+        NativeTernaryF32GemvKernel.gemvPacked(
             FloatArray(4) { 1f }, 0, ByteArray(1), 0, 4, 0, FloatArray(0), 0,
         )
     }
@@ -165,7 +165,7 @@ class NativeTernaryF32GemvKernelTest {
     @Test
     fun zero_input_dim_zeros_output() {
         val out = FloatArray(3) { 9f }
-        NativeTernaryF32GemvKernel.gemv(
+        NativeTernaryF32GemvKernel.gemvPacked(
             FloatArray(0), 0, ByteArray(0), 0, 0, 3, out, 0,
         )
         for (v in out) assertEquals(0f, v, "output should be zeroed for inputDim=0")
