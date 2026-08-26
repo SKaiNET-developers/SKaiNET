@@ -38,18 +38,18 @@ import sk.ainet.lang.memory.ExperimentalMemoryApi
  * first ternary FFM consumer.
  */
 @OptIn(ExperimentalMemoryApi::class)
-internal object NativeTernaryF32GemvKernel : TernaryF32GemvNative {
+public object NativeTernaryF32GemvKernel : TernaryF32GemvNative {
 
     override val name: String get() = "ffm"
 
-    fun isAvailable(): Boolean = handle != null
+    public fun isAvailable(): Boolean = handle != null
 
     /**
      * Register this kernel with [TernaryF32KernelPack] when the bundled
      * library resolves; without it the pack warns and dispatch keeps the
      * int8-requantize path. Returns the serving kernel name.
      */
-    fun install(warn: (String) -> Unit = {}): String =
+    public fun install(warn: (String) -> Unit = {}): String =
         TernaryF32KernelPack.install(if (isAvailable()) this else null, warn = warn)
 
     override fun gemvPacked(

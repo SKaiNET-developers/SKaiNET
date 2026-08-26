@@ -1,0 +1,196 @@
+= Ternary networks: getting started
+:description: Train a classifier in FP32, shrink its weights 16× to 2-bit ternary, and run it with exact math on a Raspberry Pi — natively, with the vendored NeoGPU LUT kernel.
+
+A ternary network stores each weight as one of `{-1, 0, +1}` — two *bits*
+instead of thirty-two. This tutorial takes a small classifier from the
+`sequential { }` DSL through FP32 training to a 2-bit packed model running
+through SKaiNET's exact ternary kernel on a Raspberry Pi 4 class board
+(Cortex-A72), where the kernel was tuned in the first place.
+
+Three things make this path different from ordinary quantization:
+
+* *~16× less weight memory.* The `BITNET_B1_58` layout packs four weights per
+  byte plus one FP32 scale per tensor — 0.25 bytes per weight against 4 for
+  FP32.
+* *Exact results.* Activations stay FP32 end to end. A ternary weight is an
+  add, a subtract, or nothing, so the kernel's output equals the FP32 matmul
+  against the decoded weight (only float summation order differs). There is no
+  activation-quantization error to budget for — the alternative W1.58A8 int8
+  path trades ~1.5 % error for `sdot` throughput; this path trades nothing.
+* *Baseline NEON only.* The SIMD kernel (vendored from
+  https://github.com/anjaustin/neogpu[NeoGPU], MIT) uses a 4 KB decode LUT and
+  plain `vfmaq_f32` — no `FEAT_DotProd` required. That makes it the fast path
+  precisely on Pi-4/Cortex-A72 class cores, where dotprod-dependent kernels
+  fall back to scalar.
+
+== The weight layout
+
+`TensorEncoding.BITNET_B1_58` is the storage format (the same packing BitNet
+b1.58 uses). For a `[n, k]` weight matrix, the flattened `n·k` ternary codes
+are packed sequentially, four per byte, low bit-pair first, and the buffer
+ends with one little-endian FP32 scale:
+
+----
+byte i:  bits[1:0] -> element 4i      code 0 -> -1
+         bits[3:2] -> element 4i+1    code 1 ->  0
+         bits[5:4] -> element 4i+2    code 2 -> +1
+         bits[7:6] -> element 4i+3
+payload = ceil(n·k / 4) bytes, then 4 bytes FP32 per-tensor scale
+----
+
+`TernaryCodec.encodeBitNet` writes this layout; the native kernel reads the
+payload directly and the dispatcher applies the scale to the output.
+
+== Step 1 — Define and train the model in FP32
+
+Nothing about the architecture changes for ternary. This is the same
+MNIST-shaped classifier as the
+xref:tutorials/kotlin-getting-started.adoc[Kotlin getting started] tutorial —
+define it, train it there, and keep the trained FP32 weights:
+
+[source,kotlin]
+----
+val model = sequential<FP32, Float>(ctx) {
+    input(784)                                   // 28x28 flattened
+    dense(128) { activation = { it.relu() } }    // hidden layer
+    dense(10) { activation = { it.softmax(1) } } // class scores
+}
+----
+
+Training stays FP32 (see the
+xref:tutorials/kotlin-getting-started.adoc#train[training section]); ternary
+weights are produced *from* the trained model. For a small classifier,
+straight post-training ternarization (next step) typically costs a few points
+of accuracy; quantization-aware training recovers most of it, but start simple
+and measure.
+
+== Step 2 — Ternarize the trained weights
+
+`TernaryCodec.encodeBitNet` performs absmean ternarization: it scales the
+tensor by the mean absolute value, rounds each weight to `{-1, 0, +1}`, packs
+four codes per byte, and appends the scale.
+
+[source,kotlin]
+----
+import sk.ainet.lang.memory.TernaryCodec
+
+// weights: FloatArray of the trained [n, k] dense weight, row-major
+val packed: ByteArray = TernaryCodec.encodeBitNet(weights)
+----
+
+The memory arithmetic for the classifier above — biases stay FP32, they are
+noise at this scale:
+
+[cols="2,1,1",options="header"]
+|===
+| Tensor | FP32 | BITNET_B1_58
+| `dense1.weight` `[128, 784]` | 392 KB | 24.5 KB + 4 B scale
+| `dense2.weight` `[10, 128]` | 5 KB | 0.32 KB + 4 B scale
+| *total weights* | *~397 KB* | *~25 KB*  (≈16×)
+|===
+
+The same ratio holds at any scale: a 2.4 B-parameter BitNet model's ternary
+tensors drop from ~9.6 GB FP32 to ~0.6 GB packed.
+
+== Step 3 — Run it through the exact kernel
+
+Wrap the packed bytes and the FP32 activations as views, and dispatch. The
+weight's *format* is what selects the kernel: `KernelDispatch.matmul` checks
+the exact key `matmul(FP32 dense × BITNET_B1_58)` before anything else, so the
+ternary fast path engages with no changes to your model code, your DSL, or the
+dispatcher.
+
+[source,kotlin]
+----
+import sk.ainet.backend.api.kernel.KernelDispatch
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.memory.TernaryBlockDecoder
+import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.TensorEncoding
+import sk.ainet.lang.types.FP32
+
+val weight = TensorView.packed(
+    Storage.Heap.wrap(packed), Shape(n, k), TensorEncoding.BITNET_B1_58,
+    TernaryBlockDecoder(TensorEncoding.BITNET_B1_58, n * k),
+)
+val activation = TensorView.dense(Storage.Heap.wrap(x), Shape(1, k), FP32)
+val logits = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+
+KernelDispatch.matmul(activation, weight, logits)
+----
+
+Without any native pack installed this already *works* — dispatch requantizes
+the activation to int8 and serves through the portable `bitnet_gemv`
+reference. Installing a pack upgrades it to the exact NEON path.
+
+== Step 4 — Native on the Raspberry Pi
+
+A Pi deployment is a Kotlin/Native `linuxArm64` binary. The kernels archive it
+links carries the LUT kernel compiled at `-march=armv8-a` — deliberately below
+the archive's usual `armv8.2` flags, so it runs (and runs fast) on the A72.
+One install call at startup wires it into dispatch:
+
+[source,kotlin]
+----
+import sk.ainet.exec.kernel.NativeKnTernaryF32Gemv
+
+fun main() {
+    NativeKnTernaryF32Gemv.install()   // "ternary_f32_gemv/cinterop" now serves
+    // ... load packed weights, serve requests ...
+}
+----
+
+Add the target and dependency in `build.gradle.kts`:
+
+[source,kotlin]
+----
+kotlin {
+    linuxArm64 { binaries.executable() }
+    sourceSets.commonMain.dependencies {
+        implementation("sk.ainet.core:skainet-backend-native-cpu")
+    }
+}
+----
+
+The same kernel, same C file, reaches every other deployment shape through its
+own one-line install:
+
+[cols="1,2,2",options="header"]
+|===
+| Target | Bridge | Install
+| Raspberry Pi / linuxArm64, iOS, macOS | Kotlin/Native cinterop | `NativeKnTernaryF32Gemv.install()`
+| Android | JNI (baseline `libskainet_jni.so` — every arm64 device, A72 included) | `JniTernaryF32Gemv.install()`
+| Desktop/server JVM | FFM (`java.lang.foreign`) | `NativeTernaryF32GemvKernel.install()`
+|===
+
+Removing a native artifact is never an error: the pack warns and dispatch
+falls back to the portable path — slower, still correct.
+
+== What to expect
+
+The kernel's upstream measurements on a Raspberry Pi 4 (Cortex-A72
+@ 1.8 GHz): 6.78 GOPS on the fused full-vocab projection with 4 threads
+against 3.20 GOPS for the int8 path (which also carries quantization error).
+It threads internally with pthreads once a projection has ≥ 512 output rows;
+below that it stays on the calling thread. For a small classifier the honest
+summary is: the *memory* win is the headline (your whole model fits in L2),
+and the exactness means ternarization is the only accuracy decision you have
+to make.
+
+== Status and roadmap
+
+The kernel, its dispatch pack, and all three bridges are merged
+(https://github.com/SKaiNET-developers/SKaiNET/issues/1136[#1136] tracks the
+effort; the C kernel is vendored verbatim from NeoGPU under MIT, agreed in
+https://github.com/anjaustin/neogpu/issues/1[neogpu#1]). In progress:
+
+* GGUF I2_S import with keep-packed loading
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1140[#1140]) — load a
+  BitNet-b1.58 GGUF and get packed `BITNET_B1_58` tensors instead of
+  FP32-widened ones, which will let a `dense` layer's weight arrive packed
+  without the manual `encodeBitNet` step above.
+* Benchmark scenario + tuning notes
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1141[#1141]).
+* BitNet model support in SKaiNET-transformers
+  (https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/335[transformers#335]).
