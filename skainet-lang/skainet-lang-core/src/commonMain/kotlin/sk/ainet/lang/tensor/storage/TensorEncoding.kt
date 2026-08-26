@@ -183,6 +183,46 @@ public sealed interface TensorEncoding {
     }
 
     /**
+     * NeoGPU's multi-plane trit residual format for lm_head-class `[rows, cols]` weights (#1150):
+     * **8 sequentially-packed ternary planes + one FP16 scale per row**.
+     *
+     * Per row, `scale = max|row|` (stored as FP16); the normalized row is decomposed by repeated
+     * round-to-trit with ×3 residual scaling, so plane `p` carries weight `1/3^p` and
+     *
+     *   `w[r, c] ≈ rowScale[r] · Σ_p (code_p(r, c) − 1) / 3^p`
+     *
+     * — effectively "16 bits as eight ternary digits", with truncation error ≤ `rowScale / (2·3⁷)`.
+     * Each plane is a full `[rows, cols]` matrix in the [BITNET_B1_58] payload order (4 codes per
+     * byte, low bit-pair first), `rows · cols/4` bytes, planes concatenated, then `rows` FP16
+     * little-endian scales. `cols % 4 == 0` required.
+     *
+     * The point is *speed*, not memory (2 B + ε per weight — FP16-sized): the fused 4-plane LUT
+     * kernel reads planes 0–3 in one pass on baseline NEON, and an application can rescore top
+     * candidates with planes 4–7 (NeoGPU's two-stage lm_head). [physicalBytes] is `null` — the
+     * layout depends on the row count, not just the element count.
+     */
+    public data object BITNET_PLANES : TensorEncoding {
+        /** Number of trit planes. */
+        public const val PLANES: Int = 8
+
+        /** Bytes of FP16 per-row scale, per row, after the plane payloads. */
+        public const val ROW_SCALE_BYTES: Int = 2
+
+        override val name: String get() = "BitNet-planes"
+        override fun physicalBytes(elementCount: Long): Long? = null
+
+        /** Bytes of one plane of a `[rows, cols]` weight (`cols % 4 == 0`). */
+        public fun planeStrideBytes(rows: Int, cols: Int): Int = rows * (cols / 4)
+
+        /** Byte offset of the FP16 row-scale table inside the buffer. */
+        public fun rowScalesByteOffset(rows: Int, cols: Int): Int = PLANES * planeStrideBytes(rows, cols)
+
+        /** Total buffer size of a `[rows, cols]` weight. */
+        public fun bufferBytes(rows: Int, cols: Int): Int =
+            rowScalesByteOffset(rows, cols) + rows * ROW_SCALE_BYTES
+    }
+
+    /**
      * TurboQuant PolarOnly encoding: rotation + scalar quantization + bit-packing.
      *
      * Backend-friendly variant that omits the QJL residual stage.

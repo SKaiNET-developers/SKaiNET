@@ -145,6 +145,45 @@ public class StreamingGgufParametersLoader(
     /** The dense FP32 size of [elements] — what every widening in this loader converts to. */
     private fun denseFp32Bytes(elements: Long): Long = elements * 4
 
+    /** Whether [form] asks for the one requantization this loader has (#1150). */
+    private fun planesRequested(form: WeightForm): Boolean =
+        (form.encoding as? EncodingRequest.RequantizeTo)?.encoding ==
+            sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_PLANES
+
+    /**
+     * Requantize [values] (row-major `[out, in]` — validateForm pinned the orientation) into a
+     * packed [sk.ainet.lang.tensor.data.BitNetPlanesTensorData] (#1150): 8 trit planes + FP16
+     * per-row scales, the lm_head format the planes kernel pack serves. Traced — a requantize is
+     * a conversion someone should be able to see.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> planesTensor(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        shape: Shape,
+        tensorName: String,
+        values: FloatArray,
+        bytesBefore: Long,
+        fromFormat: Format,
+    ): Tensor<T, V> {
+        require(shape.rank == 2) {
+            "tensor '$tensorName': RequantizeTo(BITNET_PLANES) needs a 2-D weight, got rank ${shape.rank}"
+        }
+        require(dtype == FP32::class) {
+            "tensor '$tensorName': BITNET_PLANES weights are logically FP32; requested $dtype"
+        }
+        val data = sk.ainet.lang.tensor.data.BitNetPlanesTensorData.fromFloats(shape, values)
+        traceConversion(
+            kind = "requantize-planes",
+            tensorName = tensorName,
+            from = fromFormat,
+            to = Format(FP32, sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_PLANES),
+            bytesBefore = bytesBefore,
+            bytesAfter = data.packedData.size.toLong(),
+        )
+        return ctx.fromData(data as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+    }
+
     /** The uniform form: [weightForm] if given, else the historical as-stored-on-heap default. */
     private val form: WeightForm = weightForm ?: WeightForm.AS_STORED_ON_HEAP
 
@@ -169,10 +208,18 @@ public class StreamingGgufParametersLoader(
                 "has no answer while the tensor is still labelled in the file's `ne` order."
         }
         val requested = form.encoding
-        require(requested !is EncodingRequest.RequantizeTo) {
-            "$where: EncodingRequest.RequantizeTo(${requested.let { (it as? EncodingRequest.RequantizeTo)?.encoding?.name }}) " +
-                "is not supported by this loader: re-quantizing a weight the file does not already " +
-                "carry needs a quantizer per target encoding, and none of them exist here yet."
+        if (requested is EncodingRequest.RequantizeTo) {
+            // #1150: the one requantizer this loader has. Everything else still fails eagerly.
+            require(requested.encoding == sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_PLANES) {
+                "$where: EncodingRequest.RequantizeTo(${requested.encoding.name}) is not supported " +
+                    "by this loader: re-quantizing a weight the file does not already carry needs a " +
+                    "quantizer per target encoding, and only BITNET_PLANES exists here (#1150)."
+            }
+            require(form.shape == WeightShapeOrientation.OUT_IN) {
+                "$where: RequantizeTo(BITNET_PLANES) needs WeightShapeOrientation.OUT_IN — the " +
+                    "format's scales are per output row, which has no answer while the tensor is " +
+                    "still labelled in the file's `ne` order."
+            }
         }
         val dequantTarget = (requested as? EncodingRequest.DequantizeTo)?.dtype
         require(dequantTarget == null || dequantTarget == FP32) {
@@ -252,7 +299,14 @@ public class StreamingGgufParametersLoader(
                         when (dtype) {
                             // The freshly decoded array is loader-owned — wrap it zero-copy
                             // instead of paying the factory's defensive copy (#782).
-                            FP32::class -> ctx.wrapFloatArray<T, Float>(shape, dtype, bytesToFloatArray(rawBytes)) as Tensor<T, V>
+                            FP32::class -> if (planesRequested(tensorForm)) {
+                                planesTensor(
+                                    ctx, dtype, shape, tensorInfo.name, bytesToFloatArray(rawBytes),
+                                    rawBytes.size.toLong(), Format.dense(FP32),
+                                )
+                            } else {
+                                ctx.wrapFloatArray<T, Float>(shape, dtype, bytesToFloatArray(rawBytes)) as Tensor<T, V>
+                            }
                             else -> null
                         }
                     }
@@ -274,11 +328,18 @@ public class StreamingGgufParametersLoader(
                             ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                         } else {
                             // Loader-owned widened array — zero-copy wrap (#782).
-                            traceConversion(
-                                "widen-f16", tensorInfo.name, Format.dense(FP16), Format.dense(FP32),
-                                rawBytes.size.toLong(), denseFp32Bytes(tensorInfo.nElements),
-                            )
-                            ctx.wrapFloatArray<T, Float>(shape, dtype, dequantF16(rawBytes)) as Tensor<T, V>
+                            if (planesRequested(tensorForm)) {
+                                planesTensor(
+                                    ctx, dtype, shape, tensorInfo.name, dequantF16(rawBytes),
+                                    rawBytes.size.toLong(), Format.dense(FP16),
+                                )
+                            } else {
+                                traceConversion(
+                                    "widen-f16", tensorInfo.name, Format.dense(FP16), Format.dense(FP32),
+                                    rawBytes.size.toLong(), denseFp32Bytes(tensorInfo.nElements),
+                                )
+                                ctx.wrapFloatArray<T, Float>(shape, dtype, dequantF16(rawBytes)) as Tensor<T, V>
+                            }
                         }
                         else -> null
                     }
@@ -356,6 +417,13 @@ public class StreamingGgufParametersLoader(
         rawBytes: ByteArray,
         tensorForm: WeightForm,
     ): Tensor<T, V> {
+        if (planesRequested(tensorForm) && dtype == FP32::class) {
+            val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
+            return planesTensor(
+                ctx, dtype, shape, tensorInfo.name, dest,
+                rawBytes.size.toLong(), ggufFormat(tensorInfo.tensorType, rawBytes.size.toLong()),
+            )
+        }
         if (tensorForm.encoding is EncodingRequest.DequantizeTo &&
             (dtype == FP32::class || dtype == FP16::class)
         ) {
@@ -501,6 +569,14 @@ public class StreamingGgufParametersLoader(
             bytesBefore = rawBytes.size.toLong(),
             bytesAfter = packedBytes.size.toLong(),
         )
+        if (planesRequested(tensorForm)) {
+            return planesTensor(
+                ctx, dtype, shape, tensorInfo.name,
+                sk.ainet.lang.memory.TernaryCodec.decodeBitNet(packedBytes, tensorInfo.nElements.toInt()),
+                rawBytes.size.toLong(),
+                Format(FP32, sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_B1_58),
+            )
+        }
         if (tensorForm.encoding is EncodingRequest.DequantizeTo) {
             val dest = sk.ainet.lang.memory.TernaryCodec.decodeBitNet(packedBytes, tensorInfo.nElements.toInt())
             traceConversion(

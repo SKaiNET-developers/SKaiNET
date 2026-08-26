@@ -185,6 +185,90 @@ public object TernaryCodec {
     public fun bitNetScale(bytes: ByteArray, elementCount: Int, byteOffset: Int = 0): Float =
         Float.fromBits(le32(bytes, byteOffset + (elementCount + 3) / 4))
 
+    // --- BitNet multi-plane trit residual (BITNET_PLANES, #1150) ------------------------------
+
+    /**
+     * Encode a `[rows, cols]` weight as [TensorEncoding.BITNET_PLANES] — the Kotlin port of
+     * NeoGPU's `hs_mlt_lmhead_encode`: per row, `scale = max|row|` stored as FP16; the row is
+     * normalized and decomposed by repeated round-to-trit (±0.5 threshold) with ×3 residual
+     * scaling into [TensorEncoding.BITNET_PLANES.PLANES] planes, each sequentially 2-bit-packed.
+     */
+    public fun encodeBitNetPlanes(values: FloatArray, rows: Int, cols: Int): ByteArray {
+        require(cols % 4 == 0) { "BITNET_PLANES needs cols % 4 == 0; got $cols" }
+        require(values.size == rows * cols) { "values (${values.size}) must be rows*cols (${rows * cols})" }
+        val planes = TensorEncoding.BITNET_PLANES.PLANES
+        val planeStride = TensorEncoding.BITNET_PLANES.planeStrideBytes(rows, cols)
+        val scalesOffset = TensorEncoding.BITNET_PLANES.rowScalesByteOffset(rows, cols)
+        val out = ByteArray(TensorEncoding.BITNET_PLANES.bufferBytes(rows, cols))
+        val rowBytes = cols / 4
+        val residual = FloatArray(cols)
+        for (r in 0 until rows) {
+            var scale = 0f
+            for (c in 0 until cols) {
+                val a = abs(values[r * cols + c])
+                if (a > scale) scale = a
+            }
+            val scaleBits = sk.ainet.lang.types.Fp16Codec.encode(scale)
+            out[scalesOffset + r * 2] = (scaleBits and 0xFF).toByte()
+            out[scalesOffset + r * 2 + 1] = ((scaleBits shr 8) and 0xFF).toByte()
+            // Decompose against the FP16-rounded scale the decoder will read, not the exact one —
+            // otherwise the stored trits answer for a scale that no longer exists.
+            val storedScale = sk.ainet.lang.types.Fp16Codec.decode(scaleBits)
+            val inv = if (storedScale != 0f) 1f / storedScale else 0f
+            for (c in 0 until cols) residual[c] = values[r * cols + c] * inv
+            for (p in 0 until planes) {
+                val base = p * planeStride + r * rowBytes
+                for (c in 0 until cols) {
+                    val v = residual[c]
+                    val t = if (v > 0.5f) 1 else if (v < -0.5f) -1 else 0
+                    val shift = (c % 4) * 2
+                    out[base + c / 4] = (out[base + c / 4].toInt() or ((t + 1) shl shift)).toByte()
+                    residual[c] = (v - t) * 3f
+                }
+            }
+        }
+        return out
+    }
+
+    /** Decode a full [TensorEncoding.BITNET_PLANES] buffer back to `rows*cols` floats (all planes). */
+    public fun decodeBitNetPlanes(bytes: ByteArray, rows: Int, cols: Int, byteOffset: Int = 0): FloatArray {
+        val out = FloatArray(rows * cols)
+        for (r in 0 until rows) decodeBitNetPlanesRow(bytes, rows, cols, r, out, r * cols, byteOffset)
+        return out
+    }
+
+    /** Decode one row of a [TensorEncoding.BITNET_PLANES] buffer into [out] at [outOffset]. */
+    public fun decodeBitNetPlanesRow(
+        bytes: ByteArray,
+        rows: Int,
+        cols: Int,
+        row: Int,
+        out: FloatArray,
+        outOffset: Int,
+        byteOffset: Int = 0,
+    ) {
+        val planeStride = TensorEncoding.BITNET_PLANES.planeStrideBytes(rows, cols)
+        val rowBytes = cols / 4
+        val scale = planesRowScale(bytes, rows, cols, row, byteOffset)
+        for (c in 0 until cols) {
+            var acc = 0f
+            var w = 1f
+            for (p in 0 until TensorEncoding.BITNET_PLANES.PLANES) {
+                val b = bytes[byteOffset + p * planeStride + row * rowBytes + c / 4].toInt() and 0xFF
+                acc += (((b shr ((c % 4) * 2)) and 3) - 1) * w
+                w /= 3f
+            }
+            out[outOffset + c] = acc * scale
+        }
+    }
+
+    /** The FP16 per-row scale of row [row] in a `[rows, cols]` [TensorEncoding.BITNET_PLANES] buffer. */
+    public fun planesRowScale(bytes: ByteArray, rows: Int, cols: Int, row: Int, byteOffset: Int = 0): Float {
+        val offset = byteOffset + TensorEncoding.BITNET_PLANES.rowScalesByteOffset(rows, cols) + row * 2
+        val bits = (bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8)
+        return sk.ainet.lang.types.Fp16Codec.decode(bits)
+    }
+
     // --- dispatch ----------------------------------------------------------------------------
 
     /**
