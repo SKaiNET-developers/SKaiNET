@@ -62,6 +62,14 @@ public object HloGenerator {
         ctx: DefaultGraphExecutionContext
     ) {
         val module = model.create(ctx)
+        // Register each parameter's module-path identity on the trace session before recording
+        // (#1178): the tensor itself does not know which parameter it is, and refs are immutable
+        // once created, so this must happen before the forward pass touches them. Unparsable
+        // names stay unidentified rather than guessed.
+        for (parameter in module.trainableParameters()) {
+            val parsed = runCatching { sk.ainet.lang.tensor.TensorId.parse(parameter.name) }.getOrNull()
+            if (parsed != null) ctx.session.identify(parameter.value, parsed)
+        }
         model.calculate(
             module = module,
             inputValue = sampleInput,

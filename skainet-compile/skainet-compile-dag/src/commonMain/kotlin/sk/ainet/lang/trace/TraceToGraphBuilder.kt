@@ -7,7 +7,9 @@ import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
 import sk.ainet.lang.tensor.ops.inferTensorEncoding
+import sk.ainet.lang.tensor.ops.tensorId
 import sk.ainet.lang.tensor.ops.withTensorEncoding
+import sk.ainet.lang.tensor.ops.withTensorId
 
 /**
  * Shared builder to convert OpTrace streams into a ComputeGraph.
@@ -291,6 +293,7 @@ public class TraceToGraphBuilder(
                     shape = weightShape,
                     dtype = weightDtype
                 ).withTensorEncoding(encoding)
+                    .withTensorId(refs.firstNotNullOfOrNull { it.spec.tensorId })
                 syntheticNode = GraphNode(
                     id = nodeId,
                     operation = op,
@@ -346,6 +349,8 @@ public class TraceToGraphBuilder(
             val shape = shapes?.getOrNull(i) ?: effectiveInputs[i].shape.dimensions.toList()
             val dtype = dtypes?.getOrNull(i) ?: effectiveInputs[i].dtype::class.simpleName ?: "unknown"
             TensorSpec(name = name, shape = shape, dtype = dtype)
+                .withTensorEncoding(effectiveInputs[i].encoding)
+                .withTensorId(effectiveInputs[i].tensorId)
         }
     }
 
@@ -358,6 +363,8 @@ public class TraceToGraphBuilder(
             val shape = shapes?.getOrNull(i) ?: trace.outputs[i].shape.dimensions.toList()
             val dtype = dtypes?.getOrNull(i) ?: trace.outputs[i].dtype::class.simpleName ?: "unknown"
             TensorSpec(name = name, shape = shape, dtype = dtype)
+                .withTensorEncoding(trace.outputs[i].encoding)
+                .withTensorId(trace.outputs[i].tensorId)
         }
     }
 
