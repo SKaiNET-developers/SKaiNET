@@ -122,6 +122,20 @@ public class StreamingGgufParametersLoader(
      */
     private val weightForm: WeightForm? = null,
     /**
+     * Per-tensor forms — the *user wins* channel (#1144).
+     *
+     * Precedence, explicit and documented: **this function > [weightForm] > the three legacy
+     * parameters > nothing**. Whatever you return for a tensor outranks every resolver and every
+     * profile — including the deliberately blunt `WeightForm(DequantizeTo(FP32), residency = HEAP)`
+     * ("everything dense, on the managed heap"). Return `null` for tensors you have no opinion on;
+     * they fall through to [weightForm] (or the legacy axes).
+     *
+     * The intended producer is `WeightFormResolver`/`resolveWeightForms` via [ResolvedGguf], which
+     * resolves per tensor from the file × profile × kernel capability — but the contract is the
+     * same for a hand-written lambda: the loader carries and obeys, it does not decide.
+     */
+    private val weightFormFor: ((tensorName: String) -> WeightForm?)? = null,
+    /**
      * Where conversions are reported (#1117).
      *
      * A weight that arrives in the form it will be used in costs nothing and says nothing. One that
@@ -184,14 +198,15 @@ public class StreamingGgufParametersLoader(
         },
     )
 
-    /** [QuantPolicy.DEQUANTIZE_TO_FP32] asked for through [form], whichever way it was set. */
-    private val dequantizeToDense: Boolean = form.encoding is EncodingRequest.DequantizeTo
-
-    /** [StagingPolicy.MAPPED] asked for through [form]. */
-    private val mapsTheFile: Boolean = form.residency == WeightResidency.MAPPED
-
-    /** [WeightOrientation.OUT_IN] asked for through [form]. */
-    private val reversesWeightShape: Boolean = form.shape == WeightShapeOrientation.OUT_IN
+    /**
+     * The form [tensorName] loads under — the precedence order of [weightFormFor], validated the
+     * same way the uniform [form] was at construction.
+     */
+    private fun formFor(tensorName: String): WeightForm {
+        val perTensor = weightFormFor?.invoke(tensorName) ?: return form
+        validateForm(perTensor, "weightFormFor('$tensorName')")
+        return perTensor
+    }
 
     init {
         require(quantPolicy != QuantPolicy.RAW_BYTES) {
@@ -199,32 +214,36 @@ public class StreamingGgufParametersLoader(
                 "tensors are preserved as packed block TensorData (NATIVE_OPTIMIZED) or " +
                 "dequantized to dense FP32 (DEQUANTIZE_TO_FP32)."
         }
-        if (weightForm != null) {
+        if (weightForm != null || weightFormFor != null) {
             require(
                 quantPolicy == QuantPolicy.NATIVE_OPTIMIZED &&
                     staging == StagingPolicy.HEAP &&
                     weightOrientation == WeightOrientation.AS_STORED,
             ) {
-                "a WeightForm and the quantPolicy/staging/weightOrientation parameters were both " +
-                    "set. They are the same three axes, so one of them would have been silently " +
-                    "ignored; pass only the form."
+                "a WeightForm (or weightFormFor) and the quantPolicy/staging/weightOrientation " +
+                    "parameters were both set. They are the same three axes, so one of them would " +
+                    "have been silently ignored; pass only the form."
             }
         }
+        validateForm(form, "weightForm")
+    }
+
+    private fun validateForm(form: WeightForm, where: String) {
         require(form.order == WeightByteOrder.AS_STORED || form.shape == WeightShapeOrientation.OUT_IN) {
-            "WeightByteOrder.KERNEL_FEED needs WeightShapeOrientation.OUT_IN: feed order is defined " +
-                "relative to a [out, in] weight — which block is 'block b of output row o' has no " +
-                "answer while the tensor is still labelled in the file's `ne` order."
+            "$where: WeightByteOrder.KERNEL_FEED needs WeightShapeOrientation.OUT_IN: feed order is " +
+                "defined relative to a [out, in] weight — which block is 'block b of output row o' " +
+                "has no answer while the tensor is still labelled in the file's `ne` order."
         }
         val requested = form.encoding
         require(requested !is EncodingRequest.RequantizeTo) {
-            "EncodingRequest.RequantizeTo(${requested.let { (it as? EncodingRequest.RequantizeTo)?.encoding?.name }}) " +
+            "$where: EncodingRequest.RequantizeTo(${requested.let { (it as? EncodingRequest.RequantizeTo)?.encoding?.name }}) " +
                 "is not supported by this loader: re-quantizing a weight the file does not already " +
                 "carry needs a quantizer per target encoding, and none of them exist here yet."
         }
         val dequantTarget = (requested as? EncodingRequest.DequantizeTo)?.dtype
         require(dequantTarget == null || dequantTarget == FP32) {
-            "EncodingRequest.DequantizeTo(${dequantTarget?.name}) is not supported: this loader " +
-                "dequantizes to FP32 only."
+            "$where: EncodingRequest.DequantizeTo(${dequantTarget?.name}) is not supported: this " +
+                "loader dequantizes to FP32 only."
         }
     }
 
@@ -233,9 +252,10 @@ public class StreamingGgufParametersLoader(
      * is reversed for `OUT_IN`, everything else is passed through as the file has it. Only 2-D
      * tensors are touched — a 1-D bias or norm has no orientation to get wrong.
      */
-    private fun shapeOf(tensorInfo: StreamingTensorInfo): Shape {
+    private fun shapeOf(tensorInfo: StreamingTensorInfo, form: WeightForm): Shape {
         val dims = tensorInfo.shape.map { it.toInt() }
-        val ordered = if (reversesWeightShape && dims.size == 2) dims.reversed() else dims
+        val reverses = form.shape == WeightShapeOrientation.OUT_IN
+        val ordered = if (reverses && dims.size == 2) dims.reversed() else dims
         return Shape(*ordered.toIntArray())
     }
 
@@ -248,7 +268,9 @@ public class StreamingGgufParametersLoader(
         val source = sourceProvider()
         // MAPPED staging needs a file to map; a Blob or an in-memory source has no path and
         // silently stays on the heap, which is the documented fallback rather than a failure.
-        val mapped = if (mapsTheFile) source.filePath?.let { openMappedFile(it) } else null
+        // With per-tensor forms the file is mapped whenever any tensor *might* ask for it.
+        val mightMap = form.residency == WeightResidency.MAPPED || weightFormFor != null
+        val mapped = if (mightMap) source.filePath?.let { openMappedFile(it) } else null
         try {
         StreamingGGUFReader.open(source).use { reader ->
             val tensors = reader.tensors
@@ -257,12 +279,15 @@ public class StreamingGgufParametersLoader(
             var current = 0L
 
             for (tensorInfo in tensors) {
-                val shape = shapeOf(tensorInfo)
+                val tensorForm = formFor(tensorInfo.name)
+                val shape = shapeOf(tensorInfo, tensorForm)
                 // A dense F32 tensor under MAPPED staging never reaches the heap: it is a view over
                 // file-backed pages. Everything else reads its bytes (out of the mapping when there
                 // is one — one page-cache copy instead of a channel read).
                 val mappedFloats: Tensor<T, V>? =
-                    if (mapped != null && tensorInfo.tensorType == GGMLQuantizationType.F32 && dtype == FP32::class) {
+                    if (mapped != null && tensorForm.residency == WeightResidency.MAPPED &&
+                        tensorInfo.tensorType == GGMLQuantizationType.F32 && dtype == FP32::class
+                    ) {
                         @Suppress("UNCHECKED_CAST")
                         ctx.fromData(
                             mapped.denseFloats<T>(tensorInfo.absoluteDataOffset, shape) as sk.ainet.lang.tensor.data.TensorData<T, V>,
@@ -340,7 +365,7 @@ public class StreamingGgufParametersLoader(
                     GGMLQuantizationType.Q5_0,
                     GGMLQuantizationType.Q5_1,
                     GGMLQuantizationType.TQ1_0,
-                    GGMLQuantizationType.TQ2_0 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes)
+                    GGMLQuantizationType.TQ2_0 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes, tensorForm)
 
                     else -> throw IllegalStateException(
                         "StreamingGgufParametersLoader: tensor '${tensorInfo.name}' of type " +
@@ -382,8 +407,9 @@ public class StreamingGgufParametersLoader(
         shape: Shape,
         tensorInfo: StreamingTensorInfo,
         rawBytes: ByteArray,
+        tensorForm: WeightForm,
     ): Tensor<T, V> {
-        if (dequantizeToDense &&
+        if (tensorForm.encoding is EncodingRequest.DequantizeTo &&
             (dtype == FP32::class || dtype == FP16::class)
         ) {
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
@@ -431,7 +457,7 @@ public class StreamingGgufParametersLoader(
                 "quantizedTensor called for non-quantized type ${tensorInfo.tensorType}"
             )
         }
-        val delivered = if (form.order == WeightByteOrder.KERNEL_FEED) feedOrdered(packed, tensorInfo) else packed
+        val delivered = if (tensorForm.order == WeightByteOrder.KERNEL_FEED) feedOrdered(packed, tensorInfo) else packed
         return ctx.fromData(delivered as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
     }
 
