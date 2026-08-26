@@ -1031,8 +1031,15 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
      */
     /** The heap packed data types whose kernels read input-block-major bytes. */
     private fun isHeapPackedWeight(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
-        data is Q4_KTensorData || data is Q5_KTensorData || data is Q6_KTensorData ||
-            data is Q5_1TensorData || data is Q5_0TensorData || data is Q8_0TensorData || data is Q4_0TensorData
+        // Any packed block storage, not an enumeration of formats (#1136 physiology: kernels are
+        // selected by the weight's storage format, and so is the Wᵀ-marker path that reaches them).
+        // The hardcoded Q-list this replaces silently excluded the ternary types
+        // (BitNetB158TensorData, BitNetPlanesTensorData), so `transpose` dense-copied them through
+        // a decoding get() that returns CODES, not values — a ClassCastException at best. The JVM
+        // tier keeps its own narrower list (isHeapPackedWeightForJvm) for the formats its
+        // relayout-and-cache kernels actually read; everything else lands in
+        // matmulWeightTransposedViaViews, which serves any encoding through KernelDispatch.
+        data is sk.ainet.lang.tensor.storage.PackedBlockStorage
 
     /**
      * The block relayout by its own name (#973/#1096) — what `transpose` used to do to a packed
