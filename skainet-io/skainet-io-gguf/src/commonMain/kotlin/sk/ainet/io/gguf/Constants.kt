@@ -48,7 +48,18 @@ enum class GGMLQuantizationType(val value: Int) {
     BF16(30),
     TQ1_0(34),
     TQ2_0(35),
-    // Note: types 31-33 and 36-38 have been removed in llama.cpp
+
+    /**
+     * BitNet.cpp's ternary type in the slot llama.cpp vacated (types 31-33 and
+     * 37-38 remain removed there). Not block-regular: the payload is 2-bit
+     * codes, 4 per byte, and the per-*tensor* FP32 scale sits in a trailer
+     * after the whole payload (BitNet.cpp) or in a companion `<name>_scale`
+     * tensor (NeoGPU's converter) — and the payload's bit order additionally
+     * depends on which converter wrote the file (see `I2sGgufLayout`). The
+     * loader normalizes all of it to `TensorEncoding.BITNET_B1_58` at load;
+     * I2_S never becomes a `TensorEncoding` of its own.
+     */
+    I2_S(36),
     MXFP4(39),
 
     /**
@@ -113,6 +124,11 @@ val GGML_QUANT_SIZES: Map<GGMLQuantizationType, Pair<Int, Int>> = mapOf(
     GGMLQuantizationType.BF16 to (1 to 2),
     GGMLQuantizationType.TQ1_0 to (256 to 2 + 4 * 13),
     GGMLQuantizationType.TQ2_0 to (256 to 2 + 64),
+    // I2_S: 4 codes per byte. This sizes the PAYLOAD only — the per-tensor
+    // scale trailer (BitNet.cpp writes 32 bytes after the payload; NeoGPU
+    // writes none) is deliberately outside the block math, read separately
+    // by the loader. See GGMLQuantizationType.I2_S.
+    GGMLQuantizationType.I2_S to (4 to 1),
     // MXFP4: Microscaling FP4 format - 32 elements per block, 17 bytes (16 for data + 1 for scale)
     GGMLQuantizationType.MXFP4 to (32 to 17)
 )
