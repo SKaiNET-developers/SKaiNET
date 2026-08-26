@@ -7,8 +7,10 @@ import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
 import sk.ainet.lang.tensor.ops.inferTensorEncoding
+import sk.ainet.lang.tensor.ops.blockOrder
 import sk.ainet.lang.tensor.ops.tensorId
 import sk.ainet.lang.tensor.ops.withTensorEncoding
+import sk.ainet.lang.tensor.ops.withBlockOrder
 import sk.ainet.lang.tensor.ops.withTensorId
 
 /**
@@ -294,6 +296,7 @@ public class TraceToGraphBuilder(
                     dtype = weightDtype
                 ).withTensorEncoding(encoding)
                     .withTensorId(refs.firstNotNullOfOrNull { it.spec.tensorId })
+                    .withBlockOrder(refs.firstNotNullOfOrNull { it.spec.blockOrder })
                 syntheticNode = GraphNode(
                     id = nodeId,
                     operation = op,
@@ -351,6 +354,7 @@ public class TraceToGraphBuilder(
             TensorSpec(name = name, shape = shape, dtype = dtype)
                 .withTensorEncoding(effectiveInputs[i].encoding)
                 .withTensorId(effectiveInputs[i].tensorId)
+                .withBlockOrder(effectiveInputs[i].blockOrder)
         }
     }
 
@@ -365,6 +369,7 @@ public class TraceToGraphBuilder(
             TensorSpec(name = name, shape = shape, dtype = dtype)
                 .withTensorEncoding(trace.outputs[i].encoding)
                 .withTensorId(trace.outputs[i].tensorId)
+                .withBlockOrder(trace.outputs[i].blockOrder)
         }
     }
 

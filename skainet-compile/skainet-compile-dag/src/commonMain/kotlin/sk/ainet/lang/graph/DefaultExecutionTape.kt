@@ -6,6 +6,7 @@ import sk.ainet.lang.tensor.withRequiresGrad
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.withTensorEncoding
+import sk.ainet.lang.tensor.ops.withBlockOrder
 import sk.ainet.lang.tensor.ops.withTensorId
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.trace.OpTrace
@@ -82,7 +83,7 @@ public open class DefaultExecutionTape(
                     name = ref.id,
                     shape = inputShapes?.getOrNull(i) ?: ref.shape.dimensions.toList(),
                     dtype = inputDTypes?.getOrNull(i) ?: ref.dtype.name,
-                ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId)
+                ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId).withBlockOrder(ref.blockOrder)
             }
             val outputs = List(trace.outputs.size) { i ->
                 val ref = trace.outputs[i]
@@ -90,7 +91,7 @@ public open class DefaultExecutionTape(
                     name = ref.id,
                     shape = outputShapes?.getOrNull(i) ?: ref.shape.dimensions.toList(),
                     dtype = outputDTypes?.getOrNull(i) ?: ref.dtype.name,
-                ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId)
+                ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId).withBlockOrder(ref.blockOrder)
             }
 
             val op = object : sk.ainet.lang.tensor.ops.Operation {
@@ -128,7 +129,7 @@ public open class DefaultExecutionTape(
                 shape = tensor.shape.dimensions.toList(),
                 dtype = tensor.dtype.toString(),
                 requiresGrad = tensor.requiresGrad
-            ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId)
+            ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId).withBlockOrder(ref.blockOrder)
         }
 
         val outputSpecs = outputs.map { tensor ->
@@ -138,7 +139,7 @@ public open class DefaultExecutionTape(
                 shape = tensor.shape.dimensions.toList(),
                 dtype = tensor.dtype.toString(),
                 requiresGrad = tensor.requiresGrad
-            ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId)
+            ).withTensorEncoding(ref.encoding).withTensorId(ref.tensorId).withBlockOrder(ref.blockOrder)
         }
 
         val recordedOp = RecordedOperation(

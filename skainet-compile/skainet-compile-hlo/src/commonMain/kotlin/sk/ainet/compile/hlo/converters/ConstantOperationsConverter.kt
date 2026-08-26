@@ -9,6 +9,7 @@ import sk.ainet.compile.hlo.elementCountFromShape
 import sk.ainet.compile.hlo.floatArrayToLittleEndianBytes
 import sk.ainet.compile.hlo.numberListToLittleEndianBytes
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.ops.blockOrder
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.tensorEncoding
 import sk.ainet.lang.tensor.storage.BufferHandle
@@ -439,7 +440,8 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 scope = scope,
                 key = key,
                 encoding = encoding,
-                source = BufferHandle.Owned(bytes)
+                source = BufferHandle.Owned(bytes),
+                blockOrder = outputSpec.blockOrder,
             )
         )
         // Bind the global to an archive entry via the IREE flow-dialect
@@ -514,7 +516,8 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 scope = scope,
                 key = key,
                 encoding = encoding,
-                source = BufferHandle.Owned(bytes)
+                source = BufferHandle.Owned(bytes),
+                blockOrder = outputSpec.blockOrder,
             )
         )
         context.emitModuleDeclaration(

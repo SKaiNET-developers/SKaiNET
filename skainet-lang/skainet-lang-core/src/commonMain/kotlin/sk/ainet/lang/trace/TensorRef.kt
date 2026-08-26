@@ -21,4 +21,6 @@ public data class TensorRef(
     val dtype: DType,
     val tensorId: TensorId? = null,
     val encoding: TensorEncoding? = null,
+    /** Physical block order of packed storage as a stable string (`ROW_MAJOR`/`INPUT_BLOCK_MAJOR`), or null. */
+    val blockOrder: String? = null,
 )

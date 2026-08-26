@@ -134,14 +134,17 @@ public final class sk/ainet/compile/hlo/DeadCodeEliminationPass : sk/ainet/compi
 }
 
 public final class sk/ainet/compile/hlo/ExternalParameterRef {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun component4 ()Lsk/ainet/lang/tensor/storage/BufferHandle;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;)Lsk/ainet/compile/hlo/ExternalParameterRef;
-	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/ExternalParameterRef;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;ILjava/lang/Object;)Lsk/ainet/compile/hlo/ExternalParameterRef;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Ljava/lang/String;)Lsk/ainet/compile/hlo/ExternalParameterRef;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/ExternalParameterRef;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferHandle;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/ExternalParameterRef;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlockOrder ()Ljava/lang/String;
 	public final fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun getKey ()Ljava/lang/String;
 	public final fun getScope ()Ljava/lang/String;

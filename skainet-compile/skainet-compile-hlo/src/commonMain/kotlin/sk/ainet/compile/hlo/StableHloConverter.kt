@@ -3,6 +3,7 @@ package sk.ainet.compile.hlo
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.ops.TensorSpec
+import sk.ainet.lang.tensor.ops.blockOrder
 import sk.ainet.lang.tensor.ops.tensorEncoding
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
@@ -61,11 +62,11 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
         val functionSignature = buildFunctionSignature(inputNodes, outputSpecs, functionName)
 
         // Collect every TensorSpec with a non-null tensorEncoding into a
-        // single name -> encoding map. Emitting this as a structured
+        // single name -> structural-facts map. Emitting this as a structured
         // MLIR attribute on the module header lets downstream tools
-        // enumerate every encoded tensor via one attribute lookup
-        // instead of string-matching against scattered comments.
-        val tensorEncodings = collectTensorEncodings(topo)
+        // enumerate every encoded tensor via one attribute lookup —
+        // block sizes and bit widths as integers, not display names (#1179).
+        val structuralLayouts = collectStructuralLayouts(topo)
 
         // Process nodes first, then assemble the final content.
         // Converters populate two buffers on the context — op emissions
@@ -78,11 +79,11 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
         processNodes(topo, context)
         generateReturnStatement(outputNodes, context)
 
-        val moduleHeader = if (tensorEncodings.isNotEmpty()) {
-            val dictEntries = tensorEncodings.entries
+        val moduleHeader = if (structuralLayouts.isNotEmpty()) {
+            val layoutEntries = structuralLayouts.entries
                 .sortedBy { it.key }
-                .joinToString(", ") { (name, encoding) -> "$name = \"${encoding.name}\"" }
-            "module attributes {skainet.tensor_encodings = {$dictEntries}} {"
+                .joinToString(", ") { (name, attr) -> "$name = $attr" }
+            "module attributes {skainet.tensor_layouts = {$layoutEntries}} {"
         } else {
             "module {"
         }
@@ -248,19 +249,45 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
      * extension and does not exist in Kotlin common-stdlib for WasmJS
      * / JS / Native targets.
      */
-    private fun collectTensorEncodings(nodes: List<GraphNode>): Map<String, TensorEncoding> {
-        val result = linkedMapOf<String, TensorEncoding>()
+    /**
+     * Structural per-tensor storage facts for the module header (#1179): unlike
+     * `skainet.tensor_encodings` (display names, kept for compatibility), these entries are
+     * machine-readable — block element counts, block bytes, bit widths, block order — so a
+     * downstream consumer can size and address packed weights without a lookup table of names.
+     */
+    private fun collectStructuralLayouts(nodes: List<GraphNode>): Map<String, String> {
+        val result = linkedMapOf<String, String>()
         for (node in nodes) {
-            for (spec in node.outputs) {
+            for (spec in node.outputs + node.inputs) {
                 val encoding = spec.tensorEncoding ?: continue
-                if (spec.name !in result) result[spec.name] = encoding
-            }
-            for (spec in node.inputs) {
-                val encoding = spec.tensorEncoding ?: continue
-                if (spec.name !in result) result[spec.name] = encoding
+                if (spec.name in result) continue
+                result[spec.name] = structuralAttr(encoding, spec.blockOrder)
             }
         }
         return result
+    }
+
+    private fun structuralAttr(encoding: TensorEncoding, blockOrder: String?): String {
+        val facts = buildList {
+            add("kind = \"" + encoding.name + "\"")
+            when (encoding) {
+                is TensorEncoding.Dense -> add("bytes_per_element = " + encoding.bytesPerElement)
+                TensorEncoding.Q4_K -> { add("block_elems = " + TensorEncoding.Q4_K.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q4_K.BYTES_PER_BLOCK) }
+                TensorEncoding.Q5_K -> { add("block_elems = " + TensorEncoding.Q5_K.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q5_K.BYTES_PER_BLOCK) }
+                TensorEncoding.Q6_K -> { add("block_elems = " + TensorEncoding.Q6_K.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q6_K.BYTES_PER_BLOCK) }
+                TensorEncoding.Q4_0 -> { add("block_elems = " + TensorEncoding.Q4_0.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q4_0.BYTES_PER_BLOCK) }
+                TensorEncoding.Q8_0 -> { add("block_elems = " + TensorEncoding.Q8_0.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q8_0.BYTES_PER_BLOCK) }
+                TensorEncoding.Q5_0 -> { add("block_elems = " + TensorEncoding.Q5_0.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q5_0.BYTES_PER_BLOCK) }
+                TensorEncoding.Q5_1 -> { add("block_elems = " + TensorEncoding.Q5_1.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.Q5_1.BYTES_PER_BLOCK) }
+                TensorEncoding.TQ1_0 -> { add("block_elems = " + TensorEncoding.TQ1_0.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.TQ1_0.BYTES_PER_BLOCK) }
+                TensorEncoding.TQ2_0 -> { add("block_elems = " + TensorEncoding.TQ2_0.BLOCK_SIZE); add("block_bytes = " + TensorEncoding.TQ2_0.BYTES_PER_BLOCK) }
+                is TensorEncoding.TurboQuantPolar -> { add("bits = " + encoding.bitsPerElement); add("block_elems = " + encoding.blockSize) }
+                TensorEncoding.TernaryPacked -> add("bits = 2")
+                else -> { /* kind alone: unknown structure is stated, not invented */ }
+            }
+            if (blockOrder != null) add("block_order = \"" + blockOrder + "\"")
+        }
+        return "{" + facts.joinToString(", ") + "}"
     }
 
     /**
