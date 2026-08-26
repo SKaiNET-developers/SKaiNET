@@ -54,13 +54,17 @@ jobs:
             tasks: testAndroidHostTest
           # golden-parity: the SKEEP-003 packed-encoding gate (#1005). Bit-identical decode /
           # scalar-kernel / TurboQuant digests on JVM and Kotlin/Native plus the dispatch parity
-          # tests, and the binary-compatibility check (apiCheck) that the contributing docs require
-          # but the per-target test legs do not run. Fast (a few minutes) so it fails early.
+          # tests. Fast (a few minutes) so it fails early.
           - name: golden-parity
             tasks: >-
-              apiCheck
               :skainet-backends:skainet-backend-cpu:jvmTest --tests sk.ainet.exec.golden.*
               :skainet-backends:skainet-backend-cpu:linuxX64Test --tests sk.ainet.exec.golden.*
+          # api-compatibility: the binary-compatibility check the contributing docs require but the
+          # per-target test legs do not run. Its own leg — not folded into golden-parity — so a
+          # stale api dump reads as "api-compatibility ✘" instead of a red parity leg nobody
+          # associates with dumps (#1171 merged a stale dump exactly that way; #1174 repaired it).
+          - name: api-compatibility
+            tasks: apiCheck
 
     permissions:
       contents: read
