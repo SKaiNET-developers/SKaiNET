@@ -15,9 +15,6 @@ import sk.ainet.lang.memory.plan.WeightByteOrder
 import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.memory.plan.WeightResidency
 import sk.ainet.lang.memory.plan.WeightShapeOrientation
-import sk.ainet.io.model.QuantPolicy
-import sk.ainet.io.model.StagingPolicy
-import sk.ainet.io.model.WeightOrientation
 import sk.ainet.io.openMappedFile
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -71,64 +68,23 @@ public class StreamingGgufParametersLoader(
      */
     private val keepBf16Native: Boolean = false,
     /**
-     * How quantized tensors are materialized (#782).
+     * The form weights should take in memory — encoding × byte order × shape × residency as one
+     * decision (#1109, #1115, #1159).
      *
-     * - [QuantPolicy.NATIVE_OPTIMIZED] (default — the loader's historical behavior):
-     *   quantized tensors are delivered as packed block [TensorData]; F32/F16/BF16
-     *   are dense FP32 (subject to [keepF16Native]/[keepBf16Native]).
-     * - [QuantPolicy.DEQUANTIZE_TO_FP32]: quantized tensors are dequantized
-     *   *streaming, per tensor, block-by-block into the destination `FloatArray`*,
-     *   which is then wrapped zero-copy. Peak transient memory per tensor is the
-     *   packed source bytes only — there is no full-size intermediate copy.
-     * - [QuantPolicy.RAW_BYTES] is not supported by this loader (it preserves
-     *   packed block storage instead) and is rejected eagerly.
-     */
-    private val quantPolicy: QuantPolicy = QuantPolicy.NATIVE_OPTIMIZED,
-    /**
-     * Where tensor bytes live on their way into a tensor (#1037). [QuantPolicy] says *what* the
-     * values are; this says *where the bytes are* — the two axes of one loader.
-     *
-     * - [StagingPolicy.HEAP] (default — today's behaviour): every tensor is read onto the heap.
-     * - [StagingPolicy.MAPPED]: the file is mapped once and dense F32 tensors are served as
-     *   zero-heap views over its pages (what `MappedGgufWeights` did as a separate helper). Packed
-     *   tensors still come through as heap arrays, because that is what their kernels take until
-     *   #973; and the whole thing falls back to heap staging when the platform cannot map or the
-     *   source is not a file, so a browser build behaves exactly as before.
-     */
-    private val staging: StagingPolicy = StagingPolicy.HEAP,
-    /**
-     * Which way round a 2-D weight's shape comes out (#1098, #973 census contradiction #6).
-     *
-     * GGUF writes dimensions in `ne` order, so a weight the rest of the engine calls `[out, in]`
-     * arrives labelled `[in, out]` — while its *bytes* are already `[out, in]` row-major. Nothing
-     * about the data changes here; only the label. [WeightOrientation.OUT_IN] fixes the label,
-     * which is what the packed block relayout needs to compute the right permutation.
-     *
-     * Defaults to [WeightOrientation.AS_STORED], today's behaviour, because reversing shapes
-     * changes what every consumer sees. New code should ask for `OUT_IN`.
-     */
-    private val weightOrientation: WeightOrientation = WeightOrientation.AS_STORED,
-    /**
-     * The form weights should take in memory, as one decision instead of three (#1109, #1115).
-     *
-     * [quantPolicy], [staging] and [weightOrientation] are the same three axes asked separately,
-     * and asked of the *caller* — who has to answer for a device they may not be building for.
-     * `WeightFormResolver.resolve(stored, profile, capabilities)` answers instead, from what the
-     * file holds, what the device is, and what the backend's kernels can feed.
-     *
-     * `null` (the default) means "use the three parameters", so every existing caller is
-     * byte-identical. Passing a form while also setting any of the three is rejected rather than
-     * silently resolved, so nobody loses a setting they thought they had.
+     * `null` (the default) means [WeightForm.AS_STORED_ON_HEAP]: the file's bytes, its order, on
+     * the heap — the loader's historical behaviour. Callers who know their device pass a form;
+     * callers who don't let `WeightFormResolver`/[ResolvedGguf] resolve one from what the file
+     * holds, what the device is, and what the backend's kernels can feed.
      */
     private val weightForm: WeightForm? = null,
     /**
      * Per-tensor forms — the *user wins* channel (#1144).
      *
-     * Precedence, explicit and documented: **this function > [weightForm] > the three legacy
-     * parameters > nothing**. Whatever you return for a tensor outranks every resolver and every
-     * profile — including the deliberately blunt `WeightForm(DequantizeTo(FP32), residency = HEAP)`
+     * Precedence, explicit and documented: **this function > [weightForm] > the as-stored-on-heap
+     * default**. Whatever you return for a tensor outranks every resolver and every profile —
+     * including the deliberately blunt `WeightForm(DequantizeTo(FP32), residency = HEAP)`
      * ("everything dense, on the managed heap"). Return `null` for tensors you have no opinion on;
-     * they fall through to [weightForm] (or the legacy axes).
+     * they fall through to [weightForm].
      *
      * The intended producer is `WeightFormResolver`/`resolveWeightForms` via [ResolvedGguf], which
      * resolves per tensor from the file × profile × kernel capability — but the contract is the
@@ -181,22 +137,8 @@ public class StreamingGgufParametersLoader(
     /** The dense FP32 size of [elements] — what every widening in this loader converts to. */
     private fun denseFp32Bytes(elements: Long): Long = elements * 4
 
-    /** The three axes as one value: [weightForm] if given, otherwise what the three parameters say. */
-    private val form: WeightForm = weightForm ?: WeightForm(
-        encoding = when (quantPolicy) {
-            QuantPolicy.DEQUANTIZE_TO_FP32 -> EncodingRequest.DequantizeTo(FP32)
-            else -> EncodingRequest.KeepAsStored
-        },
-        order = WeightByteOrder.AS_STORED,
-        shape = when (weightOrientation) {
-            WeightOrientation.OUT_IN -> WeightShapeOrientation.OUT_IN
-            else -> WeightShapeOrientation.AS_STORED
-        },
-        residency = when (staging) {
-            StagingPolicy.MAPPED -> WeightResidency.MAPPED
-            else -> WeightResidency.HEAP
-        },
-    )
+    /** The uniform form: [weightForm] if given, else the historical as-stored-on-heap default. */
+    private val form: WeightForm = weightForm ?: WeightForm.AS_STORED_ON_HEAP
 
     /**
      * The form [tensorName] loads under — the precedence order of [weightFormFor], validated the
@@ -209,22 +151,6 @@ public class StreamingGgufParametersLoader(
     }
 
     init {
-        require(quantPolicy != QuantPolicy.RAW_BYTES) {
-            "StreamingGgufParametersLoader does not support QuantPolicy.RAW_BYTES — quantized " +
-                "tensors are preserved as packed block TensorData (NATIVE_OPTIMIZED) or " +
-                "dequantized to dense FP32 (DEQUANTIZE_TO_FP32)."
-        }
-        if (weightForm != null || weightFormFor != null) {
-            require(
-                quantPolicy == QuantPolicy.NATIVE_OPTIMIZED &&
-                    staging == StagingPolicy.HEAP &&
-                    weightOrientation == WeightOrientation.AS_STORED,
-            ) {
-                "a WeightForm (or weightFormFor) and the quantPolicy/staging/weightOrientation " +
-                    "parameters were both set. They are the same three axes, so one of them would " +
-                    "have been silently ignored; pass only the form."
-            }
-        }
         validateForm(form, "weightForm")
     }
 

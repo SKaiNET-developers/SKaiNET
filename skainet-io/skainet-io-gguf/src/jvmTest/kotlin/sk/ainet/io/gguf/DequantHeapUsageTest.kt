@@ -5,7 +5,8 @@ import kotlinx.io.buffered
 import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.io.gguf.dequant.DequantOps
-import sk.ainet.io.model.QuantPolicy
+import sk.ainet.lang.memory.plan.EncodingRequest
+import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.FP32
@@ -57,11 +58,11 @@ class DequantHeapUsageTest {
             val warmup = SyntheticGguf.write(
                 SyntheticGguf.tensor("w.q4k", GGMLQuantizationType.Q4_K, elements = 512),
             )
-            loadAll(warmup, QuantPolicy.DEQUANTIZE_TO_FP32)
+            loadAll(warmup, WeightForm(encoding = EncodingRequest.DequantizeTo(FP32)))
             warmup.delete()
 
             val before = allocatedBytes()
-            val loaded = loadAll(file, QuantPolicy.DEQUANTIZE_TO_FP32)
+            val loaded = loadAll(file, WeightForm(encoding = EncodingRequest.DequantizeTo(FP32)))
             val allocated = allocatedBytes() - before
 
             // Keep the result alive so the resident set is real.
@@ -190,13 +191,13 @@ class DequantHeapUsageTest {
     private fun sourceOf(file: File): kotlinx.io.Source =
         kotlinx.io.files.SystemFileSystem.source(kotlinx.io.files.Path(file.absolutePath)).buffered()
 
-    private fun loadAll(file: File, policy: QuantPolicy): Map<String, Tensor<FP32, Float>> {
+    private fun loadAll(file: File, form: WeightForm): Map<String, Tensor<FP32, Float>> {
         val ctx = DefaultDataExecutionContext()
         val loaded = mutableMapOf<String, Tensor<FP32, Float>>()
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { JvmRandomAccessSource.open(file) },
-                quantPolicy = policy,
+                weightForm = form,
             ).load<FP32, Float>(ctx, FP32::class) { name, tensor -> loaded[name] = tensor }
         }
         return loaded

@@ -3,7 +3,8 @@ package sk.ainet.io.gguf
 import kotlinx.coroutines.runBlocking
 import sk.ainet.context.DefaultDataExecutionContext
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.model.QuantPolicy
+import sk.ainet.lang.memory.plan.EncodingRequest
+import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
@@ -11,12 +12,11 @@ import sk.ainet.lang.types.FP32
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
  * Parity gate for the #782 fix: loading a GGUF with
- * [QuantPolicy.DEQUANTIZE_TO_FP32] (streaming per-tensor dequant into the
+ * `EncodingRequest.DequantizeTo(FP32)` (streaming per-tensor dequant into the
  * destination array, wrapped zero-copy) must produce bit-identical values to
  * the packed-block path that the loader has always used.
  *
@@ -41,8 +41,8 @@ class StreamingDequantPolicyParityTest {
             SyntheticGguf.tensor("w_f32", GGMLQuantizationType.F32, elements = 1024),
         )
         try {
-            val packedLoad = load(file, QuantPolicy.NATIVE_OPTIMIZED)
-            val dequantLoad = load(file, QuantPolicy.DEQUANTIZE_TO_FP32)
+            val packedLoad = load(file, WeightForm())
+            val dequantLoad = load(file, WeightForm(encoding = EncodingRequest.DequantizeTo(FP32)))
             assertEquals(packedLoad.keys, dequantLoad.keys)
 
             for ((name, dequantTensor) in dequantLoad) {
@@ -92,31 +92,20 @@ class StreamingDequantPolicyParityTest {
             SyntheticGguf.tensor("w_q4k", GGMLQuantizationType.Q4_K, elements = 512),
         )
         try {
-            val loaded = load(file, QuantPolicy.NATIVE_OPTIMIZED)
+            val loaded = load(file, WeightForm())
             assertTrue(loaded.getValue("w_q4k").data is PackedBlockStorage)
         } finally {
             file.delete()
         }
     }
 
-    @Test
-    fun `RAW_BYTES policy is rejected eagerly`() {
-        val e = assertFailsWith<IllegalArgumentException> {
-            StreamingGgufParametersLoader(
-                sourceProvider = { error("must not be opened") },
-                quantPolicy = QuantPolicy.RAW_BYTES,
-            )
-        }
-        assertTrue("RAW_BYTES" in (e.message ?: ""))
-    }
-
-    private fun load(file: File, policy: QuantPolicy): Map<String, Tensor<FP32, Float>> {
+    private fun load(file: File, form: WeightForm): Map<String, Tensor<FP32, Float>> {
         val ctx = DefaultDataExecutionContext()
         val loaded = mutableMapOf<String, Tensor<FP32, Float>>()
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { JvmRandomAccessSource.open(file) },
-                quantPolicy = policy,
+                weightForm = form,
             ).load<FP32, Float>(ctx, FP32::class) { name, tensor -> loaded[name] = tensor }
         }
         return loaded

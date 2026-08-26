@@ -61,7 +61,7 @@ public data class PoolFit(val name: String, val neededBytes: Long, val budgetByt
  * A [MemoryPlan] checked against a real device, pool by pool (M2-A5): the answer to "will this
  * model load on this phone", and when it will not, which pool ran out and what to do about it.
  *
- * @property weightsMapped whether the weights are loaded through `StagingPolicy.MAPPED`, i.e. from
+ * @property weightsMapped whether the weights are loaded through `WeightResidency.MAPPED`, i.e. from
  *   file-backed pages that never count against the managed heap.
  */
 @ExperimentalMemoryApi
@@ -111,7 +111,7 @@ public data class DeviceFit(
  * under a 512 MB cap and unremarkable when mapped. Physical RAM carries everything, mapped pages
  * included: they are evictable, not free.
  *
- * @param weightsMapped weights come from file-backed pages (`StagingPolicy.MAPPED`)
+ * @param weightsMapped weights come from file-backed pages (`WeightResidency.MAPPED`)
  */
 @ExperimentalMemoryApi
 public fun MemoryPlan.fitOn(device: DeviceMemory, weightsMapped: Boolean): DeviceFit {

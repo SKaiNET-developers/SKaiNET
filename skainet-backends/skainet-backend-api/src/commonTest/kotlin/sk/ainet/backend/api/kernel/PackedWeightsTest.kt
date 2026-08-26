@@ -116,7 +116,7 @@ class PackedWeightsTest {
             PackedWeights.requireOutIn(rows = 128, inputDim = 3, encoding = TensorEncoding.Q8_0)
         }
         assertTrue(failure.message!!.contains("looks like [in, out]"), failure.message!!)
-        assertTrue(failure.message!!.contains("WeightOrientation.OUT_IN"), "and says how to fix it")
+        assertTrue(failure.message!!.contains("WeightShapeOrientation.OUT_IN"), "and says how to fix it")
 
         PackedWeights.requireOutIn(rows = 3, inputDim = 128, encoding = TensorEncoding.Q8_0)
     }

@@ -21,7 +21,7 @@ import sk.ainet.lang.tensor.storage.MemoryDomain
  * @property dequantWarnFraction dispatcher-inserted dequantization above this share of the bytes a
  *   decode step reads is worth a warning — it means a kernel is missing for the format on disk
  * @property strict turn those warnings into failures
- * @property weightsMapped weights are expected to load through `StagingPolicy.MAPPED`
+ * @property weightsMapped weights are expected to load through `WeightResidency.MAPPED`
  */
 @ExperimentalMemoryApi
 public data class PlannerProfile(

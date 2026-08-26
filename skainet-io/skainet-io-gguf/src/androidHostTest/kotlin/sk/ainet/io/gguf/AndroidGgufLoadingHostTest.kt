@@ -2,8 +2,7 @@ package sk.ainet.io.gguf
 
 import kotlinx.coroutines.runBlocking
 import sk.ainet.context.DefaultDataExecutionContext
-import sk.ainet.io.model.QuantPolicy
-import sk.ainet.io.model.StagingPolicy
+import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.memory.ExperimentalMemoryApi
 import sk.ainet.lang.memory.plan.DeviceMemory
 import sk.ainet.lang.memory.plan.PlannerProfile
@@ -87,7 +86,7 @@ class AndroidGgufLoadingHostTest {
                 "dense F32 must come from file-backed pages on Android, got ${mapped.getValue("w_f32").data::class.simpleName}",
             )
             // and the heap path is still reachable, producing the same numbers
-            val onHeap = load(AndroidGguf.loader(f.absolutePath, staging = StagingPolicy.HEAP))
+            val onHeap = load(AndroidGguf.loader(f.absolutePath, weightForm = WeightForm()))
             assertTrue(onHeap.getValue("w_f32").data is FloatArrayTensorData<*>)
             assertContentEquals(
                 onHeap.getValue("w_f32").data.copyToFloatArray(),
