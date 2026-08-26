@@ -103,6 +103,14 @@ public class StreamingGgufParametersLoader(
      * Defaults to [NoopTraceSink]: nothing is recorded and nothing is allocated.
      */
     private val traceSink: TraceSink = NoopTraceSink,
+    /**
+     * The bit order I2_S (type 36) payloads in this file are in — a property of the converter
+     * that wrote the file, not recoverable from the bytes (#1140, see [I2sGgufLayout]). Defaults
+     * to [I2sGgufLayout.GROUP_128], the BitNet.cpp x86 pipeline behind the commonly published
+     * GGUFs. Wrong-layout loads fail fast on code 3 where possible, but a misdeclared layout can
+     * also decode silently wrong — this knob is the caller's responsibility.
+     */
+    private val i2sLayout: I2sGgufLayout = I2sGgufLayout.GROUP_128,
 ) : ParametersLoader {
 
     /**
@@ -205,6 +213,14 @@ public class StreamingGgufParametersLoader(
             var current = 0L
 
             for (tensorInfo in tensors) {
+                // NeoGPU's I2_S converter emits a companion `<name>_scale` F32 scalar per ternary
+                // weight; it is consumed by the I2_S branch below (folded into the BITNET_B1_58
+                // trailer), never delivered as a parameter of its own.
+                if (isI2sCompanionScale(tensorInfo, tensors)) {
+                    current += 1
+                    onProgress(current, total, tensorInfo.name)
+                    continue
+                }
                 val tensorForm = formFor(tensorInfo.name)
                 val shape = shapeOf(tensorInfo, tensorForm)
                 // A dense F32 tensor under MAPPED staging never reaches the heap: it is a view over
@@ -292,6 +308,11 @@ public class StreamingGgufParametersLoader(
                     GGMLQuantizationType.Q5_1,
                     GGMLQuantizationType.TQ1_0,
                     GGMLQuantizationType.TQ2_0 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes, tensorForm)
+
+                    GGMLQuantizationType.I2_S -> i2sTensor(
+                        ctx, dtype, shape, tensorInfo, rawBytes, tensorForm,
+                        scale = resolveI2sScale(tensorInfo, tensors, reader, source),
+                    )
 
                     else -> throw IllegalStateException(
                         "StreamingGgufParametersLoader: tensor '${tensorInfo.name}' of type " +
@@ -385,6 +406,115 @@ public class StreamingGgufParametersLoader(
         }
         val delivered = if (tensorForm.order == WeightByteOrder.KERNEL_FEED) feedOrdered(packed, tensorInfo) else packed
         return ctx.fromData(delivered as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+    }
+
+    /**
+     * Whether [tensorInfo] is a NeoGPU-converter companion scale — an F32 scalar named
+     * `<weight>_scale` next to an I2_S tensor of that name. Consumed by [resolveI2sScale],
+     * skipped as a parameter.
+     */
+    private fun isI2sCompanionScale(
+        tensorInfo: StreamingTensorInfo,
+        tensors: List<StreamingTensorInfo>,
+    ): Boolean =
+        tensorInfo.tensorType == GGMLQuantizationType.F32 &&
+            tensorInfo.name.endsWith("_scale") &&
+            tensors.any {
+                it.tensorType == GGMLQuantizationType.I2_S &&
+                    "${it.name}_scale" == tensorInfo.name
+            }
+
+    /**
+     * The per-tensor FP32 scale of an I2_S weight, from wherever its converter put it (#1140):
+     *
+     * - **BitNet.cpp** writes it as a trailer after the payload (a 32-byte-aligned region whose
+     *   first 4 bytes are the LE FP32 scale; `w = (code − 1) · scale`). Read directly from the
+     *   source at `absoluteDataOffset + payload` — [StreamingTensorInfo.nBytes] deliberately
+     *   sizes the payload only.
+     * - **NeoGPU's converter** writes a companion `<name>_scale` F32 scalar, defined as "divide
+     *   the projection output by it" — so the stored multiplier is its inverse.
+     * - Neither present (or unreadable/non-finite/zero): `1.0`, i.e. the raw codes. Loud in the
+     *   trace via the repack conversion's byte counts, never a crash.
+     *
+     * The flavor decides which source is tried first; both are accepted either way, because a
+     * sequential file with a trailer or a group file with a companion costs nothing to honour.
+     */
+    private fun resolveI2sScale(
+        tensorInfo: StreamingTensorInfo,
+        tensors: List<StreamingTensorInfo>,
+        reader: StreamingGGUFReader,
+        source: RandomAccessSource,
+    ): Float {
+        fun trailer(): Float? = runCatching {
+            val bytes = source.readAt(tensorInfo.absoluteDataOffset + tensorInfo.nBytes, 4)
+            val bits = (bytes[0].toInt() and 0xFF) or
+                ((bytes[1].toInt() and 0xFF) shl 8) or
+                ((bytes[2].toInt() and 0xFF) shl 16) or
+                ((bytes[3].toInt() and 0xFF) shl 24)
+            Float.fromBits(bits)
+        }.getOrNull()?.takeIf { it.isFinite() && it != 0f }
+
+        fun companionInverse(): Float? {
+            val companion = tensors.firstOrNull {
+                it.tensorType == GGMLQuantizationType.F32 && it.name == "${tensorInfo.name}_scale"
+            } ?: return null
+            val value = runCatching { bytesToFloatArray(reader.loadTensorData(companion)).firstOrNull() }
+                .getOrNull() ?: return null
+            if (!value.isFinite() || value == 0f) return null
+            return 1f / value
+        }
+
+        return when (i2sLayout) {
+            I2sGgufLayout.GROUP_128, I2sGgufLayout.GROUP_64 -> trailer() ?: companionInverse() ?: 1f
+            I2sGgufLayout.SEQUENTIAL -> companionInverse() ?: trailer() ?: 1f
+        }
+    }
+
+    /**
+     * Materialize an I2_S tensor (#1140): repack the payload into the sequential `BITNET_B1_58`
+     * order under [i2sLayout] (code 3 fails fast in [I2sRepack]), fold [scale] into the trailer,
+     * and keep it packed — 0.25 bytes per weight instead of the #1033 FP32 widening. A
+     * `DequantizeTo` form still gets dense FP32, decoded through the same codec the kernels are
+     * defined against.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> i2sTensor(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        shape: Shape,
+        tensorInfo: StreamingTensorInfo,
+        rawBytes: ByteArray,
+        tensorForm: WeightForm,
+        scale: Float,
+    ): Tensor<T, V> {
+        require(dtype == FP32::class || dtype == FP16::class) {
+            "tensor '${tensorInfo.name}' is I2_S; ternary weights are logically FP32, so the " +
+                "requested dtype $dtype is not supported"
+        }
+        val payload = I2sRepack.toSequentialPayload(rawBytes, tensorInfo.nElements.toInt(), i2sLayout)
+        val packedBytes = I2sRepack.withScale(payload, scale)
+        traceConversion(
+            kind = "repack-i2s",
+            tensorName = tensorInfo.name,
+            from = ggufFormat(GGMLQuantizationType.I2_S, rawBytes.size.toLong()),
+            to = Format(FP32, sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_B1_58),
+            bytesBefore = rawBytes.size.toLong(),
+            bytesAfter = packedBytes.size.toLong(),
+        )
+        if (tensorForm.encoding is EncodingRequest.DequantizeTo) {
+            val dest = sk.ainet.lang.memory.TernaryCodec.decodeBitNet(packedBytes, tensorInfo.nElements.toInt())
+            traceConversion(
+                kind = "widen-i2s",
+                tensorName = tensorInfo.name,
+                from = Format(FP32, sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_B1_58),
+                to = Format.dense(FP32),
+                bytesBefore = packedBytes.size.toLong(),
+                bytesAfter = denseFp32Bytes(tensorInfo.nElements),
+            )
+            return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
+        }
+        val packed = sk.ainet.lang.tensor.data.BitNetB158TensorData(shape, packedBytes)
+        return ctx.fromData(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
     }
 
     /**
@@ -489,6 +619,10 @@ public class StreamingGgufParametersLoader(
             // cannot read the same bytes differently.
             GGMLQuantizationType.TQ1_0,
             GGMLQuantizationType.TQ2_0,
+            // #1140: BitNet.cpp / NeoGPU ternary. Repacked at load into the
+            // sequential BITNET_B1_58 layout and kept packed (0.25 B/weight)
+            // — the first ternary type that does NOT widen to FP32 (#1033).
+            GGMLQuantizationType.I2_S,
         )
 
         private const val MAX_LISTED_TENSORS = 8
