@@ -3,6 +3,9 @@ package sk.ainet.io.gguf
 /**
  * This is a kotlin gguf reader related logic interpreted from python code "gguf-py/gguf/constants.py"
  * of github repo "https://github.com/ggerganov/llama.cpp"
+ *
+ * The I2_S entry (type 36) is interpreted from the sources of
+ * "https://github.com/microsoft/BitNet" (BitNet.cpp, MIT) — see the layout notes in I2sRepack.kt.
  */
 
 const val GGUF_MAGIC = 0x46554747u

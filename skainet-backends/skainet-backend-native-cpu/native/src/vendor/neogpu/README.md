@@ -45,6 +45,14 @@ Exports three symbols; SKaiNET wraps the first two via
   default `-march=armv8.2-a+fp16+dotprod` would defeat its purpose
   (dotprod-less targets).
 
+## Shipped-artifact notices
+
+Compiled copies of this file travel inside published artifacts (the
+`skainet-backend-native-cpu` jar/klibs and the `skainet-backend-jni-cpu` AAR).
+MIT's notice obligation follows them: each of those artifacts carries
+`META-INF/THIRD-PARTY-NOTICES.md` with the NeoGPU copyright and license text.
+Keep those notices in sync with this README when re-vendoring.
+
 ## Re-vendoring
 
 Copy the file byte-identical from upstream, update the commit + SHA-256 here,
