@@ -105,6 +105,10 @@ class M2A5DeviceMeasurement {
         val prepack = args.getString("prepack")?.toBoolean() ?: false
         val steps = arg("steps", 16)
         val warmup = arg("warmup", 4)
+        // `residency=heap` (default mapped) restores heap staging — the #1193 A/B lever for
+        // models that fit the cap. The plan below prices the same form the load uses (#1190).
+        val residency = if (args.getString("residency") == "heap") WeightResidency.HEAP else WeightResidency.MAPPED
+        val loadForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = residency)
 
         val report = StringBuilder()
         fun line(s: String = "") { report.append(s).append('\n') }
@@ -116,13 +120,10 @@ class M2A5DeviceMeasurement {
         line("- device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ABI ${Build.SUPPORTED_ABIS.firstOrNull()}")
         line("- ART heap cap (Runtime.maxMemory): ${mb(heapCap)}")
         line("- model: ${modelFile.name}, ${mb(modelFile.length())} on disk")
-        line("- ctx=$ctxLen, decode steps=$steps (warm-up $warmup), prepack=$prepack")
+        line("- ctx=$ctxLen, decode steps=$steps (warm-up $warmup), prepack=$prepack, residency=${residency.name.lowercase()}")
         line()
 
         // ---- plan, from the header only --------------------------------------------------
-        // The plan gets the same WeightForm the load below uses, so mapped-servable weights are
-        // budgeted against the page cache instead of the heap cap (#1189).
-        val loadForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = WeightResidency.MAPPED)
         val (plan, geometry) = MappedRandomAccessSource.open(modelPath).let { src ->
             StreamingGGUFReader.open(src).use { reader ->
                 val input = reader.planInput(ctx = ctxLen, formFor = { loadForm })
