@@ -1,8 +1,16 @@
+<!--
+SPDX-FileCopyrightText: 2023-2025 Michal Harakal and SKaiNET-developers contributors
+SPDX-License-Identifier: MIT
+-->
+
 # Third-party notices — skainet-backend-native-cpu
 
-This artifact bundles a compiled native library (`libskainet_kernels.{so,dylib,dll}`,
-and the static archive embedded in the Kotlin/Native klibs) that contains code
-from the following third-party project. The MIT license requires this notice to
+This notice travels inside the published `skainet-backend-native-cpu`
+artifacts on Maven Central. Those artifacts bundle a native library
+(`libskainet_kernels.{so,dylib,dll}`, and the static archive embedded in the
+Kotlin/Native klibs) compiled at release time from source — the source
+repository contains no binaries. The compiled library contains code from the
+following third-party project, and the MIT license requires this notice to
 accompany copies and substantial portions of the software — compiled copies
 included.
 

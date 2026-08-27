@@ -1,8 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2023-2025 Michal Harakal and SKaiNET-developers contributors
+SPDX-License-Identifier: MIT
+-->
+
 # Vendored: NeoGPU ternary LUT kernel
 
 Byte-identical copy of one file from the NeoGPU project, vendored under its
-MIT license (see the REUSE `.license` sidecar; `LICENSES/MIT.txt` at the repo
-root carries the license text). Agreed with upstream in
+MIT license. Because the file must stay byte-identical to upstream, its SPDX
+copyright and license header lives in the REUSE `.license` sidecar
+(`hs_ml_ternary_neon.c.license`) instead of the file itself; `LICENSES/MIT.txt`
+at the repo root carries the license text. Agreed with upstream in
 [anjaustin/neogpu#1](https://github.com/anjaustin/neogpu/issues/1); SKaiNET
 tracking issue: [#1136](https://github.com/SKaiNET-developers/SKaiNET/issues/1136).
 
@@ -47,7 +54,9 @@ Exports three symbols; SKaiNET wraps the first two via
 
 ## Shipped-artifact notices
 
-Compiled copies of this file travel inside published artifacts (the
+Only this C source file is checked into the repository — no compiled binaries
+live in the tree. Compilation happens at build/release time, and the compiled
+copies exist only inside the artifacts published to Maven Central (the
 `skainet-backend-native-cpu` jar/klibs and the `skainet-backend-jni-cpu` AAR).
 MIT's notice obligation follows them: each of those artifacts carries
 `META-INF/THIRD-PARTY-NOTICES.md` with the NeoGPU copyright and license text.

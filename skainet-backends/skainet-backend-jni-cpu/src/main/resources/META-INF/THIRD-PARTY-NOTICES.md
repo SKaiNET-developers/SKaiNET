@@ -1,8 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2023-2025 Michal Harakal and SKaiNET-developers contributors
+SPDX-License-Identifier: MIT
+-->
+
 # Third-party notices — skainet-backend-jni-cpu
 
-This AAR bundles compiled native libraries (`libskainet_jni.so` /
-`libskainet_jni_v82.so`) that contain code from the following third-party
-project. The MIT license requires this notice to
+This notice travels inside the published `skainet-backend-jni-cpu` AAR on
+Maven Central. That AAR bundles native libraries (`libskainet_jni.so` /
+`libskainet_jni_v82.so`) compiled at release time from source — the source
+repository contains no binaries. The compiled libraries contain code from the
+following third-party project, and the MIT license requires this notice to
 accompany copies and substantial portions of the software — compiled copies
 included.
 
