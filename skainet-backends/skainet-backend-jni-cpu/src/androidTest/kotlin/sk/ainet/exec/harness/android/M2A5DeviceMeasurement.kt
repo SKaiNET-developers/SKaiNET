@@ -30,6 +30,7 @@ import sk.ainet.lang.memory.plan.MemoryPlans
 import sk.ainet.lang.memory.plan.PlanVsActual
 import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.memory.plan.WeightResidency
+import sk.ainet.lang.memory.plan.WeightShapeOrientation
 import sk.ainet.lang.memory.trace.RecordingTraceSink
 import sk.ainet.lang.memory.trace.TraceEvent
 import sk.ainet.lang.tensor.Shape
@@ -100,6 +101,7 @@ class M2A5DeviceMeasurement {
             modelFile.canRead(),
         )
         val ctxLen = arg("ctx", 512)
+        val prepack = args.getString("prepack")?.toBoolean() ?: false
         val steps = arg("steps", 16)
         val warmup = arg("warmup", 4)
 
@@ -113,7 +115,7 @@ class M2A5DeviceMeasurement {
         line("- device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ABI ${Build.SUPPORTED_ABIS.firstOrNull()}")
         line("- ART heap cap (Runtime.maxMemory): ${mb(heapCap)}")
         line("- model: ${modelFile.name}, ${mb(modelFile.length())} on disk")
-        line("- ctx=$ctxLen, decode steps=$steps (warm-up $warmup)")
+        line("- ctx=$ctxLen, decode steps=$steps (warm-up $warmup), prepack=$prepack")
         line()
 
         // ---- plan, from the header only --------------------------------------------------
@@ -127,7 +129,7 @@ class M2A5DeviceMeasurement {
 
         // ---- load, mapped residency, everything traced -----------------------------------
         KernelDispatch.clearForTesting()
-        runCatching { KernelPacks.install(JniKernelProvider) }
+        runCatching { KernelPacks.install(JniKernelProvider); KernelPacks.installPacked(JniKernelProvider) }
             .onFailure { line("_note: JNI kernel pack unavailable (${it.message}); reference kernels serve — memory numbers stay valid, timings do not._") }
 
         val sink = RecordingTraceSink()
@@ -138,7 +140,7 @@ class M2A5DeviceMeasurement {
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { MappedRandomAccessSource.open(modelPath) },
-                weightForm = WeightForm(residency = WeightResidency.MAPPED),
+                weightForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = WeightResidency.MAPPED),
                 traceSink = sink,
             ).load<FP32, Float>(ctx, FP32::class) { name, t -> tensors[name] = t }
         }
@@ -176,7 +178,17 @@ class M2A5DeviceMeasurement {
         val slabFloats = (4 * g.embeddingLength + 3 * g.feedForwardLength + g.heads * ctxLen) + g.vocabSize
         val forward = ForwardScope(slabFloats = slabFloats, sink = sink, name = "m2a5-decode")
 
-        fun weightView(name: String): TensorView? = (tensors[name]?.data as? PackedBlockStorage)?.packedView
+        // With prepack=true, each used weight is permuted ONCE into the feed order the JNI
+        // packed kernels read (installPacked keys on BLOCKED_INPUT_MAJOR); without it the
+        // decoding reference serves — memory numbers identical, timings reference-grade. The
+        // prepack copies are extra resident bytes and show in the trace: that cost is itself a
+        // finding this harness records.
+        fun weightView(name: String): TensorView? {
+            val v = (tensors[name]?.data as? PackedBlockStorage)?.packedView ?: return null
+            return if (!prepack) v else runCatching {
+                v.prepack(sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR, sink = sink)
+            }.getOrDefault(v)
+        }
         val layerViews = (0 until g.layers).map { l ->
             listOfNotNull(
                 weightView("blk.$l.attn_q.weight"), weightView("blk.$l.attn_k.weight"),
