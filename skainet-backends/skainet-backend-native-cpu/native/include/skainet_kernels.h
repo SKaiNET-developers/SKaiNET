@@ -166,6 +166,100 @@ SKAINET_API void skainet_q6k_matmul_rm(
 );
 
 /*
+ * Q8_0 matrix-vector multiply over a ROW-MAJOR (canonical GGUF file order)
+ * weight (#1192). Same math and block format as skainet_q8_0_matmul; the
+ * weight is addressed
+ *   weight + weight_byte_offset + (o * blocks_per_row + block_idx) * 34
+ * — the bytes exactly as they sit in a .gguf file, so an mmap'd weight
+ * needs no relayout copy. input_dim must be a multiple of 32.
+ *
+ * Threads over output rows when output_dim >= 512 (#1195) — see
+ * skainet_q4k_matmul; bit-identical to the single-threaded result.
+ */
+SKAINET_API void skainet_q8_0_matmul_rm(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
+ * Q40 matrix-vector multiply over a ROW-MAJOR (canonical GGUF file
+ * order) weight (#1192): weight + weight_byte_offset + (o * blocks_per_row +
+ * block_idx) * 18 — mmap-fed as-is, no relayout copy. Same math as the
+ * feed-order kernel, bit-identical; threads over output rows >= 512 (#1195).
+ * input_dim must be a multiple of 32.
+ */
+SKAINET_API void skainet_q4_0_matmul_rm(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
+ * Q50 matrix-vector multiply over a ROW-MAJOR (canonical GGUF file
+ * order) weight (#1192): weight + weight_byte_offset + (o * blocks_per_row +
+ * block_idx) * 22 — mmap-fed as-is, no relayout copy. Same math as the
+ * feed-order kernel, bit-identical; threads over output rows >= 512 (#1195).
+ * input_dim must be a multiple of 32.
+ */
+SKAINET_API void skainet_q5_0_matmul_rm(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
+ * Q51 matrix-vector multiply over a ROW-MAJOR (canonical GGUF file
+ * order) weight (#1192): weight + weight_byte_offset + (o * blocks_per_row +
+ * block_idx) * 24 — mmap-fed as-is, no relayout copy. Same math as the
+ * feed-order kernel, bit-identical; threads over output rows >= 512 (#1195).
+ * input_dim must be a multiple of 32.
+ */
+SKAINET_API void skainet_q5_1_matmul_rm(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
+ * Q5K matrix-vector multiply over a ROW-MAJOR (canonical GGUF file
+ * order) weight (#1192): weight + weight_byte_offset + (o * blocks_per_row +
+ * block_idx) * 176 — mmap-fed as-is, no relayout copy. Same math as the
+ * feed-order kernel, bit-identical; threads over output rows >= 512 (#1195).
+ * input_dim must be a multiple of 256.
+ */
+SKAINET_API void skainet_q5k_matmul_rm(
+    const float* input,
+    int32_t input_offset,
+    const uint8_t* weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* output,
+    int32_t output_offset
+);
+
+/*
  * Row-major FP32 SGEMM:  C(m, n) = A(m, k) * B(k, n).
  *
  * Strides are in floats (not bytes). For a contiguous parent matrix

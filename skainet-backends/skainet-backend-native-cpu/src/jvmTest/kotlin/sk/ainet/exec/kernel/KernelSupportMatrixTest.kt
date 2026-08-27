@@ -59,13 +59,15 @@ class KernelSupportMatrixTest {
     /**
      * Mapped serving (#1189): kernels that read the weight in canonical row-major GGUF file
      * order straight from off-heap bytes (mmap/direct buffer) — the `_rm` symbols behind
-     * `JniBufferPackedMatmulKernel` on Android. The JVM/FFM tier is #1191; other platforms
-     * and formats are #1192. Must stay in lockstep with
+     * `JniBufferPackedMatmulKernel` on Android. K/N and remaining formats: #1192 follow-ups. Must stay in lockstep with
      * `StorageCapabilities.MAPPED_SERVABLE_ENCODINGS` (dense F32 is mapped there too, but as
      * element-view serving, not a matmul kernel — it has no row here on purpose).
      */
     private fun mappedTiers(): List<Tier> = listOf(
-        Tier("native-jni-direct", 100, setOf("Android"), setOf("Q4_K", "Q6_K")),
+        Tier("native-jni-direct", 100, setOf("Android"),
+            setOf("Q4_K", "Q6_K", "Q5_K", "Q8_0", "Q4_0", "Q5_0", "Q5_1")),
+        Tier("ffm-rowmajor", 100, setOf("JVM"),
+            setOf("Q4_K", "Q6_K", "Q5_K", "Q8_0", "Q4_0", "Q5_0", "Q5_1")),
     )
 
     private fun best(fmt: String, platform: String, tiers: List<Tier>): String? =

@@ -192,4 +192,104 @@ public object JniKernels {
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
     )
+
+    /** Row-major Q8_0 matmul over a direct ByteBuffer weight (#1192); see [q4kMatmulRmDirect]. */
+    public external fun q80MatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /**
+     * Row-major matmuls over a **heap** `ByteArray` weight in canonical GGUF file order (#1193):
+     * the same `_rm` kernels, pinned-array entry. These serve heap-staged canonical weights
+     * without a prepack — the case that used to fall silently to the decoding reference.
+     */
+    public external fun q4kMatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** See [q4kMatmulRm]. */
+    public external fun q6kMatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** See [q4kMatmulRm]. */
+    public external fun q80MatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** Row-major q40 matmul over a direct ByteBuffer weight (#1192); see [q4kMatmulRmDirect]. */
+    public external fun q40MatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** See [q4kMatmulRm]. */
+    public external fun q40MatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** Row-major q50 matmul over a direct ByteBuffer weight (#1192); see [q4kMatmulRmDirect]. */
+    public external fun q50MatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** See [q4kMatmulRm]. */
+    public external fun q50MatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** Row-major q51 matmul over a direct ByteBuffer weight (#1192); see [q4kMatmulRmDirect]. */
+    public external fun q51MatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** See [q4kMatmulRm]. */
+    public external fun q51MatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** Row-major q5k matmul over a direct ByteBuffer weight (#1192); see [q4kMatmulRmDirect]. */
+    public external fun q5kMatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** See [q4kMatmulRm]. */
+    public external fun q5kMatmulRm(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
 }

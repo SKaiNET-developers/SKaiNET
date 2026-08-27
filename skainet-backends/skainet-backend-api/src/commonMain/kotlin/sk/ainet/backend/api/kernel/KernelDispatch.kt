@@ -155,7 +155,7 @@ public object KernelDispatch {
             output = out.id,
             bytesRead = inputs.sumOf { it.elementCount * it.format.dtype.sizeInBytes },
             bytesWritten = out.elementCount * out.format.dtype.sizeInBytes,
-        ) { kernel.run(inputs, out) }
+        ) { kernel.run(inputs, out, sink) }
     }
 }
 

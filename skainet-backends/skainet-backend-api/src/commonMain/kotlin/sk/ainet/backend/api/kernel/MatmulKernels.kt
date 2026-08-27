@@ -19,6 +19,15 @@ public interface ViewKernel {
 
     /** Run the kernel: [inputs] as described by [key], result written into [out]. */
     public fun run(inputs: List<TensorView>, out: TensorView)
+
+    /**
+     * Run with a [sink] for events the kernel itself must report — above all an internal
+     * fallback to the decoding reference (#1193: a silent 1000× slowdown deserves a trace
+     * line the way an adapter gets one, SKEEP-003 §5.1). Default delegates to [run]; kernels
+     * with an internal fallback override this and emit before punting.
+     */
+    public fun run(inputs: List<TensorView>, out: TensorView, sink: sk.ainet.lang.memory.trace.TraceSink): Unit =
+        run(inputs, out)
 }
 
 /**

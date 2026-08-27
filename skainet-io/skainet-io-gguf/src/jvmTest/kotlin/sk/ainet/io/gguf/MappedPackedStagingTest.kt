@@ -62,13 +62,13 @@ class MappedPackedStagingTest {
             val q6k = mapped.getValue("w_q6k").data
             assertTrue(q6k is BufferPackedTensorData, "Q6_K under MAPPED must be buffer-packed, got ${q6k::class.simpleName}")
 
-            // Unsupported-by-#1189 types keep their heap staging.
+            // #1192: Q8_0 (the k-quant fallback format) is mapped-servable too.
             val q80 = mapped.getValue("w_q80").data
-            assertTrue(q80 !is BufferPackedTensorData, "Q8_0 has no buffer kernel yet; stays heap-staged")
+            assertTrue(q80 is BufferPackedTensorData, "Q8_0 under MAPPED is buffer-packed since #1192, got ${q80::class.simpleName}")
 
             // Values equal the heap load, element for element.
             val heap = load(f, WeightForm(residency = WeightResidency.HEAP))
-            for (name in listOf("w_q4k", "w_q6k")) {
+            for (name in listOf("w_q4k", "w_q6k", "w_q80")) {
                 assertContentEquals(
                     heap.getValue(name).data.copyToFloatArray(),
                     mapped.getValue(name).data.copyToFloatArray(),

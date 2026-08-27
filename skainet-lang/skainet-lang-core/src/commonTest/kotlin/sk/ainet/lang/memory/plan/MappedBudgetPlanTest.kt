@@ -67,28 +67,31 @@ class MappedBudgetPlanTest {
 
     @Test
     fun encodings_nobody_serves_from_a_mapping_stay_heap_charged_even_under_MAPPED() {
+        // was Q8_0 until #1192 made it servable — the pin moves to the ternary family
         val bytes = 100L * 1024 * 1024
         val mappedForm = WeightForm(residency = WeightResidency.MAPPED)
-        val q80 = PlanTensor("w", null, Format(FP32, TensorEncoding.Q8_0), bytes / 34 * 32, bytes, mappedForm)
-        val plan = MemoryPlans.plan(input(listOf(q80)), Budget.of(256L * 1024 * 1024), platform)
+        // TQ2_0 needs a load-time repack — a copy cannot page from the file it no longer
+        // matches — so it stays heap-charged until the repack cache lands (#1192 follow-up).
+        val tq = PlanTensor("w", null, Format(FP32, TensorEncoding.TQ2_0), bytes * 4, bytes, mappedForm)
+        val plan = MemoryPlans.plan(input(listOf(tq)), Budget.of(256L * 1024 * 1024), platform)
 
-        assertEquals(0L, plan.weightsMappedBytes, "Q8_0 has no mapped-servable representation (#1189 covers Q4_K/Q6_K)")
+        assertEquals(0L, plan.weightsMappedBytes, "TQ2_0 has no mapped-servable representation")
 
         // and the resolver agrees — the plan and the load must tell the same story
-        val spec = AllocationResolver.resolve(q80, PlannerProfile.MOBILE_2GB, platform)
+        val spec = AllocationResolver.resolve(tq, PlannerProfile.MOBILE_2GB, platform)
         assertNotEquals(MemoryDomain.MMAP_FILE, spec.domain)
-        assertTrue("no loader/kernel serves Q8_0" in AllocationResolver.explain(q80, PlannerProfile.MOBILE_2GB, platform))
+        assertTrue("no loader/kernel serves TQ2_0" in AllocationResolver.explain(tq, PlannerProfile.MOBILE_2GB, platform))
     }
 
     @Test
     fun a_mix_splits_into_a_mapped_and_a_heap_line() {
         val mappedForm = WeightForm(residency = WeightResidency.MAPPED)
         val big = q4k("big", 512L * 1024 * 1024, mappedForm)
-        val q80 = PlanTensor(
-            "small", null, Format(FP32, TensorEncoding.Q8_0),
-            (10L * 1024 * 1024) / 34 * 32, 10L * 1024 * 1024, mappedForm,
+        val tq = PlanTensor(
+            "small", null, Format(FP32, TensorEncoding.TQ2_0),
+            (10L * 1024 * 1024) * 4, 10L * 1024 * 1024, mappedForm,
         )
-        val plan = MemoryPlans.plan(input(listOf(big, q80)), Budget.of(256L * 1024 * 1024), platform)
+        val plan = MemoryPlans.plan(input(listOf(big, tq)), Budget.of(256L * 1024 * 1024), platform)
 
         assertEquals(512L * 1024 * 1024, plan.weightsMappedBytes)
         assertEquals(10L * 1024 * 1024, plan.weightsHeapBytes)

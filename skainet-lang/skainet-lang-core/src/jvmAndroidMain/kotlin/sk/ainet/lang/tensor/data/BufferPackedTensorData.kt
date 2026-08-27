@@ -84,9 +84,49 @@ public class BufferPackedTensorData(
                 scratchDecoder = d
                 scratchData = d
             }
+            TensorEncoding.Q5_K -> {
+                blockSize = TensorEncoding.Q5_K.BLOCK_SIZE
+                bytesPerBlock = TensorEncoding.Q5_K.BYTES_PER_BLOCK
+                scratch = ByteArray(bytesPerBlock)
+                val d = Q5_KBlockTensorData(Shape(blockSize), scratch)
+                scratchDecoder = d
+                scratchData = d
+            }
+            TensorEncoding.Q8_0 -> {
+                blockSize = TensorEncoding.Q8_0.BLOCK_SIZE
+                bytesPerBlock = TensorEncoding.Q8_0.BYTES_PER_BLOCK
+                scratch = ByteArray(bytesPerBlock)
+                val d = Q8_0BlockTensorData(Shape(blockSize), scratch)
+                scratchDecoder = d
+                scratchData = d
+            }
+            TensorEncoding.Q4_0 -> {
+                blockSize = TensorEncoding.Q4_0.BLOCK_SIZE
+                bytesPerBlock = TensorEncoding.Q4_0.BYTES_PER_BLOCK
+                scratch = ByteArray(bytesPerBlock)
+                val d = Q4_0BlockTensorData(Shape(blockSize), scratch)
+                scratchDecoder = d
+                scratchData = d
+            }
+            TensorEncoding.Q5_0 -> {
+                blockSize = TensorEncoding.Q5_0.BLOCK_SIZE
+                bytesPerBlock = TensorEncoding.Q5_0.BYTES_PER_BLOCK
+                scratch = ByteArray(bytesPerBlock)
+                val d = Q5_0BlockTensorData(Shape(blockSize), scratch)
+                scratchDecoder = d
+                scratchData = d
+            }
+            TensorEncoding.Q5_1 -> {
+                blockSize = TensorEncoding.Q5_1.BLOCK_SIZE
+                bytesPerBlock = TensorEncoding.Q5_1.BYTES_PER_BLOCK
+                scratch = ByteArray(bytesPerBlock)
+                val d = Q5_1BlockTensorData(Shape(blockSize), scratch)
+                scratchDecoder = d
+                scratchData = d
+            }
             else -> throw IllegalArgumentException(
-                "BufferPackedTensorData supports Q4_K and Q6_K (#1189); got ${encoding.name}. " +
-                    "Other block formats keep their heap TensorData until a buffer kernel exists."
+                "BufferPackedTensorData supports the GGML block formats " +
+                    "(Q4_K/Q6_K, #1189; Q5_K/Q8_0/Q4_0/Q5_0/Q5_1, #1192); got ${encoding.name}."
             )
         }
         require(shape.volume % blockSize == 0) {
