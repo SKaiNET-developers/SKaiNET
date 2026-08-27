@@ -1,0 +1,505 @@
+= SKEEP-004: Virtual tensor layout — carrying the logical/physical split through the compile pipeline
+:description: SKaiNET proposal to thread the SKEEP-003 layout vocabulary (Layout, BlockOrder, TensorView, WeightForm) from tape recording through the DAG and StableHLO emission to the IREE-tools boundary, so physical layout becomes a compiled-path decision instead of an eager-only one.
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors; SKaiNET-IREE-tools maintainers (the export contract in improvement 3 concerns them directly) +
+Created: 2026-08-25 +
+Tracking issue: _to be filed_ +
+Origin: investigation of develop @ `cc2ecc5e` against ML Drift (https://arxiv.org/abs/2505.00232[arXiv:2505.00232], "tensor virtualization"); full stage-by-stage evidence with file:line citations in the companion research notes (`driftML/virtual-layout-pipeline-findings.md`).
+
+== Summary
+
+SKEEP-003 gave SKaiNET a complete logical/physical tensor split on the eager
+and IO paths: `Storage` owns bytes, `Format` says what they mean, `Layout`
+says where element _(i,j)_ lives (strides, offset, block geometry,
+`BlockOrder`), `TensorView` is what a kernel receives, and `WeightForm` ×
+`KernelCapabilities` resolve the optimal physical form per device at load
+time. This is, independently arrived at, the same design Google's ML Drift
+paper calls *tensor virtualization* — decoupling logical tensor indices from
+physical storage, with coordinate translation resolved at codegen time and
+the physical object chosen per kernel, per device.
+
+The compile pipeline never sees any of it. No file in any `skainet-compile`
+module imports `sk.ainet.lang.memory` (verified by grep). What crosses the
+tape → DAG → StableHLO boundaries is a single string — the encoding *name* —
+and everything else (strides, block order, module-derived tensor identity,
+aliasing) is destroyed in transit. SKEEP-003 knowingly deferred this as phase
+P7 ("compiled parity"), which has not started.
+
+This proposal is P7, elevated to its own SKEEP and extended from byte-parity
+to layout: **capture** layout-relevant facts at the tape, **decide** layout
+preferences in a target-parameterized DAG pass, and **encode** them
+structurally into each export exit's artifact. All of this lives in SKaiNET
+core, which owns the whole pipeline — DSL, tape, DAG, and code generation.
+The *final* physical binding is then made by whatever executes the result:
+core's own eager runtime already does this today (`KernelDispatch` ×
+`WeightFormResolver`), and for a compiled export it is the consuming backend
+— SKaiNET-IREE-tools for the StableHLO exit today, any future MLIR
+derivative or runtime tomorrow. Because the decision pass sits in the
+target-neutral DAG IR, every emitter (StableHLO, Minerva, C, JSON, future
+dialects) serializes the *same* metadata; adding a backend never re-plans
+layout. Every seam this requires already exists in the code — several are
+pre-named for exactly this feature — but roughly half of them are dead code
+today; the proposal wires them rather than inventing new ones.
+
+== Motivation
+
+The eager/compile asymmetry produces recurring, measurable costs:
+
+* **Orientation is guessed at runtime.** Weight orientation is not recorded
+  anywhere on the graph, so the fused-op handlers reverse-engineer it by
+  shape-sniffing (`maybeTranspose`, `LLMFusedOpHandlers.kt:111-119`,
+  `:181-189`), and `TransposeEliminationPass` stashes eliminated
+  permutations as ad-hoc op parameters (`fused_transpose_$i`,
+  `TransposeEliminationPass.kt:76`) that no downstream consumer reads. A
+  virtual layout replaces both: transpose becomes a stride swap
+  (`memory/Layout.transpose()`, `Layout.kt:114`).
+* **The export degrades typed encodings to lossy names.** The one metadata
+  key that survives to MLIR is emitted as a string:
+  `TurboQuantPolar(bitsPerElement=4, blockSize=128)` exports as
+  `"TurboQuant-Polar-4b"` (`StableHloConverter.kt:84`) — the block size is
+  unrecoverable by any consumer of the `.mlir`.
+* **Kernel-feed-order work stops at the eager boundary.** #1120 made
+  loading a weight in `KERNEL_FEED` order a first-class, no-copy mechanism
+  (`PackedBlockStorage.blockOrder`, `rewrapFeedOrderWeight`,
+  `DefaultCpuOps.kt:1016`), and #1118's acceptance test proves desktop and
+  `MOBILE_2GB` resolve *different* forms with identical numbers. None of
+  that reaches an exported model: `ExternalParameterRef` carries `encoding`
+  but no `BlockOrder`/`Layout` (`ConstantMaterialization.kt:91-96`), so a
+  feed-ordered weight cannot be blitted into an `.irpa` with its order
+  declared.
+* **Constants collapse before the graph exists.**
+  `TraceToGraphBuilder.extractFloatArray` (`TraceToGraphBuilder.kt:364-375`)
+  keeps only dense `FloatArrayTensorData`; a packed weight returns `null`
+  and becomes a bare `input` placeholder. Module-derived identity
+  (`TensorId`, canonical `model.layers[3].attn.q_proj.weight`) is not
+  carried by `TensorRef` (`TensorRef.kt:10` — three fields), so no
+  downstream stage can key a per-weight layout policy on a name.
+* **The designed seams are dead.** `TargetOptimizers` is an empty registry —
+  nothing anywhere calls `register`/`registerDagPasses`
+  (`TargetOptimization.kt:47-81`); the `target: String?` parameter is
+  threaded from `toStableHlo` (`dag2hlo.kt:52-70`) into
+  `ConversionContext.target` and is never set by any caller and never read
+  by any converter; `OpGranularityPolicy.keepFused` has zero call sites;
+  `ResolvedComputeGraph.resolvedLayout(edgeId)` is a hard-coded `null`
+  behind an *empty* `Layout` marker interface
+  (`ResolvedComputeGraph.kt:54,111`), with the consuming branch point
+  pre-named at `dag2hlo.kt:101-105`. Production callers bypass
+  `skainet-compile-opt` entirely (`HloCompiler.kt:95-101`,
+  `BackendManager.kt:216-221`, `HloGenerator.kt:55`).
+
+For calibration: ML Drift's GPU runtime derives much of its reported
+performance from selecting the optimal physical tensor object per kernel at
+initialization, using device-specific empirical data, behind a stable logical
+indexing scheme. SKaiNET has *more* insertion points than ML Drift's single
+runtime — tape, DAG, emission, and an external compiler it also controls —
+which is precisely why the layout decision should be threaded through the
+pipeline rather than frozen at any single stage.
+
+== Current State
+
+The seam inventory, live path vs designed path, as of `cc2ecc5e`:
+
+[cols="3,3,2",options="header"]
+|===
+| Seam | Where | Status
+
+| `OpTrace.attributes` open map, populated by `OpAttributeFactory` (KSP
+  auto-maps op parameters)
+| `skainet-lang-core/…/trace/OpTrace.kt:11`
+| **Live** — already carries `stride`/`padding`/`axes`
+
+| `TensorSpec.metadata` with the typed-accessor pattern
+  (`withTensorEncoding`/`tensorEncoding`)
+| `…/tensor/ops/TensorSpecEncoding.kt:17,28,36`
+| **Live** — the only metadata that crosses all stages
+
+| `skainet.tensor_encodings` module attribute + per-operand MLIR comments
+| `StableHloConverter.kt:81-88`, `ConversionContext.kt:191-196`
+| **Live** — but name-strings only; comments self-described as a stopgap
+
+| `ExternalParameterRef(scope, key, encoding, source)` → `IrpaWriter`
+| `ConstantMaterialization.kt:91-96`, `skainet-io-iree-params`
+| **Live** — blits quantized bytes verbatim; carries no layout; uses legacy
+  `BufferHandle`, not `Storage`
+
+| `GraphOptimizationPass` + `GraphOptimizationPipeline` +
+  `TargetOptimizers.registerDagPasses`
+| `skainet-compile-opt/…/TargetOptimization.kt:47-95`
+| **Dead** — registry never registered into; module has no production
+  dependents
+
+| `target: String?` threaded into every converter
+| `dag2hlo.kt:52-70` → `ConversionContext.kt:32`
+| **Dead** — never set, never read; `HloGenerator` hard-codes
+  `createExtended()`, which cannot accept it
+
+| `OpGranularityPolicy.keepFused` (target legalization seam)
+| `skainet-compile-dag/…/target/OpGranularityPolicy.kt:18-35`
+| **Dead** — threaded, zero call sites
+
+| `ResolvedComputeGraph.resolvedLayout(edgeId)` + empty `graph.Layout`
+  marker; consuming branch named
+| `ResolvedComputeGraph.kt:54,60,111`; `dag2hlo.kt:101-105`
+| **Stub** — hard-coded `null`; KDoc: "future passes will populate them as
+  layout planning lands"
+
+| `CompilePhase { TAPE, DAG, STABLE_HLO }`; `stableHloPasses()` reserved in
+  comments
+| `TargetOptimization.kt:8,37-39`
+| **Stub** — declaration with zero usages
+|===
+
+The IREE compiler itself is not invoked from this repository — verified: no
+`iree-compile` call, binding, task, or script exists; the invocation lives in
+SKaiNET-IREE-tools. Core's handoff is the `.mlir` text plus the `.irpa`
+archive, and by design "the archive has no dtype, no shape … the MLIR
+`#flow.parameter.named` reference carries all structural metadata"
+(`IrpaWriter.kt:36-38`). *Any layout information must therefore ride the
+MLIR.* That file is the contract.
+
+== Proposed Design
+
+=== Stage responsibilities
+
+"Ownership" here means *which pipeline stage is positioned to make which
+decision* — it says nothing about repositories or teams; every stage below
+except the last is SKaiNET core. The design question is not _which single
+stage decides layout_ — each stage holds facts no other stage has:
+
+[cols="1,1,3",options="header"]
+|===
+| Stage | Verb | Rationale
+
+| Tape
+| **Captures**, doesn't decide
+| The only stage that can reach the live tensor: its `TensorView` (real
+  `Layout` with strides/offset/`blockOrder`), `TensorEncoding`,
+  module-derived `TensorId`, and aliasing (one `TensorRef.id` per object).
+  All of it is currently destroyed at `TraceToGraphBuilder`.
+
+| Graph / DAG
+| **Decides** preferences
+| The only stage with fusion groupings, def-use with port indices, and
+  orientation intent. Decisions are target-*parameterized* (via
+  `TargetOptimizers`) but expressed as preferences/constraints, not final
+  physical addresses.
+
+| Code generation (per export exit)
+| **Encodes**, doesn't decide
+| Each emitter serializes the same decided layout in its own format: the
+  StableHLO exit as MLIR attributes (module attribute first, per-type
+  attribute later) plus `ExternalParameterRef` so a feed-ordered weight
+  blits verbatim with its order declared; Minerva/C/JSON and any future
+  MLIR derivative read the identical `TensorSpec.tensorLayout` metadata. A
+  new backend is a new emitter, never a new layout planner.
+
+| Consuming backend / runtime
+| **Finalizes** physical
+| Whatever executes the result holds the empirical device facts and makes
+  the final binding — ML Drift's per-kernel, per-device physical-object
+  choice. Core's own eager runtime already does this (`KernelDispatch` ×
+  `WeightFormResolver` × `KernelKey.LayoutClass`); for the StableHLO exit
+  it is SKaiNET-IREE-tools today, and any other runtime plugs into the
+  same exported metadata tomorrow.
+|===
+
+=== One vocabulary, not three
+
+`sk.ainet.lang.memory.Layout` becomes the single layout value type across the
+pipeline. Today three unrelated notions share the concept: the real
+`memory.Layout`, the **empty** `sk.ainet.lang.graph.Layout` marker, and the
+runtime `KernelKey.LayoutClass`. The graph marker is made an alias for (or is
+implemented by) `memory.Layout` so `resolvedLayout(edgeId)` finally has a
+real return type; `LayoutClass` remains the dispatch-key projection of it.
+`skainet-compile-dag` already depends on `skainet-lang-core`, so no new
+module edge. (SKEEP-003 decision 2 already marked `graph.Layout` as
+deprecated-when-replacement-lands; this is that replacement.)
+
+=== The seven data flows
+
+1. **Tape → graph: identity and physical facts.** Extend `TensorRef`
+   (`TensorRef.kt:10` — the narrowest bottleneck in the pipeline) with
+   `tensorId: TensorId?`, `encoding: TensorEncoding?`, and optional
+   `layout: Layout?`, populated in `TraceSession.refOf` from the live
+   tensor. `TraceToGraphBuilder.buildInputSpecs`/`buildOutputSpecs`
+   (`:340-362`) — which today drop *all* metadata — write them into
+   `TensorSpec.metadata`.
+2. **The layout key.** New `TensorSpecLayout.kt` beside
+   `TensorSpecEncoding.kt`, copied verbatim in shape:
+   `TENSOR_LAYOUT_METADATA_KEY`, `val TensorSpec.tensorLayout: Layout?`,
+   `fun TensorSpec.withTensorLayout(…)`. Zero schema change; survives every
+   existing pass automatically (they all `copy()`).
+3. **The decision pass.** `LayoutAssignmentPass : GraphOptimizationPass` in
+   `skainet-compile-opt`, registered per target via
+   `TargetOptimizers.registerDagPasses(target) { … }`. Ordering: **after**
+   `TransposeEliminationPass` (absorb `transposeA/B` and
+   `fused_transpose_$i` into strides), **before** `LLMFusionPass` (fusion
+   erases the intermediates a layout pass needs).
+4. **Consume the stub.** Populate `ResolvedComputeGraph.resolvedLayout`
+   from the pass result and branch at `dag2hlo.kt:101-105` — the comment
+   already names this as the intended consumption point.
+5. **Serialize structurally.** Phase 1: a `skainet.tensor_layouts` module
+   attribute mirroring `collectTensorEncodings`
+   (`StableHloConverter.kt:81-88,251-264`) — carrying strides, `blockOrder`
+   and block geometry *as values*, never `name`-strings (the existing
+   precedent's lossiness is the counterexample). Phase 2: real per-type
+   encoding attributes (`tensor<NxMxf32, #layout>`) via the
+   `TypeMapper.mapTensorType` choke point (`TypeMapper.kt:53-58,135-139,
+   154-158`).
+6. **Layout on external weights.** Add `layout: Layout?` (at minimum
+   `blockOrder`) to `ExternalParameterRef` so `IrpaWriter` can blit a
+   kernel-feed-order weight verbatim with its order declared in the MLIR
+   reference. Longer term, migrate its `source` from legacy `BufferHandle`
+   to `Storage` (that is SKEEP-003 P7/P8 territory).
+7. **Target, for real.** Thread `target` into
+   `StableHloConverterFactory.createExtended/createFast/createCustom` (only
+   `createBasic` accepts it today), add `--target` to `HloGeneratorMain`
+   and the `generateHlo` Gradle task, and read `ConversionContext.target`
+   where emission differs per device. Note `GraphExportContext.targetName`
+   is currently misused as the MLIR *function name*
+   (`StableHloGraphExport.kt:40`); Minerva's convention
+   (`metadata["target"]`, `MinervaGraphCanonicalizer.kt:429`) is the model
+   to follow or the misuse to fix.
+
+== Design Constraint — the export artifact is the contract
+
+For the StableHLO exit specifically, the MLIR carries the contract (the
+`.irpa` deliberately has no structural metadata); other exits carry the same
+metadata in their own formats. Two constraints bind every slice:
+
+* **Structural serialization only.** A layout attribute carries strides,
+  block order, and block geometry as typed values with a stable string
+  form. The `encoding.name` degradation
+  (`"TurboQuant-Polar-4b"` losing its block size) is the anti-pattern this
+  proposal exists to not repeat. The stable string form also protects the
+  Minerva path, which stringifies all spec metadata
+  (`MinervaGraphCanonicalizer.kt:341`).
+* **Preferences in core, final binding in the consumer.** Core annotates;
+  each consuming backend is free to relayout for its device without forcing
+  a re-export, which keeps core honest about not owning hardware facts it
+  does not have. For the StableHLO exit, the attribute schema is agreed
+  with SKaiNET-IREE-tools *before* per-type emission lands (slice 2 below
+  is that agreement).
+
+As in SKEEP-003: the packed-encoding system must survive bit-identically.
+The golden parity tests (packed matmul outputs, StableHLO encoding
+attributes) gate every slice.
+
+== Compatibility and Migration
+
+The house rule holds: **deprecate, don't delete; additive with defaults that
+reproduce historical behavior.**
+
+* `TensorRef` gains fields with `null` defaults — every existing
+  constructor call compiles and behaves identically; the tape format is
+  additive.
+* `TensorSpec` is untouched — the layout rides the existing `metadata` map
+  exactly as `tensorEncoding` does.
+* `skainet.tensor_layouts` is a new module attribute; consumers that ignore
+  it see today's MLIR. Per-type attributes (slice 4) are the only
+  output-changing step and land behind the `--target`/policy opt-in.
+* `sk.ainet.lang.graph.Layout` (empty marker) is deprecated with
+  `ReplaceWith` per SKEEP-003 decision 2; `resolvedLayout` keeps its
+  signature.
+* Wiring `dagPipelineFor` into production (slice 3) initially registers an
+  *empty* per-target pass list, so behavior is unchanged until a target
+  opts in.
+
+== Implementation Slices
+
+Each slice is a normal PR that stands on its own; ordered so pure plumbing
+lands first with zero behavior change and the risky converter work comes
+last, after the export contract is agreed.
+
+[cols="1,3,3",options="header"]
+|===
+| Slice | What | Files
+
+| 1 — Carry identity and layout to the graph
+| Extend `TensorRef`; populate in `TraceSession.refOf`; stop
+  `buildInputSpecs`/`buildOutputSpecs` dropping metadata; add
+  `TensorSpecLayout.kt`. No behavior change; assert with a trace-roundtrip
+  test (a feed-ordered Q4_K weight's `TensorId`, encoding and `blockOrder`
+  survive to its `TensorSpec`).
+| `TensorRef.kt` · `TraceSession.kt` · `TraceToGraphBuilder.kt:340-362` ·
+  new `TensorSpecLayout.kt`
+
+| 2 — Layout on the export boundary
+| Emit `skainet.tensor_layouts` (mirror of `collectTensorEncodings`,
+  structural serialization); add `layout` to `ExternalParameterRef`;
+  agree the attribute schema with SKaiNET-IREE-tools — this slice *is* the
+  contract.
+| `StableHloConverter.kt:68,81-88,251-264` ·
+  `ConstantMaterialization.kt:91-96` · `IrpaWriter.kt`
+
+| 3 — First real decision pass, one target
+| Wire `dagPipelineFor` into `HloGenerator`/`HloCompiler`; ship
+  `LayoutAssignmentPass` for one target with one decision — propagate the
+  already-working `KERNEL_FEED`/`INPUT_BLOCK_MAJOR` weight form into the
+  export, replacing runtime shape-sniffing. Thread `target` for real.
+| new `LayoutAssignmentPass.kt` · `TargetOptimization.kt` ·
+  `HloGenerator.kt:55` · `HloCompiler.kt:95-101` ·
+  `StableHloConverterFactory.kt:93,152,181` · `HloGeneratorMain.kt` ·
+  `skainet-compile-hlo/build.gradle.kts:77-97`
+
+| 4 — Per-type MLIR attributes
+| `tensor<NxMxf32, #layout>` via `TypeMapper`; populate and consume
+  `resolvedLayout`. Budget the audit: **102 hand-built `"tensor<…>"`
+  string literals** in converters bypass `TypeMapper`, and the
+  `StableHloOptimizer`/`MlirParser` regexes (`tensor<[^>]*>`) mangle
+  nested attributes.
+| `TypeMapper.kt:53-58,135-139,154-158` ·
+  `ResolvedComputeGraph.kt:54,111` · `dag2hlo.kt:101-105` · converter
+  audit · `StableHloOptimizer.kt:110,125,142,159,176,292,315`
+|===
+
+== Rollout Plan
+
+1. Maintainer discussion on this SKEEP settles the open questions,
+   principally the attribute schema ownership with SKaiNET-IREE-tools.
+2. Slice 1 lands (pure plumbing, trace-roundtrip test green).
+3. Slice 2 lands together with a schema note in SKaiNET-IREE-tools; a
+   `.vmfb` round-trip there is the acceptance gate.
+4. Slice 3 lands per target, starting with the CPU/`llvm-cpu` path where
+   `KERNEL_FEED` weights already exist end-to-end on the eager side.
+5. Slice 4 proceeds only after the converter-literal audit, behind the
+   target opt-in.
+
+== Acceptance Criteria
+
+* A traced model with a `KERNEL_FEED`-loaded Q4_K weight produces a
+  `ComputeGraph` where that weight's `TensorSpec` reports its `TensorId`,
+  encoding, and `blockOrder` (slice 1, roundtrip test).
+* The exported `.mlir` for that model carries a `skainet.tensor_layouts`
+  entry from which strides/blockOrder/block-size are recoverable *as
+  values*, and the `.irpa` entry for the weight declares its order (slice
+  2); SKaiNET-IREE-tools compiles it to a `.vmfb` whose outputs match the
+  eager path (the SKEEP-003 P7 parity run).
+* With the layout pass enabled, no fused-op handler calls `maybeTranspose`
+  shape-sniffing for a weight whose orientation the graph declares
+  (slice 3).
+* Golden parity: packed matmul outputs and existing
+  `skainet.tensor_encodings` attributes are bit-identical before vs after
+  every slice; `generateHlo` output without `--target` is byte-identical.
+
+== GPU Validation
+
+ML Drift demonstrates its results on GPUs — 5-11x token-prefill speedup on
+Qualcomm Adreno against open-source LLM runtimes, with "weights conversion
+with optimal memory layout" named among the key transformations. This
+proposal's mechanism reaches GPUs without any change to core: the same
+`.mlir` + `.irpa` export goes to SKaiNET-IREE-tools with a GPU target
+(`vulkan-spirv` for Adreno/Mali, Metal for Apple, CUDA/ROCm on desktop),
+and the layout preference rides the same metadata.
+
+The docking point on the IREE side is concrete: IREE's layout machinery
+(data-tiling) is driven by encoding attributes, and explicitly supports a
+data-tiling hint attribute attached to matmuls *in a preprocessing phase or
+in the model itself* — the pass skips ops that already carry the hint. So
+SKaiNET-IREE-tools translates `skainet.tensor_layouts` into IREE's native
+encoding hints during preprocessing rather than fighting IREE's planner.
+GPU data-tiling for LLM workloads is an active, in-progress IREE effort
+(iree-org/iree#21195), which means the defaults are young and external
+hints have headroom to matter.
+
+Hypotheses where a measurable advantage is plausible, ranked:
+
+1. **Mobile-GPU prefill (Adreno/Mali)** — the compute-bound matmul phase
+   where ML Drift's layout-driven gains concentrate, and the
+   bandwidth/cache-sensitive GPU class where physical layout matters most.
+2. **Load time and time-to-first-token via pre-tiled `.irpa`** — IREE's
+   compile-time data-tiling repacks *constant* weights; externalized
+   parameters are the awkward case. Shipping weights already in the layout
+   the GPU dispatch wants, declared in the MLIR reference, avoids a
+   runtime repack — the GPU analog of #1120's no-copy `KERNEL_FEED`
+   rewrap on CPU.
+3. **Per-device-class selection** — profile-driven layout preferences per
+   GPU family, through the same `PlannerProfile` × `KernelCapabilities`
+   resolution machinery that already selects weight forms per device
+   class.
+
+**Experiment design.** The benchmark that isolates this proposal's
+contribution is *IREE-default vs IREE-with-hints, A/B on the same device* —
+not a comparison against ML Drift itself, whose hand-tuned OpenCL kernels
+use vendor extensions and texture-cache techniques that layout hints alone
+cannot express. Setup: Llama-3.2-1B Q4 (the SKEEP-003 acceptance model) on
+three device classes — an Adreno-class embedded board (`vulkan-spirv`; the
+Arduino Ventuno Q with its Dragonwing IQ8 / Adreno A623 is on order as the
+candidate platform — hardware/software notes in the research workspace), an
+Apple M-series machine (Metal), and one desktop GPU. Metrics: prefill
+tok/s, decode tok/s, time-to-first-token, model load time, peak memory.
+Success criterion: a reproducible win on at least one GPU class.
+
+**Known unknowns.** GGML block formats (Q4_K) are not native to IREE — the
+export re-encodes to an IREE-friendly int4+scales layout, which
+`WeightForm`'s `EncodingRequest` already models conceptually. Embedded
+Adreno driver quality for Vulkan compute (or OpenCL) on Linux varies and
+gates the whole experiment; a driver smoke test precedes any layout work
+on the candidate board.
+
+== Risks
+
+* **The opt pipeline is dead code today** — slice 3's wiring is a
+  prerequisite for any pass-based design doing anything; until then the
+  registry pattern is inert by construction.
+* **Fused ops have no HLO converters** — running `createLLM()` fusion
+  before `toStableHlo` yields MLIR with `// Unsupported op` holes. This
+  SKEEP deliberately does not couple to enabling the fusion pipeline.
+* **Regex-based text passes** — `StableHloOptimizer` and `MlirParser`
+  truncate at the first `>` inside a nested attribute; they must be fixed
+  or kept disabled before slice 4.
+* **Metadata stringification on the Minerva path** — a typed `Layout`
+  without a stable string form is destroyed at
+  `MinervaGraphCanonicalizer.kt:341`.
+* **dtype alias chaos** — `"FP32"/"F32"/"Float32"` all occur and
+  `TraceSession.refOf` silently degrades unknown dtypes to FP32
+  (`TraceSession.kt:25-34`); layout logic keyed on dtype must route through
+  the existing alias tables.
+
+== Open Questions
+
+* **Who owns the attribute schema** — this repo or SKaiNET-IREE-tools? The
+  proposal assumes a jointly-versioned schema note living beside the
+  `.irpa` format doc; the alternative (core-owned, tools-follows) couples
+  releases.
+* **`TensorRef` extension vs metadata-only capture** — extending the data
+  class is the highest-leverage single change but touches the trace format;
+  the fallback is capturing everything in `OpTrace.attributes` and joining
+  in `TraceToGraphBuilder`. The proposal prefers the former for the same
+  reason `TensorRef` exists at all: it is the typed bottleneck.
+* **Preference strength** — is a DAG-assigned layout a *hint* the driver
+  may ignore silently, or a *requirement* whose violation is diagnosed?
+  ML Drift argues for hint-plus-empirical-override; `strict` profiles
+  (SKEEP-003 decision 11) argue some deployments want hard failure.
+* **Does `stableHloPasses()` (the reserved `CompilePhase.STABLE_HLO` hook)
+  get defined in this SKEEP** or stay reserved? Slice 4 can be done either
+  in the converter or as a late pass; the proposal leans converter-side and
+  leaves the hook reserved.
+
+== References
+
+* Parent: xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003] — this
+  proposal is its P7 phase, elevated and extended from parity to layout;
+  decisions 2 (naming/deprecations) and 11 (planner profiles) bind here.
+* As-built documentation:
+  xref:ROOT:explanation/memory-model.adoc[The memory model],
+  xref:ROOT:explanation/packed-weight-layout.adoc[Packed weight layout].
+* ML Drift: https://arxiv.org/abs/2505.00232[arXiv:2505.00232] ("Scaling
+  On-Device GPU Inference for Large Generative Models") — tensor
+  virtualization; per-kernel, per-device physical object selection; 5-11x
+  Adreno prefill speedups with optimal weight memory layout.
+* IREE data-tiling:
+  https://iree.dev/community/blog/2025-08-25-data-tiling-walkthrough/[walkthrough]
+  (encoding attributes, preprocessing-phase hints);
+  https://github.com/iree-org/iree/issues/21195[iree#21195] (GPU
+  data-tiling for llama, in progress).
+* Related issues: #1109 (weight form, slices 1-5), #1118 (weight-form
+  acceptance), #1120 (kernel feed order), #1124 (blockOrder plumbing into
+  views), #968/#971/#973 (the wrong-block bugs that hardened `BlockOrder`).
+* External: SKaiNET-IREE-tools (the compiler driver; consumer of the
+  export contract in slice 2).
+* Evidence base: stage-by-stage pipeline investigation with file:line
+  citations, develop @ `cc2ecc5e`
+  (`driftML/virtual-layout-pipeline-findings.md` in the research
+  workspace).

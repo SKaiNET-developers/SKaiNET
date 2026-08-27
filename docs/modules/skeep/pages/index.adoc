@@ -73,4 +73,8 @@ Every proposal should include:
 | xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a]
 | Resolved
 | Placement, eager lifetime and graph-level planning — the P7/P8 answers
+
+| xref:skeep:004-virtual-tensor-layout.adoc[SKEEP-004]
+| Draft
+| Virtual tensor layout — the logical/physical split through the compile pipeline
 |===
