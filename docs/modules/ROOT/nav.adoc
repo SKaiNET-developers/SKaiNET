@@ -31,6 +31,7 @@
 ** xref:reference/api.adoc[API reference (Dokka)]
 * Explanation
 ** xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]
+** xref:explanation/dsl-principles.adoc[The DSL is compute]
 ** xref:explanation/minerva-secure-mcu-export.adoc[How Minerva secure MCU export fits]
 ** xref:explanation/operator-design.adoc[Operator documentation system]
 ** xref:explanation/memory-model.adoc[The memory model]

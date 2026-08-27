@@ -71,6 +71,14 @@ Both strategies share the same `TensorOps` surface, so a model
 written once runs in either mode without changes. Numerical parity
 between modes is part of the test contract.
 
+In both modes the DSL describes *computation only*: memory residency,
+weight encodings, layouts and kernel choice are decided outside the
+model definition — per tensor at the load boundary (`WeightForm`),
+priced by the memory plan, and selected by format-keyed dispatch.
+The principle, the level responsibilities, and the evidence for the
+split are stated in xref:explanation/dsl-principles.adoc[The DSL is
+compute].
+
 == 5. Building block view (static structure)
 
 === 5.1 Module layout
