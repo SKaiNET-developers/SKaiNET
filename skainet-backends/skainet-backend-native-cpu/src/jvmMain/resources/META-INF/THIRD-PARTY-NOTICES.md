@@ -1,6 +1,6 @@
 <!--
 SPDX-FileCopyrightText: 2023-2025 Michal Harakal and SKaiNET-developers contributors
-SPDX-License-Identifier: MIT
+SPDX-License-Identifier: CC0-1.0
 -->
 
 # Third-party notices — skainet-backend-native-cpu
