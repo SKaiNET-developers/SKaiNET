@@ -72,6 +72,34 @@ abstract class GenerateKernelMatrixTask : DefaultTask() {
             }
             appendLine("|===")
             appendLine("")
+            if (module.mapped.isNotEmpty()) {
+                appendLine("== Mapped serving (row-major, off-heap)")
+                appendLine("")
+                appendLine(
+                    "Kernels that read the weight in canonical row-major GGUF file order straight " +
+                        "from off-heap bytes (mmap'd pages or a direct buffer) — no heap staging, no " +
+                        "prepack copy (#1189). This is what lets a model larger than the managed-heap " +
+                        "cap decode on Android. Dense `Float32` tensors are also served from the " +
+                        "mapping (as element views, not a matmul kernel) — see " +
+                        "`StorageCapabilities.mappedServableEncodings` for the authoritative set the " +
+                        "memory plan budgets against the page cache. An empty cell means the format " +
+                        "heap-stages under `WeightResidency.MAPPED` on that platform.",
+                )
+                appendLine("")
+                appendLine("[cols=\"$colSpec\", options=\"header\"]")
+                appendLine("|===")
+                append("| Weight format ")
+                module.platforms.forEach { append("| $it ") }
+                appendLine("")
+                appendLine("")
+                module.mapped.forEach { fmt ->
+                    append("| `${fmt.name}` ")
+                    module.platforms.forEach { p -> append("| ${fmt.byPlatform[p] ?: "—"} ") }
+                    appendLine("")
+                }
+                appendLine("|===")
+                appendLine("")
+            }
             appendLine(
                 "See also the eager backends & kernels mindmap " +
                     "(xref:explanation/eager-execution.adoc[]) for the narrative overview and gaps.",
