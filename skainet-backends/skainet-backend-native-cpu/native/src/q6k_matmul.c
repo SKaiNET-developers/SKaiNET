@@ -1,6 +1,7 @@
 #include "skainet_kernels.h"
 #include "skainet_simd.h"
 #include "skainet_cpu_features.h"
+#include "skainet_row_threads.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -152,16 +153,149 @@ static int64_t skainet_q6k_weighted_dot_generic(const int8_t* SKAINET_RESTRICT q
 #endif
 
 /*
+ * One block's contribution to out[o]: the 6-bit weight is unpacked to centered
+ * int8 codes and each scale-group is an int8 dot (vdotq_s32 on dotprod
+ * targets) — acc term = d · d_in · Σ_g sc[g]·Σ_{i∈g} q8[i]·codes[i].
+ * `codes` is the caller's per-thread 256-byte scratch (#1195). Shared by the
+ * feed-order and row-major entries, so both orders (and any row partition)
+ * stay bit-identical per output row.
+ */
+static inline float skainet_q6k_block_term(
+    const uint8_t* SKAINET_RESTRICT block,
+    const int8_t* SKAINET_RESTRICT q8_block,
+    float di,
+    int use_dp,
+    int8_t* SKAINET_RESTRICT codes
+) {
+    const uint16_t d_bits = (uint16_t) block[Q6K_D_OFFSET]
+        | ((uint16_t) block[Q6K_D_OFFSET + 1] << 8);
+    const float d = skainet_q6k_half_to_float(d_bits);
+    const int8_t* sc = (const int8_t*)(block + Q6K_SCALES_OFFSET);
+
+    skainet_q6k_unpack_codes(block, codes);
+#if defined(SKAINET_HAVE_DOTPROD)
+    (void) use_dp;
+    const int64_t wdot = skainet_q6k_weighted_dot_dp(q8_block, codes, sc);
+#elif defined(SKAINET_DOTPROD_DISPATCH)
+    const int64_t wdot = use_dp
+        ? skainet_q6k_weighted_dot_dp(q8_block, codes, sc)
+        : skainet_q6k_weighted_dot_generic(q8_block, codes, sc);
+#else
+    (void) use_dp;
+    const int64_t wdot = skainet_q6k_weighted_dot_generic(q8_block, codes, sc);
+#endif
+
+    return d * di * (float) wdot;
+}
+
+/* Everything a row-range worker needs; read-only during the parallel section. */
+typedef struct {
+    const uint8_t* weight_base;   /* weight + weight_byte_offset */
+    const int8_t* q8;
+    const float* d_in;
+    float* out_base;
+    int32_t blocks_per_input_dim;
+    int32_t output_dim;
+    int use_dp;                   /* meaningful only under SKAINET_DOTPROD_DISPATCH */
+} skainet_q6k_ctx;
+
+/*
+ * Feed-order rows [o_start, o_end): block OUTER, row INNER — see q4k_matmul.c
+ * for the cache rationale. This range's rows are one contiguous run per block;
+ * out[o] accumulates across blocks in unchanged order under any partition.
+ */
+static void skainet_q6k_rows_feed(void* vctx, int32_t o_start, int32_t o_end) {
+    const skainet_q6k_ctx* c = (const skainet_q6k_ctx*) vctx;
+    int8_t codes[Q6K_BLOCK_SIZE];
+    for (int32_t o = o_start; o < o_end; ++o) c->out_base[o] = 0.0f;
+    for (int32_t block_idx = 0; block_idx < c->blocks_per_input_dim; ++block_idx) {
+        const int8_t* q8_block = c->q8 + (size_t) block_idx * Q6K_BLOCK_SIZE;
+        const float di = c->d_in[block_idx];
+        const uint8_t* block = c->weight_base
+            + ((size_t) block_idx * c->output_dim + o_start) * Q6K_BYTES_PER_BLOCK;
+        for (int32_t o = o_start; o < o_end; ++o, block += Q6K_BYTES_PER_BLOCK) {
+            c->out_base[o] += skainet_q6k_block_term(block, q8_block, di, c->use_dp, codes);
+        }
+    }
+}
+
+/*
+ * Row-major rows [o_start, o_end) (#1189): canonical GGUF file order —
+ * (o * blocks_per_row + b) * 210 — an mmap'd tensor is fed as-is, no relayout
+ * copy; each row's blocks are contiguous on disk. Per-row accumulation order
+ * matches the feed-order worker's.
+ */
+static void skainet_q6k_rows_rm(void* vctx, int32_t o_start, int32_t o_end) {
+    const skainet_q6k_ctx* c = (const skainet_q6k_ctx*) vctx;
+    int8_t codes[Q6K_BLOCK_SIZE];
+    const uint8_t* block = c->weight_base
+        + (size_t) o_start * c->blocks_per_input_dim * Q6K_BYTES_PER_BLOCK;
+    for (int32_t o = o_start; o < o_end; ++o) {
+        float acc = 0.0f;
+        for (int32_t block_idx = 0; block_idx < c->blocks_per_input_dim;
+             ++block_idx, block += Q6K_BYTES_PER_BLOCK) {
+            acc += skainet_q6k_block_term(block, c->q8 + (size_t) block_idx * Q6K_BLOCK_SIZE,
+                                          c->d_in[block_idx], c->use_dp, codes);
+        }
+        c->out_base[o] = acc;
+    }
+}
+
+/*
+ * Shared entry: quantize the input row to Q8 once (read-only afterwards, shared
+ * by all threads), then run the worker over the output rows, threaded per
+ * skainet_row_threads.h (#1195).
+ */
+static void skainet_q6k_matmul_run(
+    const float* SKAINET_RESTRICT input,
+    int32_t input_offset,
+    const uint8_t* SKAINET_RESTRICT weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* SKAINET_RESTRICT output,
+    int32_t output_offset,
+    skainet_row_range_fn worker
+) {
+    if (output_dim <= 0 || input_dim <= 0) return;
+
+    const int32_t blocks_per_input_dim = input_dim / Q6K_BLOCK_SIZE;
+    const float* in_base = input + input_offset;
+
+    int8_t* q8 = (int8_t*) malloc((size_t) input_dim * sizeof(int8_t));
+    float* d_in = (float*) malloc((size_t) blocks_per_input_dim * sizeof(float));
+    if (q8 == NULL || d_in == NULL) { free(q8); free(d_in); return; }
+    for (int32_t b = 0; b < blocks_per_input_dim; ++b) {
+        d_in[b] = skainet_q6k_q8_quantize_block(in_base + (size_t) b * Q6K_BLOCK_SIZE,
+                                                q8 + (size_t) b * Q6K_BLOCK_SIZE);
+    }
+
+    skainet_q6k_ctx ctx;
+    ctx.weight_base = weight + weight_byte_offset;
+    ctx.q8 = q8;
+    ctx.d_in = d_in;
+    ctx.out_base = output + output_offset;
+    ctx.blocks_per_input_dim = blocks_per_input_dim;
+    ctx.output_dim = output_dim;
+#ifdef SKAINET_DOTPROD_DISPATCH
+    /* One probe per matmul call; cached in skainet_cpu_has_dotprod. */
+    ctx.use_dp = skainet_cpu_has_dotprod();
+#else
+    ctx.use_dp = 0;
+#endif
+
+    skainet_run_rows(worker, &ctx, output_dim);
+
+    free(q8);
+    free(d_in);
+}
+
+/*
  * Native Q6_K matrix-vector multiply matching the
  * sk.ainet.backend.api.kernel.Q6KMatmulKernel SPI contract. A single
  * input row times an `outputDim x inputDim` Q6_K-packed weight tensor
- * laid out (blockIdx * outputDim + o) * 210 bytes.
- *
- * Fused int8 dot path (ggml-style, mirrors q4k_matmul.c): the input row is
- * quantized to Q8 ONCE per 256-block (reused across all output rows), the 6-bit
- * weight is unpacked to centered int8 codes, and each scale-group is an int8
- * dot (vdotq_s32 on dotprod targets) — no 256-float scratch, no per-element
- * float multiply. acc = d · d_in · Σ_g sc[g]·Σ_{i∈g} q8[i]·codes[i].
+ * laid out (blockIdx * outputDim + o) * 210 bytes. Threads over output
+ * rows when outputDim >= 512 (#1195).
  */
 SKAINET_API void skainet_q6k_matmul(
     const float* SKAINET_RESTRICT input,
@@ -173,65 +307,27 @@ SKAINET_API void skainet_q6k_matmul(
     float* SKAINET_RESTRICT output,
     int32_t output_offset
 ) {
-    if (output_dim <= 0 || input_dim <= 0) return;
+    skainet_q6k_matmul_run(input, input_offset, weight, weight_byte_offset,
+                           input_dim, output_dim, output, output_offset,
+                           skainet_q6k_rows_feed);
+}
 
-#ifdef SKAINET_DOTPROD_DISPATCH
-    /* One probe per matmul call; cached in skainet_cpu_has_dotprod. */
-    const int use_dp = skainet_cpu_has_dotprod();
-#endif
-
-    const int32_t blocks_per_input_dim = input_dim / Q6K_BLOCK_SIZE;
-    const float* in_base = input + input_offset;
-    float* out_base = output + output_offset;
-
-    /* Pre-quantize the whole input row to Q8 once (reused across all o). */
-    int8_t* q8 = (int8_t*) malloc((size_t) input_dim * sizeof(int8_t));
-    float* d_in = (float*) malloc((size_t) blocks_per_input_dim * sizeof(float));
-    if (q8 == NULL || d_in == NULL) { free(q8); free(d_in); return; }
-    for (int32_t b = 0; b < blocks_per_input_dim; ++b) {
-        d_in[b] = skainet_q6k_q8_quantize_block(in_base + (size_t) b * Q6K_BLOCK_SIZE,
-                                                q8 + (size_t) b * Q6K_BLOCK_SIZE);
-    }
-
-    int8_t codes[Q6K_BLOCK_SIZE];
-
-    /*
-     * Loop order: block OUTER, output row INNER — see q4k_matmul.c for the
-     * rationale. The weight is block-major (blockIdx*output_dim + o)*210, so for
-     * a fixed block consecutive `o` are 210 bytes apart: the weight bytes are
-     * read sequentially (cache/prefetch friendly) instead of striding
-     * output_dim*210 per step. out_base[o] accumulates across blocks; the order
-     * over blocks is unchanged.
-     */
-    for (int32_t o = 0; o < output_dim; ++o) out_base[o] = 0.0f;
-
-    for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
-        const int8_t* q8_block = q8 + (size_t) block_idx * Q6K_BLOCK_SIZE;
-        const float di = d_in[block_idx];
-        const uint8_t* block = weight + weight_byte_offset
-            + (size_t)(block_idx * output_dim) * Q6K_BYTES_PER_BLOCK;
-
-        for (int32_t o = 0; o < output_dim; ++o, block += Q6K_BYTES_PER_BLOCK) {
-            const uint16_t d_bits = (uint16_t) block[Q6K_D_OFFSET]
-                | ((uint16_t) block[Q6K_D_OFFSET + 1] << 8);
-            const float d = skainet_q6k_half_to_float(d_bits);
-            const int8_t* sc = (const int8_t*)(block + Q6K_SCALES_OFFSET);
-
-            skainet_q6k_unpack_codes(block, codes);
-#if defined(SKAINET_HAVE_DOTPROD)
-            const int64_t wdot = skainet_q6k_weighted_dot_dp(q8_block, codes, sc);
-#elif defined(SKAINET_DOTPROD_DISPATCH)
-            const int64_t wdot = use_dp
-                ? skainet_q6k_weighted_dot_dp(q8_block, codes, sc)
-                : skainet_q6k_weighted_dot_generic(q8_block, codes, sc);
-#else
-            const int64_t wdot = skainet_q6k_weighted_dot_generic(q8_block, codes, sc);
-#endif
-
-            out_base[o] += d * di * (float) wdot;
-        }
-    }
-
-    free(q8);
-    free(d_in);
+/*
+ * Row-major variant (#1189): the weight stays in canonical GGUF file order —
+ * (o * blocks_per_row + b) * 210 — see skainet_q6k_rows_rm. Bit-identical to
+ * the feed-order kernel; threads over output rows when outputDim >= 512.
+ */
+SKAINET_API void skainet_q6k_matmul_rm(
+    const float* SKAINET_RESTRICT input,
+    int32_t input_offset,
+    const uint8_t* SKAINET_RESTRICT weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* SKAINET_RESTRICT output,
+    int32_t output_offset
+) {
+    skainet_q6k_matmul_run(input, input_offset, weight, weight_byte_offset,
+                           input_dim, output_dim, output, output_offset,
+                           skainet_q6k_rows_rm);
 }

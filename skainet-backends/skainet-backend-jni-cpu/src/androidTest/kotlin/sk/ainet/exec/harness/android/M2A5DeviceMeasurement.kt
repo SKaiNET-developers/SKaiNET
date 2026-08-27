@@ -13,6 +13,7 @@ import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelPacks
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.exec.kernel.jni.JniKernelProvider
+import sk.ainet.exec.kernel.jni.JniMappedKernelPack
 import sk.ainet.io.MappedRandomAccessSource
 import sk.ainet.io.gguf.StreamingGGUFReader
 import sk.ainet.io.gguf.StreamingGgufParametersLoader
@@ -104,6 +105,10 @@ class M2A5DeviceMeasurement {
         val prepack = args.getString("prepack")?.toBoolean() ?: false
         val steps = arg("steps", 16)
         val warmup = arg("warmup", 4)
+        // `residency=heap` (default mapped) restores heap staging — the #1193 A/B lever for
+        // models that fit the cap. The plan below prices the same form the load uses (#1190).
+        val residency = if (args.getString("residency") == "heap") WeightResidency.HEAP else WeightResidency.MAPPED
+        val loadForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = residency)
 
         val report = StringBuilder()
         fun line(s: String = "") { report.append(s).append('\n') }
@@ -115,13 +120,13 @@ class M2A5DeviceMeasurement {
         line("- device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ABI ${Build.SUPPORTED_ABIS.firstOrNull()}")
         line("- ART heap cap (Runtime.maxMemory): ${mb(heapCap)}")
         line("- model: ${modelFile.name}, ${mb(modelFile.length())} on disk")
-        line("- ctx=$ctxLen, decode steps=$steps (warm-up $warmup), prepack=$prepack")
+        line("- ctx=$ctxLen, decode steps=$steps (warm-up $warmup), prepack=$prepack, residency=${residency.name.lowercase()}")
         line()
 
         // ---- plan, from the header only --------------------------------------------------
         val (plan, geometry) = MappedRandomAccessSource.open(modelPath).let { src ->
             StreamingGGUFReader.open(src).use { reader ->
-                val input = reader.planInput(ctx = ctxLen)
+                val input = reader.planInput(ctx = ctxLen, formFor = { loadForm })
                 MemoryPlans.plan(input, Budget.of(heapCap)) to input.geometry
             }
         }
@@ -131,6 +136,10 @@ class M2A5DeviceMeasurement {
         KernelDispatch.clearForTesting()
         runCatching { KernelPacks.install(JniKernelProvider); KernelPacks.installPacked(JniKernelProvider) }
             .onFailure { line("_note: JNI kernel pack unavailable (${it.message}); reference kernels serve — memory numbers stay valid, timings do not._") }
+        // #1189: row-major direct-buffer kernels — these serve the mapped packed weights below
+        // with zero copies and no prepack.
+        runCatching { JniMappedKernelPack.install() }
+            .onFailure { line("_note: mapped kernel pack unavailable (${it.message}); mapped packed weights fall back to the decoding reference._") }
 
         val sink = RecordingTraceSink()
         val ctx = DirectCpuExecutionContext()
@@ -140,7 +149,7 @@ class M2A5DeviceMeasurement {
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { MappedRandomAccessSource.open(modelPath) },
-                weightForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = WeightResidency.MAPPED),
+                weightForm = loadForm,
                 traceSink = sink,
             ).load<FP32, Float>(ctx, FP32::class) { name, t -> tensors[name] = t }
         }
@@ -148,20 +157,29 @@ class M2A5DeviceMeasurement {
         val sLoaded = MemoryProbe.sample()
 
         // Account the materialized weights as model-scope allocations so plan-vs-actual sees
-        // them; the loader's own storages are not all sink-wired.
+        // them; the loader's own storages are not all sink-wired. #1189 note: physicalBytes
+        // (not packedData.size) — a mapped packed tensor keeps its bytes off-heap and has no
+        // heap ByteArray at all; those bytes are counted separately as mapped.
         var weightHeapBytes = 0L
+        var weightMappedBytes = 0L
+        var mappedPackedCount = 0
         var syntheticStorageId = -1_000_000L
         for ((name, t) in tensors) {
-            val bytes = (t.data as? PackedBlockStorage)?.packedData?.size?.toLong()
-                ?: (t.shape.volume.toLong() * 4L)
-            weightHeapBytes += bytes
+            val d = t.data
+            val bytes = (d as? PackedBlockStorage)?.physicalBytes ?: (t.shape.volume.toLong() * 4L)
+            if (d is sk.ainet.lang.tensor.data.BufferPackedTensorData) {
+                weightMappedBytes += bytes; mappedPackedCount += 1
+            } else {
+                weightHeapBytes += bytes
+            }
             syntheticStorageId -= 1
             sink.emit(TraceEvent.Allocation(syntheticStorageId, ScopeKind.MODEL, bytes, null, "m2a5:$name"))
         }
         line("## Load")
         line()
         line("- wall time: ${loadMs} ms for ${tensors.size} tensors")
-        line("- materialized bytes (heap tensors + packed payloads): ${mb(weightHeapBytes)}")
+        line("- heap bytes (dense tensors + heap packed payloads): ${mb(weightHeapBytes)}")
+        line("- mapped packed payloads (#1189, off-heap): ${mb(weightMappedBytes)} in $mappedPackedCount tensors")
         line("- RSS before → after load: ${mb(sBefore.rssBytes)} → ${mb(sLoaded.rssBytes)} (Δ ${mb((sLoaded.rssBytes ?: 0L) - (sBefore.rssBytes ?: 0L))})")
         line("- major faults during load: ${sLoaded.majorFaultsSince(sBefore) ?: "—"}")
         line()

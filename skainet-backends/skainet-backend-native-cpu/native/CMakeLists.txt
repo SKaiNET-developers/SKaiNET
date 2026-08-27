@@ -12,6 +12,7 @@ endif()
 set(SKAINET_KERNEL_SOURCES
     src/skainet_smoke.c
     src/skainet_cpu_features.c
+    src/skainet_row_threads.c
     src/q4k_matmul.c
     src/q5k_matmul.c
     src/q6k_matmul.c

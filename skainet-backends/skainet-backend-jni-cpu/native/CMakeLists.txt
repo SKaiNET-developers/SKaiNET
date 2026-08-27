@@ -14,6 +14,7 @@ set(SKAINET_KERNEL_SOURCES
     ${SKAINET_KERNELS_ROOT}/src/q5_0_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q5_1_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q8_0_matmul.c
+    ${SKAINET_KERNELS_ROOT}/src/skainet_row_threads.c
     ${SKAINET_KERNELS_ROOT}/src/q4k_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q5k_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/q6k_matmul.c

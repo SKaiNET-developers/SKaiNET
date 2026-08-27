@@ -56,6 +56,18 @@ class KernelSupportMatrixTest {
             setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
     )
 
+    /**
+     * Mapped serving (#1189): kernels that read the weight in canonical row-major GGUF file
+     * order straight from off-heap bytes (mmap/direct buffer) — the `_rm` symbols behind
+     * `JniBufferPackedMatmulKernel` on Android. The JVM/FFM tier is #1191; other platforms
+     * and formats are #1192. Must stay in lockstep with
+     * `StorageCapabilities.MAPPED_SERVABLE_ENCODINGS` (dense F32 is mapped there too, but as
+     * element-view serving, not a matmul kernel — it has no row here on purpose).
+     */
+    private fun mappedTiers(): List<Tier> = listOf(
+        Tier("native-jni-direct", 100, setOf("Android"), setOf("Q4_K", "Q6_K")),
+    )
+
     private fun best(fmt: String, platform: String, tiers: List<Tier>): String? =
         tiers.filter { platform in it.platforms && fmt in it.formats }.maxByOrNull { it.priority }?.name
 
@@ -74,6 +86,16 @@ class KernelSupportMatrixTest {
             sb.append("    {\"name\": \"").append(fmt).append("\", \"byPlatform\": {")
                 .append(cells.joinToString(", ")).append("}}")
             sb.append(if (i == formats.lastIndex) "\n" else ",\n")
+        }
+        sb.append("  ],\n")
+        val mapped = mappedTiers()
+        val mappedFormats = formats.filter { fmt -> mapped.any { fmt in it.formats } }
+        sb.append("  \"mapped\": [\n")
+        mappedFormats.forEachIndexed { i, fmt ->
+            val cells = platforms.mapNotNull { p -> best(fmt, p, mapped)?.let { "\"$p\": \"$it\"" } }
+            sb.append("    {\"name\": \"").append(fmt).append("\", \"byPlatform\": {")
+                .append(cells.joinToString(", ")).append("}}")
+            sb.append(if (i == mappedFormats.lastIndex) "\n" else ",\n")
         }
         sb.append("  ]\n}\n")
         return sb.toString()

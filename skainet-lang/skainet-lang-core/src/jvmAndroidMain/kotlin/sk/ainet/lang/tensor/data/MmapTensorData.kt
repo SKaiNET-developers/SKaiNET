@@ -136,6 +136,24 @@ public class MmapTensorSource(
     }
 
     /**
+     * A direct [ByteBuffer] slice of the mapping — `[byteOffset, byteOffset + length)`, little
+     * endian, position 0. Zero-copy: reads hit the file-backed pages. This is what packed
+     * (quantized) tensors are served from under mapped staging (#1189); dense F32 tensors use
+     * [floatTensorAt].
+     */
+    public fun byteBufferAt(byteOffset: Long, length: Long): ByteBuffer {
+        require(byteOffset >= 0 && length >= 0) { "byteOffset and length must be non-negative" }
+        require(byteOffset + length <= mappedBuffer.capacity()) {
+            "Region [$byteOffset, ${byteOffset + length}) exceeds buffer capacity ${mappedBuffer.capacity()}"
+        }
+        // Not chained: Android's pre-Java-9 nio signatures return Buffer (see floatTensorAt).
+        val dup = mappedBuffer.duplicate()
+        dup.position(byteOffset.toInt())
+        dup.limit((byteOffset + length).toInt())
+        return dup.slice().order(ByteOrder.LITTLE_ENDIAN)
+    }
+
+    /**
      * Force the mapped memory to be loaded into physical memory.
      * This can improve first-access performance but uses more memory.
      */

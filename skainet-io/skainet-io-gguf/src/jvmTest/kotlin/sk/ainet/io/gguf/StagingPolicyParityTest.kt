@@ -88,11 +88,18 @@ class StagingPolicyParityTest {
                 mapped.getValue("w_f32").data is MmapFloatTensorData<*>,
                 "mapped staging must not copy F32 onto the heap, got ${mapped.getValue("w_f32").data::class.simpleName}",
             )
-            // packed tensors still arrive as packed block data: their kernels take arrays until #973
+            // #1189: Q4_K/Q6_K under MAPPED are buffer-packed views over the mapping (zero heap
+            // bytes); other packed types still arrive as heap block data until they grow a
+            // buffer kernel. MappedPackedStagingTest pins the details.
             assertEquals(
-                heap.getValue("w_q4k").data::class.simpleName,
+                "BufferPackedTensorData",
                 mapped.getValue("w_q4k").data::class.simpleName,
-                "packed staging is unchanged by the mapping",
+                "Q4_K under MAPPED stays off-heap (#1189)",
+            )
+            assertEquals(
+                heap.getValue("w_q80").data::class.simpleName,
+                mapped.getValue("w_q80").data::class.simpleName,
+                "Q8_0 staging is unchanged by the mapping",
             )
         } finally {
             f.delete()

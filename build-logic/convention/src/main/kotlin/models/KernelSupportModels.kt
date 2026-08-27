@@ -16,6 +16,12 @@ data class KernelSupportModule(
     val inputDtype: String = "Float32",
     val platforms: List<String> = emptyList(),
     val formats: List<KernelFormatSupport> = emptyList(),
+    /**
+     * Mapped serving (#1189): formats whose weight a kernel reads in canonical row-major GGUF
+     * file order straight from off-heap (mmap'd/direct-buffer) bytes — no heap staging, no
+     * prepack. Absent/empty in pre-#1189 JSON, so old files stay decodable.
+     */
+    val mapped: List<KernelFormatSupport> = emptyList(),
 )
 
 @Serializable

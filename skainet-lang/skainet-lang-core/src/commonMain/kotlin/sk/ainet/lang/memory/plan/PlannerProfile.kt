@@ -64,10 +64,12 @@ public data class PlannerProfile(
         val base = MemoryPlans.plan(input.copy(prefillChunk = prefillChunk, kvMode = kvMode), budget)
         val notes = ArrayList<String>()
         var plan = base
-        val share = if (budget.bytes > 0) base.totalBytes.toDouble() / budget.bytes else Double.MAX_VALUE
+        // Budget pressure comes from what is charged against the budget — mapped weights page
+        // against device RAM, not the heap (#1189), so they must not trigger KV quantization.
+        val share = if (budget.bytes > 0) base.budgetedBytes.toDouble() / budget.bytes else Double.MAX_VALUE
         if (kvMode != KvCacheMode.TURBOQUANT_4 && share > kvAutoQuantizeAbove) {
             val quantized = MemoryPlans.plan(base.input.copy(kvMode = KvCacheMode.TURBOQUANT_4), budget)
-            if (quantized.totalBytes < base.totalBytes) {
+            if (quantized.budgetedBytes < base.budgetedBytes) {
                 plan = quantized
                 notes += "KV cache switched to ${KvCacheMode.TURBOQUANT_4.label}: the plan needed " +
                     "${percent(share)} of the budget (over ${percent(kvAutoQuantizeAbove)}), saving " +

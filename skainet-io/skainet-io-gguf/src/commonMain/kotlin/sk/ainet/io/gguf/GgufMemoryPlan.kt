@@ -29,6 +29,13 @@ public fun StreamingGGUFReader.planInput(
     prefillChunk: Int = PlanInput.DEFAULT_PREFILL_CHUNK,
     kvMode: KvCacheMode = KvCacheMode.BF16,
     nameMap: NameMap? = nameMap(),
+    /**
+     * The [sk.ainet.lang.memory.plan.WeightForm] the load will use, per tensor name — the same
+     * knob `StreamingGgufParametersLoader` takes, so the plan prices what the load will actually
+     * do (#1189: under `MAPPED` the servable encodings are budgeted against the page cache, not
+     * the heap). `null` for every tensor plans the pre-form default: everything heap-charged.
+     */
+    formFor: (String) -> sk.ainet.lang.memory.plan.WeightForm? = { null },
 ): PlanInput {
     val arch = fields["general.architecture"] as? String ?: "unknown"
     val name = fields["general.name"] as? String ?: arch
@@ -41,6 +48,7 @@ public fun StreamingGGUFReader.planInput(
             format = format,
             elementCount = t.nElements,
             bytes = format.physicalBytes(t.nElements) ?: t.nBytes,
+            form = formFor(t.name),
         )
     }
     val ctxUsed = ctx ?: geometry?.trainedContextLength ?: 2048

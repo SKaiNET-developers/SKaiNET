@@ -6,6 +6,7 @@ import sk.ainet.lang.memory.Format
 import sk.ainet.lang.memory.PlatformStorage
 import sk.ainet.lang.memory.ScopeKind
 import sk.ainet.lang.tensor.storage.MemoryDomain
+import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
  * What the running platform's storage can actually do — the third input of [AllocationResolver],
@@ -15,8 +16,21 @@ import sk.ainet.lang.tensor.storage.MemoryDomain
 public data class StorageCapabilities(
     val supportsMappedFiles: Boolean,
     val supportsOffHeap: Boolean = true,
+    /**
+     * Encodings whose bytes the runtime can actually *serve* from a file mapping — a tensor is
+     * only truly mapped when a loader emits a file-backed representation for it AND a kernel can
+     * read it there. Today (#921 dense F32, #1189 buffer-packed Q4_K/Q6_K) that is exactly
+     * [MAPPED_SERVABLE_DEFAULT]; every other encoding under `WeightResidency.MAPPED` falls back
+     * to heap staging, and a plan that assumed otherwise would under-count the heap it is about
+     * to fill (the mirror image of the #1116 dequantize-surprise).
+     */
+    val mappedServableEncodings: Set<TensorEncoding> = MAPPED_SERVABLE_DEFAULT,
 ) {
     public companion object {
+        /** What the loaders can serve from mapped pages today: dense FP32, Q4_K, Q6_K (#1189). */
+        public val MAPPED_SERVABLE_DEFAULT: Set<TensorEncoding> =
+            setOf(TensorEncoding.Dense(4), TensorEncoding.Q4_K, TensorEncoding.Q6_K)
+
         /** The platform this code is running on. */
         public fun current(): StorageCapabilities = StorageCapabilities(
             supportsMappedFiles = PlatformStorage.supportsMappedFiles,
@@ -53,16 +67,33 @@ public object AllocationResolver {
      * the file it no longer matches. Everything else falls to [PlannerProfile.domainFor] over the
      * bytes actually held, so a dequantized giant goes off-heap and a small bias stays on it.
      */
+    /**
+     * Whether [weight] will really be served from file-backed pages: the form asks for
+     * [WeightResidency.MAPPED], the platform can map, the bytes are the file's bytes (no
+     * re-encode, no re-order), **and** the encoding is one the runtime can serve from a mapping
+     * ([StorageCapabilities.mappedServableEncodings] — dense F32 since #921, Q4_K/Q6_K since
+     * #1189). This is the predicate the plan uses to budget a weight against the page cache
+     * instead of the heap, so it must not overclaim.
+     */
+    public fun servesFromMapping(
+        weight: PlanTensor,
+        platform: StorageCapabilities = StorageCapabilities.current(),
+    ): Boolean {
+        val form = weight.form
+        val fileBytesAreTheBytes = form == null ||
+            (form.encoding == EncodingRequest.KeepAsStored && form.order == WeightByteOrder.AS_STORED)
+        return form?.residency == WeightResidency.MAPPED &&
+            platform.supportsMappedFiles &&
+            fileBytesAreTheBytes &&
+            weight.format.encoding in platform.mappedServableEncodings
+    }
+
     public fun resolve(
         weight: PlanTensor,
         profile: PlannerProfile,
         platform: StorageCapabilities = StorageCapabilities.current(),
     ): AllocationSpec {
-        val form = weight.form
-        val fileBytesAreTheBytes = form == null ||
-            (form.encoding == EncodingRequest.KeepAsStored && form.order == WeightByteOrder.AS_STORED)
-        val wantsMapped = form?.residency == WeightResidency.MAPPED
-        val mapped = wantsMapped && platform.supportsMappedFiles && fileBytesAreTheBytes
+        val mapped = servesFromMapping(weight, platform)
         val domain = if (mapped) MemoryDomain.MMAP_FILE else fallbackDomain(weight.residentBytes, profile, platform)
         return AllocationSpec(
             format = residentFormat(weight),
@@ -116,6 +147,10 @@ public object AllocationResolver {
                 "form asks MAPPED but the weight is re-encoded at load — a copy cannot be paged from the file"
             form?.residency == WeightResidency.MAPPED && form.order == WeightByteOrder.KERNEL_FEED ->
                 "form asks MAPPED but kernel-feed order is a load-time copy"
+            form?.residency == WeightResidency.MAPPED &&
+                weight.format.encoding !in platform.mappedServableEncodings ->
+                "form asks MAPPED but no loader/kernel serves ${weight.format.encoding.name} " +
+                    "from a mapping yet (#1189 covers dense F32, Q4_K, Q6_K) — heap staging"
             else ->
                 "resident ${MemoryPlans.formatBytes(weight.residentBytes)} vs off-heap threshold " +
                     MemoryPlans.formatBytes(profile.offHeapThresholdBytes) +
