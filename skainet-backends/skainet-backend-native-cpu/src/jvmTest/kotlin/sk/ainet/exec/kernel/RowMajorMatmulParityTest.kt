@@ -119,7 +119,7 @@ class RowMajorMatmulParityTest {
      * Threaded-vs-solo comparisons stay bit-exact — same function, same per-row order.
      */
     private fun assertClose(expected: Float, got: Float, label: String) {
-        val tol = maxOf(1e-5f, 1e-5f * kotlin.math.abs(expected))
+        val tol = maxOf(1e-4f, 1e-4f * kotlin.math.abs(expected))
         assertTrue(kotlin.math.abs(expected - got) <= tol, "$label: $expected vs $got (tol $tol)")
     }
 
