@@ -120,9 +120,12 @@ class M2A5DeviceMeasurement {
         line()
 
         // ---- plan, from the header only --------------------------------------------------
+        // The plan gets the same WeightForm the load below uses, so mapped-servable weights are
+        // budgeted against the page cache instead of the heap cap (#1189).
+        val loadForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = WeightResidency.MAPPED)
         val (plan, geometry) = MappedRandomAccessSource.open(modelPath).let { src ->
             StreamingGGUFReader.open(src).use { reader ->
-                val input = reader.planInput(ctx = ctxLen)
+                val input = reader.planInput(ctx = ctxLen, formFor = { loadForm })
                 MemoryPlans.plan(input, Budget.of(heapCap)) to input.geometry
             }
         }
@@ -145,7 +148,7 @@ class M2A5DeviceMeasurement {
         runBlocking {
             StreamingGgufParametersLoader(
                 sourceProvider = { MappedRandomAccessSource.open(modelPath) },
-                weightForm = WeightForm(shape = WeightShapeOrientation.OUT_IN, residency = WeightResidency.MAPPED),
+                weightForm = loadForm,
                 traceSink = sink,
             ).load<FP32, Float>(ctx, FP32::class) { name, t -> tensors[name] = t }
         }

@@ -1416,6 +1416,8 @@ public final class sk/ainet/lang/memory/plan/AllocationResolver {
 	public static synthetic fun resolve$default (Lsk/ainet/lang/memory/plan/AllocationResolver;Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;ILjava/lang/Object;)Lsk/ainet/lang/memory/AllocationSpec;
 	public final fun resolveTransient (Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;Lsk/ainet/lang/memory/ScopeKind;)Lsk/ainet/lang/memory/AllocationSpec;
 	public static synthetic fun resolveTransient$default (Lsk/ainet/lang/memory/plan/AllocationResolver;Lsk/ainet/lang/memory/Format;JLsk/ainet/lang/memory/plan/PlannerProfile;Lsk/ainet/lang/memory/plan/StorageCapabilities;Lsk/ainet/lang/memory/ScopeKind;ILjava/lang/Object;)Lsk/ainet/lang/memory/AllocationSpec;
+	public final fun servesFromMapping (Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/StorageCapabilities;)Z
+	public static synthetic fun servesFromMapping$default (Lsk/ainet/lang/memory/plan/AllocationResolver;Lsk/ainet/lang/memory/plan/PlanTensor;Lsk/ainet/lang/memory/plan/StorageCapabilities;ILjava/lang/Object;)Z
 }
 
 public final class sk/ainet/lang/memory/plan/Budget {
@@ -1583,8 +1585,8 @@ public final class sk/ainet/lang/memory/plan/KvCacheMode : java/lang/Enum {
 }
 
 public final class sk/ainet/lang/memory/plan/MemoryPlan {
-	public fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;J)V
-	public synthetic fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JJ)V
+	public synthetic fun <init> (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lsk/ainet/lang/memory/plan/PlanInput;
 	public final fun component2 ()J
 	public final fun component3 ()J
@@ -1593,10 +1595,12 @@ public final class sk/ainet/lang/memory/plan/MemoryPlan {
 	public final fun component6 ()J
 	public final fun component7 ()Lsk/ainet/lang/memory/plan/Budget;
 	public final fun component8 ()J
-	public final fun copy (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;J)Lsk/ainet/lang/memory/plan/MemoryPlan;
-	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun component9 ()J
+	public final fun copy (Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JJ)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/MemoryPlan;Lsk/ainet/lang/memory/plan/PlanInput;JJJJJLsk/ainet/lang/memory/plan/Budget;JJILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBudget ()Lsk/ainet/lang/memory/plan/Budget;
+	public final fun getBudgetedBytes ()J
 	public final fun getFits ()Ljava/lang/Boolean;
 	public final fun getFormConversionBytes ()J
 	public final fun getForwardBytes ()J
@@ -1609,6 +1613,8 @@ public final class sk/ainet/lang/memory/plan/MemoryPlan {
 	public final fun getTotalBytes ()J
 	public final fun getWeightsAsStoredBytes ()J
 	public final fun getWeightsBytes ()J
+	public final fun getWeightsHeapBytes ()J
+	public final fun getWeightsMappedBytes ()J
 	public fun hashCode ()I
 	public final fun render ()Ljava/lang/String;
 	public final fun suggestions ()Ljava/util/List;
@@ -1625,8 +1631,8 @@ public final class sk/ainet/lang/memory/plan/MemoryPlans {
 	public final fun formatBytes (J)Ljava/lang/String;
 	public final fun forwardBytes (Lsk/ainet/lang/memory/plan/ModelGeometry;II)J
 	public final fun kvElements (Lsk/ainet/lang/memory/plan/ModelGeometry;I)J
-	public final fun plan (Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/Budget;)Lsk/ainet/lang/memory/plan/MemoryPlan;
-	public static synthetic fun plan$default (Lsk/ainet/lang/memory/plan/MemoryPlans;Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/Budget;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public final fun plan (Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/Budget;Lsk/ainet/lang/memory/plan/StorageCapabilities;)Lsk/ainet/lang/memory/plan/MemoryPlan;
+	public static synthetic fun plan$default (Lsk/ainet/lang/memory/plan/MemoryPlans;Lsk/ainet/lang/memory/plan/PlanInput;Lsk/ainet/lang/memory/plan/Budget;Lsk/ainet/lang/memory/plan/StorageCapabilities;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/MemoryPlan;
 }
 
 public final class sk/ainet/lang/memory/plan/ModelGeometry {
@@ -1688,16 +1694,19 @@ public final class sk/ainet/lang/memory/plan/PlanInput$Companion {
 }
 
 public final class sk/ainet/lang/memory/plan/PlanLine {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JZ)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JZZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Z
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JZ)Lsk/ainet/lang/memory/plan/PlanLine;
-	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanLine;Ljava/lang/String;Ljava/lang/String;JZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanLine;
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JZZ)Lsk/ainet/lang/memory/plan/PlanLine;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlanLine;Ljava/lang/String;Ljava/lang/String;JZZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlanLine;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBytes ()J
 	public final fun getDetail ()Ljava/lang/String;
+	public final fun getMapped ()Z
 	public final fun getResident ()Z
 	public final fun getSection ()Ljava/lang/String;
 	public fun hashCode ()I
@@ -1857,13 +1866,15 @@ public final class sk/ainet/lang/memory/plan/ProfiledPlan {
 
 public final class sk/ainet/lang/memory/plan/StorageCapabilities {
 	public static final field Companion Lsk/ainet/lang/memory/plan/StorageCapabilities$Companion;
-	public fun <init> (ZZ)V
-	public synthetic fun <init> (ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (ZZLjava/util/Set;)V
+	public synthetic fun <init> (ZZLjava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Z
 	public final fun component2 ()Z
-	public final fun copy (ZZ)Lsk/ainet/lang/memory/plan/StorageCapabilities;
-	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/StorageCapabilities;ZZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public final fun component3 ()Ljava/util/Set;
+	public final fun copy (ZZLjava/util/Set;)Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/StorageCapabilities;ZZLjava/util/Set;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/StorageCapabilities;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMappedServableEncodings ()Ljava/util/Set;
 	public final fun getSupportsMappedFiles ()Z
 	public final fun getSupportsOffHeap ()Z
 	public fun hashCode ()I
@@ -1874,6 +1885,7 @@ public final class sk/ainet/lang/memory/plan/StorageCapabilities$Companion {
 	public final fun current ()Lsk/ainet/lang/memory/plan/StorageCapabilities;
 	public final fun getFULL ()Lsk/ainet/lang/memory/plan/StorageCapabilities;
 	public final fun getHEAP_ONLY ()Lsk/ainet/lang/memory/plan/StorageCapabilities;
+	public final fun getMAPPED_SERVABLE_DEFAULT ()Ljava/util/Set;
 }
 
 public final class sk/ainet/lang/memory/plan/Suggestion {

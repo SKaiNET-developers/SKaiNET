@@ -142,9 +142,19 @@ public data class Budget(val bytes: Long, val description: String) {
     }
 }
 
-/** One line of the plan: what, how much, and whether it is resident for the whole session. */
+/**
+ * One line of the plan: what, how much, and whether it is resident for the whole session.
+ * A [mapped] line is file-backed page cache — resident in RSS but evictable, and **not** charged
+ * against the heap [Budget] (#1189: a mapped 1 GB model runs under a 256 MB ART cap).
+ */
 @ExperimentalMemoryApi
-public data class PlanLine(val section: String, val detail: String, val bytes: Long, val resident: Boolean)
+public data class PlanLine(
+    val section: String,
+    val detail: String,
+    val bytes: Long,
+    val resident: Boolean,
+    val mapped: Boolean = false,
+)
 
 /** A concrete way to make a plan fit, with the bytes it saves. */
 @ExperimentalMemoryApi
@@ -172,36 +182,71 @@ public data class MemoryPlan(
      * forms existed — hence the default.
      */
     val weightsAsStoredBytes: Long = weightsBytes,
+    /**
+     * The part of [weightsBytes] served from file-backed pages (#1189): resident in RSS but
+     * evictable and outside the managed heap, so it is charged against device RAM/page cache
+     * rather than the [budget]. Zero for a fully heap-staged model — every plan before #1189.
+     */
+    val weightsMappedBytes: Long = 0L,
 ) {
     /**
      * Bytes the resolved forms add to the weights — a dequantization's price, made visible before
      * it is paid rather than discovered as an OOM. Zero when the weights are held as stored.
      */
     val formConversionBytes: Long get() = weightsBytes - weightsAsStoredBytes
+
+    /** The part of [weightsBytes] that really lands on the managed heap. */
+    val weightsHeapBytes: Long get() = weightsBytes - weightsMappedBytes
+
+    /** The full footprint — heap sections plus mapped pages. What RSS converges to, not what the heap holds. */
     val totalBytes: Long get() = weightsBytes + kvBytes + forwardBytes + headroomBytes
+
+    /**
+     * What is charged against the [budget]: everything except the mapped weight pages, which the
+     * OS pages in and evicts against device RAM (#1189 measured: 1.0 GB mapped, 566 KB heap,
+     * decode under a 256 MB cap). Equal to [totalBytes] when nothing is mapped.
+     */
+    val budgetedBytes: Long get() = totalBytes - weightsMappedBytes
     val residentBytes: Long get() = weightsBytes + kvBytes
 
-    /** `true` when a budget is set and the total fits; `null` without a budget. */
-    val fits: Boolean? get() = budget?.let { totalBytes <= it.bytes }
+    /** `true` when a budget is set and the budget-charged total fits; `null` without a budget. */
+    val fits: Boolean? get() = budget?.let { budgetedBytes <= it.bytes }
 
     val lines: List<PlanLine>
-        get() = listOf(
-            PlanLine(
-                "weights",
-                if (formConversionBytes == 0L) "Mapped, packed"
-                else "re-encoded at load (+${MemoryPlans.formatBytes(formConversionBytes)})",
-                weightsBytes,
-                resident = true,
-            ),
-            PlanLine("kv cache", input.kvMode.label + " @ ctx ${input.ctx}", kvBytes, resident = true),
-            PlanLine("forward", "prefill chunk ${input.prefillChunk}", forwardBytes, resident = false),
-            PlanLine("heap", "headroom", headroomBytes, resident = false),
-        )
+        get() = buildList {
+            if (weightsMappedBytes > 0L) {
+                add(PlanLine("weights", "mapped, as stored", weightsMappedBytes, resident = true, mapped = true))
+                if (weightsHeapBytes > 0L) {
+                    add(
+                        PlanLine(
+                            "weights",
+                            if (formConversionBytes == 0L) "heap-staged, packed"
+                            else "re-encoded at load (+${MemoryPlans.formatBytes(formConversionBytes)})",
+                            weightsHeapBytes,
+                            resident = true,
+                        ),
+                    )
+                }
+            } else {
+                add(
+                    PlanLine(
+                        "weights",
+                        if (formConversionBytes == 0L) "heap-staged, packed"
+                        else "re-encoded at load (+${MemoryPlans.formatBytes(formConversionBytes)})",
+                        weightsBytes,
+                        resident = true,
+                    ),
+                )
+            }
+            add(PlanLine("kv cache", input.kvMode.label + " @ ctx ${input.ctx}", kvBytes, resident = true))
+            add(PlanLine("forward", "prefill chunk ${input.prefillChunk}", forwardBytes, resident = false))
+            add(PlanLine("heap", "headroom", headroomBytes, resident = false))
+        }
 
     /** At least two concrete suggestions with their savings when the plan does not fit (M0-F3). */
     public fun suggestions(): List<Suggestion> {
         val b = budget ?: return emptyList()
-        if (totalBytes <= b.bytes) return emptyList()
+        if (budgetedBytes <= b.bytes) return emptyList()
         val out = ArrayList<Suggestion>()
         if (input.kvMode == KvCacheMode.BF16 && kvBytesAlternate < kvBytes) {
             out += Suggestion("--kv turboquant", kvBytes - kvBytesAlternate)
@@ -209,7 +254,7 @@ public data class MemoryPlan(
         val halfCtx = (input.ctx / 2).coerceAtLeast(1)
         if (halfCtx < input.ctx) {
             val half = MemoryPlans.plan(input.copy(ctx = halfCtx), budget)
-            out += Suggestion("--ctx $halfCtx", totalBytes - half.totalBytes)
+            out += Suggestion("--ctx $halfCtx", budgetedBytes - half.budgetedBytes)
         }
         if (formConversionBytes > 0) {
             // Worth saying first: unlike ctx or KV mode, this cost was not asked for — it is what
@@ -219,7 +264,7 @@ public data class MemoryPlan(
                 formConversionBytes,
             )
         }
-        val over = totalBytes - b.bytes
+        val over = budgetedBytes - b.bytes
         out += Suggestion("a smaller model: weights must shrink by ≥ ${MemoryPlans.formatBytes(over)} (e.g. a lower-bit quantization of the same model)", over)
         return out
     }
@@ -232,15 +277,21 @@ public data class MemoryPlan(
         append(" · ctx "); append(input.ctx); append('\n')
         for (l in lines) {
             append("  "); append(l.section.padEnd(10)); append(l.detail.padEnd(26)); append(MemoryPlans.formatBytes(l.bytes).padStart(10))
-            if (l.resident) append("   resident")
+            if (l.mapped) append("   mapped (page cache, evictable — not heap)")
+            else if (l.resident) append("   resident")
             if (l.section == "kv cache") append("   (").append(MemoryPlans.formatBytes(kvBytesAlternate)).append(" with ").append(if (input.kvMode == KvCacheMode.TURBOQUANT_4) KvCacheMode.BF16.label else KvCacheMode.TURBOQUANT_4.label).append(')')
             append('\n')
         }
-        append("  "); append("total".padEnd(36)); append(MemoryPlans.formatBytes(totalBytes).padStart(10))
+        val budgetLabel = if (weightsMappedBytes > 0L) "total heap" else "total"
+        append("  "); append(budgetLabel.padEnd(36)); append(MemoryPlans.formatBytes(budgetedBytes).padStart(10))
         val b = budget
         if (b != null) {
             append("   of "); append(MemoryPlans.formatBytes(b.bytes)); append(if (fits == true) "  ✔ fits" else "  ✘ does not fit")
             append('\n')
+            if (weightsMappedBytes > 0L) {
+                append("  mapped weights (").append(MemoryPlans.formatBytes(weightsMappedBytes))
+                append(") page against device RAM, not this budget (#1189)\n")
+            }
             val s = suggestions()
             if (s.isNotEmpty()) {
                 append("  suggestions: "); append(s.joinToString(" · ") { "${it.text} (−${MemoryPlans.formatBytes(it.savesBytes)})" }); append('\n')
@@ -262,22 +313,31 @@ public object MemoryPlans {
 
     /**
      * Build the plan. Estimates:
-     * - weights: sum of the packed byte sizes (they are touched every token, so counted resident);
+     * - weights: sum of the packed byte sizes (they are touched every token, so counted resident) —
+     *   split by [AllocationResolver.servesFromMapping] into heap-charged bytes and mapped bytes,
+     *   because a mapped weight pages against device RAM, not the budget (#1189);
      * - kv cache: `layers × 2 × ctx × kvHeads × (headDim + valueDim)/2 × mode bytes`;
      * - forward slab for a chunk of `T = min(prefillChunk, ctx)` tokens, FP32:
      *   `T × (4·emb + 3·ffn + heads·ctx) × 4 B` (residual stream, attention projections, gated FFN
      *   intermediates, attention scores over the context) plus one `vocab × 4 B` logits row;
      * - heap headroom: [HEAP_HEADROOM_BYTES].
      */
-    public fun plan(input: PlanInput, budget: Budget? = null): MemoryPlan {
+    public fun plan(
+        input: PlanInput,
+        budget: Budget? = null,
+        platform: StorageCapabilities = StorageCapabilities.current(),
+    ): MemoryPlan {
         val weights = input.weights.sumOf { it.residentBytes }
+        val weightsMapped = input.weights
+            .filter { AllocationResolver.servesFromMapping(it, platform) }
+            .sumOf { it.residentBytes }
         val weightsAsStored = input.weights.sumOf { it.bytes }
         val g = input.geometry
         val kvElements = if (g != null) kvElements(g, input.ctx) else 0L
         val kv = input.kvMode.bytes(kvElements)
         val kvAlt = (if (input.kvMode == KvCacheMode.TURBOQUANT_4) KvCacheMode.BF16 else KvCacheMode.TURBOQUANT_4).bytes(kvElements)
         val forward = if (g != null) forwardBytes(g, input.ctx, input.prefillChunk) else 0L
-        return MemoryPlan(input, weights, kv, kvAlt, forward, HEAP_HEADROOM_BYTES, budget, weightsAsStored)
+        return MemoryPlan(input, weights, kv, kvAlt, forward, HEAP_HEADROOM_BYTES, budget, weightsAsStored, weightsMapped)
     }
 
     public fun kvElements(g: ModelGeometry, ctx: Int): Long =
