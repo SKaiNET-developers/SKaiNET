@@ -258,6 +258,12 @@ class M2A5DeviceMeasurement {
             line()
             line("- steady-state (after $warmup warm-up steps): ${steady.map { it.ms }.average().toInt()} ms/step, " +
                 "major faults total ${steady.mapNotNull { it.majDelta }.sum()}")
+            // #1193: reference fallbacks are trace events now — a nonzero count here is the
+            // 48 s/step trap announcing itself instead of hiding in the timings.
+            val fallbacks = sink.events().filterIsInstance<TraceEvent.KernelRun>()
+                .filter { "reference-fallback" in it.kernel }
+            line("- packed-kernel reference fallbacks: ${fallbacks.size}" +
+                if (fallbacks.isEmpty()) "" else " — e.g. ${fallbacks.first().kernel}")
             line("- forward-scope allocations after warm-up should be 0; " +
                 "whole-run forward allocations: ${actual.allocationsByScope[ScopeKind.FORWARD] ?: 0}")
         }

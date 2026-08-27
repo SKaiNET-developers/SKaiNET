@@ -27,9 +27,14 @@ public data class StorageCapabilities(
     val mappedServableEncodings: Set<TensorEncoding> = MAPPED_SERVABLE_DEFAULT,
 ) {
     public companion object {
-        /** What the loaders can serve from mapped pages today: dense FP32, Q4_K, Q6_K (#1189). */
-        public val MAPPED_SERVABLE_DEFAULT: Set<TensorEncoding> =
-            setOf(TensorEncoding.Dense(4), TensorEncoding.Q4_K, TensorEncoding.Q6_K)
+        /** What the loaders can serve from mapped pages today: dense FP32 (#921) and the GGML
+         * block formats (#1189 Q4_K/Q6_K, #1192 the rest). Ternary formats need a load-time
+         * repack and stay heap until the repack cache lands. */
+        public val MAPPED_SERVABLE_DEFAULT: Set<TensorEncoding> = setOf(
+            TensorEncoding.Dense(4),
+            TensorEncoding.Q4_K, TensorEncoding.Q6_K, TensorEncoding.Q5_K,
+            TensorEncoding.Q8_0, TensorEncoding.Q4_0, TensorEncoding.Q5_0, TensorEncoding.Q5_1,
+        )
 
         /** The platform this code is running on. */
         public fun current(): StorageCapabilities = StorageCapabilities(
@@ -150,7 +155,7 @@ public object AllocationResolver {
             form?.residency == WeightResidency.MAPPED &&
                 weight.format.encoding !in platform.mappedServableEncodings ->
                 "form asks MAPPED but no loader/kernel serves ${weight.format.encoding.name} " +
-                    "from a mapping yet (#1189 covers dense F32, Q4_K, Q6_K) — heap staging"
+                    "from a mapping yet (see StorageCapabilities.mappedServableEncodings) — heap staging"
             else ->
                 "resident ${MemoryPlans.formatBytes(weight.residentBytes)} vs off-heap threshold " +
                     MemoryPlans.formatBytes(profile.offHeapThresholdBytes) +

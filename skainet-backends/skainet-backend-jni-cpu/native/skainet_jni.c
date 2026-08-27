@@ -194,6 +194,182 @@ Java_sk_ainet_exec_kernel_jni_JniKernels_q6kMatmulRmDirect(
                               inputDim, outputDim, out, outputOffset))
 }
 
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q80MatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q8_0_matmul_rm(in, inputOffset, w, weightByteOffset,
+                               inputDim, outputDim, out, outputOffset))
+}
+
+/*
+ * Heap-array row-major matmuls (#1193): the same _rm kernels over a pinned
+ * ByteArray weight in canonical file order. This is what serves a HEAP-staged
+ * canonical weight without a prepack — before these existed, a heap tensor
+ * whose format was not mapped-servable fell to the decoding reference kernel
+ * silently (measured 48,771 ms/step vs 65 on a mixed-quant model).
+ */
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q4kMatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q4k_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+                              inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q6kMatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q6k_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+                              inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q80MatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q8_0_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+                               inputDim, outputDim, out, outputOffset))
+}
+
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q40MatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q4_0_matmul_rm(in, inputOffset, w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q40MatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q4_0_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q50MatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q5_0_matmul_rm(in, inputOffset, w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q50MatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q5_0_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q51MatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q5_1_matmul_rm(in, inputOffset, w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q51MatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q5_1_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q5kMatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q5k_matmul_rm(in, inputOffset, w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q5kMatmulRm(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jbyteArray weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_BODY(
+        skainet_q5k_matmul_rm(in, inputOffset, (const uint8_t*) w, weightByteOffset,
+               inputDim, outputDim, out, outputOffset))
+}
+
 /*
  * bitnet_gemv (SKEEP-003 §5.3, #1041): int8 activations against ternary TQ2_0
  * weights. Its activation is a *byte* array, not floats, so it does not fit

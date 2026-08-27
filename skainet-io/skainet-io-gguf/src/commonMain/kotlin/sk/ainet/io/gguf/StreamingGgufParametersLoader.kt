@@ -291,7 +291,7 @@ public class StreamingGgufParametersLoader(
                     onProgress(current, total, tensorInfo.name)
                     continue
                 }
-                // #1189: a Q4_K/Q6_K tensor under MAPPED staging is the packed counterpart of the
+                // #1189/#1192: a GGML block-format tensor under MAPPED staging is the packed counterpart of the
                 // dense case above — served as a view over the file-backed pages, blocks left in
                 // canonical row-major order, never a heap ByteArray. Only when nothing asks for a
                 // different form: a dequantize/planes request or KERNEL_FEED order needs the bytes
@@ -307,6 +307,11 @@ public class StreamingGgufParametersLoader(
                         val enc = when (tensorInfo.tensorType) {
                             GGMLQuantizationType.Q4_K -> sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K
                             GGMLQuantizationType.Q6_K -> sk.ainet.lang.tensor.storage.TensorEncoding.Q6_K
+                            GGMLQuantizationType.Q5_K -> sk.ainet.lang.tensor.storage.TensorEncoding.Q5_K
+                            GGMLQuantizationType.Q8_0 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0
+                            GGMLQuantizationType.Q4_0 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0
+                            GGMLQuantizationType.Q5_0 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q5_0
+                            GGMLQuantizationType.Q5_1 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q5_1
                             else -> null
                         }
                         enc?.let { encoding ->

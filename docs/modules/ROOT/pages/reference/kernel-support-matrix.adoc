@@ -28,8 +28,13 @@ Kernels that read the weight in canonical row-major GGUF file order straight fro
 |===
 | Weight format | JVM | Android | Native·linux | Native·apple | JS/WASM 
 
-| `Q4_K` | — | native-jni-direct | — | — | — 
-| `Q6_K` | — | native-jni-direct | — | — | — 
+| `Q8_0` | ffm-rowmajor | native-jni-direct | — | — | — 
+| `Q4_0` | ffm-rowmajor | native-jni-direct | — | — | — 
+| `Q4_K` | ffm-rowmajor | native-jni-direct | — | — | — 
+| `Q6_K` | ffm-rowmajor | native-jni-direct | — | — | — 
+| `Q5_K` | ffm-rowmajor | native-jni-direct | — | — | — 
+| `Q5_1` | ffm-rowmajor | native-jni-direct | — | — | — 
+| `Q5_0` | ffm-rowmajor | native-jni-direct | — | — | — 
 |===
 
 See also the eager backends & kernels mindmap (xref:explanation/eager-execution.adoc[]) for the narrative overview and gaps.

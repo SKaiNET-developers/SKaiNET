@@ -35,7 +35,10 @@ public class PackedViewMatmulKernel(
 
     override val name: String = "$providerName-$encodingName"
 
-    override fun run(inputs: List<TensorView>, out: TensorView) {
+    override fun run(inputs: List<TensorView>, out: TensorView): Unit =
+        run(inputs, out, sk.ainet.lang.memory.trace.NoopTraceSink)
+
+    override fun run(inputs: List<TensorView>, out: TensorView, sink: sk.ainet.lang.memory.trace.TraceSink) {
         require(inputs.size == 2) { "matmul takes two operands" }
         val a = inputs[0]
         val w = inputs[1]
@@ -48,15 +51,15 @@ public class PackedViewMatmulKernel(
                 "should have prepacked it (#973)"
         }
 
-        val aHeap = a.storage as? Storage.Heap ?: return fallback(inputs, out)
-        val wHeap = w.storage as? Storage.Heap ?: return fallback(inputs, out)
-        val oHeap = out.storage as? Storage.Heap ?: return fallback(inputs, out)
-        val activation = aHeap.floats ?: return fallback(inputs, out)
-        val weight = wHeap.bytes ?: return fallback(inputs, out)
-        val output = oHeap.floats ?: return fallback(inputs, out)
+        val aHeap = a.storage as? Storage.Heap ?: return fallback(inputs, out, sink, "activation storage ${a.storage::class.simpleName}")
+        val wHeap = w.storage as? Storage.Heap ?: return fallback(inputs, out, sink, "weight storage ${w.storage::class.simpleName} — feed-order kernels take heap bytes")
+        val oHeap = out.storage as? Storage.Heap ?: return fallback(inputs, out, sink, "output storage ${out.storage::class.simpleName}")
+        val activation = aHeap.floats ?: return fallback(inputs, out, sink, "activation is not a FloatArray")
+        val weight = wHeap.bytes ?: return fallback(inputs, out, sink, "weight is not a ByteArray")
+        val output = oHeap.floats ?: return fallback(inputs, out, sink, "output is not a FloatArray")
         // The SPI takes a contiguous activation row; a strided one would be mis-indexed, so it goes
         // to the reference kernel rather than silently reading the wrong floats.
-        if (!a.isContiguous) return fallback(inputs, out)
+        if (!a.isContiguous) return fallback(inputs, out, sink, "strided activation")
 
         val weightOffset = wHeap.arrayOffset + (w.layout.offsetElements * w.layout.elementBytes).toInt()
         for (r in 0 until rows) {
@@ -69,7 +72,23 @@ public class PackedViewMatmulKernel(
         }
     }
 
-    private fun fallback(inputs: List<TensorView>, out: TensorView) {
+    private fun fallback(
+        inputs: List<TensorView>,
+        out: TensorView,
+        sink: sk.ainet.lang.memory.trace.TraceSink,
+        reason: String,
+    ) {
+        // #1193: the decoding reference is ~1000× slower — a trace line, never silent.
+        if (sink.isEnabled) {
+            sink.emit(
+                sk.ainet.lang.memory.trace.TraceEvent.KernelRun(
+                    op = key.op,
+                    kernel = "reference-fallback from $name: $reason",
+                    inputs = inputs.map { it.id },
+                    output = out.id,
+                ),
+            )
+        }
         ReferenceMatmulKernel(key).run(inputs, out)
     }
 

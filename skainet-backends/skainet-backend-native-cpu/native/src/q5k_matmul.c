@@ -1,5 +1,6 @@
 #include "skainet_kernels.h"
 #include "skainet_simd.h"
+#include "skainet_row_threads.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -84,43 +85,17 @@ static inline void skainet_q5k_decode_scales(
  * arithmetic so -O3 auto-vectorizes on AVX2/NEON. A hand-written NEON
  * path is layered on behind __ARM_NEON in a later PR.
  */
-SKAINET_API void skainet_q5k_matmul(
-    const float* SKAINET_RESTRICT input,
-    int32_t input_offset,
-    const uint8_t* SKAINET_RESTRICT weight,
-    int32_t weight_byte_offset,
-    int32_t input_dim,
-    int32_t output_dim,
-    float* SKAINET_RESTRICT output,
-    int32_t output_offset
+/*
+ * One block's contribution to out[o] — the loop body of the original kernel,
+ * shared by the feed-order and row-major entries so both orders (and any row
+ * partition, #1195) stay bit-identical per output row (#1192).
+ */
+static inline float q5k_block_term(
+    const uint8_t* SKAINET_RESTRICT block,
+    const float* SKAINET_RESTRICT in_block
 ) {
-    if (output_dim <= 0 || input_dim <= 0) return;
-
-    const int32_t blocks_per_input_dim = input_dim / Q5K_BLOCK_SIZE;
-    const float* in_base = input + input_offset;
-    float* out_base = output + output_offset;
-
     int scale_idx[Q5K_SUB_BLOCKS];
     int min_idx[Q5K_SUB_BLOCKS];
-
-    /*
-     * Loop order: block OUTER, output row INNER — see q4k_matmul.c for the
-     * rationale. The weight is block-major (blockIdx*output_dim + o)*176, so for
-     * a fixed block consecutive `o` are 176 bytes apart: weight bytes are read
-     * sequentially (cache/prefetch friendly) instead of striding output_dim*176
-     * per step, which on the in-order A55 makes every read a cold miss.
-     * out_base[o] accumulates across blocks (a per-o register `acc` holds the
-     * inner sum); accumulation order over blocks is unchanged ⇒ numerically
-     * identical to the o-outer form.
-     */
-    for (int32_t o = 0; o < output_dim; ++o) out_base[o] = 0.0f;
-
-    for (int32_t block_idx = 0; block_idx < blocks_per_input_dim; ++block_idx) {
-        const float* in_block = in_base + (size_t) block_idx * Q5K_BLOCK_SIZE;
-        const uint8_t* block = weight + weight_byte_offset
-            + (size_t)(block_idx * output_dim) * Q5K_BYTES_PER_BLOCK;
-
-        for (int32_t o = 0; o < output_dim; ++o, block += Q5K_BYTES_PER_BLOCK) {
             float acc = 0.0f;
 
             /* d, dMin (FP16 LE -> FP32). */
@@ -208,7 +183,87 @@ SKAINET_API void skainet_q5k_matmul(
                 acc += code_sum_hi * scale_hi - input_sum_hi * offset_hi;
             }
 
-            out_base[o] += acc;
+                return acc;
+}
+
+/* Everything a row-range worker needs; read-only during the parallel section. */
+typedef struct {
+    const uint8_t* weight_base;   /* weight + weight_byte_offset */
+    const float* in_base;         /* input + input_offset */
+    float* out_base;
+    int32_t blocks_per_input_dim;
+    int32_t output_dim;
+} q5k_ctx;
+
+/* Feed-order rows [o_start, o_end): block OUTER, row INNER — see q4k_matmul.c. */
+static void q5k_rows_feed(void* vctx, int32_t o_start, int32_t o_end) {
+    const q5k_ctx* c = (const q5k_ctx*) vctx;
+    for (int32_t o = o_start; o < o_end; ++o) c->out_base[o] = 0.0f;
+    for (int32_t block_idx = 0; block_idx < c->blocks_per_input_dim; ++block_idx) {
+        const float* in_block = c->in_base + (size_t) block_idx * Q5K_BLOCK_SIZE;
+        const uint8_t* block = c->weight_base
+            + ((size_t) block_idx * c->output_dim + o_start) * Q5K_BYTES_PER_BLOCK;
+        for (int32_t o = o_start; o < o_end; ++o, block += Q5K_BYTES_PER_BLOCK) {
+            c->out_base[o] += q5k_block_term(block, in_block);
         }
     }
+}
+
+/* Row-major rows (#1192): canonical GGUF file order, (o·bpr + b)·176 — mmap-fed as-is. */
+static void q5k_rows_rm(void* vctx, int32_t o_start, int32_t o_end) {
+    const q5k_ctx* c = (const q5k_ctx*) vctx;
+    const uint8_t* block = c->weight_base
+        + (size_t) o_start * c->blocks_per_input_dim * Q5K_BYTES_PER_BLOCK;
+    for (int32_t o = o_start; o < o_end; ++o) {
+        float acc_row = 0.0f;
+        for (int32_t block_idx = 0; block_idx < c->blocks_per_input_dim;
+             ++block_idx, block += Q5K_BYTES_PER_BLOCK) {
+            acc_row += q5k_block_term(block, c->in_base + (size_t) block_idx * Q5K_BLOCK_SIZE);
+        }
+        c->out_base[o] = acc_row;
+    }
+}
+
+/* Shared entry — guards, ctx fill, threaded run (skainet_row_threads.h, #1195). */
+static void q5k_matmul_run(
+    const float* SKAINET_RESTRICT input, int32_t input_offset,
+    const uint8_t* SKAINET_RESTRICT weight, int32_t weight_byte_offset,
+    int32_t input_dim, int32_t output_dim,
+    float* SKAINET_RESTRICT output, int32_t output_offset,
+    skainet_row_range_fn worker
+) {
+    if (output_dim <= 0 || input_dim <= 0) return;
+    q5k_ctx ctx;
+    ctx.weight_base = weight + weight_byte_offset;
+    ctx.in_base = input + input_offset;
+    ctx.out_base = output + output_offset;
+    ctx.blocks_per_input_dim = input_dim / Q5K_BLOCK_SIZE;
+    ctx.output_dim = output_dim;
+    skainet_run_rows(worker, &ctx, output_dim);
+}
+
+SKAINET_API void skainet_q5k_matmul(
+    const float* SKAINET_RESTRICT input, int32_t input_offset,
+    const uint8_t* SKAINET_RESTRICT weight, int32_t weight_byte_offset,
+    int32_t input_dim, int32_t output_dim,
+    float* SKAINET_RESTRICT output, int32_t output_offset
+) {
+    q5k_matmul_run(input, input_offset, weight, weight_byte_offset,
+                     input_dim, output_dim, output, output_offset,
+                     q5k_rows_feed);
+}
+
+/*
+ * Row-major variant (#1192): canonical GGUF file order — see q5k_rows_rm.
+ * Numerically equivalent to the feed-order kernel (same per-row block order; -ffast-math FMA/reassociation may differ at ULP scale); threads over rows >= 512 (#1195).
+ */
+SKAINET_API void skainet_q5k_matmul_rm(
+    const float* SKAINET_RESTRICT input, int32_t input_offset,
+    const uint8_t* SKAINET_RESTRICT weight, int32_t weight_byte_offset,
+    int32_t input_dim, int32_t output_dim,
+    float* SKAINET_RESTRICT output, int32_t output_offset
+) {
+    q5k_matmul_run(input, input_offset, weight, weight_byte_offset,
+                     input_dim, output_dim, output, output_offset,
+                     q5k_rows_rm);
 }

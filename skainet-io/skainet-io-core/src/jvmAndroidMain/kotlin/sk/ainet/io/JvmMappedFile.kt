@@ -33,7 +33,7 @@ public class JvmMappedFile private constructor(
     }
 
     /**
-     * Q4_K/Q6_K payloads as [sk.ainet.lang.tensor.data.BufferPackedTensorData] borrowing a slice
+     * GGML block-format payloads as [sk.ainet.lang.tensor.data.BufferPackedTensorData] borrowing a slice
      * of the one file mapping (#1189) — the packed counterpart of [denseFloats]: zero heap bytes,
      * blocks left in canonical row-major file order for the buffer-reading kernels.
      */
@@ -45,6 +45,11 @@ public class JvmMappedFile private constructor(
     ): TensorData<*, *>? = when (encoding) {
         sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K,
         sk.ainet.lang.tensor.storage.TensorEncoding.Q6_K,
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q5_K,
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0,
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0,
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q5_0,
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q5_1,
         -> {
             val length = checkNotNull(encoding.physicalBytes(shape.volume.toLong())) {
                 "${encoding.name} has size-determinate blocks"

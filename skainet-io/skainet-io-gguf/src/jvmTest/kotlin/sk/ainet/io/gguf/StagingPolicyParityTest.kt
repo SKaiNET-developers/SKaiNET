@@ -97,9 +97,9 @@ class StagingPolicyParityTest {
                 "Q4_K under MAPPED stays off-heap (#1189)",
             )
             assertEquals(
-                heap.getValue("w_q80").data::class.simpleName,
+                "BufferPackedTensorData",
                 mapped.getValue("w_q80").data::class.simpleName,
-                "Q8_0 staging is unchanged by the mapping",
+                "Q8_0 under MAPPED stays off-heap (#1192)",
             )
         } finally {
             f.delete()
