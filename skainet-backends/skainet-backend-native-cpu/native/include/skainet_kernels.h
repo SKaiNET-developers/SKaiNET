@@ -48,6 +48,11 @@ SKAINET_API void skainet_smoke_double(const float* input, float* output, int32_t
  *
  * Caller owns input/weight/output memory; the kernel does not retain
  * pointers past return. input_dim must be a multiple of 256.
+ *
+ * Threads over output rows (disjoint out[] slices, pthreads, up to 4)
+ * when output_dim >= 512 (#1195); single-threaded below that and on
+ * MSVC. Results are bit-identical either way — per output row the
+ * accumulation order over blocks never changes.
  */
 SKAINET_API void skainet_q4k_matmul(
     const float* input,
@@ -68,6 +73,9 @@ SKAINET_API void skainet_q4k_matmul(
  * i.e. the bytes exactly as they sit in a .gguf file — which is what lets
  * mmap'd weights be fed to this kernel with no relayout copy (each row's
  * blocks are read strictly sequentially).
+ *
+ * Threads over output rows when output_dim >= 512 (#1195) — see
+ * skainet_q4k_matmul; bit-identical to the single-threaded result.
  */
 SKAINET_API void skainet_q4k_matmul_rm(
     const float* input,
@@ -120,6 +128,9 @@ SKAINET_API void skainet_q5k_matmul(
  *   weight + weight_byte_offset + (block_idx * output_dim + o) * 210
  *
  * input_dim must be a multiple of 256.
+ *
+ * Threads over output rows when output_dim >= 512 (#1195) — see
+ * skainet_q4k_matmul; bit-identical to the single-threaded result.
  */
 SKAINET_API void skainet_q6k_matmul(
     const float* input,
@@ -139,6 +150,9 @@ SKAINET_API void skainet_q6k_matmul(
  *   weight + weight_byte_offset + (o * blocks_per_row + block_idx) * 210
  * — the bytes exactly as they sit in a .gguf file, so an mmap'd weight
  * needs no relayout copy.
+ *
+ * Threads over output rows when output_dim >= 512 (#1195) — see
+ * skainet_q4k_matmul; bit-identical to the single-threaded result.
  */
 SKAINET_API void skainet_q6k_matmul_rm(
     const float* input,
