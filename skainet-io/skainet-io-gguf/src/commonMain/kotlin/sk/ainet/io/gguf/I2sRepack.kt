@@ -6,7 +6,8 @@ package sk.ainet.io.gguf
 // tools/convert_bitnet_to_gguf.py (https://github.com/anjaustin/neogpu, MIT).
 // A clean-room reimplementation of the format, not copied code — the same
 // convention as the llama.cpp note in Constants.kt.
-
+// SPDX-FileCopyrightText: Copyright (c) Microsoft Corporation
+// SPDX-License-Identifier: MIT
 /**
  * Which bit order an I2_S GGUF's payload is in — a property of the *converter that wrote the
  * file*, not recoverable from the bytes, so the caller has to say (#1140).
