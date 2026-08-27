@@ -148,4 +148,45 @@ class RowMajorMatmulParityTest {
     @Test fun q6k_single_block_multi_row() = assertQ6kParity(256, 16, seed = 8)
     @Test fun q6k_multi_block_multi_row() = assertQ6kParity(1024, 64, seed = 321)
     @Test fun q6k_honors_weight_byte_offset() = assertQ6kParity(512, 8, seed = 18, pad = 129)
+
+    // ---- #1195: outputDim >= 512 engages the row-partition threading. Two oracles: ----
+
+    /** Threaded full-matrix call vs the feed-order kernel on permuted bytes (both threaded). */
+    @Test fun q4k_threaded_parity_vs_feed_order() = assertQ4kParity(512, 1536, seed = 77)
+    @Test fun q6k_threaded_parity_vs_feed_order() = assertQ6kParity(512, 1536, seed = 78)
+
+    /**
+     * Threaded full-matrix call vs 1536 independent single-row calls (each under the
+     * threshold, so single-threaded) — pins the partition arithmetic itself: every row of a
+     * threaded call must be bit-identical to that row computed alone.
+     */
+    @Test
+    fun q4k_threaded_equals_per_row_calls() {
+        val inputDim = 512
+        val n = 1536
+        val bpr = inputDim / BLOCK
+        val rowMajor = randomBlocks(bpr * n, Q4K_BPB, intArrayOf(0, 2), seed = 91)
+        val input = FloatArray(inputDim) { Random(91 + it).nextFloat() - 0.5f }
+
+        val full = callRm(q4kRm!!, input, rowMajor, 0, inputDim, n)
+        for (o in 0 until n step 97) {
+            val single = callRm(q4kRm!!, input, rowMajor, o * bpr * Q4K_BPB, inputDim, 1)
+            assertEquals(single[0].toRawBits(), full[o].toRawBits(), "Q4_K row $o: threaded diverged from solo")
+        }
+    }
+
+    @Test
+    fun q6k_threaded_equals_per_row_calls() {
+        val inputDim = 512
+        val n = 1536
+        val bpr = inputDim / BLOCK
+        val rowMajor = randomBlocks(bpr * n, Q6K_BPB, intArrayOf(208), seed = 92)
+        val input = FloatArray(inputDim) { Random(92 + it).nextFloat() - 0.5f }
+
+        val full = callRm(q6kRm!!, input, rowMajor, 0, inputDim, n)
+        for (o in 0 until n step 97) {
+            val single = callRm(q6kRm!!, input, rowMajor, o * bpr * Q6K_BPB, inputDim, 1)
+            assertEquals(single[0].toRawBits(), full[o].toRawBits(), "Q6_K row $o: threaded diverged from solo")
+        }
+    }
 }
