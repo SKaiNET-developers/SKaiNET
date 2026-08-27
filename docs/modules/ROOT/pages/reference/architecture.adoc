@@ -87,7 +87,7 @@ between modes is part of the test contract.
 | `skainet-backends/skainet-backend-xnnpack` | Optional XNNPACK CPU backend (FP32 matmul / conv2d / pooling) on linuxX64 / linuxArm64 / Android.
 | `skainet-backends/benchmarks/jvm-cpu-jmh` | JMH harness — `MatmulBench`, `KernelMatmulBench`, `QuantizedMatmulBench`, `ElementwiseAdd1MBench`, `Reductions1MBench`.
 | `skainet-compile/*` | Tape recording, StableHLO emission, IREE export.
-| `skainet-io/*` | Model loaders (GGUF, SafeTensors, ONNX), tokenizers, IRPA writer. One GGUF loader with two independent axes: `quantPolicy` (what the values are) × `staging` (where the bytes live).
+| `skainet-io/*` | Model loaders (GGUF, SafeTensors, ONNX), tokenizers, IRPA writer. One GGUF loader configured by a single `WeightForm` (encoding × byte order × shape × residency), resolved per tensor or passed explicitly.
 | `skainet-apps/skainet-plan` | `skainet plan <model.gguf>` — prints a model's memory plan from its header alone. See xref:how-to/plan-model-memory.adoc[].
 | `skainet-backends/benchmarks/jvm-cpu-publish` | Publishes benchmark records as JSON (schema-checked in CI), including generation metrics when a scenario runs a decode loop.
 |===
@@ -353,7 +353,8 @@ consumers of it.
 | Kernels select on a declared `KernelKey`, not an `is`-ladder | 2026-08 | Every quantization bug was arriving as a dispatch bug. A kernel now declares the formats, layouts and capabilities it accepts, and the dispatcher inserts a visible adapter when an operand does not match.
 | Block order is part of the layout | 2026-08 | Two block orders for packed weights had been an unwritten contract, contradicting itself in seven places and shipping wrong numbers twice. It is now carried on `Layout`, declared in the key, and converted only by one engine-owned, idempotent function.
 | `matmulWeightTransposed` instead of transposing a packed weight | 2026-08 | Transposing block-quantized data is not representable — blocks quantize runs along the input dimension. What the engine called a packed transpose was a per-call layout copy that was not its own inverse; the primitive ggml and BLAS have takes the weight as `[out, in]` and converts once.
-| `quantPolicy × staging` as two axes of one loader | 2026-08 | "Streaming loader" and "mapped weights helper" were separate code paths that could disagree. What the values are and where the bytes live are independent questions.
+| One `WeightForm` (encoding × byte order × shape × residency) replaces `quantPolicy`/`staging`/`weightOrientation`; the three axes were removed in #1159 (0.49.0) | 2026-08 | The three flags asked the caller to resolve, per device, what the resolver can decide from file × profile × kernels; a single resolved value is priceable, traceable, and overridable.
+| `quantPolicy × staging` as two axes of one loader (superseded above) | 2026-08 | "Streaming loader" and "mapped weights helper" were separate code paths that could disagree. What the values are and where the bytes live are independent questions.
 |===
 
 == 10. Quality requirements

@@ -167,8 +167,10 @@ Applying `sk.ainet.multiplatform` to the *root* project is not supported and fai
 
 === Pre-PR Gate and the Packed-Encoding Golden Parity Tests
 
-CI runs the test legs per target (`jvmTest`, `jsTest wasmJsTest wasmWasiTest`, `linuxX64Test`,
-`assemble`) and, since the SKEEP-003 roadmap, a `golden-parity` leg. Before opening a PR, run the
+CI runs the test legs per target (`jvm`, `js-wasm`, `native`, `android`, plus `assemble`), the
+`golden-parity` packed-encoding gate, and — since 0.49.0 — a dedicated `api-compatibility` leg
+running `apiCheck`, so a stale API dump fails under its own name. Branch protection on `develop`
+requires the aggregated `build-job` to be green, admins included. Before opening a PR, run the
 same set locally:
 
 [source,bash]

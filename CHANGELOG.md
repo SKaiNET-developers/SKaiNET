@@ -2,18 +2,131 @@
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-08-26
+
+Headline: **the SKEEP-003 memory & storage architecture, complete — from accepted proposal to shipped system.**
+One storage model (`Storage` / `Scope` / `Format` / `Layout` / `TensorView`), resolver-owned decisions
+(what form a weight takes, where its bytes live — never decided by the model author), scope-recycled eager
+execution (flat-memory decode), and a compile lane that carries what the runtime decides into the exported
+MLIR and `.irpa`. The version jump (0.40.1 → 0.49.0, ~100 merged PRs) is deliberate: this is the release
+downstream repositories (SKaiNET-transformers, the IREE conformity pipeline) should build on, and it
+removes every façade the architecture replaced. See **Breaking changes** below for the migration map.
+
+### Breaking changes
+
+- **The three legacy loader axes are gone** ([#1159](https://github.com/SKaiNET-developers/SKaiNET/issues/1159)):
+  `QuantPolicy`, `StagingPolicy` and `WeightOrientation` are deleted. The loader takes one
+  `WeightForm(encoding, order, shape, residency)` (uniform `weightForm` or per-tensor `weightFormFor`);
+  migration: `DEQUANTIZE_TO_FP32` → `EncodingRequest.DequantizeTo(FP32)`, `StagingPolicy.MAPPED` →
+  `WeightForm(residency = WeightResidency.MAPPED)`, `WeightOrientation.OUT_IN` → `WeightShapeOrientation.OUT_IN`.
+  `AndroidGguf.loader` takes a `WeightForm` (default mapped residency).
+- **The dead placement machinery is gone** ([#1142](https://github.com/SKaiNET-developers/SKaiNET/issues/1142)):
+  `@Place`/`@Weights` (declared, retained, read by nothing), `sk.ainet.lang.tensor.storage.MemoryPlanner`,
+  `StorageSpec`, and `Placement.residency`/`Residency`. Lifetime is `ScopeKind`; weight staging is
+  `WeightForm.WeightResidency`; placement is decided by `AllocationResolver` (see Added). `Placement`
+  itself stays (KV-cache stores carry it); `@KvCache`/`@KvCacheBypass` moved to `KvCacheAnnotations.kt`.
+- **The `skainet.tensor_encodings` module attribute is gone**
+  ([#1179](https://github.com/SKaiNET-developers/SKaiNET/issues/1179)): replaced by the machine-readable
+  `skainet.tensor_layouts` (`{kind, block_elems, block_bytes, bits, block_order}`); nothing outside this
+  repository read the old names dictionary.
+- `LogicalDType` is deprecated end to end in favour of `DType`
+  ([#1014](https://github.com/SKaiNET-developers/SKaiNET/issues/1014)); removal at the next major.
+
+### Added
+
+- **The memory model (SKEEP-003 M0 "know before you load" / M1 "flat decode" / M2 "1.58-bit on a 2 GB board")**
+  ([#1001](https://github.com/SKaiNET-developers/SKaiNET/issues/1001),
+  [#1002](https://github.com/SKaiNET-developers/SKaiNET/issues/1002),
+  [#1003](https://github.com/SKaiNET-developers/SKaiNET/issues/1003); slices #1004–#1042):
+  `Storage` (Heap/OffHeap/Mapped, ownership + liveness — a use-after-free is a loud
+  `StorageClosedException`), `Scope` (`ModelScope`/`ForwardScope` slab with `reset()`),
+  `Format(dtype, encoding)`, `Layout` (strides/offset/block geometry), `TensorView` with `prepack()` as
+  the visible relayout and `materialize()` as the single copy point; `TraceSink` events (allocations,
+  scope resets, adapter insertions); `MemoryPlan`/`MemoryPlans` header-only planning with budgets,
+  suggestions and a plan-vs-actual check; the `skainet-plan` CLI; `PlannerProfile` (`MOBILE_2GB` with
+  automatic KV quantization — and `strict`, so a missing kernel refuses instead of silently costing
+  several times the weight, [#1128](https://github.com/SKaiNET-developers/SKaiNET/pull/1128));
+  Android mmap loading + device fit checks; KV cache preallocated in model scope with declared formats;
+  kernel dispatch on declared formats (`KernelKey`, registry-backed capabilities); the decode harness
+  and M2 acceptance runs.
+- **Weight forms — one resolved decision instead of three caller flags**
+  ([#1109](https://github.com/SKaiNET-developers/SKaiNET/issues/1109) arc, #1114–#1120):
+  `WeightForm` (encoding × byte order × shape × residency) resolved by `WeightFormResolver` from
+  *what the file holds × the profile × what the backend's kernels can feed*; the loader honours it,
+  the plan prices it (a resolved dequantization shows in the table, not at the OOM), conversions are
+  traced, and packed weights can load directly in kernel-feed order
+  ([#1120](https://github.com/SKaiNET-developers/SKaiNET/issues/1120)).
+- **Placement is resolver-owned** ([#1133](https://github.com/SKaiNET-developers/SKaiNET/issues/1133) →
+  #1142–#1144): `AllocationResolver.resolve(weight, profile, platform)` decides memory domain and scope
+  (mapping requires: the form asks, the platform can, the bytes are the file's bytes);
+  `AllocationResolver.explain()` renders every decision with its reason pre-load; `ResolvedGguf` wires
+  plan → load with the documented user-wins precedence (per-tensor `weightFormFor` > uniform
+  `weightForm` > resolver).
+- **Scope-recycled eager execution** ([#1135](https://github.com/SKaiNET-developers/SKaiNET/issues/1135) →
+  #1145/#1146/#1173): `ExecutionContext.memoryScope` is consulted by tensor creation *and* op outputs
+  (`TensorDataFactory.adoptFloatArray`, `ScopedTensorDataFactory`), so
+  `ctx.forwardScope(slabFloats) { … }` gives steady-state decode that allocates zero new slab bytes per
+  step; the FP32 fast paths and the JVM Panama vector kernels are offset-aware, so slab-backed tensors
+  keep SIMD speed.
+- **Model-footprint analysis for GGUF, safetensors and ONNX**
+  ([#1169](https://github.com/SKaiNET-developers/SKaiNET/issues/1169)): header-only `planInput` for all
+  three formats (ONNX `external_data` sidecars priced correctly — multi-GB models no longer report ~0
+  bytes; sizes `Long`-safe), and `PlannerProfile.EDGE` for embedded devices where the budget *is* the
+  usable RAM. "Will it fit in ~2.1 GB?" is answered in seconds, without reading a tensor payload.
+- **The compile lane carries what the runtime decides**
+  ([#1147](https://github.com/SKaiNET-developers/SKaiNET/issues/1147) → #1178/#1179/#1180):
+  `TensorRef` carries tensor identity (`TraceSession.identify`, registered from
+  `trainableParameters()`), the encoding *object* (block size intact) and packed block order across the
+  trace→graph boundary; the emitted module header declares structural facts per tensor
+  (`skainet.tensor_layouts`); `ExternalParameterRef` declares block order to the `.irpa` consumer;
+  `HloGenerator.generate(target = …)` runs the optimizer pipeline on the production path with
+  `LayoutAssignmentPass` (rank-2 packed weights get kernel-feed order; the tape's carried facts are
+  never overridden), and the `ResolvedComputeGraph` seams surface exactly the decisions made.
+- **BitNet / ternary compute track** (#1033, #1040/#1041, #1136–#1141, #1150):
+  ternary encodings (`TQ1_0`/`TQ2_0`, `BITNET_B1_58`, `BITNET_PLANES` multi-plane packing), i2s GGUF
+  import, the vendored NeoGPU ternary f32 NEON kernel (MIT, verbatim) exposed through FFM, JNI and
+  Kotlin/Native including a fused lm_head kernel, requant adapters, NEON BitNet packing, and ternary
+  benchmarks + getting-started docs.
+- **Iris dataset provider** ([#1044](https://github.com/SKaiNET-developers/SKaiNET/issues/1044),
+  [#1101](https://github.com/SKaiNET-developers/SKaiNET/pull/1101), contributed by @AjithGoveas):
+  the embedded 150-row dataset used by the new Android classifier tutorial.
+- Sliding-window KV SDPA ([#1036](https://github.com/SKaiNET-developers/SKaiNET/issues/1036)) and
+  KV formats declared by the store ([#1077](https://github.com/SKaiNET-developers/SKaiNET/issues/1077)).
+
+### Fixed
+
+- Packed block order end to end: feed-order bytes in a type claiming canonical order decoded to
+  plausible garbage ([#1124](https://github.com/SKaiNET-developers/SKaiNET/issues/1124),
+  [#1126](https://github.com/SKaiNET-developers/SKaiNET/pull/1126)); `TensorData` now declares its
+  `BlockOrder` and every reader agrees on the same bytes.
+- Packed ternary weights reach dispatch through the Wᵀ marker — ANY packed block storage routes through
+  the marker path ([#1136](https://github.com/SKaiNET-developers/SKaiNET/issues/1136),
+  [#1181](https://github.com/SKaiNET-developers/SKaiNET/pull/1181)).
+- M2 acceptance page-fault flake ([#1107](https://github.com/SKaiNET-developers/SKaiNET/pull/1107));
+  safetensors dtype mapper no longer prints a WARNING into stdout mid-parse (#1169).
+
+### CI & process
+
+- `apiCheck` has its own named PR leg (`test (api-compatibility)`) instead of hiding inside
+  golden-parity ([#1176](https://github.com/SKaiNET-developers/SKaiNET/pull/1176)), after a stale dump
+  reached `develop` unnoticed ([#1174](https://github.com/SKaiNET-developers/SKaiNET/pull/1174));
+  branch protection on `develop` now requires the full `build-job` aggregator, admins included.
+- Android per-target API dumps dropped (jvm + klib only,
+  [#1111](https://github.com/SKaiNET-developers/SKaiNET/pull/1111)).
+
 ### Docs
 
-- **SKEEP-003 accepted — memory & storage architecture design record and roadmap**
-  ([#932](https://github.com/SKaiNET-developers/SKaiNET/issues/932)).
-  `docs/modules/skeep/pages/003-unified-tensor-storage.adoc` moves to *Accepted* and records the
-  thirteen design decisions (storage-first end-state delivered incrementally: `Storage` / `TensorView` /
-  `Tensor`, scopes, `Format(dtype, encoding)`, `TensorId`, kernel dispatch on declared formats, 2 GB
-  planner profile, `LogicalDType` → `DType` merge). The full proposal and the M0/M1/M2 milestone PRD are
-  committed under `docs/design/memory/`; the work is tracked as milestone issues
-  [#1001](https://github.com/SKaiNET-developers/SKaiNET/issues/1001),
-  [#1002](https://github.com/SKaiNET-developers/SKaiNET/issues/1002),
-  [#1003](https://github.com/SKaiNET-developers/SKaiNET/issues/1003) with one sub-issue per feature branch.
+- The memory model as built: `explanation/memory-model.adoc`, `explanation/packed-weight-layout.adoc`
+  ([#1106](https://github.com/SKaiNET-developers/SKaiNET/pull/1106) — design drafts under
+  `docs/design/` retired in favour of Antora pages), `explanation/virtual-tensors.adoc` (the ML
+  Drift-style split, with diagrams), and SKEEP-003a (`skeep/003a-placement-and-planning-resolution.adoc`)
+  recording the P7/P8 resolutions.
+- Tutorials whose code cannot rot: the Android classifier getting-started and the ternary
+  getting-started, with snippets compiled *and executed* in CI by `skainet-docs-samples` (the Iris
+  training loop asserts held-out accuracy ≥ 0.80).
+- SKEEP-003 accepted ([#932](https://github.com/SKaiNET-developers/SKaiNET/issues/932)) with its
+  thirteen design decisions; how-to: plan a model's memory before loading it, including the
+  embedded-device (`edge`) verdict.
 
 ## [0.40.1] - 2026-08-12
 

@@ -206,7 +206,7 @@ ARMv8.2 Cortex-A55 reference board.
 | Ternary encodings and `bitnet_gemv` | `TQ1_0`, `TQ2_0`, BitNet b1.58; reference kernel plus a NEON pack on Android
 | Memory plan, device profiles, fit check | `skainet-plan`, mobile/desktop/native profiles, two-pool device check
 | Tracing, metrics, process probe | Perfetto/JFR/Android exporters; TTFT, tok/s, effective bandwidth, RSS and page faults
-| Mapped staging | `quantPolicy × staging` on one GGUF loader; dense FP32 tensors served from file-backed pages
+| Mapped staging | one `WeightForm` per weight (`residency = MAPPED`) on one GGUF loader; dense FP32 tensors served from file-backed pages
 |===
 
 === Measured
@@ -248,5 +248,7 @@ Known limits, stated rather than implied:
 `ByteArray`s, so a buffer-aware kernel is future work. Mapping therefore lifts the Android heap
 ceiling for dense checkpoints, not yet for a Q4_K_M one.
 * *Whole-file mapping only.* Files larger than 2 GB are refused rather than mapped in windows.
-* *Device placement and graph-level planning* (allocating a whole forward pass at once) were
-always out of scope for this round.
+* *Graph-level planning* (allocating a whole forward pass at once) stays in the downstream
+compiler by decision (#1134). Device placement itself was resolved in 0.49.0: `AllocationResolver`
+decides memory domain and scope per weight (#1133/#1143) — see
+xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a].

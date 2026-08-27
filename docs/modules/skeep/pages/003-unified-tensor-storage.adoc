@@ -1,7 +1,7 @@
 = SKEEP-003: Unifying the tensor storage model — one byte-owner, enforced ownership, coherent dtype/encoding
 :description: SKaiNET proposal to converge the TensorData and TensorStorage layers into one storage model with real ownership, a single view mechanism, and dtype/encoding coherence.
 
-Status: Accepted (2026-08-22) +
+Status: Implemented (accepted 2026-08-22; M0/M1/M2 + the P7/P8 resolution shipped in 0.49.0) +
 Audience: SKaiNET maintainers and contributors +
 Created: 2026-08-10 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] (umbrella) → https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001 M0] · https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002 M1] · https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003 M2] +
@@ -17,10 +17,9 @@ and the façades are deleted at the next major release. Pure B would leave the
 erased packed dtype and the `is`-ladder in place; pure A as a big-bang rewrite
 is the "third layer" risk named below.
 
-The full analysis, terminology and diagrams are in the repository file
-the proposal (revision 2, tracked in #932); the
-milestone scoping, sample apps and acceptance numbers are in
-the milestone PRD. The thirteen
+The full analysis, terminology and diagrams are in the proposal (revision 2) and the milestone
+PRD, both preserved in the pull requests and issues linked from #932 (the design drafts under
+`docs/design/` were retired in #1106 in favour of the Antora pages linked above). The thirteen
 decisions recorded there:
 
 [cols="1,3",options="header"]
@@ -187,8 +186,9 @@ What *is* real and worth keeping from each side: the data side's zero-copy
 packed transposes, `LazyZeroFloatArrayTensorData` placeholders,
 `RowDequantSource` for embedding-scale tensors, and the genuinely zero-copy
 `TensorView` family; the storage side's `TensorEncoding` →
-`TensorSpec.metadata` → StableHLO `skainet.tensor_encodings` export seam,
-which works end-to-end today.
+`TensorSpec.metadata` → StableHLO module-attribute export seam, which works
+end-to-end today (since #1179 the attribute is the structural
+`skainet.tensor_layouts`).
 
 == Proposed Design
 

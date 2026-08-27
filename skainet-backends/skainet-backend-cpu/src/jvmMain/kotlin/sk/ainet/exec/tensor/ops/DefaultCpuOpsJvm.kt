@@ -191,7 +191,18 @@ internal class DefaultCpuOpsJvm(
      */
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
-        if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) return super.matmulWeightTransposed(x, weight)
+        if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) {
+            // Packed weights OUTSIDE the JVM relayout list (the ternary formats, #1136) go to the
+            // common views→KernelDispatch path — whose kernels and reference are commonMain and
+            // cannot read a MemorySegment-backed activation (SKEEP-004 forbids element access over
+            // SegmentStorage by design). On this tier the bridge is trivial: bulk-copy the
+            // activation to the heap once per call — decode-step activations are k floats, not
+            // weights — and hand the common path heap views.
+            if (weight.data is sk.ainet.lang.tensor.storage.PackedBlockStorage) {
+                segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
+            }
+            return super.matmulWeightTransposed(x, weight)
+        }
         // Already in feed order — the loader produced it that way (#1120). Nothing to permute and
         // nothing to cache: the kernels want the other shape label over the same bytes, which costs
         // an object rather than a copy of the weight.
@@ -204,6 +215,39 @@ internal class DefaultCpuOpsJvm(
             prepackedWeightsJvm.add(Pair(source, relayouted as Tensor<*, *>))
         }
         return matmul(x, kernelOrder as Tensor<T, V>)
+    }
+
+    /**
+     * A heap FP32 copy of an activation whose bytes live off-heap, or null when [x] is not that
+     * shape. Two producers exist on this tier: TensorData that is itself segment-backed
+     * ([MemorySegmentBackedData]), and TensorData whose VIEW presents a
+     * [sk.ainet.lang.memory.SegmentStorage] (SKEEP-004 off-heap scope allocations).
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    private fun <T : DType, V> segmentActivationToHeap(x: Tensor<T, V>): Tensor<T, V>? {
+        if (x.dtype != FP32::class) return null
+        val count = x.shape.volume
+        val arr = FloatArray(count)
+        val src = x.data as? MemorySegmentBackedData
+        if (src != null) {
+            java.lang.foreign.MemorySegment.copy(
+                src.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, src.segmentByteOffset, arr, 0, count,
+            )
+        } else {
+            val view = x.data.view ?: return null
+            if (!view.isContiguous) return null
+            val seg = view.storage as? sk.ainet.lang.memory.SegmentStorage ?: return null
+            java.lang.foreign.MemorySegment.copy(
+                seg.segment(), java.lang.foreign.ValueLayout.JAVA_FLOAT,
+                view.layout.offsetElements * java.lang.Float.BYTES.toLong(), arr, 0, count,
+            )
+        }
+        // NOT dataFactory.adoptFloatArray: this JVM factory adopts float arrays back INTO
+        // MemorySegments — the round-trip that defeats the whole copy. The base heap class is
+        // what the common dispatch path can read.
+        @Suppress("UNCHECKED_CAST")
+        val data = sk.ainet.lang.tensor.data.DenseFloatArrayTensorData<T>(x.shape, arr) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(data, x.dtype, x)
     }
 
     /** Relayouted weights keyed by the identity of the bytes they came from (#1096). */

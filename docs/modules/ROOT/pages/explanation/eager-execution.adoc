@@ -60,6 +60,8 @@ mindmap
 | Q5_1 | ✅ | ✅ | ✅ | ✅ | ✅
 | Q5_0 | ✅ | ✅ | ✅ | ✅ | ✅
 | TQ2_0 / BitNet b1.58 (int8 activations) | ✅ | — | — | ✅ NEON | —
+| BitNet b1.58 (exact FP32 activations, vendored NeoGPU kernel) | ✅ | ✅ FFM | — | ✅ JNI + fused lm_head | ✅ K/N cinterop
+| BITNET_PLANES (multi-plane ternary packing) | ✅ | via kernel pack | — | via kernel pack | via kernel pack
 | Q2_K / Q3_K / Q8_K / IQ4 | ❌ (dequant to FP32 only) | ❌ | ❌ | ❌ | ❌
 |===
 

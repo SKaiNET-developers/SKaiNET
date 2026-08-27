@@ -119,14 +119,14 @@ can be impossible on the heap and unremarkable when mapped.
 
 [source,kotlin]
 ----
-val loader = AndroidGguf.loader(path)   // staging = MAPPED, quantPolicy = NATIVE_OPTIMIZED
+val loader = AndroidGguf.loader(path)   // weightForm = WeightForm(residency = MAPPED)
 loader.load<FP32, Float>(ctx, FP32::class) { name, tensor -> model.put(name, tensor) }
 ----
 
-`staging` and `quantPolicy` are independent axes of one loader: `quantPolicy` decides *what the
-values are*, `staging` decides *where the bytes live*. `MAPPED` serves dense FP32 tensors as
-zero-heap views over file-backed pages, and falls back to `HEAP` when the platform cannot map or
-the source has no path.
+The loader takes one `WeightForm` — encoding × byte order × shape × residency — resolved
+for you by `WeightFormResolver` (or passed explicitly; your form always wins). `MAPPED`
+residency serves dense FP32 tensors as zero-heap views over file-backed pages, and falls
+back to the heap when the platform cannot map or the source has no path.
 
 NOTE: Packed (quantized) tensors still arrive as heap arrays under `MAPPED`, because the packed
 matmul kernels take `ByteArray`s. Mapping lifts the heap ceiling for dense checkpoints today, not

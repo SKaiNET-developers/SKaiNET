@@ -232,12 +232,14 @@ keeps working unchanged and the overload is purely opt-in. Expected consumers:
   (packed quant blocks) and a synthesized SafeTensors file (dense
   F32/F16/BF16) produce bit-identical tensors under either placement.
 
-== Implementation status (2026-08-24)
+== Implementation status (updated 2026-08-26, for 0.49.0)
 
 Tracked by SKEEP-003's M2 slice
 https://github.com/SKaiNET-developers/SKaiNET/issues/1038[#1038]. This SKEEP stays *Draft*: the
-mechanism is in `develop`, the acceptance criteria that need a physical device are not met yet, and
-one of them cannot be met until an unrelated contract is fixed.
+mechanism is in `develop` (and since 0.49.0 the loader speaks one `WeightForm` — the legacy
+`StagingPolicy`/`QuantPolicy`/`WeightOrientation` axes were removed in #1159), the acceptance
+criteria that need a physical device are not met yet, and one of them cannot be met until an
+unrelated contract is fixed.
 
 Landed:
 
@@ -247,7 +249,7 @@ Landed:
   (https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921],
   https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922]).
 * *Phase 3* — mapped loading is a *configuration of the ordinary loader* rather than a separate
-  helper: `StreamingGgufParametersLoader(staging = StagingPolicy.MAPPED)`
+  helper: `StreamingGgufParametersLoader(weightForm = WeightForm(residency = WeightResidency.MAPPED))`
   (https://github.com/SKaiNET-developers/SKaiNET/issues/1037[#1037]), with `AndroidGguf.loader()`
   making it the Android default.
 * *The fit check this SKEEP did not have* — `MemoryPlan.fitOn(DeviceMemory, weightsMapped)` treats

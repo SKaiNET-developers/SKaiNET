@@ -104,8 +104,8 @@ Your article must be written in AsciiDoc and include the following sections (use
   • Pointers (`xref:`) to human-written math/semantics sections
 
 - Provide example AsciiDoc fragment:
-  [source,adoc]
-  ----
+  [listing]
+  ......
   // generated: do not edit
   == TensorOps.matmul
 
@@ -124,7 +124,7 @@ Your article must be written in AsciiDoc and include the following sections (use
   |===
 
   See xref:theory/matmul.adoc#definition[MatMul semantics] and xref:examples/matmul.adoc#examples[Examples].
-  ----
+  ......
 
 - Demonstrate combining generated and human-written docs via `include::` and `xref:`, with a small folder layout:
   [source,text]

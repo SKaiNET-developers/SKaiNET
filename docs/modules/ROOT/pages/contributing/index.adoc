@@ -20,7 +20,7 @@ The Contributing section is for the engineer who:
 - Maintains the CI workflows (smoke runs on `ubuntu-latest`, full
   publishable runs on the self-hosted lane).
 - Adds or replaces kernels in the CPU backend (scalar, Panama Vector,
-  the planned native FFM provider).
+  the native FFM provider).
 - Operates the self-hosted runner that publishes benchmark results.
 - Drafts or reviews durable API and architecture proposals in the
   xref:skeep:index.adoc[SKEEP proposal track].

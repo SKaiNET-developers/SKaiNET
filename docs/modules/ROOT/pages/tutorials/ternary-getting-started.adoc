@@ -183,7 +183,7 @@ to make.
 The kernel, its dispatch pack, and all three bridges are merged
 (https://github.com/SKaiNET-developers/SKaiNET/issues/1136[#1136] tracks the
 effort; the C kernel is vendored verbatim from NeoGPU under MIT, agreed in
-https://github.com/anjaustin/neogpu/issues/1[neogpu#1]). In progress:
+https://github.com/anjaustin/neogpu/issues/1[neogpu#1]). Landed in 0.49.0:
 
 * GGUF I2_S import with keep-packed loading
   (https://github.com/SKaiNET-developers/SKaiNET/issues/1140[#1140]) — load a

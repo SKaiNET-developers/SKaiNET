@@ -73,7 +73,7 @@ GGUF writes dimensions in `ne` order — fastest-varying first — so a weight t
 Only the label is wrong, and the label is what the relayout reads: driven by `[in, out]` it
 permutes the wrong grid, or refuses because `out` is not a multiple of the block size.
 
-* `StreamingGgufParametersLoader(weightOrientation = WeightOrientation.OUT_IN)` fixes the label at
+* `StreamingGgufParametersLoader(weightForm = WeightForm(shape = WeightShapeOrientation.OUT_IN))` fixes the label at
 the boundary, reversing 2-D weights only. Nothing about the bytes changes. It defaults to
 `AS_STORED` — the historical behaviour — because reversing shapes changes what every consumer
 sees; new code should ask for `OUT_IN`.
@@ -83,7 +83,7 @@ when the *first* dimension is block-aligned and the second is not — exactly wh
 produces — and stays quiet when both are aligned and it cannot tell.
 
 The two GGUF readers still disagree about this: the legacy `GGUFReader` reverses dimensions, the
-streaming one does not. `WeightOrientation` is how a caller states which it wants rather than
+streaming one does not. `WeightForm.shape` (`WeightShapeOrientation`) is how a caller states which it wants rather than
 discovering it.
 
 == For a downstream repository
