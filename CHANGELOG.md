@@ -2,6 +2,81 @@
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-08-28
+
+Headline: **model size on Android is now a page-cache question, not a heap question — and decode is
+2.5× faster.** Quantized weights are served straight from the memory-mapped GGUF file (zero copies,
+zero relayout), the packed matmul kernels thread across cores, and a 1.0 GB Qwen2.5-1.5B Q4_K_M —
+which OOM'd at load under the 256 MB ART cap in 0.49.0 — loads in ~0.4 s with 566 KB of weight heap
+and decodes at 61–66 ms/step with zero steady-state page faults (Pixel 8a, measured by the M2-A5
+harness). The same file-order kernels serve heap-staged weights too, closing a measured 48,771 ms/step
+silent-fallback trap for mixed-quant models — and fallbacks are never silent again.
+
+### Added
+
+- **Packed-tensor mapped staging** ([#1189](https://github.com/SKaiNET-developers/SKaiNET/issues/1189),
+  [#1190](https://github.com/SKaiNET-developers/SKaiNET/pull/1190)): under
+  `WeightForm(residency = MAPPED)` every GGML block format (Q4_K, Q6_K, Q5_K, Q8_0, Q4_0, Q5_0, Q5_1 —
+  [#1192](https://github.com/SKaiNET-developers/SKaiNET/issues/1192)) is served from file-backed pages:
+  `BufferPackedTensorData` over `MappedBufferStorage`/`DirectBufferStorage`, row-major (`_rm`) C kernels
+  that read canonical GGUF file order (no prepack, no relayout copy), reached via JNI direct-buffer
+  entries on Android and FFM `MemorySegment.ofBuffer` on the JVM
+  ([#1191](https://github.com/SKaiNET-developers/SKaiNET/issues/1191)). Ternary (`BITNET_B1_58`) still
+  heap-stages — its load-time repack needs the sidecar cache tracked in
+  [#1198](https://github.com/SKaiNET-developers/SKaiNET/issues/1198).
+- **Threaded packed matmuls** ([#1195](https://github.com/SKaiNET-developers/SKaiNET/issues/1195),
+  [#1196](https://github.com/SKaiNET-developers/SKaiNET/pull/1196)): a spin-then-park worker pool with
+  guided row-grains, engaged at `outputDim ≥ 512`. The design is measurement-driven and the failed
+  variants are documented in the PR: per-call `pthread_create` cost 994 ms/step against deep-idle
+  cores, and every *sleeping* pool lost to one pegged big core because sub-millisecond bursts never
+  build scheduler utilization — the ~1 ms spin before parking (the same trick llama.cpp uses) is what
+  unlocks big cores at full clocks. 153 → 61 ms/step on the 1.5B; results are bit-identical to
+  single-threaded (disjoint row ranges, unchanged per-row accumulation order).
+- **Storage-polymorphic row-major dispatch, and no silent fallbacks**
+  ([#1193](https://github.com/SKaiNET-developers/SKaiNET/issues/1193),
+  [#1197](https://github.com/SKaiNET-developers/SKaiNET/pull/1197)): one kernel per format serves
+  `BLOCKED_ROW_MAJOR` weights from mapped, direct **or heap** storage — an un-prepacked heap canonical
+  weight used to fall to the decoding reference kernel silently (measured: 48,771 ms/step on
+  SmolLM2-135M, whose non-256-multiple dims made llama.cpp's quantizer emit mostly Q8_0; now 33 ms/step,
+  the fastest configuration measured). `ViewKernel` gained a sink-aware `run` overload and every packed
+  bridge announces a reference fallback as a `KernelRun` trace event with the reason; the M2-A5 harness
+  prints the count.
+- **The plan tells the truth about mapped weights**
+  ([#1190](https://github.com/SKaiNET-developers/SKaiNET/pull/1190)): `MemoryPlan.budgetedBytes`
+  charges mapped-servable weights against device RAM/page cache instead of the heap budget
+  (`fits`, suggestions and `PlannerProfile`'s KV auto-quantization follow), rendered as its own
+  `mapped (page cache, evictable — not heap)` line. `AllocationResolver.servesFromMapping` is the one
+  predicate the resolver, the plan and the loader share, gated by
+  `StorageCapabilities.mappedServableEncodings`, so they cannot tell different stories; `planInput`
+  takes the `WeightForm` the load will use.
+- **Kernel-support matrix: mapped serving section** — the generated matrix now shows, per platform,
+  which formats serve from a mapping (all seven on Android `native-jni-direct` and JVM `ffm-rowmajor`;
+  empty cells are the documented gaps).
+- **"The DSL is compute"** ([#1194](https://github.com/SKaiNET-developers/SKaiNET/pull/1194)):
+  the architecture principle behind all of the above as a teachable explanation page — network
+  definitions describe computation only; memory intent lives in `WeightForm` at the load boundary,
+  priced by the plan, honored-or-visibly-rejected by resolvers, with runtime dispatch holding no
+  memory policy.
+
+### Changed
+
+- Cross-order kernel results (row-major vs feed-order) are **numerically equivalent, not bit-exact**:
+  under `-O3 -ffast-math` compilers may contract float accumulation differently per loop shape
+  (measured 2 ULP on clang/arm64, more under MSVC auto-vectorization). Integer-dot formats (Q4_K, Q6_K)
+  currently match exactly, but only threaded-vs-single-threaded identity is contractual. The parity
+  suites encode this.
+- The M2-A5 measurement harness gained `residency=heap|mapped` and reports mapped vs heap weight bytes
+  and the packed-kernel fallback count.
+
+### Third-party
+
+- The vendored NeoGPU ternary NEON kernel
+  (`skainet-backends/skainet-backend-native-cpu/native/src/vendor/neogpu/hs_ml_ternary_neon.c`,
+  © 2024 NeoGPU Contributors, MIT, byte-identical to upstream
+  [anjaustin/neogpu](https://github.com/anjaustin/neogpu) @ `0846b24`) ships unchanged in this release;
+  REUSE metadata and `META-INF/THIRD-PARTY-NOTICES.md` in the published artifacts carry the attribution
+  ([#1166](https://github.com/SKaiNET-developers/SKaiNET/issues/1166)).
+
 ## [0.49.0] - 2026-08-26
 
 Headline: **the SKEEP-003 memory & storage architecture, complete — from accepted proposal to shipped system.**
