@@ -32,6 +32,32 @@ public class JvmMappedFile private constructor(
         return out
     }
 
+    /**
+     * Q4_K/Q6_K payloads as [sk.ainet.lang.tensor.data.BufferPackedTensorData] borrowing a slice
+     * of the one file mapping (#1189) — the packed counterpart of [denseFloats]: zero heap bytes,
+     * blocks left in canonical row-major file order for the buffer-reading kernels.
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    override fun packedTensor(
+        byteOffset: Long,
+        shape: Shape,
+        encoding: sk.ainet.lang.tensor.storage.TensorEncoding,
+    ): TensorData<*, *>? = when (encoding) {
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K,
+        sk.ainet.lang.tensor.storage.TensorEncoding.Q6_K,
+        -> {
+            val length = checkNotNull(encoding.physicalBytes(shape.volume.toLong())) {
+                "${encoding.name} has size-determinate blocks"
+            }
+            sk.ainet.lang.tensor.data.BufferPackedTensorData(
+                shape,
+                sk.ainet.lang.memory.DirectBufferStorage.borrow(mmap.byteBufferAt(byteOffset, length)),
+                encoding,
+            )
+        }
+        else -> null
+    }
+
     /** Releases the channel; views already handed out keep working (the mapping outlives it). */
     override fun close() {
         try { mmap.close() } finally { raf.close() }

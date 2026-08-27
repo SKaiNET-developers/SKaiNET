@@ -13,6 +13,7 @@ import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelPacks
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.exec.kernel.jni.JniKernelProvider
+import sk.ainet.exec.kernel.jni.JniMappedKernelPack
 import sk.ainet.io.MappedRandomAccessSource
 import sk.ainet.io.gguf.StreamingGGUFReader
 import sk.ainet.io.gguf.StreamingGgufParametersLoader
@@ -131,6 +132,10 @@ class M2A5DeviceMeasurement {
         KernelDispatch.clearForTesting()
         runCatching { KernelPacks.install(JniKernelProvider); KernelPacks.installPacked(JniKernelProvider) }
             .onFailure { line("_note: JNI kernel pack unavailable (${it.message}); reference kernels serve — memory numbers stay valid, timings do not._") }
+        // #1189: row-major direct-buffer kernels — these serve the mapped packed weights below
+        // with zero copies and no prepack.
+        runCatching { JniMappedKernelPack.install() }
+            .onFailure { line("_note: mapped kernel pack unavailable (${it.message}); mapped packed weights fall back to the decoding reference._") }
 
         val sink = RecordingTraceSink()
         val ctx = DirectCpuExecutionContext()
@@ -148,20 +153,29 @@ class M2A5DeviceMeasurement {
         val sLoaded = MemoryProbe.sample()
 
         // Account the materialized weights as model-scope allocations so plan-vs-actual sees
-        // them; the loader's own storages are not all sink-wired.
+        // them; the loader's own storages are not all sink-wired. #1189 note: physicalBytes
+        // (not packedData.size) — a mapped packed tensor keeps its bytes off-heap and has no
+        // heap ByteArray at all; those bytes are counted separately as mapped.
         var weightHeapBytes = 0L
+        var weightMappedBytes = 0L
+        var mappedPackedCount = 0
         var syntheticStorageId = -1_000_000L
         for ((name, t) in tensors) {
-            val bytes = (t.data as? PackedBlockStorage)?.packedData?.size?.toLong()
-                ?: (t.shape.volume.toLong() * 4L)
-            weightHeapBytes += bytes
+            val d = t.data
+            val bytes = (d as? PackedBlockStorage)?.physicalBytes ?: (t.shape.volume.toLong() * 4L)
+            if (d is sk.ainet.lang.tensor.data.BufferPackedTensorData) {
+                weightMappedBytes += bytes; mappedPackedCount += 1
+            } else {
+                weightHeapBytes += bytes
+            }
             syntheticStorageId -= 1
             sink.emit(TraceEvent.Allocation(syntheticStorageId, ScopeKind.MODEL, bytes, null, "m2a5:$name"))
         }
         line("## Load")
         line()
         line("- wall time: ${loadMs} ms for ${tensors.size} tensors")
-        line("- materialized bytes (heap tensors + packed payloads): ${mb(weightHeapBytes)}")
+        line("- heap bytes (dense tensors + heap packed payloads): ${mb(weightHeapBytes)}")
+        line("- mapped packed payloads (#1189, off-heap): ${mb(weightMappedBytes)} in $mappedPackedCount tensors")
         line("- RSS before → after load: ${mb(sBefore.rssBytes)} → ${mb(sLoaded.rssBytes)} (Δ ${mb((sLoaded.rssBytes ?: 0L) - (sBefore.rssBytes ?: 0L))})")
         line("- major faults during load: ${sLoaded.majorFaultsSince(sBefore) ?: "—"}")
         line()

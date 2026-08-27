@@ -4729,6 +4729,30 @@ public final class sk/ainet/lang/tensor/data/BitNetPlanesTensorData$Companion {
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/BitNetPlanesTensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/BufferPackedTensorData : sk/ainet/lang/tensor/data/TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/storage/TensorEncoding;)V
+	public fun copyToFloatArray ()[F
+	public fun dequantizeBlock (I[FI)V
+	public fun get ([I)Ljava/lang/Float;
+	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockCount ()I
+	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
+	public fun getBlockSize ()I
+	public fun getElementCount ()J
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getPackedData ()[B
+	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
+	public fun getPhysicalBytes ()J
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public final fun getStorage ()Lsk/ainet/lang/memory/Storage;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
+	public fun set ([IF)V
+	public synthetic fun set ([ILjava/lang/Object;)V
+	public fun toFloatArray ()[F
+	public fun toTensorStorage (Lsk/ainet/lang/tensor/storage/LogicalDType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public fun toTensorStorage (Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/Placement;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+}
+
 public final class sk/ainet/lang/tensor/data/DenseFloatArrayTensorData : sk/ainet/lang/tensor/data/FloatArrayTensorData {
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[F)V
 	public fun copyToFloatArray ()[F
@@ -4924,6 +4948,7 @@ public final class sk/ainet/lang/tensor/data/MmapFloatTensorData : sk/ainet/lang
 public final class sk/ainet/lang/tensor/data/MmapTensorSource : java/lang/AutoCloseable {
 	public static final field Companion Lsk/ainet/lang/tensor/data/MmapTensorSource$Companion;
 	public fun <init> (Ljava/nio/MappedByteBuffer;)V
+	public final fun byteBufferAt (JJ)Ljava/nio/ByteBuffer;
 	public fun close ()V
 	public final fun floatTensorAt (JLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/MmapFloatTensorData;
 	public final fun isLoaded ()Z

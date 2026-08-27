@@ -171,4 +171,25 @@ public object JniKernels {
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
     )
+
+    /**
+     * Row-major Q4_K matmul over a **direct** [java.nio.ByteBuffer] weight (#1189): the blocks
+     * stay in canonical GGUF file order — `(o * blocksPerRow + b) * 144` from [weightByteOffset]
+     * — and are read straight out of the buffer's off-heap (typically mmap'd) memory. The buffer
+     * MUST be direct; a heap buffer has no native address and the call writes nothing.
+     */
+    public external fun q4kMatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
+
+    /** Row-major Q6_K matmul over a direct ByteBuffer weight (#1189); see [q4kMatmulRmDirect]. */
+    public external fun q6kMatmulRmDirect(
+        input: FloatArray, inputOffset: Int,
+        weight: java.nio.ByteBuffer, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    )
 }

@@ -144,6 +144,57 @@ Java_sk_ainet_exec_kernel_jni_JniKernels_q6kMatmul(
 }
 
 /*
+ * Direct-buffer row-major matmuls (#1189): the weight arrives as a direct
+ * ByteBuffer over mmap'd (or direct-allocated) bytes instead of a heap
+ * ByteArray, and stays in canonical GGUF row-major block order — which is
+ * what lets a model's quantized payloads never touch the managed heap.
+ *
+ * GetDirectBufferAddress is a JNI call, so it MUST run before the critical
+ * pins (no JNI calls are allowed between Get..Critical and Release..Critical).
+ * A NULL address (non-direct buffer) leaves the output untouched; the Kotlin
+ * caller guarantees directness by construction (DirectBufferStorage /
+ * MappedBufferStorage hand out direct buffers only).
+ */
+#define SKAINET_JNI_MATMUL_RM_DIRECT_BODY(CALL)                                \
+    const uint8_t* w =                                                         \
+        (const uint8_t*) (*env)->GetDirectBufferAddress(env, weight);          \
+    jfloat* in = w ? (*env)->GetPrimitiveArrayCritical(env, input, NULL) : NULL; \
+    jfloat* out = in ? (*env)->GetPrimitiveArrayCritical(env, output, NULL) : NULL; \
+    if (out) {                                                                 \
+        CALL;                                                                  \
+    }                                                                          \
+    if (out) (*env)->ReleasePrimitiveArrayCritical(env, output, out, 0);       \
+    if (in) (*env)->ReleasePrimitiveArrayCritical(env, input, in, JNI_ABORT);
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q4kMatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q4k_matmul_rm(in, inputOffset, w, weightByteOffset,
+                              inputDim, outputDim, out, outputOffset))
+}
+
+JNIEXPORT void JNICALL
+Java_sk_ainet_exec_kernel_jni_JniKernels_q6kMatmulRmDirect(
+    JNIEnv* env, jobject thiz,
+    jfloatArray input, jint inputOffset,
+    jobject weight, jint weightByteOffset,
+    jint inputDim, jint outputDim,
+    jfloatArray output, jint outputOffset
+) {
+    (void) thiz;
+    SKAINET_JNI_MATMUL_RM_DIRECT_BODY(
+        skainet_q6k_matmul_rm(in, inputOffset, w, weightByteOffset,
+                              inputDim, outputDim, out, outputOffset))
+}
+
+/*
  * bitnet_gemv (SKEEP-003 §5.3, #1041): int8 activations against ternary TQ2_0
  * weights. Its activation is a *byte* array, not floats, so it does not fit
  * SKAINET_JNI_MATMUL_BODY's float-input shape and pins its three arrays here.

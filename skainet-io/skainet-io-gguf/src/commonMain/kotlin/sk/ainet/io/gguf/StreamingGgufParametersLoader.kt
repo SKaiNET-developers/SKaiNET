@@ -291,6 +291,39 @@ public class StreamingGgufParametersLoader(
                     onProgress(current, total, tensorInfo.name)
                     continue
                 }
+                // #1189: a Q4_K/Q6_K tensor under MAPPED staging is the packed counterpart of the
+                // dense case above — served as a view over the file-backed pages, blocks left in
+                // canonical row-major order, never a heap ByteArray. Only when nothing asks for a
+                // different form: a dequantize/planes request or KERNEL_FEED order needs the bytes
+                // (or values) materialized anyway, and a platform without off-heap packed storage
+                // returns null and falls through to heap staging as before.
+                val mappedPacked: Tensor<T, V>? =
+                    if (mapped != null && tensorForm.residency == WeightResidency.MAPPED &&
+                        dtype == FP32::class &&
+                        tensorForm.order != WeightByteOrder.KERNEL_FEED &&
+                        tensorForm.encoding !is EncodingRequest.DequantizeTo &&
+                        !planesRequested(tensorForm)
+                    ) {
+                        val enc = when (tensorInfo.tensorType) {
+                            GGMLQuantizationType.Q4_K -> sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K
+                            GGMLQuantizationType.Q6_K -> sk.ainet.lang.tensor.storage.TensorEncoding.Q6_K
+                            else -> null
+                        }
+                        enc?.let { encoding ->
+                            mapped.packedTensor(tensorInfo.absoluteDataOffset, shape, encoding)?.let {
+                                @Suppress("UNCHECKED_CAST")
+                                ctx.fromData(it as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                if (mappedPacked != null) {
+                    onTensorLoaded(tensorInfo.name, mappedPacked)
+                    current += 1
+                    onProgress(current, total, tensorInfo.name)
+                    continue
+                }
                 val rawBytes = mapped?.bytes(tensorInfo.absoluteDataOffset, tensorInfo.nBytes.toInt())
                     ?: reader.loadTensorData(tensorInfo)
 

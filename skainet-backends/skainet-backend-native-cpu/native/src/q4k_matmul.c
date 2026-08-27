@@ -280,3 +280,89 @@ SKAINET_API void skainet_q4k_matmul(
     free(q8);
     free(d_in);
 }
+
+/*
+ * Row-major variant (#1189): the weight stays in canonical GGUF file order —
+ * (o * blocks_per_row + b) * 144 — so an mmap'd tensor is fed as-is, no
+ * relayout copy. Loop order is o OUTER here: each output row's blocks are
+ * contiguous on disk, so the weight bytes are still read strictly
+ * sequentially; the Q8-quantized activation (input_dim bytes) stays hot
+ * across rows. Per-row accumulation order over blocks matches the feed-order
+ * kernel's, so results are bit-identical.
+ */
+SKAINET_API void skainet_q4k_matmul_rm(
+    const float* SKAINET_RESTRICT input,
+    int32_t input_offset,
+    const uint8_t* SKAINET_RESTRICT weight,
+    int32_t weight_byte_offset,
+    int32_t input_dim,
+    int32_t output_dim,
+    float* SKAINET_RESTRICT output,
+    int32_t output_offset
+) {
+    if (output_dim <= 0 || input_dim <= 0) return;
+
+#ifdef SKAINET_DOTPROD_DISPATCH
+    const int use_dp = skainet_cpu_has_dotprod();
+#endif
+
+    const int32_t blocks_per_input_dim = input_dim / Q4K_BLOCK_SIZE;
+    const float* in_base = input + input_offset;
+    float* out_base = output + output_offset;
+
+    /* Pre-quantize the whole input row to Q8 once (reused across all o). */
+    int8_t* q8 = (int8_t*) malloc((size_t) input_dim * sizeof(int8_t));
+    float* d_in = (float*) malloc((size_t) blocks_per_input_dim * sizeof(float));
+    if (q8 == NULL || d_in == NULL) { free(q8); free(d_in); return; }
+    for (int32_t b = 0; b < blocks_per_input_dim; ++b) {
+        d_in[b] = skainet_q8_quantize_block(in_base + (size_t) b * Q4K_BLOCK_SIZE,
+                                            q8 + (size_t) b * Q4K_BLOCK_SIZE);
+    }
+
+    int scale_idx[Q4K_SUB_BLOCKS];
+    int min_idx[Q4K_SUB_BLOCKS];
+
+    const uint8_t* block = weight + weight_byte_offset;
+    for (int32_t o = 0; o < output_dim; ++o) {
+        float acc = 0.0f;
+        for (int32_t block_idx = 0; block_idx < blocks_per_input_dim;
+             ++block_idx, block += Q4K_BYTES_PER_BLOCK) {
+            const int8_t* q8_block = q8 + (size_t) block_idx * Q4K_BLOCK_SIZE;
+            const float di = d_in[block_idx];
+
+            const uint16_t d_bits     = (uint16_t) block[0] | ((uint16_t) block[1] << 8);
+            const uint16_t d_min_bits = (uint16_t) block[2] | ((uint16_t) block[3] << 8);
+            const float d     = skainet_half_to_float(d_bits);
+            const float d_min = skainet_half_to_float(d_min_bits);
+
+            skainet_q4k_decode_scales(block + 4, scale_idx, min_idx);
+
+            const uint8_t* qs = block + 16;
+
+            int64_t block_scale_dot = 0;
+            int64_t block_min_sum = 0;
+
+#if defined(SKAINET_HAVE_DOTPROD)
+            skainet_q4k_block_dot_dp(qs, q8_block, scale_idx, min_idx,
+                                     &block_scale_dot, &block_min_sum);
+#elif defined(SKAINET_DOTPROD_DISPATCH)
+            if (use_dp) {
+                skainet_q4k_block_dot_dp(qs, q8_block, scale_idx, min_idx,
+                                         &block_scale_dot, &block_min_sum);
+            } else {
+                skainet_q4k_block_dot_generic(qs, q8_block, scale_idx, min_idx,
+                                              &block_scale_dot, &block_min_sum);
+            }
+#else
+            skainet_q4k_block_dot_generic(qs, q8_block, scale_idx, min_idx,
+                                          &block_scale_dot, &block_min_sum);
+#endif
+
+            acc += di * (d * (float) block_scale_dot - d_min * (float) block_min_sum);
+        }
+        out_base[o] = acc;
+    }
+
+    free(q8);
+    free(d_in);
+}

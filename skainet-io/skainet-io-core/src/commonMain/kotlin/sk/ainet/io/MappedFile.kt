@@ -26,6 +26,18 @@ public interface MappedFile : AutoCloseable {
 
     /** [length] bytes copied out of the mapping at [byteOffset], for kernels that need an array. */
     public fun bytes(byteOffset: Long, length: Int): ByteArray
+
+    /**
+     * A packed quantized tensor of [shape]/[encoding] viewing the mapping at [byteOffset] — zero
+     * heap bytes, blocks in canonical row-major file order (#1189). Returns `null` when this
+     * platform (or this encoding) has no off-heap packed representation; callers fall back to
+     * heap staging, which is the pre-#1189 behaviour for every packed tensor.
+     */
+    public fun packedTensor(
+        byteOffset: Long,
+        shape: Shape,
+        encoding: sk.ainet.lang.tensor.storage.TensorEncoding,
+    ): TensorData<*, *>? = null
 }
 
 /**
