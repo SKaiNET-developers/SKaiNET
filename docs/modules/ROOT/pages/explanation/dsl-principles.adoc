@@ -1,0 +1,134 @@
+= The DSL is compute
+:description: Why network definitions describe computation only — and where memory, formats, and placement decisions actually live.
+
+SKaiNET's DSL — `network { }`, modules, the DAG, the tape recorder — answers exactly one
+question: *what is computed*. It never answers where bytes live, how weights are encoded, which
+kernel runs, or what fits on the device. Those are properties of a **deployment** (this file ×
+this device × this build), and they are decided at other levels, by mechanisms that can be told
+apart from wishes.
+
+This page states the principle, the levels, and the evidence — it exists to teach the rule
+before someone proposes the obvious-looking feature that breaks it ("let the DSL say
+`residency = MAPPED`").
+
+== The principle
+
+****
+*A network definition is a pure description of computation. Every claim about memory, encoding,
+layout, or placement lives outside the DSL — and every such claim is either honored by a
+mechanism or visibly rejected. Never silently approximated.*
+****
+
+Two halves, and both matter:
+
+* **Semantics in the DSL, mechanics outside it.** The same `bitnetNetwork(...)` must be right on
+  a Pixel with a 256 MB heap cap, a 128 GB workstation, a Raspberry Pi, and a browser. Any
+  memory claim written into the model definition is wrong on most targets *by construction* —
+  it would describe one deployment while pretending to describe the model.
+* **Claims are contracts, not hints.** A request the mechanism cannot honor must fail loudly or
+  downgrade visibly (a trace event, a plan line, an `explain()`), because a silently degraded
+  claim is worse than no claim: every layer above it now reasons from a falsehood.
+
+== Who answers which question
+
+[cols="2,3,3",options="header"]
+|===
+| Level | Question it answers | Vocabulary
+
+| **DSL / DAG / tape** (model definition)
+| What is computed — modules, shapes, dataflow
+| `network { }`, `Dense`, attention blocks, activations. *No memory words at all.*
+
+| **Format** (per tensor, from the checkpoint)
+| How the bytes encode values
+| `Format = (DType, TensorEncoding)` — `Q4_K`, `BITNET_B1_58`, dense FP32. Logically a packed
+  weight is still FP32; the encoding says how it is stored, never what it means.
+
+| **WeightForm** (load boundary, per tensor)
+| What form this weight should take in memory
+| encoding request × byte order × shape orientation × residency. The *one* place a caller
+  states memory intent.
+
+| **Plan** (before any byte moves)
+| Does this deployment fit, and where does each byte land
+| `MemoryPlans.plan(header × forms × StorageCapabilities × Budget)` — pure arithmetic, the
+  "compile time" of memory. Mapped weights budget against the page cache, heap weights against
+  the heap cap, and the fit verdict is checkable against the loaded reality (`PlanVsActual`).
+
+| **Resolvers** (load time)
+| Can the claim be honored here
+| `WeightFormResolver`, `AllocationResolver.servesFromMapping` /
+  `StorageCapabilities.mappedServableEncodings`. Honor, or downgrade with a reason
+  (`explain()`), traced.
+
+| **Dispatch** (run time)
+| Which kernel serves these operands
+| `KernelKey` = op × per-operand `(Format, LayoutClass)`. Runtime holds **no memory policy** —
+  it reads what is already true about the operands and picks a kernel. That is all.
+|===
+
+The direction of information flow is strictly downward: the DSL knows nothing of forms, forms
+know nothing of kernels, kernels declare keys and are chosen. Nothing reaches back up.
+
+== Evidence, not aesthetics
+
+This separation is not a style preference; it is what the project's two hardest recent results
+rode on:
+
+* **New arithmetic with zero DSL change (#1136).** The vendored NeoGPU ternary kernels, the
+  `BITNET_B1_58` and `BITNET_PLANES` encodings, and a real BitNet-2B4T generating text — all
+  landed as *formats and kernels*. The network definition kept using plain dense/matmul modules;
+  `KernelDispatch` picked the ternary kernels because the weight's format said so.
+* **A 1 GB model under a 256 MB heap cap with zero DSL change (#1189/#1190).** Serving Q4_K/Q6_K
+  weights from mmap'd pages needed a storage-backed tensor data, row-major kernels, and two
+  dispatch keys. Model definitions — and even the model *loader* call sites — did not change.
+  Measured on a Pixel 8a: 566 KB of weight heap, 153 ms/step, zero steady-state major faults.
+
+And the cautionary half of the same story:
+
+* **The planner lie (#1190).** `residency = MAPPED` was an explicit claim, the loader silently
+  heap-staged the encodings it could not map, and the planner *believed the claim instead of the
+  mechanism* — so the plan printed `✘ does not fit` about a run that measurably fit. The failure
+  was not "too few knobs"; it was an unenforced claim. The fix was not another knob either: one
+  shared predicate (`servesFromMapping`) that the resolver, the plan, and the load all consult,
+  so they cannot disagree.
+
+== What this rules out
+
+* Memory, placement, residency, or quantization annotations in network definitions.
+* `is`-ladders over concrete `TensorData` classes inside ops or backends — dispatch on declared
+  format and layout, never on implementation type (#993, #1181 are what the ladders cost).
+* Runtime memory policy — a kernel that decides to relayout, cache, or migrate bytes on its own.
+  Relayout is a load-time, traced decision (`prepack`); runtime only reads.
+* Silent fallback as a substitute for honesty. A packed kernel may fall back to the decoding
+  reference when it cannot serve an operand — but the downgrade must be observable, because
+  "correct but 1000× slower" hidden in a hot loop is a bug report with extra steps.
+
+== Where a user actually turns knobs
+
+Not in the model — in the deployment:
+
+[source,kotlin]
+----
+// Explicit, per load — the claim:
+StreamingGgufParametersLoader(
+    sourceProvider = { ... },
+    weightForm = WeightForm(shape = OUT_IN, residency = WeightResidency.MAPPED),
+)
+
+// Checked before a byte moves — the contract:
+val plan = MemoryPlans.plan(reader.planInput(ctx, formFor = { form }), Budget.of(cap))
+require(plan.fits == true) { plan.render() }
+----
+
+Prefer investing in **defaults over overrides**: a `PlannerProfile` should resolve the right
+residency for the platform (mapped-by-default where it is measurably better) so most callers
+never state a claim at all — and when they do state one, it is because they need it *enforced*,
+which is exactly what an explicit claim is for.
+
+== See also
+
+* xref:explanation/memory-model.adoc[] — the Storage/View/Format/Layout model underneath.
+* xref:explanation/packed-weight-layout.adoc[] — block orders and why they are in the kernel key.
+* xref:reference/kernel-support-matrix.adoc[] — which provider serves which format where.
+* xref:how-to/plan-model-memory.adoc[] — the plan as a user-facing contract.
