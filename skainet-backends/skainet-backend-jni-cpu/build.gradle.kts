@@ -75,4 +75,8 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     // Scalar reference kernels for on-device parity checks.
     androidTestImplementation(project(":skainet-backends:skainet-backend-cpu"))
+    // The #1130 (M2-A5) measurement harness loads a real GGUF on-device.
+    androidTestImplementation(project(":skainet-io:skainet-io-core"))
+    androidTestImplementation(project(":skainet-io:skainet-io-gguf"))
+    androidTestImplementation(libs.kotlinx.coroutines)
 }
