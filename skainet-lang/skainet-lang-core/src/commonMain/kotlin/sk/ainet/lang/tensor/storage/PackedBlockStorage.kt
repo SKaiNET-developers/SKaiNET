@@ -33,6 +33,18 @@ public interface PackedBlockStorage {
     public val packedData: ByteArray
 
     /**
+     * The [sk.ainet.lang.memory.Storage] backing [packedData] (#1202).
+     *
+     * Defaults to wrapping [packedData] in [sk.ainet.lang.memory.Storage.Heap] — the historical
+     * behavior, unchanged for every implementer that doesn't override this. An implementer whose
+     * bytes actually live off-heap or mapped (e.g. a large ternary weight, to stay off the ART
+     * heap cap) overrides this to expose its real backing storage instead.
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public val packedStorage: sk.ainet.lang.memory.Storage
+        get() = sk.ainet.lang.memory.Storage.Heap.wrap(packedData, mutable = false)
+
+    /**
      * The order [packedData]'s blocks are physically in (#1120, #1124).
      *
      * Canonical storage — every GGUF-shaped producer — is
@@ -84,7 +96,7 @@ public interface PackedBlockStorage {
     @sk.ainet.lang.memory.ExperimentalMemoryApi
     public val packedView: sk.ainet.lang.memory.TensorView
         get() = sk.ainet.lang.memory.TensorView.packed(
-            storage = sk.ainet.lang.memory.Storage.Heap.wrap(packedData, mutable = false),
+            storage = packedStorage,
             shape = shape,
             encoding = encoding,
             decoder = sk.ainet.lang.memory.PackedBlockDecoder(this),

@@ -41,6 +41,21 @@ public class DirectBufferStorage private constructor(
         return DirectBufferStorage(StorageId.next(), s, Owner.Alias(this), debugOrigin, sink)
     }
 
+    override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        val d: ByteBuffer = buf.duplicate()
+        d.position(offset.toInt())
+        d.get(dest, destOffset, length)
+    }
+
+    override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        val d: ByteBuffer = buf.duplicate()
+        d.position(offset.toInt())
+        d.put(src, srcOffset, length)
+    }
+
     public companion object {
         /** Allocate [bytes] zeroed direct bytes owned by a scope of kind [scope]. */
         public fun allocate(bytes: Int, scope: ScopeKind = ScopeKind.AMBIENT, origin: TensorId? = null, sink: TraceSink = NoopTraceSink): DirectBufferStorage {
@@ -83,6 +98,21 @@ public class MappedBufferStorage private constructor(
         d.position(offsetBytes.toInt()); d.limit((offsetBytes + lengthBytes).toInt())
         val s: ByteBuffer = d.slice().order(ByteOrder.LITTLE_ENDIAN)
         return MappedBufferStorage(StorageId.next(), path, fileOffset + offsetBytes, s, Owner.Alias(this), debugOrigin, sink)
+    }
+
+    override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        val d: ByteBuffer = buf.duplicate()
+        d.position(offset.toInt())
+        d.get(dest, destOffset, length)
+    }
+
+    override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        val d: ByteBuffer = buf.duplicate()
+        d.position(offset.toInt())
+        d.put(src, srcOffset, length)
     }
 
     public companion object {

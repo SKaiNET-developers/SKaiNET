@@ -772,6 +772,8 @@ public final class sk/ainet/lang/memory/DirectBufferStorage : sk/ainet/lang/memo
 	public static final field Companion Lsk/ainet/lang/memory/DirectBufferStorage$Companion;
 	public synthetic fun <init> (JLjava/nio/ByteBuffer;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun buffer ()Ljava/nio/ByteBuffer;
+	public fun copyFrom ([BIJI)V
+	public fun copyInto ([BIJI)V
 	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
 	public fun getId-TPZW6QE ()J
 	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
@@ -892,6 +894,8 @@ public final class sk/ainet/lang/memory/MappedBufferStorage : sk/ainet/lang/memo
 	public static final field Companion Lsk/ainet/lang/memory/MappedBufferStorage$Companion;
 	public synthetic fun <init> (JLjava/nio/file/Path;JLjava/nio/ByteBuffer;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun buffer ()Ljava/nio/ByteBuffer;
+	public fun copyFrom ([BIJI)V
+	public fun copyInto ([BIJI)V
 	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
 	public final fun getFileOffset ()J
 	public fun getId-TPZW6QE ()J
@@ -911,6 +915,8 @@ public final class sk/ainet/lang/memory/MappedBufferStorage$Companion {
 public final class sk/ainet/lang/memory/MappedFileStorage : sk/ainet/lang/memory/Storage$Mapped {
 	public static final field Companion Lsk/ainet/lang/memory/MappedFileStorage$Companion;
 	public synthetic fun <init> (JLjava/nio/file/Path;JLjava/lang/foreign/MemorySegment;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/foreign/Arena;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun copyFrom ([BIJI)V
+	public fun copyInto ([BIJI)V
 	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
 	public final fun getFileOffset ()J
 	public fun getId-TPZW6QE ()J
@@ -1156,6 +1162,8 @@ public final class sk/ainet/lang/memory/ScopeKind : java/lang/Enum {
 public final class sk/ainet/lang/memory/SegmentStorage : sk/ainet/lang/memory/Storage$OffHeap {
 	public static final field Companion Lsk/ainet/lang/memory/SegmentStorage$Companion;
 	public synthetic fun <init> (JLjava/lang/foreign/MemorySegment;Lsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;Ljava/lang/foreign/Arena;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun copyFrom ([BIJI)V
+	public fun copyInto ([BIJI)V
 	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
 	public fun getId-TPZW6QE ()J
 	public fun getOwner ()Lsk/ainet/lang/memory/Owner;
@@ -1179,6 +1187,10 @@ public final class sk/ainet/lang/memory/SegmentStorage$Companion {
 public abstract class sk/ainet/lang/memory/Storage : java/lang/AutoCloseable {
 	public final fun checkAlive ()V
 	public final fun close ()V
+	public abstract fun copyFrom ([BIJI)V
+	public static synthetic fun copyFrom$default (Lsk/ainet/lang/memory/Storage;[BIJIILjava/lang/Object;)V
+	public abstract fun copyInto ([BIJI)V
+	public static synthetic fun copyInto$default (Lsk/ainet/lang/memory/Storage;[BIJIILjava/lang/Object;)V
 	public abstract fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
 	public abstract fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public abstract fun getId-TPZW6QE ()J
@@ -1201,6 +1213,8 @@ public abstract class sk/ainet/lang/memory/Storage$Device : sk/ainet/lang/memory
 public final class sk/ainet/lang/memory/Storage$Heap : sk/ainet/lang/memory/Storage {
 	public static final field Companion Lsk/ainet/lang/memory/Storage$Heap$Companion;
 	public synthetic fun <init> (J[F[I[BIJLsk/ainet/lang/memory/Owner;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/trace/TraceSink;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun copyFrom ([BIJI)V
+	public fun copyInto ([BIJI)V
 	public final fun getArrayOffset ()I
 	public final fun getBytes ()[B
 	public fun getDebugOrigin ()Lsk/ainet/lang/tensor/TensorId;
@@ -4681,6 +4695,7 @@ public final class sk/ainet/lang/tensor/data/Bf16TensorDataKt {
 
 public final class sk/ainet/lang/tensor/data/BitNetB158TensorData : sk/ainet/lang/tensor/data/TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/BitNetB158TensorData$Companion;
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Storage;)V
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[B)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
@@ -4692,6 +4707,7 @@ public final class sk/ainet/lang/tensor/data/BitNetB158TensorData : sk/ainet/lan
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public final fun getScale ()F
@@ -4707,6 +4723,7 @@ public final class sk/ainet/lang/tensor/data/BitNetB158TensorData : sk/ainet/lan
 public final class sk/ainet/lang/tensor/data/BitNetB158TensorData$Companion {
 	public final fun fromFloats (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/data/BitNetB158TensorData;
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/BitNetB158TensorData;
+	public final fun fromStorage (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Storage;)Lsk/ainet/lang/tensor/data/BitNetB158TensorData;
 }
 
 public final class sk/ainet/lang/tensor/data/BitNetPlanesTensorData : sk/ainet/lang/tensor/data/TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
@@ -4723,6 +4740,7 @@ public final class sk/ainet/lang/tensor/data/BitNetPlanesTensorData : sk/ainet/l
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public final fun getRows ()I
@@ -4753,6 +4771,7 @@ public final class sk/ainet/lang/tensor/data/BufferPackedTensorData : sk/ainet/l
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5082,6 +5101,7 @@ public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5145,6 +5165,7 @@ public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5208,6 +5229,7 @@ public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5256,6 +5278,7 @@ public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5307,6 +5330,7 @@ public final class sk/ainet/lang/tensor/data/Q5_KBlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5376,6 +5400,7 @@ public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5468,6 +5493,7 @@ public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -5605,6 +5631,7 @@ public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData : sk/ainet/la
 	public fun getElementCount ()J
 	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public fun getScale ()F
@@ -7399,6 +7426,7 @@ public abstract interface class sk/ainet/lang/tensor/storage/PackedBlockStorage 
 	public fun getElementCount ()J
 	public abstract fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public abstract fun getPackedData ()[B
+	public fun getPackedStorage ()Lsk/ainet/lang/memory/Storage;
 	public fun getPackedView ()Lsk/ainet/lang/memory/TensorView;
 	public fun getPhysicalBytes ()J
 	public abstract fun getShape ()Lsk/ainet/lang/tensor/Shape;
@@ -7413,6 +7441,7 @@ public final class sk/ainet/lang/tensor/storage/PackedBlockStorage$DefaultImpls 
 	public static synthetic fun dequantizeBlock$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;I[FIILjava/lang/Object;)V
 	public static fun getBlockOrder (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)Lsk/ainet/lang/memory/BlockOrder;
 	public static fun getElementCount (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)J
+	public static fun getPackedStorage (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)Lsk/ainet/lang/memory/Storage;
 	public static fun getPackedView (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)Lsk/ainet/lang/memory/TensorView;
 	public static fun getPhysicalBytes (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)J
 	public static fun toFloatArray (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)[F

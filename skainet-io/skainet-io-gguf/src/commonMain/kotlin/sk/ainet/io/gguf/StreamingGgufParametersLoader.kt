@@ -584,6 +584,7 @@ public class StreamingGgufParametersLoader(
      * defined against.
      */
     @Suppress("UNCHECKED_CAST")
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
     private fun <T : DType, V> i2sTensor(
         ctx: ExecutionContext,
         dtype: KClass<T>,
@@ -627,8 +628,36 @@ public class StreamingGgufParametersLoader(
             )
             return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
         }
-        val packed = sk.ainet.lang.tensor.data.BitNetB158TensorData(shape, packedBytes)
+        val packed = i2sPackedTensorData(shape, packedBytes)
         return ctx.fromData(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+    }
+
+    /**
+     * [packedBytes] as a [sk.ainet.lang.tensor.data.BitNetB158TensorData] — off the ART heap
+     * (#1202) when the payload is at least [sk.ainet.lang.memory.plan.PlannerProfile.OFF_HEAP_THRESHOLD]
+     * and the platform supports it; otherwise the historical heap-backed constructor.
+     *
+     * A 2B-parameter BitNet model's ternary weights are ~0.25 bytes/weight — roughly 500MB
+     * resident as plain `ByteArray`s, which alone can exceed Android's default ART heap cap. This
+     * is independent of *residency* (`WeightResidency.MAPPED` isn't reachable for a repacked
+     * payload — the bytes are no longer the file's own — see `AllocationResolver`): it's purely
+     * about not holding the repack's result in managed-heap memory once it's large enough to
+     * matter.
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    private fun i2sPackedTensorData(shape: Shape, packedBytes: ByteArray): sk.ainet.lang.tensor.data.BitNetB158TensorData {
+        val offHeapThreshold = sk.ainet.lang.memory.plan.PlannerProfile.OFF_HEAP_THRESHOLD
+        if (packedBytes.size < offHeapThreshold || !sk.ainet.lang.memory.PlatformStorage.supports(sk.ainet.lang.tensor.storage.MemoryDomain.HOST_OFFHEAP)) {
+            return sk.ainet.lang.tensor.data.BitNetB158TensorData(shape, packedBytes)
+        }
+        val storage = sk.ainet.lang.memory.PlatformStorage.allocate(
+            bytes = packedBytes.size.toLong(),
+            domain = sk.ainet.lang.tensor.storage.MemoryDomain.HOST_OFFHEAP,
+            scope = sk.ainet.lang.memory.ScopeKind.MODEL,
+            sink = traceSink,
+        )
+        storage.copyFrom(packedBytes)
+        return sk.ainet.lang.tensor.data.BitNetB158TensorData.fromStorage(shape, storage)
     }
 
     /**

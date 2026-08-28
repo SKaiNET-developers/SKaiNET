@@ -1,5 +1,7 @@
 package sk.ainet.lang.tensor.data
 
+import sk.ainet.lang.memory.ExperimentalMemoryApi
+import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TernaryCodec
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
@@ -21,10 +23,26 @@ import sk.ainet.lang.types.DType
  * serves (#1138). `get` returns the *signed code* (−1, 0, +1; byte code 3 → +2), scale not
  * applied; decoding with the scale goes through [dequantizeBlock] / [PackedBlockStorage.toFloatArray].
  */
-public class BitNetB158TensorData(
+public class BitNetB158TensorData private constructor(
     initialShape: Shape,
-    private val data: ByteArray,
+    private val heapData: ByteArray?,
+    private val backingStorage: Storage?,
 ) : TensorData<DType, Byte>, PackedBlockStorage {
+
+    /** Wrap raw `payload + scale` bytes on the JVM/heap — the historical constructor. */
+    public constructor(initialShape: Shape, data: ByteArray) : this(initialShape, data, null)
+
+    /**
+     * Wrap [storage]-backed `payload + scale` bytes (#1202) — off-heap or mapped storage large
+     * enough that a permanent heap-resident copy would count against Android's ART heap cap.
+     * [PackedBlockStorage.packedView] (and so the GEMV kernels) read [storage] directly; the
+     * per-element accessors below ([codeAt], [get], [set], [scale], [dequantizeBlock]) are a
+     * slower path that lazily snapshots [storage] into a transient heap array on first use —
+     * they are not on the fast kernel-dispatch path, so that snapshot is the exception, not the
+     * steady state.
+     */
+    @ExperimentalMemoryApi
+    public constructor(initialShape: Shape, storage: Storage) : this(initialShape, null, storage)
 
     /** The façade over the packed bytes (SKEEP-003 §4.1): see [PackedBlockStorage.packedView]. */
     @sk.ainet.lang.memory.ExperimentalMemoryApi
@@ -36,16 +54,31 @@ public class BitNetB158TensorData(
     override val encoding: TensorEncoding get() = TensorEncoding.BITNET_B1_58
     override val blockCount: Int get() = 1
     override val blockSize: Int get() = shape.volume
+
+    @ExperimentalMemoryApi
+    override val packedStorage: Storage
+        get() = backingStorage ?: Storage.Heap.wrap(heapData!!, mutable = false)
+
+    /**
+     * Lazily materialized heap snapshot of [backingStorage] — [packedData]/[codeAt]/[get]/[set]
+     * only, never the kernel dispatch path (that reads [packedStorage] directly). Computed once;
+     * a tensor that's only ever used for inference through the GEMV kernels never triggers this.
+     */
+    private val data: ByteArray by lazy(LazyThreadSafetyMode.NONE) {
+        heapData ?: ByteArray(backingStorage!!.sizeBytes.toInt()).also { backingStorage.copyInto(it) }
+    }
+
     override val packedData: ByteArray get() = data
 
     /** The per-tensor FP32 scale (the trailing 4 bytes). */
     public val scale: Float get() = TernaryCodec.bitNetScale(data, shape.volume)
 
     init {
+        val sizeBytes = heapData?.size?.toLong() ?: backingStorage!!.sizeBytes
         val required = (TensorEncoding.BITNET_B1_58.physicalBytes(shape.volume.toLong())
             ?: error("BITNET_B1_58 cannot size ${shape.volume} elements"))
-        require(data.size >= required) {
-            "BitNetB158TensorData: buffer is ${data.size} bytes, need >= $required " +
+        require(sizeBytes >= required) {
+            "BitNetB158TensorData: buffer is $sizeBytes bytes, need >= $required " +
                 "(ceil(${shape.volume}/4) payload + 4-byte FP32 scale)"
         }
     }
@@ -72,7 +105,11 @@ public class BitNetB158TensorData(
         val byteIndex = flatIndex / 4
         val shift = (flatIndex % 4) * 2
         val cleared = data[byteIndex].toInt() and (3 shl shift).inv()
-        data[byteIndex] = (cleared or ((value + 1) shl shift)).toByte()
+        val updated = (cleared or ((value + 1) shl shift)).toByte()
+        data[byteIndex] = updated
+        // The lazy snapshot above is a copy, not an alias, when backed by off-heap/mapped
+        // storage — write the single changed byte back so the two never diverge.
+        backingStorage?.copyFrom(byteArrayOf(updated), offset = byteIndex.toLong(), length = 1)
     }
 
     private fun calcFlatIndex(indices: IntArray): Int {
@@ -94,6 +131,11 @@ public class BitNetB158TensorData(
         /** Wrap raw `payload + scale` bytes (validates the size). */
         public fun fromRawBytes(shape: Shape, bytes: ByteArray): BitNetB158TensorData =
             BitNetB158TensorData(shape, bytes)
+
+        /** Wrap a `payload + scale` [storage] (validates the size) — see the [Storage] constructor. */
+        @ExperimentalMemoryApi
+        public fun fromStorage(shape: Shape, storage: Storage): BitNetB158TensorData =
+            BitNetB158TensorData(shape, storage)
 
         /** Encode [values] with [TernaryCodec.encodeBitNet] (absmean ternarization). */
         public fun fromFloats(shape: Shape, values: FloatArray): BitNetB158TensorData {
