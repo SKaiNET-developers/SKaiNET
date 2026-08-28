@@ -44,7 +44,11 @@ public object I2sRepack {
 
     /**
      * The sequential `BITNET_B1_58` payload of [elementCount] codes read from [bytes] under
-     * [layout]. For [I2sGgufLayout.SEQUENTIAL] the payload is validated and copied as-is.
+     * [layout]. For [I2sGgufLayout.SEQUENTIAL] the payload is validated and, when [bytes] holds
+     * exactly [elementCount]'s payload with no trailing slack to trim, returned as the same
+     * array reference — no copy (#1203): `SEQUENTIAL` is already the target byte order, so the
+     * only thing standing between it and a zero-copy load was this method defensively trimming a
+     * buffer that didn't need trimming.
      *
      * @throws IllegalArgumentException on byte code 3, or when [elementCount] does not fill
      *   [layout]'s blocks exactly
@@ -64,7 +68,7 @@ public object I2sRepack {
                     requireValidCode((b shr (lane * 2)) and 3, element)
                 }
             }
-            return bytes.copyOf(payloadBytes)
+            return if (bytes.size == payloadBytes) bytes else bytes.copyOf(payloadBytes)
         }
         val qk = layout.blockElements
         require(elementCount % qk == 0) {

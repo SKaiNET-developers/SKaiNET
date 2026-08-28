@@ -61,6 +61,17 @@ class I2sRepackTest {
     }
 
     @Test
+    fun sequentialWithNoTrailingSlackReturnsTheSameArrayNoCopy() {
+        // #1203: when the input is already exactly the payload (no trailer to trim), the method
+        // must hand back the same array reference — not just content-equal bytes — so a caller can
+        // treat it as a genuine zero-copy pass-through rather than a hidden defensive copy.
+        val codes = randomCodes(64, seed = 4)
+        val bytes = packSequential(codes)
+        val out = I2sRepack.toSequentialPayload(bytes, 64, I2sGgufLayout.SEQUENTIAL)
+        assertTrue(bytes === out, "expected the identical array back, got a copy")
+    }
+
+    @Test
     fun byteCode3FailsFastInEveryLayout() {
         for (layout in I2sGgufLayout.entries) {
             val bytes = ByteArray(128 / 4) // 128 elements of code 0...
