@@ -21,6 +21,21 @@ if(NOT DEFINED SKAINET_AARCH64_CC)
 endif()
 set(CMAKE_C_COMPILER ${SKAINET_AARCH64_CC})
 
+# The archiver must understand ELF objects. On a macOS host the default
+# /usr/bin/ar + ranlib silently produce an EMPTY archive from cross-compiled
+# ELF objects (just a __.SYMDEF), which then surfaces downstream as
+# "undefined symbol: skainet_*" when a consumer links the published klib.
+# Allow -DSKAINET_AARCH64_AR/-DSKAINET_AARCH64_RANLIB overrides, and default
+# to llvm-ar/llvm-ranlib when they are on the PATH (they handle ELF anywhere).
+if(NOT DEFINED SKAINET_AARCH64_AR)
+    find_program(SKAINET_AARCH64_AR NAMES llvm-ar aarch64-linux-gnu-gcc-ar ar)
+endif()
+if(NOT DEFINED SKAINET_AARCH64_RANLIB)
+    find_program(SKAINET_AARCH64_RANLIB NAMES llvm-ranlib aarch64-linux-gnu-gcc-ranlib ranlib)
+endif()
+set(CMAKE_AR ${SKAINET_AARCH64_AR})
+set(CMAKE_RANLIB ${SKAINET_AARCH64_RANLIB})
+
 # Search for libraries/headers only in the target sysroot, but find
 # programs (the compiler) on the host.
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
