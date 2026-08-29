@@ -316,6 +316,12 @@ val configureNativeKernelsArm64 by tasks.registering(Exec::class) {
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_TOOLCHAIN_FILE=$toolchainFilePath",
         "-DSKAINET_AARCH64_CC=$aarch64Cc",
+    ) + listOfNotNull(
+        // Cross-archiving from a macOS host needs an ELF-aware ar/ranlib (the
+        // BSD defaults silently emit an EMPTY archive from ELF objects) — see
+        // toolchain-aarch64.cmake. Optional overrides, e.g. Konan's llvm-ar.
+        (findProperty("skainetAarch64Ar") as String?)?.let { "-DSKAINET_AARCH64_AR=$it" },
+        (findProperty("skainetAarch64Ranlib") as String?)?.let { "-DSKAINET_AARCH64_RANLIB=$it" },
     )
 }
 
