@@ -312,6 +312,16 @@ public class StreamingGgufParametersLoader(
                             GGMLQuantizationType.Q4_0 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0
                             GGMLQuantizationType.Q5_0 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q5_0
                             GGMLQuantizationType.Q5_1 -> sk.ainet.lang.tensor.storage.TensorEncoding.Q5_1
+                            // #1203: only when the payload is already SEQUENTIAL (no permutation
+                            // needed) and the trailing bytes are genuinely the scale (no companion
+                            // tensor overrides them) -- otherwise fall through to i2sTensor's
+                            // repack, unchanged.
+                            GGMLQuantizationType.I2_S ->
+                                if (i2sTrailerScaleIsMappable(tensorInfo, tensors, source)) {
+                                    sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_B1_58
+                                } else {
+                                    null
+                                }
                             else -> null
                         }
                         enc?.let { encoding ->
@@ -551,19 +561,8 @@ public class StreamingGgufParametersLoader(
         reader: StreamingGGUFReader,
         source: RandomAccessSource,
     ): Float {
-        fun trailer(): Float? = runCatching {
-            val bytes = source.readAt(tensorInfo.absoluteDataOffset + tensorInfo.nBytes, 4)
-            val bits = (bytes[0].toInt() and 0xFF) or
-                ((bytes[1].toInt() and 0xFF) shl 8) or
-                ((bytes[2].toInt() and 0xFF) shl 16) or
-                ((bytes[3].toInt() and 0xFF) shl 24)
-            Float.fromBits(bits)
-        }.getOrNull()?.takeIf { it.isFinite() && it != 0f }
-
         fun companionInverse(): Float? {
-            val companion = tensors.firstOrNull {
-                it.tensorType == GGMLQuantizationType.F32 && it.name == "${tensorInfo.name}_scale"
-            } ?: return null
+            val companion = i2sCompanionScaleTensor(tensorInfo, tensors) ?: return null
             val value = runCatching { bytesToFloatArray(reader.loadTensorData(companion)).firstOrNull() }
                 .getOrNull() ?: return null
             if (!value.isFinite() || value == 0f) return null
@@ -571,10 +570,54 @@ public class StreamingGgufParametersLoader(
         }
 
         return when (i2sLayout) {
-            I2sGgufLayout.GROUP_128, I2sGgufLayout.GROUP_64 -> trailer() ?: companionInverse() ?: 1f
-            I2sGgufLayout.SEQUENTIAL -> companionInverse() ?: trailer() ?: 1f
+            I2sGgufLayout.GROUP_128, I2sGgufLayout.GROUP_64 -> i2sTrailerScale(tensorInfo, source) ?: companionInverse() ?: 1f
+            I2sGgufLayout.SEQUENTIAL -> companionInverse() ?: i2sTrailerScale(tensorInfo, source) ?: 1f
         }
     }
+
+    /** The `<name>_scale` companion tensor for an I2_S weight, if the converter wrote one (#1140). */
+    private fun i2sCompanionScaleTensor(
+        tensorInfo: StreamingTensorInfo,
+        tensors: List<StreamingTensorInfo>,
+    ): StreamingTensorInfo? = tensors.firstOrNull {
+        it.tensorType == GGMLQuantizationType.F32 && it.name == "${tensorInfo.name}_scale"
+    }
+
+    /**
+     * The little-endian FP32 immediately after [tensorInfo]'s payload — BitNet.cpp's trailer
+     * convention — or `null` if unreadable, non-finite, or zero. [StreamingTensorInfo.nBytes]
+     * deliberately sizes the payload only, so `absoluteDataOffset + nBytes` is exactly where a
+     * trailer would start.
+     */
+    private fun i2sTrailerScale(tensorInfo: StreamingTensorInfo, source: RandomAccessSource): Float? = runCatching {
+        val bytes = source.readAt(tensorInfo.absoluteDataOffset + tensorInfo.nBytes, 4)
+        val bits = (bytes[0].toInt() and 0xFF) or
+            ((bytes[1].toInt() and 0xFF) shl 8) or
+            ((bytes[2].toInt() and 0xFF) shl 16) or
+            ((bytes[3].toInt() and 0xFF) shl 24)
+        Float.fromBits(bits)
+    }.getOrNull()?.takeIf { it.isFinite() && it != 0f }
+
+    /**
+     * Whether an I2_S tensor's on-disk bytes are, as-is, a complete kernel-ready `BITNET_B1_58`
+     * buffer — payload immediately followed by its own trailing FP32 scale — so mapping
+     * `[absoluteDataOffset, absoluteDataOffset + nBytes + 4)` directly gives exactly what
+     * [resolveI2sScale] would have computed anyway (#1203).
+     *
+     * Only ever true for [I2sGgufLayout.SEQUENTIAL]: the payload itself is already in
+     * `BITNET_B1_58` order there, whereas `GROUP_128`/`GROUP_64` payloads still need permuting
+     * regardless of where the scale lives. False whenever a companion `<name>_scale` tensor
+     * exists — [resolveI2sScale]'s `SEQUENTIAL` order prefers it over a trailer — or the trailer
+     * bytes don't parse to a finite, nonzero float.
+     */
+    private fun i2sTrailerScaleIsMappable(
+        tensorInfo: StreamingTensorInfo,
+        tensors: List<StreamingTensorInfo>,
+        source: RandomAccessSource,
+    ): Boolean =
+        i2sLayout == I2sGgufLayout.SEQUENTIAL &&
+            i2sCompanionScaleTensor(tensorInfo, tensors) == null &&
+            i2sTrailerScale(tensorInfo, source) != null
 
     /**
      * Materialize an I2_S tensor (#1140): repack the payload into the sequential `BITNET_B1_58`
