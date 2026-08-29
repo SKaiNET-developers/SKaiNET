@@ -2,6 +2,78 @@
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-08-29
+
+Headline: **ternary/BitNet weights join the memory-mapped weight story 0.50.0 started for every
+other quant format.** 0.50.0 shipped mapped staging for every GGML block format but left ternary
+(`BITNET_B1_58`) heap-staging, flagged then as needing the work tracked in
+[#1198](https://github.com/SKaiNET-developers/SKaiNET/issues/1198). That work is done: off-heap
+storage removes the Android ART heap-cap OOM risk a repacked ternary weight used to carry, and a
+`SEQUENTIAL`-layout (NeoGPU-converted) GGUF now gets a true zero-copy mmap load with no repack at
+all. A new AOT converter lets a build that owns its model pipeline pay that repack cost once,
+offline, instead of on every load — its IREE-facing counterpart lives in a new home,
+[SKaiNET-IREE-tools](https://github.com/SKaiNET-developers/SKaiNET-IREE-tools), on the
+architectural grounds that compiled-target-specific conversion belongs beside the compiler
+toolchain it targets, not inside core (see [#1207](https://github.com/SKaiNET-developers/SKaiNET/issues/1207)).
+
+### Added
+
+- **Off-heap storage for packed ternary/quantized weights**
+  ([#1202](https://github.com/SKaiNET-developers/SKaiNET/issues/1202),
+  [#1206](https://github.com/SKaiNET-developers/SKaiNET/pull/1206)): `Storage` gains
+  `copyInto`/`copyFrom` bulk byte primitives implemented for every concrete storage kind (`Heap`,
+  `SegmentStorage`, `MappedFileStorage`, `DirectBufferStorage`, `MappedBufferStorage`,
+  `NativeMallocStorage`, `NativeMappedStorage`). `PackedBlockStorage` gains a `packedStorage`
+  property (default: wraps `packedData` in `Storage.Heap`, so every existing quantized format is
+  unaffected); `packedView` reads from it instead of always re-wrapping the raw array.
+  `BitNetB158TensorData` gains a `Storage`-backed constructor/`fromStorage()` factory — the
+  per-element accessors lazily snapshot off-heap storage only if actually touched, so inference
+  through the GEMV kernels never materializes a heap copy. `StreamingGgufParametersLoader`
+  allocates off-heap for repacked I2_S payloads at or above `PlannerProfile.OFF_HEAP_THRESHOLD`
+  (256 KB) instead of a permanent `ByteArray`.
+- **Zero-copy native gemv for off-heap ternary weights**
+  ([#1202](https://github.com/SKaiNET-developers/SKaiNET/issues/1202),
+  [#1206](https://github.com/SKaiNET-developers/SKaiNET/pull/1206)): `TernaryF32GemvNative` gains
+  `gemvPackedStorage()`, letting the JVM/FFM face hand a `SegmentStorage`'s `MemorySegment`
+  straight to the native downcall — the weight is never copied, not even once, where the
+  previous `gemvPacked` path re-copied the *entire* weight matrix into a fresh arena on every
+  row of every call, independent of storage kind. `NativeTernaryF32ViewKernel` now dispatches on
+  the weight's storage kind instead of only accepting `Storage.Heap`, so an off-heap ternary
+  weight keeps the fast NEON/FFM path instead of silently falling back to the slow reference
+  kernel.
+- **Zero-copy mmap for `SEQUENTIAL`-layout I2_S tensors**
+  ([#1203](https://github.com/SKaiNET-developers/SKaiNET/issues/1203),
+  [#1208](https://github.com/SKaiNET-developers/SKaiNET/pull/1208)): `I2sRepack.toSequentialPayload`
+  no longer copies a `SEQUENTIAL` buffer that's already exactly the target payload (the common
+  NeoGPU-converted case). More significantly, the loader's mmap-eligibility branch — previously
+  keyed on a hardcoded encoding whitelist that didn't include `I2_S` — now maps a `SEQUENTIAL`
+  I2_S tensor directly off the file whenever its trailing bytes are provably the real scale (no
+  companion `<name>_scale` tensor overriding them), giving it the same zero-copy path Q4_K/Q8_0/etc.
+  already had. `GROUP_128`/`GROUP_64` payloads and companion-scored `SEQUENTIAL` files correctly
+  keep repacking.
+- **`I2sAotConverter`: AOT GGUF → GGUF conversion for I2_S**
+  ([#1207](https://github.com/SKaiNET-developers/SKaiNET/issues/1207),
+  [#1210](https://github.com/SKaiNET-developers/SKaiNET/pull/1210)): reads an arbitrary GGUF,
+  repacks I2_S tensors into `SEQUENTIAL`+trailer order ahead of time, drops the now-redundant
+  companion scale tensor, and passes every other tensor and all KV metadata through unchanged —
+  the converted file always takes the new zero-copy mmap path above, with no on-device cost at
+  all. `GgufTensorEntry` (the writer's tensor-entry type) gains a `rawBytes` passthrough mode to
+  support this without going through the element-indexed `TensorFlatten` path.
+- **GGUF I2_S → `.irpa` conversion** (IREE-facing counterpart, in
+  [SKaiNET-IREE-tools#1](https://github.com/SKaiNET-developers/SKaiNET-IREE-tools/pull/1), not
+  this repo): a standalone Python tool producing an IREE parameter archive directly from a
+  GGUF's ternary tensors, for `iree-compile --iree-opt-import-parameters=`.
+
+### Fixed
+
+- **Scoped dense-FP32 activations silently fell out of the quantized matmul chooser**
+  ([#1211](https://github.com/SKaiNET-developers/SKaiNET/pull/1211)): `chooseQuantizedMatmul2D`
+  accepted only `FloatArrayTensorData`/`MemorySegmentBackedData` activations; a
+  `ScopedExecutionContext` forward's slab-backed `StorageFloatTensorData` fell through to
+  `matmulGeneric`, whose per-element `get()` on a `Q8MemorySegmentTensorData` weight returns the
+  raw quantization byte, not the value — silently wrong logits (the #993 class of bug). Any dense
+  activation (`encoding == null`) is now accepted via its own offset-aware `copyToFloatArray()`.
+
 ## [0.50.0] - 2026-08-28
 
 Headline: **model size on Android is now a page-cache question, not a heap question — and decode is
