@@ -51,8 +51,7 @@ public class TernaryF32GemvKernel(override val key: KernelKey) : ViewKernel {
         require(out.shape[0] == rows && out.shape[1] == n) { "out must be [$rows, $n], was ${out.shape}" }
         if (rows == 0 || n == 0) return
 
-        val bytes = weightBytes(w)
-        val byteOffset = (w.storage as Storage.Heap).arrayOffset
+        val (bytes, byteOffset) = weightBytes(w)
         // Codes are hoisted out of the row loop, and the per-tensor scale out of everything.
         val codes = TernaryCodec.codes(TensorEncoding.BITNET_B1_58, bytes, n * k, byteOffset)
         val scale = TernaryCodec.bitNetScale(bytes, n * k, byteOffset)
@@ -74,10 +73,14 @@ public class TernaryF32GemvKernel(override val key: KernelKey) : ViewKernel {
         }
     }
 
-    private fun weightBytes(w: TensorView): ByteArray {
-        val heap = w.storage as? Storage.Heap
-            ?: throw UnsupportedOperationException("ternary_f32_gemv reads ternary weights from heap storage in this milestone")
-        return heap.bytes ?: throw UnsupportedOperationException("ternary weights need byte storage")
+    /** The weight's bytes and the byte offset codes/scale should be read from within them. */
+    private fun weightBytes(w: TensorView): Pair<ByteArray, Int> = when (val storage = w.storage) {
+        is Storage.Heap -> (storage.bytes ?: throw UnsupportedOperationException("ternary weights need byte storage")) to storage.arrayOffset
+        // Off-heap/mapped weights (#1202): a transient snapshot, not a standing heap copy — this
+        // reference kernel is the slow/fallback path already, so the extra copy here doesn't
+        // regress the fast native path's residency. The snapshot is tensor-sized, so the codec
+        // reads it from offset 0 regardless of where the storage itself lives.
+        else -> ByteArray(storage.sizeBytes.toInt()).also { storage.copyInto(it) } to 0
     }
 
     public companion object {

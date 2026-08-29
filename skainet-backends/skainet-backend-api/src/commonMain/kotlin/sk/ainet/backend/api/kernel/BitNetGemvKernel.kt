@@ -76,10 +76,12 @@ public class BitNetGemvKernel(override val key: KernelKey) : ViewKernel {
         }
     }
 
-    private fun weightBytes(w: TensorView): ByteArray {
-        val heap = w.storage as? Storage.Heap
-            ?: throw UnsupportedOperationException("bitnet_gemv reads ternary weights from heap storage in this milestone")
-        return heap.bytes ?: throw UnsupportedOperationException("ternary weights need byte storage")
+    private fun weightBytes(w: TensorView): ByteArray = when (val storage = w.storage) {
+        is Storage.Heap -> storage.bytes ?: throw UnsupportedOperationException("ternary weights need byte storage")
+        // Off-heap/mapped weights (#1202): a transient snapshot, not a standing heap copy — this
+        // reference kernel is the slow/fallback path already, so the extra copy here doesn't
+        // regress the fast native path's residency.
+        else -> ByteArray(storage.sizeBytes.toInt()).also { storage.copyInto(it) }
     }
 
     /** Elements per scale: a GGML block, or the whole tensor for the per-tensor BitNet encoding. */

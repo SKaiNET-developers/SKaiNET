@@ -1,14 +1,20 @@
 package sk.ainet.backend.api.kernel
 
 import sk.ainet.lang.memory.ExperimentalMemoryApi
+import sk.ainet.lang.memory.Owner
 import sk.ainet.lang.memory.Scope
+import sk.ainet.lang.memory.ScopeKind
 import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.StorageId
 import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.memory.TernaryBlockDecoder
 import sk.ainet.lang.memory.TernaryCodec
+import sk.ainet.lang.memory.trace.NoopTraceSink
 import sk.ainet.lang.memory.trace.RecordingTraceSink
 import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.memory.trace.TraceSink
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.TensorId
 import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.FP32
 import kotlin.math.abs
@@ -52,6 +58,33 @@ class TernaryF32KernelPackTest {
                 }
                 out[outOffset + o] = acc
             }
+        }
+    }
+
+    /**
+     * A minimal non-Heap [Storage] usable from `commonTest` (no platform off-heap type is
+     * constructible here) — enough to exercise [NativeTernaryF32ViewKernel]'s `is Storage.OffHeap`
+     * branch and its [TernaryF32GemvNative.gemvPackedStorage] dispatch without a real JVM/Native
+     * off-heap allocation. The zero-copy behavior itself (a real `MemorySegment`) is pinned by
+     * `NativeTernaryF32GemvKernelTest` in skainet-backend-native-cpu.
+     */
+    private class FakeOffHeapStorage(private val bytes: ByteArray) : Storage.OffHeap() {
+        override val id: StorageId = StorageId.next()
+        override val sizeBytes: Long get() = bytes.size.toLong()
+        override val owner: Owner = Owner.Owned(ScopeKind.AMBIENT)
+        override val debugOrigin: TensorId? = null
+        override val sink: TraceSink = NoopTraceSink
+        override val isMutable: Boolean get() = true
+
+        override fun slice(offsetBytes: Long, lengthBytes: Long): Storage =
+            FakeOffHeapStorage(bytes.copyOfRange(offsetBytes.toInt(), (offsetBytes + lengthBytes).toInt()))
+
+        override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+            bytes.copyInto(dest, destOffset, offset.toInt(), offset.toInt() + length)
+        }
+
+        override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+            src.copyInto(bytes, offset.toInt(), srcOffset, srcOffset + length)
         }
     }
 
@@ -138,6 +171,44 @@ class TernaryF32KernelPackTest {
 
         val fromReference = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
         TernaryF32GemvKernel(TernaryF32GemvKernel.keyFor()).run(listOf(a, w), fromReference)
+        for (r in 0 until rows) for (o in 0 until n) {
+            val got = out.get(r, o)
+            val want = fromReference.get(r, o)
+            assertTrue(abs(got - want) <= 1e-5f * maxOf(1f, abs(want)), "[$r,$o]: $got vs $want")
+        }
+    }
+
+    @Test
+    fun offHeapWeightStorageStillTakesTheNativePathNotTheReferenceFallback() {
+        // #1202: shipping off-heap ternary storage must not silently regress the native path to
+        // the slow reference kernel — this is the direct regression test for that risk.
+        val native = FakeNative()
+        TernaryF32KernelPack.install(native)
+        val rows = 2
+        val a = activation(rows)
+
+        var seed = 5
+        val values = FloatArray(n * k) {
+            seed = seed * 1103515245 + 12345
+            ((seed ushr 16) % 3 - 1) * 0.5f
+        }
+        val bytes = TernaryCodec.encodeBitNet(values)
+        val offHeapStorage = FakeOffHeapStorage(bytes)
+        val w = TensorView.packed(
+            offHeapStorage, Shape(n, k), TensorEncoding.BITNET_B1_58,
+            TernaryBlockDecoder(TensorEncoding.BITNET_B1_58, n * k),
+        )
+
+        val out = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
+        NativeTernaryF32ViewKernel(native, TernaryF32GemvKernel.keyFor()).run(listOf(a, w), out)
+        assertEquals(rows, native.calls, "off-heap weight must still dispatch to the native kernel, once per row")
+
+        val fromReference = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
+        val heapWeight = TensorView.packed(
+            Storage.Heap.wrap(bytes), Shape(n, k), TensorEncoding.BITNET_B1_58,
+            TernaryBlockDecoder(TensorEncoding.BITNET_B1_58, n * k),
+        )
+        TernaryF32GemvKernel(TernaryF32GemvKernel.keyFor()).run(listOf(a, heapWeight), fromReference)
         for (r in 0 until rows) for (o in 0 until n) {
             val got = out.get(r, o)
             val want = fromReference.get(r, o)

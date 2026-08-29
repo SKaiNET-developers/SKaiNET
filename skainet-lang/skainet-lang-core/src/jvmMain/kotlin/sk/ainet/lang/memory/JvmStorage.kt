@@ -40,6 +40,17 @@ public class SegmentStorage private constructor(
         return SegmentStorage(StorageId.next(), seg.asSlice(offsetBytes, lengthBytes), Owner.Alias(this), debugOrigin, sink, null, mutable)
     }
 
+    override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        MemorySegment.copy(seg, ValueLayout.JAVA_BYTE, offset, dest, destOffset, length)
+    }
+
+    override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        MemorySegment.copy(src, srcOffset, seg, ValueLayout.JAVA_BYTE, offset, length)
+    }
+
     override fun onClose() { ownedArena?.close() }
 
     public companion object {
@@ -96,6 +107,17 @@ public class MappedFileStorage private constructor(
         checkAlive()
         require(offsetBytes >= 0 && lengthBytes >= 0 && offsetBytes + lengthBytes <= sizeBytes) { "slice [$offsetBytes, ${offsetBytes + lengthBytes}) outside $sizeBytes bytes" }
         return MappedFileStorage(StorageId.next(), path, fileOffset + offsetBytes, seg.asSlice(offsetBytes, lengthBytes), Owner.Alias(this), debugOrigin, sink, null)
+    }
+
+    override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        MemorySegment.copy(seg, ValueLayout.JAVA_BYTE, offset, dest, destOffset, length)
+    }
+
+    override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        MemorySegment.copy(src, srcOffset, seg, ValueLayout.JAVA_BYTE, offset, length)
     }
 
     override fun onClose() { arena?.close() }

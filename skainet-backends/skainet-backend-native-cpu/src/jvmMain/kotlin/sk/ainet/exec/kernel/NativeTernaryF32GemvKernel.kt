@@ -9,6 +9,8 @@ import java.lang.invoke.MethodHandle
 import sk.ainet.backend.api.kernel.TernaryF32GemvNative
 import sk.ainet.backend.api.kernel.TernaryF32KernelPack
 import sk.ainet.lang.memory.ExperimentalMemoryApi
+import sk.ainet.lang.memory.SegmentStorage
+import sk.ainet.lang.memory.Storage
 
 /**
  * Native (FFM) downcall to the vendored NeoGPU ternary LUT kernel.
@@ -101,6 +103,65 @@ public object NativeTernaryF32GemvKernel : TernaryF32GemvNative {
 
             mh.invoke(
                 inputSeg, inputOffset,
+                weightSeg, weightByteOffset,
+                inputDim, outputDim,
+                outputSeg, outputOffset,
+            )
+
+            MemorySegment.copy(outputSeg, ValueLayout.JAVA_FLOAT, 0L, output, 0, outputReachFloats)
+        }
+    }
+
+    /**
+     * The zero-copy face of [gemvPacked] (#1202): when [weight] is a [SegmentStorage] its
+     * `MemorySegment` is handed to the native call directly — the weight is never copied, not even
+     * once, unlike [gemvPacked] which always stages the weight into a fresh confined arena. This is
+     * what makes an off-heap-resident ternary weight (#1202's fix for the ART heap cap) actually
+     * fast on the row loop [sk.ainet.backend.api.kernel.NativeTernaryF32ViewKernel] runs, rather
+     * than falling back to re-copying the whole matrix on every row.
+     *
+     * Activation/output still stage through a small confined arena — they're `k`/`n` floats, not
+     * the weight matrix, so the cost is the same as [gemvPacked] pays today for those two.
+     */
+    @OptIn(ExperimentalMemoryApi::class)
+    override fun gemvPackedStorage(
+        activation: FloatArray, activationOffset: Int,
+        weight: Storage, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+    ) {
+        val weightSeg = (weight as? SegmentStorage)?.segment()
+        if (weightSeg == null) {
+            super.gemvPackedStorage(activation, activationOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset)
+            return
+        }
+        require(inputDim % 4 == 0) {
+            "NativeTernaryF32GemvKernel: inputDim must be a multiple of 4; got $inputDim"
+        }
+        if (outputDim == 0) return
+
+        val mh = handle
+            ?: error("NativeTernaryF32GemvKernel.gemv invoked while native library unavailable")
+
+        val inputReachFloats = if (inputDim == 0) 0 else activationOffset + inputDim
+        val outputReachFloats = outputOffset + outputDim
+
+        Arena.ofConfined().use { arena ->
+            val fAlign = ValueLayout.JAVA_FLOAT.byteAlignment()
+
+            val inputSeg: MemorySegment = if (inputReachFloats > 0)
+                arena.allocate(inputReachFloats.toLong() * java.lang.Float.BYTES, fAlign)
+            else MemorySegment.NULL
+            val outputSeg: MemorySegment =
+                arena.allocate(outputReachFloats.toLong() * java.lang.Float.BYTES, fAlign)
+
+            if (inputReachFloats > 0) {
+                MemorySegment.copy(activation, 0, inputSeg, ValueLayout.JAVA_FLOAT, 0L, inputReachFloats)
+            }
+            MemorySegment.copy(output, 0, outputSeg, ValueLayout.JAVA_FLOAT, 0L, outputReachFloats)
+
+            mh.invoke(
+                inputSeg, activationOffset,
                 weightSeg, weightByteOffset,
                 inputDim, outputDim,
                 outputSeg, outputOffset,

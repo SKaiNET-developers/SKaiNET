@@ -3,8 +3,10 @@
 package sk.ainet.lang.memory
 
 import kotlinx.cinterop.COpaquePointer
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ByteVar
 import sk.ainet.lang.memory.trace.NoopTraceSink
@@ -19,6 +21,7 @@ import platform.posix.PROT_READ
 import platform.posix.close
 import platform.posix.free
 import platform.posix.malloc
+import platform.posix.memcpy
 import platform.posix.memset
 import platform.posix.mmap
 import platform.posix.munmap
@@ -48,6 +51,19 @@ public class NativeMallocStorage private constructor(
         checkAlive()
         require(offsetBytes >= 0 && lengthBytes >= 0 && offsetBytes + lengthBytes <= sizeBytes) { "slice [$offsetBytes, ${offsetBytes + lengthBytes}) outside $sizeBytes bytes" }
         return NativeMallocStorage(StorageId.next(), (ptr.rawValue + offsetBytes).toLong().toCPointer(), lengthBytes, Owner.Alias(this), debugOrigin, sink, mutable)
+    }
+
+    override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        val src = (ptr.rawValue + offset).toLong().toCPointer()
+        dest.usePinned { pinned -> memcpy(pinned.addressOf(destOffset), src, length.convert()) }
+    }
+
+    override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        val dst = (ptr.rawValue + offset).toLong().toCPointer()
+        src.usePinned { pinned -> memcpy(dst, pinned.addressOf(srcOffset), length.convert()) }
     }
 
     override fun onClose() { if (owner is Owner.Owned) free(ptr) }
@@ -90,6 +106,19 @@ public class NativeMappedStorage private constructor(
         checkAlive()
         require(offsetBytes >= 0 && lengthBytes >= 0 && offsetBytes + lengthBytes <= sizeBytes) { "slice [$offsetBytes, ${offsetBytes + lengthBytes}) outside $sizeBytes bytes" }
         return NativeMappedStorage(StorageId.next(), path, fileOffset + offsetBytes, base, (ptr.rawValue + offsetBytes).toLong().toCPointer(), lengthBytes, 0L, Owner.Alias(this), debugOrigin, sink)
+    }
+
+    override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        val src = (ptr.rawValue + offset).toLong().toCPointer()
+        dest.usePinned { pinned -> memcpy(pinned.addressOf(destOffset), src, length.convert()) }
+    }
+
+    override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        val dst = (ptr.rawValue + offset).toLong().toCPointer()
+        src.usePinned { pinned -> memcpy(dst, pinned.addressOf(srcOffset), length.convert()) }
     }
 
     override fun onClose() { if (owner is Owner.Owned) munmap(base, mappedLength.convert()) }

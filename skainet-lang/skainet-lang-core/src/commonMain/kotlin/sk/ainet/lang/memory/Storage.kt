@@ -123,6 +123,22 @@ public sealed class Storage : AutoCloseable {
     /** A zero-copy alias over `[offsetBytes, offsetBytes + lengthBytes)` of this storage. */
     public abstract fun slice(offsetBytes: Long, lengthBytes: Long): Storage
 
+    /**
+     * Copy [length] bytes starting at [offset] into [dest] starting at [destOffset] — the one
+     * primitive that reads packed bytes uniformly regardless of storage kind (#1202). A kernel or
+     * decoder that only has a [ByteArray]-shaped contract (native FFM/JNI calls, [TernaryCodec])
+     * uses this to get a transient snapshot out of [OffHeap]/[Mapped] storage; for [Heap] it is a
+     * plain array copy, no snapshot needed.
+     */
+    public abstract fun copyInto(dest: ByteArray, destOffset: Int = 0, offset: Long = 0, length: Int = dest.size - destOffset)
+
+    /**
+     * Copy [length] bytes from [src] starting at [srcOffset] into this storage starting at
+     * [offset] — the inverse of [copyInto], e.g. writing a repacked payload into freshly
+     * allocated off-heap storage. Requires [isMutable].
+     */
+    public abstract fun copyFrom(src: ByteArray, srcOffset: Int = 0, offset: Long = 0, length: Int = src.size - srcOffset)
+
     override fun toString(): String = "${this::class.simpleName}(${id}, ${sizeBytes} B, $owner, $domain${debugOrigin?.let { ", $it" } ?: ""}${if (isAlive) "" else ", closed"})"
 
     /**
@@ -158,6 +174,21 @@ public sealed class Storage : AutoCloseable {
             require(offsetBytes >= 0 && lengthBytes >= 0 && offsetBytes + lengthBytes <= sizeBytes) { "slice [$offsetBytes, ${offsetBytes + lengthBytes}) outside $sizeBytes bytes" }
             require(offsetBytes % elementBytes == 0L && lengthBytes % elementBytes == 0L) { "slice must align to $elementBytes-byte elements" }
             return Heap(StorageId.next(), floats, ints, bytes, arrayOffset + (offsetBytes / elementBytes).toInt(), lengthBytes, Owner.Alias(this), debugOrigin, sink, mutable)
+        }
+
+        override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {
+            checkAlive()
+            val b = bytes ?: throw UnsupportedOperationException("copyInto needs byte-backed Heap storage")
+            val start = arrayOffset + offset.toInt()
+            b.copyInto(dest, destOffset, start, start + length)
+        }
+
+        override fun copyFrom(src: ByteArray, srcOffset: Int, offset: Long, length: Int) {
+            checkAlive()
+            require(isMutable) { "storage $id is not mutable" }
+            val b = bytes ?: throw UnsupportedOperationException("copyFrom needs byte-backed Heap storage")
+            val start = arrayOffset + offset.toInt()
+            src.copyInto(b, start, srcOffset, srcOffset + length)
         }
 
         public companion object {

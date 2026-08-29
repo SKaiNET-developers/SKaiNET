@@ -1,11 +1,15 @@
 package sk.ainet.exec.kernel
 
+import sk.ainet.lang.memory.ExperimentalMemoryApi
+import sk.ainet.lang.memory.SegmentStorage
+import sk.ainet.lang.memory.Storage
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -169,5 +173,56 @@ class NativeTernaryF32GemvKernelTest {
             FloatArray(0), 0, ByteArray(0), 0, 0, 3, out, 0,
         )
         for (v in out) assertEquals(0f, v, "output should be zeroed for inputDim=0")
+    }
+
+    /**
+     * #1202: [NativeTernaryF32GemvKernel.gemvPackedStorage] against a [SegmentStorage]-backed
+     * weight must match [NativeTernaryF32GemvKernel.gemvPacked] on the identical bytes exactly —
+     * it's the same native call, just handed the weight's `MemorySegment` directly instead of a
+     * copy staged into a fresh arena.
+     */
+    @OptIn(ExperimentalMemoryApi::class)
+    @Test
+    fun gemvPackedStorage_matches_gemvPacked_on_a_segment_backed_weight() {
+        val inputDim = 2560
+        val outputDim = 64
+        val rng = Random(11)
+        val input = FloatArray(inputDim) { rng.nextFloat() - 0.5f }
+        val weightBytes = ByteArray(outputDim * inputDim / 4).also { rng.nextBytes(it) }
+
+        val expected = FloatArray(outputDim)
+        NativeTernaryF32GemvKernel.gemvPacked(input, 0, weightBytes, 0, inputDim, outputDim, expected, 0)
+
+        val segment = SegmentStorage.allocate(weightBytes.size.toLong())
+        try {
+            segment.copyFrom(weightBytes)
+            val viaStorage = FloatArray(outputDim)
+            NativeTernaryF32GemvKernel.gemvPackedStorage(input, 0, segment, 0, inputDim, outputDim, viaStorage, 0)
+            assertEquals(
+                expected.toList(), viaStorage.toList(),
+                "gemvPackedStorage over a SegmentStorage must equal gemvPacked over the same bytes",
+            )
+        } finally {
+            segment.close()
+        }
+    }
+
+    /** A storage kind the FFM face can't read directly (here: plain Heap) falls back correctly. */
+    @OptIn(ExperimentalMemoryApi::class)
+    @Test
+    fun gemvPackedStorage_falls_back_correctly_for_non_segment_storage() {
+        val inputDim = 256
+        val outputDim = 4
+        val rng = Random(5)
+        val input = FloatArray(inputDim) { rng.nextFloat() - 0.5f }
+        val weightBytes = ByteArray(outputDim * inputDim / 4).also { rng.nextBytes(it) }
+
+        val expected = FloatArray(outputDim)
+        NativeTernaryF32GemvKernel.gemvPacked(input, 0, weightBytes, 0, inputDim, outputDim, expected, 0)
+
+        val heap = assertIs<Storage.Heap>(Storage.Heap.wrap(weightBytes, mutable = false))
+        val viaFallback = FloatArray(outputDim)
+        NativeTernaryF32GemvKernel.gemvPackedStorage(input, 0, heap, 0, inputDim, outputDim, viaFallback, 0)
+        assertEquals(expected.toList(), viaFallback.toList())
     }
 }

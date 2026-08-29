@@ -33,6 +33,32 @@ public interface TernaryF32GemvNative {
         out: FloatArray,
         outOffset: Int,
     )
+
+    /**
+     * The same call, [weight] backed by [Storage.OffHeap]/[Storage.Mapped] instead of a heap
+     * `ByteArray` (#1202). Implementations that can read the storage's native handle directly
+     * (e.g. the JVM FFM face reading a `SegmentStorage`'s `MemorySegment`) should override this to
+     * skip materializing a copy of the weight on every call — the weight is invariant across the
+     * row loop a [ViewKernel] runs, so a per-row snapshot here is the exact cost the sidecar/
+     * off-heap work in #1202 was meant to eliminate, not preserve.
+     *
+     * The default is still correct everywhere: one transient snapshot, then [gemvPacked].
+     */
+    @sk.ainet.lang.memory.ExperimentalMemoryApi
+    public fun gemvPackedStorage(
+        activation: FloatArray,
+        activationOffset: Int,
+        weight: sk.ainet.lang.memory.Storage,
+        weightByteOffset: Int,
+        inputDim: Int,
+        outputDim: Int,
+        out: FloatArray,
+        outOffset: Int,
+    ) {
+        val bytes = ByteArray(weight.sizeBytes.toInt())
+        weight.copyInto(bytes)
+        gemvPacked(activation, activationOffset, bytes, weightByteOffset, inputDim, outputDim, out, outOffset)
+    }
 }
 
 /**
@@ -110,35 +136,68 @@ public class NativeTernaryF32ViewKernel(
         val k = a.shape[1]
         val n = w.shape[0]
         val activationFloats = (a.storage as? Storage.Heap)?.floats
-        val weightBytes = (w.storage as? Storage.Heap)?.bytes
         val outFloats = (out.storage as? Storage.Heap)?.floats
-        if (k % 4 != 0 || activationFloats == null || weightBytes == null || outFloats == null ||
-            !a.isContiguous || !out.isContiguous
-        ) {
+        if (k % 4 != 0 || activationFloats == null || outFloats == null || !a.isContiguous || !out.isContiguous) {
             reference.run(inputs, out)
             return
         }
         if (rows == 0 || n == 0) return
         val aOffset = (a.storage as Storage.Heap).arrayOffset
-        val wOffset = (w.storage as Storage.Heap).arrayOffset
         val outOffset = (out.storage as Storage.Heap).arrayOffset
-        for (r in 0 until rows) {
-            native.gemvPacked(
-                activation = activationFloats,
-                activationOffset = aOffset + r * k,
-                weight = weightBytes,
-                weightByteOffset = wOffset,
-                inputDim = k,
-                outputDim = n,
-                out = outFloats,
-                outOffset = outOffset + r * n,
-            )
-        }
-        // The native kernel computes the unscaled codes-dot; the per-tensor scale lives in the
-        // weight's trailing FP32 and is applied once, here.
-        val scale = TernaryCodec.bitNetScale(weightBytes, n * k, wOffset)
-        if (scale != 1f) {
-            for (i in outOffset until outOffset + rows * n) outFloats[i] *= scale
+
+        when (val weightStorage = w.storage) {
+            is Storage.Heap -> {
+                val weightBytes = weightStorage.bytes
+                if (weightBytes == null) {
+                    reference.run(inputs, out)
+                    return
+                }
+                val wOffset = weightStorage.arrayOffset
+                for (r in 0 until rows) {
+                    native.gemvPacked(
+                        activation = activationFloats,
+                        activationOffset = aOffset + r * k,
+                        weight = weightBytes,
+                        weightByteOffset = wOffset,
+                        inputDim = k,
+                        outputDim = n,
+                        out = outFloats,
+                        outOffset = outOffset + r * n,
+                    )
+                }
+                // The native kernel computes the unscaled codes-dot; the per-tensor scale lives
+                // in the weight's trailing FP32 and is applied once, here.
+                val scale = TernaryCodec.bitNetScale(weightBytes, n * k, wOffset)
+                if (scale != 1f) {
+                    for (i in outOffset until outOffset + rows * n) outFloats[i] *= scale
+                }
+            }
+            is Storage.OffHeap, is Storage.Mapped -> {
+                // #1202: an off-heap/mapped weight never had a standing ByteArray to begin with —
+                // gemvPackedStorage lets the native face read it directly (zero-copy where the
+                // implementation supports it) instead of manufacturing one per row.
+                for (r in 0 until rows) {
+                    native.gemvPackedStorage(
+                        activation = activationFloats,
+                        activationOffset = aOffset + r * k,
+                        weight = weightStorage,
+                        weightByteOffset = 0,
+                        inputDim = k,
+                        outputDim = n,
+                        out = outFloats,
+                        outOffset = outOffset + r * n,
+                    )
+                }
+                // Same trailing-FP32 scale as the heap case, but only the 4 scale bytes are
+                // copied out — not the whole weight — to read it.
+                val scaleBytes = ByteArray(4)
+                weightStorage.copyInto(scaleBytes, offset = weightStorage.sizeBytes - 4, length = 4)
+                val scale = TernaryCodec.bitNetScale(scaleBytes, 0, 0)
+                if (scale != 1f) {
+                    for (i in outOffset until outOffset + rows * n) outFloats[i] *= scale
+                }
+            }
+            else -> reference.run(inputs, out)
         }
     }
 }
