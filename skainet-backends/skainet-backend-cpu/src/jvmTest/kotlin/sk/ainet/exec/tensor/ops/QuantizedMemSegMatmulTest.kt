@@ -308,6 +308,49 @@ class QuantizedMemSegMatmulTest {
         arena.close()
     }
 
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    @Test
+    fun `Q8 matmul with a slab-backed scoped activation matches the dense-activation result`() {
+        val arena = Arena.ofConfined()
+        val inputDim = 32
+        val outputDim = 2
+
+        val weightValues = Array(outputDim) { row ->
+            FloatArray(inputDim) { col -> 0.3f * (row + 1) * ((col % 5) - 2) / 5f }
+        }
+        var weightBytes = ByteArray(0)
+        for (row in weightValues) weightBytes += encodeQ8_0Block(row)
+        val weight = q8Tensor(Shape(outputDim, inputDim), weightBytes, arena)
+
+        val inputValues = FloatArray(inputDim) { (it + 1).toFloat() / inputDim }
+        val expected = ops.matmulWeightTransposed(fpTensor(Shape(1, inputDim), inputValues), weight)
+            .data.copyToFloatArray()
+
+        // The forward-scope shape of the same activation: a StorageFloatTensorData over a slab
+        // slice at a NONZERO offset — what a ScopedExecutionContext hands every op mid-step
+        // (#1145/#1146). Before chooseQuantizedMatmul2D grew its dense-FP32 fallback this fell
+        // through to matmulGeneric, whose per-element get() on the Q8 weight returns raw codes —
+        // silently wrong results, not an error.
+        sk.ainet.lang.memory.ForwardScope(1024).use { scope ->
+            scope.allocateFloats(7) // push the next allocation off offset 0
+            val st = scope.allocateFloats(inputDim)
+            inputValues.copyInto(st.floats!!, st.arrayOffset, 0, inputDim)
+            @Suppress("UNCHECKED_CAST")
+            val slabData = sk.ainet.lang.tensor.data.StorageFloatTensorData<FP32>(Shape(1, inputDim), st)
+            val scoped: Tensor<FP32, Float> = VoidOpsTensor(slabData as TensorData<FP32, Float>, FP32::class)
+            val actual = ops.matmulWeightTransposed(scoped, weight).data.copyToFloatArray()
+
+            assertEquals(expected.size, actual.size)
+            for (i in expected.indices) {
+                assertEquals(
+                    expected[i], actual[i], 0f,
+                    "scoped-activation mismatch at $i: dense=${expected[i]} scoped=${actual[i]}"
+                )
+            }
+        }
+        arena.close()
+    }
+
     // ── Batched Matmul Test ─────────────────────────────────────────────────
 
     @Test

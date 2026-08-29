@@ -626,7 +626,14 @@ internal class DefaultCpuOpsJvm(
         val inputBuffer: FloatArray = when (aData) {
             is FloatArrayTensorData<*> -> aData.buffer
             is MemorySegmentBackedData -> aData.copyToFloatArray()
-            else -> return null
+            // Any other *dense* FP32 activation — a slab-backed StorageFloatTensorData from a
+            // ScopedExecutionContext forward (#1145/#1146), a view-only wrapper — copies out
+            // through its own (offset-aware) copyToFloatArray. Bailing out here instead used to
+            // drop these activations to matmulGeneric, whose per-element get() on a quantized
+            // weight returns raw codes, not values — silently wrong logits, the #993 class of bug.
+            // A packed/encoded *activation* (encoding != null) still bails: this chooser's
+            // kernels want dense FP32 input.
+            else -> if (aData.encoding == null) aData.copyToFloatArray() else return null
         }
 
         return when (bData) {
