@@ -60,6 +60,19 @@ public class JvmMappedFile private constructor(
                 encoding,
             )
         }
+        // #1203: the caller (StreamingGgufParametersLoader.i2sTrailerScaleIsMappable) has already
+        // confirmed [byteOffset, byteOffset + physicalBytes) is a complete, kernel-ready
+        // BITNET_B1_58 buffer -- payload immediately followed by its own trailing FP32 scale, no
+        // repack needed at all.
+        sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_B1_58 -> {
+            val length = checkNotNull(encoding.physicalBytes(shape.volume.toLong())) {
+                "${encoding.name} has size-determinate blocks"
+            }
+            sk.ainet.lang.tensor.data.BitNetB158TensorData.fromStorage(
+                shape,
+                sk.ainet.lang.memory.DirectBufferStorage.borrow(mmap.byteBufferAt(byteOffset, length)),
+            )
+        }
         else -> null
     }
 
