@@ -16,10 +16,23 @@ GitFlow is a branching model for Git that defines specific branch types and thei
 === Main Branches
 
 ==== `main` Branch
-* **Purpose**: Contains production-ready code
+* **Purpose**: Tracks the most recently published release — nothing more, nothing less. If it's
+  on `main`, it has a tag and a Maven Central publish behind it.
 * **Lifetime**: Permanent
-* **Protection**: Direct commits are not allowed
-* **Merges from**: `release/*` and `hotfix/*` branches only
+* **Protection**: Not currently enabled on GitHub (no required reviews/checks) — direct pushes are
+  possible but should never happen outside the release step below. Enabling protection is a TODO,
+  not a claim this document should make until it's actually turned on.
+* **Merges from**: `release/*` and `hotfix/*` branches only, as an explicit last step after that
+  branch's tag has been pushed and its publish workflow has gone green — never before, and never
+  automatically.
+* **Reset 2026-08-29 (SKaiNET#1198 thread)**: `main` had drifted ~1,800 commits behind `develop`
+  (stuck at `0.2.0`) because the "merge release branch to `main`" step had been opened as a PR for
+  every release since, and closed unmerged every time — `develop` was already the project's real
+  default branch and the actual publish trigger (a pushed tag), so nothing *needed* `main` to be
+  current, and it wasn't. Rather than reconcile ~1,800 commits of drift with no real value in the
+  history itself, the old branch was renamed to `legacy` (its full history is still there, just
+  not on `main` anymore) and a new `main` was created starting at the `0.51.0` tag. `main` before
+  0.51.0 lives at `legacy`, not in `main`'s own history.
 
 ==== `develop` Branch  
 * **Purpose**: Integration branch for features under development
@@ -54,6 +67,10 @@ GitFlow is a branching model for Git that defines specific branch types and thei
 * **Priority**: High - should be processed immediately
 
 == Workflow Diagram
+
+NOTE: This diagram shows the conceptual GitFlow shape (tag on `main` after merging the release
+branch in). SKaiNET's actual sequence tags the release branch's own commit *before* touching
+`main` — see <<_release_process,Release Process>> below for the real order and why.
 
 [mermaid]
 ifdef::env-github[[source,mermaid]]
@@ -149,6 +166,12 @@ git branch -d feature/lstm-layers
 
 === Release Process
 
+This is the sequence actually used from 0.51.0 onward — it differs from a textbook GitFlow release
+in one important way: the tag lives on the *release branch's own commit*, independent of `main`,
+because the Maven Central publish workflow triggers on the tag push (`on: push: tags: '**'` in
+`.github/workflows/publish.yml`), not on anything landing on `main`. `main` is updated *after* a
+successful publish, as an explicit last step — never before, and never as a side effect of tagging.
+
 . Create a release branch from `develop`:
 +
 [source,bash]
@@ -158,31 +181,57 @@ git pull origin develop
 git checkout -b release/1.2.0
 ----
 
-. Perform release preparations:
-** Update version numbers
-** Update documentation
-** Run final tests
-** Fix any release-blocking bugs
+. Perform release preparations, each as its own commit:
+** `CHANGELOG.md`: full entry for the release
+** `README.md`: short "What's New" highlights for *this* release only, pointing to `CHANGELOG.md`
+   for history — do not let a "Previously, in ..." cascade accumulate here again
+** `docs/antora.yml` (`skainet_version`) and any hardcoded dependency-coordinate snippets in the
+   tutorials (grep for the previous version string across `docs/` and `README.md` to catch drift)
+** `./gradlew generateKernelMatrix generateDocs` — run this *after* the version bump below, not
+   before, or the regenerated docs stamp the wrong version
+** `gradle.properties` (`VERSION_NAME`) — its own commit, last, matching `release: X.Y.Z`
+** Run final tests; fix any release-blocking bugs on the branch
 
-. When ready, merge to `main`:
+. Open a PR from the release branch to `develop` and merge it once CI is green — this is what
+  actually brings the version bump back into the integration branch:
 +
 [source,bash]
 ----
-git checkout main
-git pull origin main
-git merge --no-ff release/1.2.0
-git tag -a v1.2.0 -m "Release version 1.2.0"
-git push origin main --tags
+git push origin release/1.2.0
+gh pr create --base develop --head release/1.2.0 --title "Release 1.2.0"
+# wait for CI to go green, then merge
 ----
 
-. Merge back to `develop`:
+. Tag the release branch's own `release: X.Y.Z` commit directly — not a commit on `main`, which
+  doesn't have this release yet:
 +
 [source,bash]
 ----
-git checkout develop
-git merge --no-ff release/1.2.0
-git push origin develop
-git branch -d release/1.2.0
+git tag -a 1.2.0 <release-commit-sha> -m "SKaiNET 1.2.0 — <headline>"
+git push origin 1.2.0
+----
++
+Pushing the tag triggers the publish workflow. **Wait for it to go green before the next step** —
+a red publish run means the tag exists but nothing actually shipped to Maven Central; do not treat
+tagging alone as "released."
+
+. Once the publish workflow succeeds, merge `main` up to the release — the step every release
+  before 0.51.0 skipped:
++
+[source,bash]
+----
+git fetch origin
+git push origin <release-commit-sha>:refs/heads/main   # fast-forward; main has no protection to route around
+----
++
+This is a manual step by design (see the `main` Branch section above) — not automated on publish
+success. Do it as part of closing out the release, not as an afterthought.
+
+. Delete the release branch once both merges (into `develop` and `main`) are done:
++
+[source,bash]
+----
+git push origin --delete release/1.2.0
 ----
 
 === Hotfix Process
@@ -257,16 +306,18 @@ git branch -d hotfix/1.2.1
 * Run comprehensive test suite on `develop` and `main`
 * Block merges if tests fail
 
-=== Deployment Pipeline
-* `main` branch deploys to production
-* `develop` branch deploys to staging environment
-* Feature branches deploy to development environment for testing
+=== Publishing
+* A pushed tag (any branch, in practice always the `release/*` branch's own commit) is what
+  triggers the Maven Central publish workflow — not landing on `main`.
+* `main` is a read-only mirror of "what's been published," updated manually after the fact (see
+  the Release Process above); it has no deploy step of its own.
+* `develop` is where CI runs on every push/PR; there is no separate staging deploy.
 
 === Branch Protection Rules
-* Protect `main` and `develop` branches
-* Require pull request reviews
-* Require status checks to pass
-* Require branches to be up to date before merging
+* `develop` is protected today: required `build-job` status check, no force-pushes, no deletions,
+  enforced for admins too.
+* `main` is **not** currently protected — turning that on (required status checks at minimum) is
+  a TODO, tracked so this document doesn't quietly drift from reality again.
 
 == Troubleshooting
 
