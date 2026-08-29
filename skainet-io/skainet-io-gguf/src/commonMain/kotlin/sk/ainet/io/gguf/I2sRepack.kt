@@ -23,10 +23,23 @@ package sk.ainet.io.gguf
  * `BITNET_B1_58` payload. All three agree on the code mapping `{0,1,2} → {-1,0,+1}`.
  */
 public enum class I2sGgufLayout(internal val blockElements: Int) {
-    /** BitNet.cpp file quantized with the x86/AVX pipeline (`QK_I2_S = 128`, 32-byte blocks). The common case for published GGUFs. */
+    /**
+     * BitNet.cpp file quantized with the x86/AVX pipeline (`QK_I2_S = 128`, 32-byte blocks). The
+     * common case for published GGUFs.
+     *
+     * No kernel decodes this layout directly — [toSequentialPayload] always repacks it to
+     * [SEQUENTIAL] first, on every load. A native decode kernel that reads `GROUP_128`/[GROUP_64]
+     * in place, skipping the repack, was considered and deliberately **not built**
+     * (issue #1205 on SKaiNET-developers/SKaiNET, closed): converting the file once ahead of time
+     * with `sk.ainet.io.gguf.export.I2sAotConverter` reaches the same zero-copy mmap path (#1203)
+     * for a fraction of the ongoing cost of maintaining a second decode variant per SIMD backend.
+     * See the ternary getting-started tutorial's "Loading a BitNet.cpp-quantized GGUF" section,
+     * and #1205's closing comment for what a grouped-layout kernel would need if some future
+     * workload genuinely can't tolerate an AOT step.
+     */
     GROUP_128(128),
 
-    /** BitNet.cpp file quantized with the ARM/NEON pipeline (`QK_I2_S = 64`, 16-byte blocks). */
+    /** BitNet.cpp file quantized with the ARM/NEON pipeline (`QK_I2_S = 64`, 16-byte blocks). Same no-native-kernel note as [GROUP_128]. */
     GROUP_64(64),
 
     /** NeoGPU's converter: sequential 4-per-byte, low bit-pair first — already the `BITNET_B1_58` payload order. */
