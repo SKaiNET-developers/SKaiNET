@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.49.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.51.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -296,69 +296,22 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.49.0
+## What's New in 0.51.0
 
-The **SKEEP-jump release**: 0.40.1 → 0.49.0, ~100 merged PRs — the SKEEP-003 memory & storage
-architecture complete, from accepted proposal to shipped system. This is the release downstream
-repositories (SKaiNET-transformers, the IREE conformity pipeline) should build on. It **removes
-every façade the architecture replaced** — see the Breaking-changes section of
-[CHANGELOG.md](CHANGELOG.md) for the migration map (`QuantPolicy`/`StagingPolicy`/`WeightOrientation`
-→ `WeightForm`; `@Place`/`@Weights`/`StorageSpec`/old `MemoryPlanner` → `AllocationResolver`).
+Ternary/BitNet weights join the memory-mapped weight story 0.50.0 started for every other quant
+format:
 
-- **One storage model** — `Storage` / `Scope` / `Format` / `Layout` / `TensorView`: enforced ownership
-  (use-after-free throws, loudly), scoped lifetimes, `prepack()` as the visible relayout,
-  `materialize()` as the single copy point.
-- **Decisions are resolved, not declared** — `WeightFormResolver` picks a weight's in-memory form from
-  *file × profile × kernels*; `AllocationResolver` picks domain and scope, and `explain()` says why,
-  per tensor, before a byte of payload is read. You always outrank the resolver
-  (per-tensor `weightFormFor` > uniform `weightForm` > resolver).
-- **Flat-memory decode** — `ctx.forwardScope(slabFloats) { … }` recycles one slab per step; creation
-  *and op outputs* draw from it, and the FP32 fast paths + JVM Panama vector kernels are offset-aware,
-  so scoped tensors keep SIMD speed. Steady-state decode allocates zero new slab bytes per step.
-- **"Will it fit?" in seconds, any format** — header-only footprint plans for GGUF, **safetensors and
-  ONNX** (external-data sidecars priced correctly), with `PlannerProfile.EDGE` for embedded devices:
-  `skainet-plan model.onnx --profile edge --budget 2.1G`, exit code 0/1.
-- **The compile lane carries what the runtime decides** — tensor identity, structural encodings
-  (`skainet.tensor_layouts`: block sizes and bit widths as integers, not names) and block order flow
-  into the exported MLIR and `.irpa`; `HloGenerator.generate(target = …)` runs the first layout pass
-  on the production path.
-- **BitNet / ternary compute** — `BITNET_PLANES` multi-plane packing, i2s GGUF import, and the vendored
-  NeoGPU ternary f32 NEON kernel through FFM, JNI and Kotlin/Native, including a fused lm_head kernel.
-- **Docs that cannot rot** — the Android classifier and ternary getting-started tutorials are compiled
-  *and executed* in CI (the Iris training loop asserts held-out accuracy ≥ 0.80), plus the
-  virtual-tensors explanation and SKEEP-003a resolution record.
+- **Off-heap ternary storage** — `BitNetB158TensorData` no longer risks the Android ART heap-cap
+  OOM; `Storage.copyInto`/`copyFrom` give every storage kind one shared bulk-copy primitive.
+- **True zero-copy mmap** for `SEQUENTIAL`-layout (NeoGPU-converted) GGUFs, and a zero-copy
+  native gemv path for off-heap ternary weights on the JVM/FFM kernel.
+- **`I2sAotConverter`** (GGUF → GGUF): convert I2_S tensors ahead of time so a controlled model
+  pipeline never pays a runtime repack. The IREE-facing counterpart lives in
+  [SKaiNET-IREE-tools](https://github.com/SKaiNET-developers/SKaiNET-IREE-tools).
+- **Correctness fix** — scoped dense-FP32 activations no longer silently fall out of the
+  quantized matmul chooser (was producing wrong logits under `ScopedExecutionContext`).
 
-### Previously, in 0.40.1
-
-- **Correctness hotfix: packed-quant `transpose()` was silently wrong, not crashing.** `ops.matmul(x, ops.transpose(W))` on a packed-quantized weight (Q4_0/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K) with more than one quant block per row produced silently incorrect output — sometimes all-zero — across the scalar, Panama-vector, *and* native (FFM/JNI) kernel tiers, with no exception raised. `transpose()` now performs a real block-grid byte permutation instead of a shape-only relabel; a misaligned packed tensor now throws instead of silently truncating. Closes [#968](https://github.com/SKaiNET-developers/SKaiNET/issues/968). **Upgrading is strongly recommended** for anyone calling `ops.transpose()` on packed-quantized weights.
-
-### Previously, in 0.40.0
-
-- **Android models grow past the ART heap cap.** Off-heap/mmap tensor storage shares the JVM's memory-mapped weight loading with Android — dense F32 tensors serve as zero-heap mapped views, and weight bytes live in OS-paged file-backed pages instead of the managed heap. A 640 MB dense model now loads with **1.4 MB** of heap allocation.
-- **GGUF `DEQUANTIZE_TO_FP32` no longer over-allocates.** A 1.1B Q4_K_M GGUF transiently needed >12 GB heap against a ~4.4 GB dense-FP32 floor. Three compounding allocation sources in the loader and K-quant kernels are fixed, bringing peak live allocation to ~1.05x of the dense FP32 size.
-- **Q5_0/Q5_1 packed matmul reaches the native tier.** New NEON C kernels for both formats are wired into the FFM (JVM), Kotlin/Native, and Android JNI providers — unblocking the packed Q5_1 path for Q5_K_M checkpoints under `NATIVE_OPTIMIZED`.
-- **SKaiNET reaches iOS and macOS natively.** `skainet-backend-native-cpu` now publishes `iosArm64`, `iosSimulatorArm64`, and `macosArm64` Kotlin/Native targets with embedded kernel archives; a single Apple arm64 archive dispatches FEAT_DotProd at runtime, so one build serves A12 through M-series.
-
-### Previously, in 0.39.1
-
-- **Eager CPU ops run primitive FP32 fast paths.** The generic per-element paths (index-array allocations, boxed accessors, dtype dispatch) dominated on-device LLM decode — 83% of end-to-end SmolLM2-135M decode time on a Pixel 8a was non-matmul overhead even with the NEON backend. Hot ops (arithmetic, activations, unary math, softmax/logSoftmax, reductions, concat, reshape) now run flat primitive loops over the dense `FloatArray` buffer, benefiting every non-JVM target — Android, Kotlin/Native, JS/Wasm. `DirectCpuExecutionContext.ops` is also cached instead of rebuilt per access.
-- **README points LLM users to SKaiNET-transformers.** A callout under "Start in 5 minutes" makes clear that LLM inference lives in the SKaiNET-transformers repository — this repo is the engine underneath.
-
-### Previously, in 0.39.0
-
-- **On-device AI on Android — a NEON kernel backend.** New `skainet-backend-jni-cpu` module: the hand-tuned ARM matmul kernels reach Android through a JNI bridge (ART has no `java.lang.foreign`, so the FFM provider can never run there). Two `.so` tiers are built from the same sources and selected at load time from `/proc/cpuinfo` — a baseline `armv8-a` build that runs on every 64-bit core, and an `armv8.2-a+dotprod` build for the `vdotq_s32` Q4_K/Q6_K paths — so a single artifact is safe from Cortex-A53 up. Measured on a Pixel 8a: **~24 tok/s** SmolLM2-135M Q8_0 decode versus ~3.8 scalar (6.4x), clearing the on-device usability bar. The provider auto-registers via `ServiceLoader`; an app just adds the AAR.
-- **Android GGUF loading no longer OOMs.** `createRandomAccessSource` returned `null` on Android, forcing every model load through a full-file heap read that exhausted the ART heap on real devices. It now streams via positional `FileChannel` reads across `skainet-io-gguf` / `-safetensors` / `-onnx`.
-- **Published Kotlin/Native kernel klibs are linkable.** The static kernel archive is now embedded into the cinterop klib, so downstream K/N consumers of `skainet-backend-native-cpu` (`-linuxx64` / `-linuxarm64`, and the path future Apple targets will use) link with no manual setup. A NEON body was also added for the Q4_0 matmul kernel.
-- **Tensor-storage correctness pass.** Fail-fast on unsupported GGUF quant types instead of silently dropping weights; truthful ownership labels and real byte counts in the storage layer; a materializable `FileBacked`/`Aliased` transfer path; and a rank-safe default `copyToFloatArray`.
-
-### Previously, in 0.38.0
-
-- **Streaming KV-cache decode (dynamic dimensions)** — a first-class `Dim` vocabulary makes "dynamic extent" explicit instead of an overloaded `-1`, and the StableHLO emitter renders it as an MLIR `?`. One compiled vmfb now serves every autoregressive decode step with a growing cache, instead of one fixed cache length. Verified end-to-end: the full FunctionGemma `with_past` decode graph and the Moonshine v2 decoder (dynamic self *and* cross caches) self-compile from the DSL to a CPU vmfb — graphs that could not be compiled before. Static graphs are emitted byte-for-byte unchanged.
-- **Narrow-float (BF16 + FP16) weights kept packed** — SafeTensors F16 and GGUF F16/BF16 weights load `KEEP_NATIVE`, two bytes per element at rest instead of widening to FP32, and reach format-specific matmul kernels still packed. Narrow floats are a storage width only: kernels widen to f32 lanes and accumulate in f32.
-- **Both narrow formats now beat the FP32 SGEMM** — BF16 by 1.8–1.9x, FP16 by 1.5–1.7x on a 4096x11008 projection. Getting there took a zero-copy transpose for input-major weights (the per-token transpose previously widened the tensor elementwise, 4.4 s per projection), a native FFM FP16 kernel to match the existing BF16 one, and tiling both kernels so the weight is read once per matmul rather than once per input row.
-- **Allocation-free shape-only tracing** — `VoidTensorOps` propagates shapes through a `ShapeOnlyTensorData` that allocates no backing buffer, so a dynamic extent flows through a whole decode trace instead of throwing on a negative-size allocation.
-
-See [CHANGELOG.md](CHANGELOG.md) for details and the full release history.
+See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
 ---
 
@@ -381,6 +334,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.51.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — off-heap ternary
+  storage, zero-copy mmap for `SEQUENTIAL` I2_S, the AOT GGUF converter and its IREE-facing
+  counterpart in SKaiNET-IREE-tools, and the scoped dense-FP32 activation matmul-chooser fix
 
 ### Contributors (0.49.0)
 
