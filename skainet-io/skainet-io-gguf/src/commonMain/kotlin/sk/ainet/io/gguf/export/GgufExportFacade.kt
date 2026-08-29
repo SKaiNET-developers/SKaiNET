@@ -36,13 +36,33 @@ public data class GgufExportOptions(
     val provenance: Map<String, Any> = emptyMap()
 )
 
-/** Tensor entry to be consumed by a future GGUF writer implementation. */
+/**
+ * Tensor entry to be consumed by [sk.ainet.io.gguf.export.GGUFWriter].
+ *
+ * Exactly one of [tensor] or [rawBytes] must be set. [tensor] is the original path: a SKaiNET
+ * tensor whose elements the writer encodes itself (dense float widths, or [rawBytes]-free raw
+ * passthrough via `TensorFlatten.flattenBytes`, which needs a real element-indexed `Tensor`).
+ *
+ * [rawBytes] (#1207) is for a converter that already has the exact on-disk bytes for this entry
+ * — a passthrough of a quantized blob this writer doesn't need to interpret, or a buffer whose
+ * true size exceeds its type's formal [sk.ainet.io.gguf.GGML_QUANT_SIZES] block math entirely
+ * (e.g. an I2_S `BITNET_B1_58` buffer with its trailing FP32 scale). When set, [tensor] is
+ * ignored, [TensorFlatten] is bypassed, and the entry's written size is exactly
+ * `rawBytes.size` — not derived from [quantization]/[shape] at all.
+ */
 public data class GgufTensorEntry(
     val ggufName: String,
-    val tensor: Tensor<*, *>,
+    val tensor: Tensor<*, *>? = null,
     val quantization: GGMLQuantizationType,
-    val shape: List<Int>
-)
+    val shape: List<Int>,
+    val rawBytes: ByteArray? = null,
+) {
+    init {
+        require((tensor == null) != (rawBytes == null)) {
+            "GgufTensorEntry '$ggufName' needs exactly one of tensor or rawBytes"
+        }
+    }
+}
 
 /** Aggregate export payload prepared by the facade; writer will consume this. */
 public data class GgufWriteRequest(

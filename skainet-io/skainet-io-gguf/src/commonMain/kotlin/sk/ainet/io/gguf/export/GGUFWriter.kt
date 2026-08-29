@@ -125,7 +125,8 @@ public object GGUFWriter {
             require(entry.shape.all { it > 0 }) {
                 "Tensor ${entry.ggufName} has non-positive dimensions ${entry.shape}"
             }
-            require(GGML_QUANT_SIZES.containsKey(entry.quantization)) {
+            // A rawBytes entry declares its own size and needs no block-size metadata at all.
+            require(entry.rawBytes != null || GGML_QUANT_SIZES.containsKey(entry.quantization)) {
                 "Quantization ${entry.quantization} missing size metadata"
             }
         }
@@ -209,16 +210,21 @@ public object GGUFWriter {
     }
 
     private fun materializeTensor(entry: GgufTensorEntry, expectedSize: Int): ByteArray {
-        val bytes = when (entry.quantization) {
-            GGMLQuantizationType.F32 -> materializeF32(entry)
-            GGMLQuantizationType.F16 -> materializeF16(entry)
-            GGMLQuantizationType.BF16 -> materializeBF16(entry)
-            GGMLQuantizationType.F64 -> materializeF64(entry)
-            GGMLQuantizationType.I8 -> materializeI8(entry)
-            GGMLQuantizationType.I16 -> materializeI16(entry)
-            GGMLQuantizationType.I32 -> materializeI32(entry)
-            GGMLQuantizationType.I64 -> materializeI64(entry)
-            else -> materializeRaw(entry)
+        val bytes = entry.rawBytes ?: run {
+            val tensor = checkNotNull(entry.tensor) {
+                "GgufTensorEntry '${entry.ggufName}' has neither tensor nor rawBytes"
+            }
+            when (entry.quantization) {
+                GGMLQuantizationType.F32 -> materializeF32(tensor)
+                GGMLQuantizationType.F16 -> materializeF16(tensor)
+                GGMLQuantizationType.BF16 -> materializeBF16(tensor)
+                GGMLQuantizationType.F64 -> materializeF64(tensor)
+                GGMLQuantizationType.I8 -> materializeI8(tensor)
+                GGMLQuantizationType.I16 -> materializeI16(tensor)
+                GGMLQuantizationType.I32 -> materializeI32(tensor)
+                GGMLQuantizationType.I64 -> materializeI64(tensor)
+                else -> materializeRaw(tensor)
+            }
         }
         require(bytes.size == expectedSize) {
             "Tensor ${entry.ggufName} size mismatch: expected $expectedSize, got ${bytes.size}"
@@ -226,65 +232,66 @@ public object GGUFWriter {
         return bytes
     }
 
-    private fun materializeF32(entry: GgufTensorEntry): ByteArray {
-        val floatData = TensorFlatten.flattenFloats(entry.tensor)
+    private fun materializeF32(tensor: Tensor<*, *>): ByteArray {
+        val floatData = TensorFlatten.flattenFloats(tensor)
         val out = ByteWriter()
         floatData.forEach { out.writeFloat32(it) }
         return out.toByteArray()
     }
 
-    private fun materializeF16(entry: GgufTensorEntry): ByteArray {
-        val floatData = TensorFlatten.flattenFloats(entry.tensor)
+    private fun materializeF16(tensor: Tensor<*, *>): ByteArray {
+        val floatData = TensorFlatten.flattenFloats(tensor)
         val out = ByteWriter()
         floatData.forEach { out.writeUInt16(floatToHalfBits(it).toUShort()) }
         return out.toByteArray()
     }
 
-    private fun materializeBF16(entry: GgufTensorEntry): ByteArray {
-        val floatData = TensorFlatten.flattenFloats(entry.tensor)
+    private fun materializeBF16(tensor: Tensor<*, *>): ByteArray {
+        val floatData = TensorFlatten.flattenFloats(tensor)
         val out = ByteWriter()
         floatData.forEach { out.writeUInt16(bfloat16Bits(it).toUShort()) }
         return out.toByteArray()
     }
 
-    private fun materializeF64(entry: GgufTensorEntry): ByteArray {
-        val doubleData = TensorFlatten.flattenDoubles(entry.tensor)
+    private fun materializeF64(tensor: Tensor<*, *>): ByteArray {
+        val doubleData = TensorFlatten.flattenDoubles(tensor)
         val out = ByteWriter()
         doubleData.forEach { out.writeFloat64(it) }
         return out.toByteArray()
     }
 
-    private fun materializeI8(entry: GgufTensorEntry): ByteArray {
-        val bytes = TensorFlatten.flattenBytes(entry.tensor)
+    private fun materializeI8(tensor: Tensor<*, *>): ByteArray {
+        val bytes = TensorFlatten.flattenBytes(tensor)
         return bytes
     }
 
-    private fun materializeI16(entry: GgufTensorEntry): ByteArray {
-        val values = TensorFlatten.flattenShorts(entry.tensor)
+    private fun materializeI16(tensor: Tensor<*, *>): ByteArray {
+        val values = TensorFlatten.flattenShorts(tensor)
         val out = ByteWriter()
         values.forEach { out.writeUInt16(it.toUShort()) }
         return out.toByteArray()
     }
 
-    private fun materializeI32(entry: GgufTensorEntry): ByteArray {
-        val ints = TensorFlatten.flattenInts(entry.tensor)
+    private fun materializeI32(tensor: Tensor<*, *>): ByteArray {
+        val ints = TensorFlatten.flattenInts(tensor)
         val out = ByteWriter()
         ints.forEach { out.writeInt32(it) }
         return out.toByteArray()
     }
 
-    private fun materializeI64(entry: GgufTensorEntry): ByteArray {
-        val longs = TensorFlatten.flattenLongs(entry.tensor)
+    private fun materializeI64(tensor: Tensor<*, *>): ByteArray {
+        val longs = TensorFlatten.flattenLongs(tensor)
         val out = ByteWriter()
         longs.forEach { out.writeInt64(it) }
         return out.toByteArray()
     }
 
-    private fun materializeRaw(entry: GgufTensorEntry): ByteArray {
-        return TensorFlatten.flattenBytes(entry.tensor)
+    private fun materializeRaw(tensor: Tensor<*, *>): ByteArray {
+        return TensorFlatten.flattenBytes(tensor)
     }
 
     private fun expectedTensorSize(entry: GgufTensorEntry): Int {
+        entry.rawBytes?.let { return it.size }
         val (blockSize, typeSize) = GGML_QUANT_SIZES[entry.quantization]
             ?: error("Quantization ${entry.quantization} missing size metadata")
         val volume = entry.shape.fold(1L) { acc, d -> acc * max(1, d).toLong() }
