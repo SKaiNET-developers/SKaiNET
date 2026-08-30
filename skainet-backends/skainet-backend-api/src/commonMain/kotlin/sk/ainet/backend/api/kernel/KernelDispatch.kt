@@ -11,6 +11,7 @@ import sk.ainet.lang.memory.trace.TraceEvent
 import sk.ainet.lang.memory.trace.TraceSink
 import sk.ainet.lang.memory.trace.kernel as traceKernel
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
  * Kernel selection on declared descriptors instead of an `is`-ladder over Kotlin classes
@@ -40,6 +41,22 @@ public object KernelDispatch {
     public fun find(key: KernelKey): ViewKernel? = kernels.firstOrNull { it.key == key }
 
     public fun clearForTesting() { kernels.clear() }
+
+    /**
+     * Encodings a [MappedCapableKernel] registered right now serves as a `BLOCKED_ROW_MAJOR`
+     * weight — derived from actual registrations (#1193), not a hand-kept list. Call after
+     * installing every kernel pack the platform has; a pack that isn't installed (or isn't
+     * available on this platform) simply contributes nothing, which is why this is a guard-test
+     * tool rather than the sole source of truth `StorageCapabilities.mappedServableEncodings`
+     * (`skainet-lang-core`) uses at runtime — that module cannot depend on this one.
+     */
+    public fun mappedServableEncodings(): Set<TensorEncoding> = kernels
+        .asSequence()
+        .filter { it is MappedCapableKernel }
+        .flatMap { it.key.operands }
+        .filter { it.layout == LayoutClass.BLOCKED_ROW_MAJOR }
+        .map { it.format.encoding }
+        .toSet()
 
     /**
      * Normalize a matmul operand pair to rank 2 as **views** (rule 5, §5.1 "rank handling happens

@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelKey
 import sk.ainet.backend.api.kernel.LayoutClass
+import sk.ainet.backend.api.kernel.MappedCapableKernel
 import sk.ainet.backend.api.kernel.OperandKey
 import sk.ainet.backend.api.kernel.ReferenceMatmulKernel
 import sk.ainet.backend.api.kernel.ViewKernel
@@ -51,7 +52,7 @@ public class JniRowMajorMatmulKernel(
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
     ) -> Unit,
-) : ViewKernel {
+) : ViewKernel, MappedCapableKernel {
 
     override val name: String = "jni-rowmajor-$encodingName"
 
