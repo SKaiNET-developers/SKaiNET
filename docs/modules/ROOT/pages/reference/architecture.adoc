@@ -44,8 +44,15 @@ The framework's outer surface:
 
 * *DSL layer* — Kotlin model DSL (`nn { ... }`, `tensor { ... }`) and
 imperative `TensorOps` / `ExecutionContext` API.
-* *I/O layer* — model loaders for GGUF, SafeTensors, ONNX (read-only)
-in `skainet-io-*` modules.
+* *I/O layer* — model loaders for GGUF, SafeTensors, ONNX in
+`skainet-io-*` modules. Reading is the common case, but `skainet-io-gguf`
+also writes: `GGUFWriter`/`GgufExportFacade` for arbitrary tensor export, and
+`I2sAotConverter` for the ternary AOT conversion in
+xref:tutorials/ternary-getting-started.adoc[]. The IREE-facing counterpart
+(GGUF → `.irpa`) lives outside this repo, in the public
+https://github.com/SKaiNET-developers/SKaiNET-IREE-tools[SKaiNET-IREE-tools]
+— a deliberate boundary (§9): IREE/StableHLO-target-specific conversion does
+not belong in core, which stays target-neutral.
 * *Compile layer* — `RecordingExecution` records ops to a tape, then
 lowers to StableHLO / IREE bytecode in `skainet-compile-*` modules.
 * *Backend layer* — `BackendProvider` dispatches `TensorOps` calls
@@ -95,10 +102,26 @@ compute].
 | `skainet-backends/skainet-backend-xnnpack` | Optional XNNPACK CPU backend (FP32 matmul / conv2d / pooling) on linuxX64 / linuxArm64 / Android.
 | `skainet-backends/benchmarks/jvm-cpu-jmh` | JMH harness — `MatmulBench`, `KernelMatmulBench`, `QuantizedMatmulBench`, `ElementwiseAdd1MBench`, `Reductions1MBench`.
 | `skainet-compile/*` | Tape recording, StableHLO emission, IREE export.
-| `skainet-io/*` | Model loaders (GGUF, SafeTensors, ONNX), tokenizers, IRPA writer. One GGUF loader configured by a single `WeightForm` (encoding × byte order × shape × residency), resolved per tensor or passed explicitly.
+| `skainet-io/skainet-io-gguf` | The GGUF loader/writer: one loader configured by a single `WeightForm` (encoding × byte order × shape × residency), resolved per tensor or passed explicitly; `StreamingGgufParametersLoader` for streaming reads; `GGUFWriter`/`GgufExportFacade` for export; `I2sRepack`/`I2sAotConverter` for ternary (I2_S) repacking, both load-time and ahead-of-time.
+| `skainet-io/*` (remaining) | SafeTensors and ONNX loaders, tokenizers, image I/O, the IREE parameter-archive (`.irpa`) writer (`skainet-io-iree-params`).
 | `skainet-apps/skainet-plan` | `skainet plan <model.gguf>` — prints a model's memory plan from its header alone. See xref:how-to/plan-model-memory.adoc[].
 | `skainet-backends/benchmarks/jvm-cpu-publish` | Publishes benchmark records as JSON (schema-checked in CI), including generation metrics when a scenario runs a decode loop.
 |===
+
+[NOTE]
+.External: SKaiNET-IREE-tools
+====
+IREE/StableHLO-target-specific model conversion — starting with a standalone
+GGUF → `.irpa` (IREE parameter archive) converter for ternary weights — lives
+in the public
+https://github.com/SKaiNET-developers/SKaiNET-IREE-tools[SKaiNET-IREE-tools]
+repository, not in `skainet-io-*` (#1207, 2026-08). It is a deliberate
+duplication of the format logic (GGUF parsing, I2_S repack, the `.irpa`
+binary layout) rather than a dependency on SKaiNET core: core stays the
+authoritative implementation when the two disagree, and a second,
+target-specific converter repo can evolve (XLA, other IREE targets) without
+pulling backend-specific concerns into `skainet-lang-core`.
+====
 
 === 5.2 Kernel SPI
 
@@ -185,7 +208,97 @@ mechanism, including why this does *not* contradict the FFM decision
 above.
 ====
 
-=== 5.3 Memory model
+=== 5.3 View-based kernel dispatch (`KernelDispatch`)
+
+5.2's `KernelProvider`/`KernelRegistry` picks a SIMD *recipe* by dtype at
+install time. A second, later SPI (SKEEP-003 §5, 2026-08, #1189–#1193)
+dispatches a single `matmul` call by the exact shape of its operands — the
+one `KernelDispatch.matmul(...)` flowchart in §6 already uses. This
+subsection is what that flowchart is built on:
+
+[mermaid]
+----
+classDiagram
+    class KernelKey {
+        op: String
+        operands: List~OperandKey~
+        placement: Placement
+        capabilities: Set~String~
+    }
+    class OperandKey {
+        format: Format
+        layout: LayoutClass
+    }
+    class LayoutClass {
+        <<enumeration>>
+        CONTIGUOUS
+        STRIDED
+        BLOCKED_ROW_MAJOR
+        BLOCKED_INPUT_MAJOR
+    }
+    class ViewKernel {
+        <<interface>>
+        key: KernelKey
+        name: String
+        +run(inputs, out, sink)
+    }
+    class MappedCapableKernel {
+        <<marker interface>>
+    }
+    class KernelDispatch {
+        +register(kernel)
+        +find(key) ViewKernel?
+        +matmul(a, b, out, scope, sink)
+        +mappedServableEncodings() Set~TensorEncoding~
+    }
+    class ReferenceMatmulKernel {
+        decodes any format via TensorView.get()
+    }
+    KernelKey --> OperandKey
+    OperandKey --> LayoutClass
+    ViewKernel --> KernelKey
+    MappedCapableKernel --|> ViewKernel
+    KernelDispatch --> ViewKernel : registers / finds
+    ReferenceMatmulKernel ..|> ViewKernel
+----
+
+A `ViewKernel` declares the exact `KernelKey` it serves instead of an
+`is`-ladder over `TensorData` subclasses — §993/§991 were dispatch bugs, not
+math bugs, and a declared key is compiler- and test-checkable where an
+`is`-ladder was not. `LayoutClass` names the two things a packed kernel
+actually varies on: `BLOCKED_ROW_MAJOR` (canonical file order) versus
+`BLOCKED_INPUT_MAJOR` (prepacked feed order) — the "block order" contract in
+§8. `ReferenceMatmulKernel` is registered for every key nothing else can
+serve; it is correct for any format because it reads through `TensorView.get()`,
+which decodes.
+
+`MappedCapableKernel` is a marker on the two kernels that serve a
+`BLOCKED_ROW_MAJOR` weight straight from off-heap or mapped storage as well
+as from heap bytes — `FfmRowMajorMatmulKernel` (JVM/FFM,
+`skainet-backend-native-cpu`) and `JniRowMajorMatmulKernel` (Android/JNI,
+`skainet-backend-jni-cpu`), both introduced in #1189/#1192. Which encodings
+they actually cover is *derived*, not hand-declared:
+`KernelDispatch.mappedServableEncodings()` scans registered
+`MappedCapableKernel`s for their `BLOCKED_ROW_MAJOR` operand (#1193). This
+matters because `StorageCapabilities.mappedServableEncodings`
+(`skainet-lang-core`, §5.4) — the thing the memory *planner* uses to decide
+whether a tensor can be served from a file mapping at all — cannot depend on
+`skainet-backend-api` to ask `KernelDispatch` directly (§9: the dependency
+runs the other way, to avoid a cycle), so it stays a hand-kept constant,
+cross-checked against the derived set by
+`KernelSupportMatrixTest.generate_and_gate_support_matrix()`. A kernel
+gaining or losing the marker without updating that constant now fails CI
+instead of drifting silently — the same "declare it, don't rediscover it"
+move as the `KernelKey` itself.
+
+Every internal fallback — an operand's storage the fast path can't read, a
+strided activation — emits `TraceEvent.KernelRun` naming the kernel and the
+reason before falling back to `ReferenceMatmulKernel`, per the "every
+conversion is an event" principle in §8: a silent fallback to the ~1000×
+slower reference path is exactly the kind of hidden cost that principle
+exists to surface.
+
+=== 5.4 Memory model
 
 Four questions that a tensor library often answers with one type are answered by four here.
 `Storage` owns bytes; `Format` — a `(DType, TensorEncoding)` pair — says what they mean; `Layout`
@@ -239,6 +352,68 @@ is the only copy point.
 memory over a long generation a flat line rather than a staircase.
 
 Full treatment: xref:explanation/memory-model.adoc[].
+
+==== Deciding `Storage` before dispatch: `AllocationResolver`
+
+Which `Storage` subtype backs a loaded weight is decided once, at load time,
+by `AllocationResolver.resolve(...)` — not guessed at by the kernel that
+later reads it. Its inputs are a `PlanTensor` (the weight's requested
+`WeightForm`: encoding × byte order × shape × `WeightResidency`), the running
+`PlatformStorage.current()` capabilities, and `PlannerProfile`'s off-heap
+threshold (small tensors stay on the managed heap regardless of residency —
+off-heap has a fixed per-segment cost not worth paying under it).
+`AllocationResolver.servesFromMapping(weight)` is the gate that decides
+whether a tensor can be served straight from a file mapping with zero bytes
+allocated: `WeightResidency.MAPPED` *and* the platform supports mapped files
+*and* the file's bytes are already the target bytes (no encoding/byte-order
+conversion pending) *and* the encoding is in
+`StorageCapabilities.mappedServableEncodings` (§5.3). Get any one of those
+wrong and the plan silently falls back to heap staging — which is exactly
+the failure mode "plan versus reality" in §10 exists to catch.
+
+=== 5.5 Ternary / BitNet weights and AOT conversion
+
+Ternary (`{-1, 0, +1}`) weights are SKaiNET's smallest packed encoding
+(`BITNET_B1_58`: four codes per byte, one trailing FP32 scale — ~16× smaller
+than FP32) and, until 0.51.0, its least storage-flexible one: they always
+heap-staged, because `BitNetB158TensorData` held a bare `ByteArray` rather
+than a `Storage`, and a GGUF's I2_S bytes usually need repacking before
+they're the `BITNET_B1_58` byte order at all (#1198).
+
+[mermaid]
+----
+flowchart TD
+    G["GGUF I2_S tensor"] --> L{"which layout?"}
+    L -->|"GROUP_128 / GROUP_64<br/>(BitNet.cpp x86 / ARM)"| RP["I2sRepack.toSequentialPayload<br/>— a real copy, every load"]
+    L -->|SEQUENTIAL<br/>NeoGPU convention| SEQ["already BITNET_B1_58 order<br/>— zero-copy, #1203"]
+    RP --> BS["BitNetB158TensorData<br/>(Storage-backed, #1202)"]
+    SEQ --> BS
+    BS -->|"below PlannerProfile threshold"| Heap["Storage.Heap"]
+    BS -->|"above threshold, mmap-eligible"| Mapped["Storage.Mapped<br/>true zero-copy read"]
+    AOT["I2sAotConverter<br/>(GGUF → GGUF, ahead of time)"] -.->|"rewrite GROUP_128/64 → SEQUENTIAL once"| G
+----
+
+Two follow-on decisions landed with the 0.51.0 work, both recorded in §9:
+
+* *Off-heap `Storage`, not a bare `ByteArray`* (#1202) — `BitNetB158TensorData`
+  gained a `Storage`-backed constructor and lazy heap snapshot, and the FFM/JNI
+  ternary kernels (`TernaryF32GemvKernel`, `BitNetGemvKernel`,
+  `NativeKnTernaryF32Gemv`, `JniTernaryF32Gemv`) were widened to read
+  off-heap/mapped storage directly instead of silently falling back to the
+  ~1000× slower decoding reference for any non-heap operand.
+* *A native kernel for the grouped BitNet.cpp layouts, proposed and
+  explicitly not built* (#1205, closed) — `I2sAotConverter` converts a
+  `GROUP_128`/`GROUP_64` file to `SEQUENTIAL` once, ahead of time, reaching
+  the same zero-copy mmap path (#1203) as a native grouped-layout decoder
+  would, for a fraction of the ongoing cost of maintaining a third SIMD
+  decode variant. See xref:tutorials/ternary-getting-started.adoc[] for the
+  user-facing walkthrough and #1205's closing comment for what a
+  grouped-layout kernel would need if a workload someday can't tolerate an
+  AOT step at all.
+
+The fallback sidecar cache for repeated `GROUP_128`/`GROUP_64` loads that
+*don't* go through the AOT converter (#1198's original proposal) remains
+open and unscheduled — see §11.
 
 == 6. Runtime view — eager execution
 
@@ -363,6 +538,11 @@ consumers of it.
 | `matmulWeightTransposed` instead of transposing a packed weight | 2026-08 | Transposing block-quantized data is not representable — blocks quantize runs along the input dimension. What the engine called a packed transpose was a per-call layout copy that was not its own inverse; the primitive ggml and BLAS have takes the weight as `[out, in]` and converts once.
 | One `WeightForm` (encoding × byte order × shape × residency) replaces `quantPolicy`/`staging`/`weightOrientation`; the three axes were removed in #1159 (0.49.0) | 2026-08 | The three flags asked the caller to resolve, per device, what the resolver can decide from file × profile × kernels; a single resolved value is priceable, traceable, and overridable.
 | `quantPolicy × staging` as two axes of one loader (superseded above) | 2026-08 | "Streaming loader" and "mapped weights helper" were separate code paths that could disagree. What the values are and where the bytes live are independent questions.
+| Off-heap `Storage` for ternary weights instead of a bare `ByteArray` (#1202) | 2026-08 | `BitNetB158TensorData` heap-staged unconditionally, which put a 2B-parameter BitNet model's ~0.6 GB of packed weight over Android's default ART heap cap. Existing `Storage.OffHeap`/`Mapped` infrastructure already solved this for other encodings; ternary just hadn't been wired to it.
+| Zero-copy mmap for `SEQUENTIAL`-layout I2_S tensors (#1203) | 2026-08 | The NeoGPU converter's byte order already matches `BITNET_B1_58`; the loader was defensively copying it anyway. Validating without copying reaches the same `AllocationResolver.servesFromMapping` fast path every other packed format has.
+| `KernelDispatch.mappedServableEncodings()` derived, cross-checked against `StorageCapabilities.MAPPED_SERVABLE_DEFAULT` (#1193) | 2026-08 | Two independently hand-maintained lists of which encodings serve from mapped storage had nothing checking they agreed. `skainet-lang-core` still can't depend on `skainet-backend-api` to derive the constant directly, so a guard test (`KernelSupportMatrixTest`) asserts the two match instead — drift now fails CI.
+| IREE-facing GGUF → `.irpa` conversion lives in a separate `SKaiNET-IREE-tools` repo, not `skainet-io-*` (#1207) | 2026-08 | `skainet-lang-core` is already an architectural grey zone with StableHLO; adding XLA- or IREE-target-specific conversion on top would blur it further. A standalone converter (deliberately duplicating GGUF/I2_S format logic rather than depending on core) keeps core target-neutral and lets target-specific tooling evolve independently.
+| A native decode kernel for BitNet.cpp's grouped I2_S layouts (`GROUP_128`/`GROUP_64`) considered and explicitly not built (#1205, closed) | 2026-08 | `I2sAotConverter` reaches the same zero-copy mmap path by converting a file once, ahead of time, for a fraction of the ongoing cost of maintaining a third SIMD decode variant across every backend. Revisit only if a workload genuinely can't tolerate an AOT step.
 |===
 
 == 10. Quality requirements
@@ -397,13 +577,23 @@ through 2026; we depend on it heavily. If it breaks API in a future
 JDK, every `JvmVectorKernels` / `JvmQuantizedVectorKernels` file
 needs adjustment. Mitigation: thin wrappers, parity tests are a
 canary.
-* *Packed weights still reach the managed heap.* The packed matmul SPI
-takes `ByteArray`s, so mapped staging serves dense FP32 tensors from
-file-backed pages but not quantized ones. On Android that means the
-heap ceiling is lifted for dense checkpoints and not yet for a Q4_K_M
-one; a buffer-aware kernel SPI is the missing piece.
 * *Whole-file mapping only.* A file larger than 2 GB is refused rather
 than mapped in windows.
+* *Ternary GGUFs still repack on every load unless converted ahead of time.*
+`I2sRepack` transparently repacks BitNet.cpp's grouped I2_S layouts
+(`GROUP_128`/`GROUP_64`) into `BITNET_B1_58` order on each load — correct,
+but a real per-load cost for a repeatedly-loaded model. `I2sAotConverter`
+(§5.5) removes it for anyone who converts once; the *automatic* fallback
+sidecar cache for callers who don't (#1198's original proposal, tracked as
+a standalone follow-up, #1204) remains open and is intentionally low
+priority — it isn't blocking, since the AOT path already covers the
+shipped-app case.
+* *Whole-model plans only mapped-serve seven GGML formats plus dense FP32.*
+`StorageCapabilities.MAPPED_SERVABLE_DEFAULT` — now cross-checked against
+kernel registrations (#1193, §5.3/§9) — still names a fixed set; a new
+packed encoding needs a `MappedCapableKernel` *and* an update to that
+constant before it can be served from a mapping. The guard test makes the
+two drift-safe, not automatic.
 * *Hand-written NEON is a modest win over the compiler.* On a
 Cortex-A55 the hand-written `bitnet_gemv` beats `-O3 -ffast-math` C by
 1.08–1.24×; the large win is being native at all. Worth knowing before
@@ -432,4 +622,8 @@ explain why.
 | MemSeg | Short for `java.lang.foreign.MemorySegment`. Off-heap memory abstraction used for mmap'd weight buffers.
 | Panama | Codename for the JDK Vector API (`jdk.incubator.vector`) and FFM. Both originate from Project Panama.
 | SPI | Service provider interface — a public interface with multiple registered implementations, looked up at runtime. SKaiNET uses it for backends and now for kernels.
+| `KernelKey` / `ViewKernel` | The view-based kernel dispatch contract (§5.3): a `ViewKernel` declares the exact `KernelKey` (op, operand formats, `LayoutClass`es, placement, capabilities) it serves; `KernelDispatch` looks a key up instead of walking an `is`-ladder.
+| `MappedCapableKernel` | Marker interface (§5.3) on a `ViewKernel` that serves its `BLOCKED_ROW_MAJOR` weight from off-heap/mapped storage as well as heap bytes. `KernelDispatch.mappedServableEncodings()` derives coverage from kernels carrying this marker.
+| `WeightForm` / `WeightResidency` | A tensor's requested encoding × byte order × shape × residency, resolved once at load by `AllocationResolver` (§5.4) into a concrete `Storage`. `WeightResidency.MAPPED` requests — but does not guarantee — serving straight from a file mapping.
+| AOT conversion | Converting a model file once, ahead of time, into a byte order or layout its runtime path can serve with zero copies — e.g. `I2sAotConverter` repacking a BitNet.cpp GGUF's grouped I2_S layout into `BITNET_B1_58` order (§5.5), or SKaiNET-IREE-tools' GGUF → `.irpa` converter for IREE deployment.
 |===
