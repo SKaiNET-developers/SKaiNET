@@ -9,6 +9,7 @@ import java.lang.invoke.MethodHandle
 import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelKey
 import sk.ainet.backend.api.kernel.LayoutClass
+import sk.ainet.backend.api.kernel.MappedCapableKernel
 import sk.ainet.backend.api.kernel.OperandKey
 import sk.ainet.backend.api.kernel.ReferenceMatmulKernel
 import sk.ainet.backend.api.kernel.ViewKernel
@@ -44,7 +45,7 @@ public class FfmRowMajorMatmulKernel internal constructor(
     encodingName: String,
     override val key: KernelKey,
     private val handle: MethodHandle,
-) : ViewKernel {
+) : ViewKernel, MappedCapableKernel {
 
     override val name: String = "ffm-rowmajor-$encodingName"
 

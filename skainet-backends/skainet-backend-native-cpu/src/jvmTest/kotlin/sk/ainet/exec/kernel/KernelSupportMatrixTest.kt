@@ -1,9 +1,14 @@
 package sk.ainet.exec.kernel
 
 import java.io.File
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelProvider
+import sk.ainet.lang.memory.ExperimentalMemoryApi
+import sk.ainet.lang.memory.plan.StorageCapabilities
+import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
  * Emits `kernel-support.json` (introspected from the registered `KernelProvider`s) and
@@ -19,7 +24,11 @@ import sk.ainet.backend.api.kernel.KernelProvider
  * probes the JDK incubator module / the loaded `.so`), so their *capability* is declared
  * here (the single place to edit when a provider gains a kernel) rather than probed.
  */
+@OptIn(ExperimentalMemoryApi::class)
 class KernelSupportMatrixTest {
+
+    @AfterTest
+    fun reset() = KernelDispatch.clearForTesting()
 
     private val formats = listOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")
 
@@ -59,15 +68,22 @@ class KernelSupportMatrixTest {
     /**
      * Mapped serving (#1189): kernels that read the weight in canonical row-major GGUF file
      * order straight from off-heap bytes (mmap/direct buffer) — the `_rm` symbols behind
-     * `JniBufferPackedMatmulKernel` on Android. K/N and remaining formats: #1192 follow-ups. Must stay in lockstep with
-     * `StorageCapabilities.MAPPED_SERVABLE_ENCODINGS` (dense F32 is mapped there too, but as
-     * element-view serving, not a matmul kernel — it has no row here on purpose).
+     * `JniBufferPackedMatmulKernel` on Android. K/N and remaining formats: #1192 follow-ups.
+     *
+     * The JVM row is *derived* (#1193), not hand-kept: `generate_and_gate_support_matrix`
+     * installs `FfmRowMajorKernelPack` and reads `KernelDispatch.mappedServableEncodings()`,
+     * which collects every registered [sk.ainet.backend.api.kernel.MappedCapableKernel]'s
+     * `BLOCKED_ROW_MAJOR` operand. That same test asserts the derived set against
+     * `StorageCapabilities.MAPPED_SERVABLE_DEFAULT` (`skainet-lang-core`), which cannot depend on
+     * this module to derive it directly — so this is the guard that catches the two drifting.
+     * The Android row stays hand-declared (nothing on a JVM test run can probe whether the JNI
+     * `.so` loads on a device); `FfmRowMajorKernelPack` and `JniMappedKernelPack` register the
+     * identical symbol list on purpose, so keep this row equal to the derived one by hand.
      */
     private fun mappedTiers(): List<Tier> = listOf(
         Tier("native-jni-direct", 100, setOf("Android"),
             setOf("Q4_K", "Q6_K", "Q5_K", "Q8_0", "Q4_0", "Q5_0", "Q5_1")),
-        Tier("ffm-rowmajor", 100, setOf("JVM"),
-            setOf("Q4_K", "Q6_K", "Q5_K", "Q8_0", "Q4_0", "Q5_0", "Q5_1")),
+        Tier("ffm-rowmajor", 100, setOf("JVM"), KernelDispatch.mappedServableEncodings().map { it.name }.toSet()),
     )
 
     private fun best(fmt: String, platform: String, tiers: List<Tier>): String? =
@@ -118,6 +134,20 @@ class KernelSupportMatrixTest {
         // Sanity: every provider singleton is a KernelProvider (compile-time anchor).
         val providers: List<KernelProvider> = listOf(ScalarKernelProvider, PanamaVectorKernelProvider, NativeKernelProvider)
         assertEquals(3, providers.size)
+
+        // Drift gate on mapped serving (#1193): install the JVM-reachable mapped-capable
+        // kernels and assert what they actually serve against StorageCapabilities'
+        // hand-kept mirror — the two lists can't independently drift without failing this test.
+        // Dense F32 is excluded: StorageCapabilities maps it too, but as element-view serving,
+        // not a matmul kernel, so it has no row in KernelDispatch.mappedServableEncodings().
+        FfmRowMajorKernelPack.install()
+        assertEquals(
+            StorageCapabilities.MAPPED_SERVABLE_DEFAULT - TensorEncoding.Dense(4),
+            KernelDispatch.mappedServableEncodings(),
+            "KernelDispatch.mappedServableEncodings() drifted from " +
+                "StorageCapabilities.MAPPED_SERVABLE_DEFAULT — update both, and mappedTiers()'s " +
+                "native-jni-direct row",
+        )
 
         val jsonText = renderJson(tiers)
         val outDir = File("build/generated/kernel-support").apply { mkdirs() }

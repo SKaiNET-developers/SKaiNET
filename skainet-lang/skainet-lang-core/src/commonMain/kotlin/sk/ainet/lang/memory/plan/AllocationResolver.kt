@@ -27,9 +27,19 @@ public data class StorageCapabilities(
     val mappedServableEncodings: Set<TensorEncoding> = MAPPED_SERVABLE_DEFAULT,
 ) {
     public companion object {
-        /** What the loaders can serve from mapped pages today: dense FP32 (#921) and the GGML
+        /**
+         * What the loaders can serve from mapped pages today: dense FP32 (#921) and the GGML
          * block formats (#1189 Q4_K/Q6_K, #1192 the rest). Ternary formats need a load-time
-         * repack and stay heap until the repack cache lands. */
+         * repack and stay heap until the repack cache lands.
+         *
+         * This module cannot depend on `skainet-backend-api` (that dependency runs the other
+         * way, to avoid a cycle), so this constant can't be derived from
+         * `KernelDispatch.mappedServableEncodings()` directly (#1193). It is instead
+         * cross-checked there: `KernelSupportMatrixTest.generate_and_gate_support_matrix()`
+         * (`skainet-backend-native-cpu`) installs the mapped-capable kernel packs and asserts
+         * their derived encodings equal this set minus [TensorEncoding.Dense] (which is mapped
+         * as an element view, not served by a matmul kernel) — update both together.
+         */
         public val MAPPED_SERVABLE_DEFAULT: Set<TensorEncoding> = setOf(
             TensorEncoding.Dense(4),
             TensorEncoding.Q4_K, TensorEncoding.Q6_K, TensorEncoding.Q5_K,
