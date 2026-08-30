@@ -77,6 +77,16 @@ public object KernelDispatch {
     }
 
     /**
+     * Process-global default [TraceSink] used when a call site does not pass one. Production
+     * call sites (e.g. `DefaultCpuOps`) rely on the parameter default, which made every
+     * reference-kernel fallback invisible — set this (e.g. from a diagnostic harness) to
+     * observe dispatch decisions everywhere without threading a sink through the ops layer.
+     */
+    public var defaultSink: TraceSink = NoopTraceSink
+
+    private var warnedReferenceFallback: Boolean = false
+
+    /**
      * Select and run `matmul(a, b)`, writing into [out]. [scope] owns any adapter the selection
      * needs; [sink] sees the kernel run and every adapter.
      *
@@ -87,7 +97,7 @@ public object KernelDispatch {
         b: TensorView,
         out: TensorView,
         scope: Scope = Scope.Ambient,
-        sink: TraceSink = NoopTraceSink,
+        sink: TraceSink = defaultSink,
         /**
          * Relayout a canonical packed weight into kernel order when that is what unlocks a packed
          * kernel (#973/#1095).
@@ -137,6 +147,21 @@ public object KernelDispatch {
         }
         // No exact kernel: adapt the operands a kernel would accept, then fall back to the reference,
         // which reads any format through decoding get().
+        // The reference path is correct but orders of magnitude slower than a real kernel on a
+        // blocked weight (per-element block decode) — a process that lands here on a quantized
+        // weight almost certainly forgot to install a kernel pack. Say so once, loudly, even with
+        // no sink attached: silent fallback is how a 25 s/token regression ships unnoticed.
+        if (!warnedReferenceFallback && b.layout.blocked) {
+            warnedReferenceFallback = true
+            println(
+                "[SKaiNET] KernelDispatch: no kernel registered for matmul " +
+                    "(activation=${a.format.encoding}, weight=${b.format.encoding}, " +
+                    "order=${b.layout.blockOrder}); falling back to the decoding reference " +
+                    "kernel (~1000x slower). Install a kernel pack (e.g. KernelPacks.install() " +
+                    "+ FfmRowMajorKernelPack.install()) before the first forward. " +
+                    "Further fallbacks are not reported."
+            )
+        }
         val adaptedA = adapt(a, scope, sink, "gather")
         val reference = ReferenceMatmulKernel(KernelKey.matmul(adaptedA, b))
         runTraced(reference, listOf(adaptedA, b), out, sink)

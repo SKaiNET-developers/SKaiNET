@@ -7,6 +7,7 @@ import sk.ainet.io.model.ModelArchitecture
  */
 private val ggufIdMap: Map<String, ModelArchitecture> = mapOf(
     "llama" to ModelArchitecture.LLAMA,
+    "gemma4" to ModelArchitecture.GEMMA,
     "gemma3n" to ModelArchitecture.GEMMA,
     "gemma3" to ModelArchitecture.GEMMA,
     "gemma" to ModelArchitecture.GEMMA,
