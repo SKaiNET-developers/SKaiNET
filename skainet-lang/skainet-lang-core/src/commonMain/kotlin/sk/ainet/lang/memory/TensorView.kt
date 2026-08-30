@@ -256,7 +256,34 @@ public class TensorView(
                 else throw UnsupportedOperationException("dense element access over byte storage needs a decoder")
             }
         }
-        else -> throw UnsupportedOperationException("element access over ${s::class.simpleName} needs a platform reader (use a kernel)")
+        else -> readDenseFromBytes(s, flat)
+    }
+
+    /**
+     * Dense decode for a non-[Storage.Heap] backing (OffHeap/Mapped/Device — `SegmentStorage`,
+     * `MappedFileStorage`, a future device binding) via [Storage.copyInto], the one primitive every
+     * storage kind implements uniformly regardless of platform. Slow (a per-element snapshot copy)
+     * by design — this is the reference path the class doc promises ("correct for every format
+     * because it decodes"); a production kernel unwraps the storage once per call instead.
+     *
+     * A narrow float (FP16/BF16) never reaches here — `get()` always hands those a [decoder]
+     * (`NarrowFloatDecoder`) before falling through to [readDense] — but the two cases are handled
+     * defensively anyway so this stays correct if that invariant is ever relaxed.
+     */
+    private fun readDenseFromBytes(s: Storage, flat: Long): Float {
+        val dtype = format.dtype
+        val width = dtype.sizeInBytes
+        val buf = ByteArray(width)
+        s.copyInto(buf, 0, flat * width, width)
+        var bits = 0L
+        for (i in 0 until width) bits = bits or ((buf[i].toLong() and 0xFF) shl (8 * i))
+        return when (dtype) {
+            sk.ainet.lang.types.FP32 -> Float.fromBits(bits.toInt())
+            sk.ainet.lang.types.FP64 -> Double.fromBits(bits).toFloat()
+            sk.ainet.lang.types.BF16 -> sk.ainet.lang.types.Bf16Codec.decode((bits and 0xFFFF).toInt())
+            sk.ainet.lang.types.FP16 -> sk.ainet.lang.types.Fp16Codec.decode((bits and 0xFFFF).toInt())
+            else -> bits.toFloat()
+        }
     }
 
     /** Every element in row-major order, decoded — the reference materialization. */
@@ -406,10 +433,18 @@ public class NarrowFloatDecoder(private val codec: sk.ainet.lang.types.NarrowFlo
     override fun decodeElement(storage: Storage, layout: Layout, flatElementIndex: Long): Float = decodeAt(storage, flatElementIndex)
 
     private fun decodeAt(storage: Storage, elementIndex: Long): Float {
-        val heap = storage as? Storage.Heap ?: throw UnsupportedOperationException("narrow-float views need heap storage in this milestone")
-        val bytes = heap.bytes ?: throw UnsupportedOperationException("narrow-float views need byte storage")
-        val off = heap.arrayOffset + (elementIndex * codec.bytesPerElement).toInt()
-        val bits = (bytes[off].toInt() and 0xFF) or ((bytes[off + 1].toInt() and 0xFF) shl 8)
+        val heap = storage as? Storage.Heap
+        val bits = if (heap != null) {
+            val bytes = heap.bytes ?: throw UnsupportedOperationException("narrow-float views need byte storage")
+            val off = heap.arrayOffset + (elementIndex * codec.bytesPerElement).toInt()
+            (bytes[off].toInt() and 0xFF) or ((bytes[off + 1].toInt() and 0xFF) shl 8)
+        } else {
+            // Non-heap (OffHeap/Mapped/Device): the same copyInto snapshot readDenseFromBytes uses,
+            // every storage kind implements it uniformly regardless of platform binding.
+            val buf = ByteArray(codec.bytesPerElement)
+            storage.copyInto(buf, 0, elementIndex * codec.bytesPerElement, codec.bytesPerElement)
+            (buf[0].toInt() and 0xFF) or ((buf[1].toInt() and 0xFF) shl 8)
+        }
         return codec.decode(bits)
     }
 }

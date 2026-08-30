@@ -2,8 +2,10 @@ package sk.ainet.lang.memory
 
 import sk.ainet.lang.memory.trace.RecordingTraceSink
 import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.TensorId
 import sk.ainet.lang.tensor.storage.MemoryDomain
+import sk.ainet.lang.types.FP32
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
@@ -11,6 +13,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -88,6 +91,65 @@ class JvmStorageTest {
         m.close()
         assertFalse(m.isAlive); assertFalse(v.isAlive)
         assertFailsWith<StorageClosedException> { m.segment() }
+    }
+
+    /**
+     * `TensorView.get()` over dense FP32 backed by [SegmentStorage] / [MappedFileStorage] — was
+     * `UnsupportedOperationException("element access over SegmentStorage needs a platform reader
+     * (use a kernel)")` (the reference-kernel fallback assumed every non-Heap storage had a real
+     * kernel to serve it; a MAPPED weight with no matching registered kernel key had none). Found
+     * via a real Gemma 4 GGUF's `per_layer_model_proj.weight` (a MAPPED dense weight, PLE) falling
+     * to `ReferenceMatmulKernel` and throwing instead of just being slow.
+     */
+    @Test
+    fun denseFp32ViewReadsThroughSegmentStorage() {
+        val s = SegmentStorage.allocate(bytes = 4L * 6)
+        for (i in 0 until 6) s.segment().setAtIndex(ValueLayout.JAVA_FLOAT, i.toLong(), i.toFloat() + 0.5f)
+        val v = TensorView.dense(s, Shape(2, 3), FP32, TensorId.parse("model.ple_proj"))
+        assertEquals(0.5f, v.get(0, 0)); assertEquals(3.5f, v.get(1, 0)); assertEquals(5.5f, v.get(1, 2))
+        assertContentEquals(floatArrayOf(0.5f, 1.5f, 2.5f, 3.5f, 4.5f, 5.5f), v.toFloatArray())
+        s.close()
+    }
+
+    @Test
+    fun denseFp32ViewReadsThroughMappedFileStorage() {
+        val f = Files.createTempFile("skainet-mapped-dense", ".bin"); f.toFile().deleteOnExit()
+        val bytes = ByteArray(4 * 4)
+        val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until 4) bb.putFloat(i * 4, i.toFloat() * 10f)
+        Files.write(f, bytes)
+        val m = MappedFileStorage.map(f, fileOffset = 0, length = 16, origin = TensorId.parse("model.w"))
+        val v = TensorView.dense(m, Shape(4), FP32)
+        assertEquals(0f, v.get(0)); assertEquals(10f, v.get(1)); assertEquals(30f, v.get(3))
+        m.close()
+    }
+
+    /**
+     * Same gap, the narrow-float (BF16/FP16) decode path: `NarrowFloatDecoder.decodeAt` threw
+     * "narrow-float views need heap storage in this milestone" for anything but [Storage.Heap].
+     */
+    @Test
+    fun narrowFloatViewReadsThroughSegmentStorage() {
+        val codec = sk.ainet.lang.types.Bf16Codec
+        val s = SegmentStorage.allocate(bytes = 2L * 3)
+        val values = floatArrayOf(1.0f, -2.5f, 100.0f)
+        for (i in values.indices) {
+            val bits = codec.encode(values[i])
+            s.segment().set(ValueLayout.JAVA_BYTE, (i * 2).toLong(), (bits and 0xFF).toByte())
+            s.segment().set(ValueLayout.JAVA_BYTE, (i * 2 + 1).toLong(), ((bits ushr 8) and 0xFF).toByte())
+        }
+        val shape = Shape(3)
+        val view = TensorView(
+            shape = shape,
+            format = Format(codec.dtype, sk.ainet.lang.tensor.storage.TensorEncoding.Dense(2)),
+            layout = Layout(shape = shape, strides = Layout.rowMajorStrides(shape), elementBytes = 2),
+            storage = s,
+            decoder = NarrowFloatDecoder(codec),
+        )
+        for (i in values.indices) {
+            assertTrue(kotlin.math.abs(view.get(i) - values[i]) <= kotlin.math.abs(values[i]) * 0.01f + 0.01f)
+        }
+        s.close()
     }
 
     @Test
