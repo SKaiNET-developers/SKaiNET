@@ -94,11 +94,7 @@ public class Fp32ViewMatmulKernel(
         val a = inputs[0]; val b = inputs[1]
         val m = a.shape[0]; val k = a.shape[1]; val n = b.shape[0]
         require(b.shape[1] == k) { "inner dimensions disagree: [${m}, ${k}] × [${n}, ${b.shape[1]}]" }
-        val aHeap = a.storage as? Storage.Heap ?: return fallback(inputs, out)
-        val bHeap = b.storage as? Storage.Heap ?: return fallback(inputs, out)
         val oHeap = out.storage as? Storage.Heap ?: return fallback(inputs, out)
-        val aBuf = aHeap.floats ?: return fallback(inputs, out)
-        val bBuf = bHeap.floats ?: return fallback(inputs, out)
         val oBuf = oHeap.floats ?: return fallback(inputs, out)
         // The SPI GEMM reads the weight input-major: b[p][j] = bBuf[bOffset + p * bStride + j].
         // The dispatcher hands us the weight output-major ([n, k]) — which, when it is a transposed
@@ -106,12 +102,57 @@ public class Fp32ViewMatmulKernel(
         // buffer's row stride. Anything else (a genuinely output-major buffer) would need a gather,
         // so it goes to the reference kernel instead of being silently mis-indexed.
         if (b.layout.strides[0] != 1) return fallback(inputs, out)
+        val (aBuf, aOffset, aStride) = denseFp32(a) ?: return fallback(inputs, out)
+        val (bBuf, bOffset, bStride) = denseFp32(b, requiredStride = b.layout.strides[1]) ?: return fallback(inputs, out)
         kernel.matmul(
-            a = aBuf, aOffset = aHeap.arrayOffset + a.layout.offsetElements.toInt(), aStride = a.layout.strides[0],
-            b = bBuf, bOffset = bHeap.arrayOffset + b.layout.offsetElements.toInt(), bStride = b.layout.strides[1],
+            a = aBuf, aOffset = aOffset, aStride = aStride,
+            b = bBuf, bOffset = bOffset, bStride = bStride,
             out = oBuf, outOffset = oHeap.arrayOffset + out.layout.offsetElements.toInt(), outStride = out.layout.strides[0],
             m = m, n = n, k = k,
         )
+    }
+
+    /**
+     * `(FloatArray, offset, stride)` for [view], zero-copy when it is already [Storage.Heap]
+     * (the original, only path); otherwise **one bulk snapshot** (never per-element — that is the
+     * ~1000×-slower decoding reference path this pack exists to avoid) via [Storage.copyInto],
+     * which every storage kind implements uniformly (`SegmentStorage`, `MappedFileStorage`, the
+     * NIO-buffer kinds, …). This is the same cost class as [sk.ainet.exec.kernel.FfmRowMajorMatmulKernel]'s
+     * existing heap-`ByteArray` staging path — one copy per kernel call, not per element.
+     *
+     * A weight this small a matmul reaches for is realistically the *whole* backing storage (a
+     * top-level loaded tensor, not a narrowed slice) — [requiredStride] guards that assumption:
+     * when the view's own row stride does not match what a plain row-major snapshot would produce,
+     * this bridge cannot represent it correctly, so it declines (→ fallback) rather than risk a
+     * silent-wrong-numbers bug.
+     */
+    private fun denseFp32(view: TensorView, requiredStride: Int? = null): Triple<FloatArray, Int, Int>? {
+        val heap = view.storage as? Storage.Heap
+        if (heap != null) {
+            val floats = heap.floats ?: return null
+            val stride = requiredStride ?: view.layout.strides.getOrElse(0) { 1 }
+            return Triple(floats, heap.arrayOffset + view.layout.offsetElements.toInt(), stride)
+        }
+        if (view.format.dtype != FP32 || view.format.encoding !is sk.ainet.lang.tensor.storage.TensorEncoding.Dense) return null
+        val rowStride = requiredStride ?: view.layout.strides.getOrElse(1) { view.shape[view.shape.rank - 1] }
+        if (requiredStride == null && !view.isContiguous) return null
+        val elementCount = view.elementCount
+        val byteWidth = 4
+        val byteOffset = view.layout.offsetElements * byteWidth
+        val byteLength = (elementCount * byteWidth).toInt()
+        if (byteOffset + byteLength > view.storage.sizeBytes) return null
+        val bytes = ByteArray(byteLength)
+        view.storage.copyInto(bytes, 0, byteOffset, byteLength)
+        val floats = FloatArray(elementCount.toInt())
+        for (i in floats.indices) {
+            val o = i * byteWidth
+            val bits = (bytes[o].toInt() and 0xFF) or
+                ((bytes[o + 1].toInt() and 0xFF) shl 8) or
+                ((bytes[o + 2].toInt() and 0xFF) shl 16) or
+                ((bytes[o + 3].toInt() and 0xFF) shl 24)
+            floats[i] = Float.fromBits(bits)
+        }
+        return Triple(floats, 0, rowStride)
     }
 
     private fun fallback(inputs: List<TensorView>, out: TensorView) {
