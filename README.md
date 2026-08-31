@@ -124,14 +124,26 @@ SKaiNET is a modular ecosystem. While this repository contains the core engine, 
 
 ## Contributing and Design Proposals
 
+**First time here?** Three links are all you need:
+
+- 🚀 [Getting started as a contributor](https://skainet-developers.github.io/SKaiNET/skainet/contributing/getting-started.html) — the two workflows in one page, and how to claim a task.
+- 🟣 [Open good first issues](https://github.com/SKaiNET-developers/SKaiNET/issues?q=is%3Aopen+label%3A%22good+first+issue%22) — filter further by what you know: [`skill:android`](https://github.com/SKaiNET-developers/SKaiNET/issues?q=is%3Aopen+label%3Askill%3Aandroid), [`skill:numerics` (no Kotlin)](https://github.com/SKaiNET-developers/SKaiNET/issues?q=is%3Aopen+label%3Askill%3Anumerics), [`skill:docs`](https://github.com/SKaiNET-developers/SKaiNET/issues?q=is%3Aopen+label%3Askill%3Adocs), or by size: [`size:xs`](https://github.com/SKaiNET-developers/SKaiNET/issues?q=is%3Aopen+label%3Asize%3Axs).
+- 🏷️ [Issue taxonomy](https://skainet-developers.github.io/SKaiNET/skainet/contributing/issue-taxonomy.html) — what every label and `[Lane N · skill]` title prefix means.
+
 Small fixes can go straight through the normal contribution flow described in
 [CONTRIBUTING.md](CONTRIBUTING.md) and [GITFLOW.adoc](GITFLOW.adoc).
 
-Use a SKEEP when a change affects public APIs, DSL syntax, tensor semantics,
-compiler/runtime integration, storage behavior, compatibility policy, or other
-decisions that need a durable design record. SKEEP files live under
-`docs/modules/skeep/pages/` and use three-digit numbering, starting with
-`001`.
+Non-trivial work goes through one of two processes:
+
+- **DARC** (Document / Assess / Research / Code) for *one feature* — a new
+  operator, metric, layer, format reader, or kernel strategy. A feature is one
+  parent issue plus skill-labelled sub-issues ("lanes"). See the
+  [DARC workflow](https://skainet-developers.github.io/SKaiNET/skainet/contributing/darc-workflow.html).
+- **SKEEP** (SKaiNET Evolution and Enhancement Process) for *one architectural
+  decision* — public APIs, DSL syntax, tensor semantics, compiler/runtime
+  integration, storage behavior, compatibility policy. SKEEP files live under
+  `docs/modules/skeep/pages/` with three-digit numbering. See the
+  [SKEEP index](https://skainet-developers.github.io/SKaiNET/skainet/skeep/index.html).
 
 ---
 
@@ -329,9 +341,9 @@ See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior r
 
 We love contributions! Whether it's a new operator, documentation, or a bug fix:
 
-1. Read our [Contribution Guide](CONTRIBUTING.md).
-2. Check the [Good First Issues](https://github.com/SKaiNET-developers/SKaiNET/labels/good%20first%20issue).
-3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues).
+1. Read [Getting started as a contributor](https://skainet-developers.github.io/SKaiNET/skainet/contributing/getting-started.html) (five minutes), then the [Contribution Guide](CONTRIBUTING.md) when you need the procedure.
+2. Pick an [open good first issue](https://github.com/SKaiNET-developers/SKaiNET/issues?q=is%3Aopen+label%3A%22good+first+issue%22) — every one names the file to copy the pattern from and the exact Gradle task to run. Comment on it to claim it.
+3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
 

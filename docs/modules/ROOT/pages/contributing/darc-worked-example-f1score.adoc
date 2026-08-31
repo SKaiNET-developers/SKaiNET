@@ -1,0 +1,295 @@
+= Worked example: F1Score via DARC
+:description: One real feature — Precision, Recall and F1Score metrics — taken through Document / Assess / Research / Code, decomposed into lane sub-issues, including the point where it hands a question over to SKEEP.
+
+[NOTE]
+====
+**Audience: contributors who have read
+xref:contributing/getting-started.adoc[Getting started] and want to see
+what the process looks like on a concrete feature** — and maintainers
+opening a new feature who want a template to copy. The live issues are
+https://github.com/SKaiNET-developers/SKaiNET/issues/1222[#1222] (parent)
+and its sub-issues; this page explains the reasoning behind them.
+====
+
+This is an exercise, not a spec: what actually happens when someone
+picks "F1Score" off the missing-metrics list and takes it through
+DARC end to end. It surfaces friction the abstract process description
+does not show — most importantly, that the ground-truth harness cannot
+validate a stateful metric, and that resolving *that* is a SKEEP, not a
+sub-issue.
+
+== The decision Assess makes before any code
+
+`sk.ainet.lang.nn.metrics` ships `Accuracy` only. F1 depends on
+precision and recall, which are *also* missing. Three classes each
+re-deriving true-positive / false-positive / false-negative counts
+would triplicate the iteration logic `Accuracy.kt` already shows is
+non-trivial (dtype dispatch, hard vs. soft targets, argmax over `dim`,
+binary threshold). The Assess-phase decision, recorded on the parent
+issue:
+
+> Extract `Accuracy`'s helpers once, build one internal
+> `ConfusionMatrixAccumulator`, and let `Precision`, `Recall` and
+> `F1Score` be three `compute()` formulas over it. Ship all three from
+> one DARC cycle — same data, three views.
+
+That is what Assess is for: not "is this hard?" but "what is the shape
+of the solution, and does it avoid an obvious duplication trap?"
+
+.DARC or SKEEP?
+****
+`Precision`, `Recall`, `F1Score` are additive classes behind the
+existing `Metric` interface. No public-API *shape* change, no DSL, no
+storage, no compiler footprint — **DARC alone**. Saying so explicitly
+on the parent issue matters, because one part of this feature *does*
+trip a SKEEP trigger (see <<harness-gap>>), and the distinction has to
+be visible to whoever picks up that lane.
+****
+
+== D — Document
+
+The parent issue,
+https://github.com/SKaiNET-developers/SKaiNET/issues/1222[#1222], is
+the `darc_feature_request.md` template filled in: problem, summary,
+the Assess decision above, risks, research tasks, open questions, and
+— the addition the lane model asks for — a *lane breakdown table*
+saying which lanes apply, which are skipped, and why.
+
+== A — Assess
+
+Feasibility is not the risk; semantics are:
+
+* *Zero-division.* F1 is undefined when TP+FP+FN = 0 for a class.
+  `sklearn` returns 0.0 with a warning; `torchmetrics` takes a
+  `zero_division` parameter. Pick one and document it — never an
+  unspecified `NaN`.
+* *Averaging.* Macro (unweighted mean over classes), micro (pooled
+  counts), per-class (no reduction) give different numbers for the same
+  predictions. A cross-check falls out of the definitions: for
+  single-label multi-class via argmax, *micro precision = micro recall =
+  accuracy*. That is a test.
+* *Which classes does "macro" average over?* `sklearn` uses the union
+  of labels present in targets ∪ predictions; averaging over the full
+  class dimension counts never-seen classes as F1 = 0. Different
+  numbers on small batches.
+* *Ground-truth validation has no home* — a process risk, resolved
+  before Code starts, not discovered inside it. See <<harness-gap>>.
+
+== R — Research
+
+Research is its own lane
+(https://github.com/SKaiNET-developers/SKaiNET/issues/1224[#1224],
+`skill:numerics`, `good first issue`) precisely because it needs
+PyTorch/scikit-learn literacy and *no Kotlin*. The deliverable is a
+comment on the parent: an edge-case table (empty batch, unseen class,
+all-wrong, ties) for both reference libraries, and three one-paragraph
+recommendations with links a reviewer can click. The Kotlin lanes start
+from that fixed contract.
+
+The hand-computed fixture every later test uses — predicted classes
+`[2, 0, 1, 2]` against targets `[2, 1, 1, 0]` — is also pinned here:
+per-class precision `[0, 1, 0.5]`, recall `[0, 0.5, 1]`, F1
+`[0, 0.667, 0.667]`; macro P = R = 0.5, macro F1 = 0.444; micro
+P = R = F1 = 0.5 = accuracy. The research lane confirms it by actually
+running `precision_recall_fscore_support`, turning a hand calculation
+into a citable reference.
+
+[[lanes]]
+== C — Code, as lanes
+
+The Code phase is where the lane decomposition earns its keep. Instead
+of one `size:m` "implement the metrics" task, the work is a chain of
+small, independently claimable sub-issues, each with one skill label
+and an honest size:
+
+[cols="3,1,1,1,3",options="header"]
+|===
+| Sub-issue | Skill | Size | Entry point | Why it is its own task
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1225[#1225]
+Extract `Accuracy`'s class-matching helpers into a shared internal file
+| `kotlin-core` | s | ✅ first issue
+| A pure refactor with existing tests as the safety net. Without it,
+three near-identical argmax/iteration copies.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1226[#1226]
+`Averaging` enum + internal `ConfusionMatrixAccumulator`
+| `kotlin-core` | s |
+| The one design-bearing task; needs the research contract. Not a
+first issue.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1227[#1227] `Precision`
+| `kotlin-core` | s | ✅ first issue
+| One formula over the accumulator, plus tests against the fixture.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1228[#1228] `Recall`
+| `kotlin-core` | s | ✅ first issue
+| Twin of `Precision` — filed separately so two people can each ship one.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1229[#1229] `F1Score`
+| `kotlin-core` | s | ✅ first issue
+| Composes the formulas over *one* accumulator; carries the
+mean-of-F1s vs. F1-of-means trap as an explicit test.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1230[#1230]
+Android parity — and enable host tests for `skainet-backend-cpu`
+| `android` | s | ✅ first issue
+| Turned out not to be a pure smoke check: the module has no Android
+host-test task today. A real finding, sized honestly.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1231[#1231] iOS ·
+https://github.com/SKaiNET-developers/SKaiNET/issues/1232[#1232] JS/Wasm ·
+https://github.com/SKaiNET-developers/SKaiNET/issues/1233[#1233] Native
+| `ios` / `js` / `native` | xs | ✅ first issue
+| Run one Gradle task, compare numbers, report. The easiest entry
+points into the project for someone who has never seen a tensor.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1234[#1234]
+Doc partials (`math` / `intuition` / `examples` / `references`)
+| `docs` | s | ✅ first issue
+| `math`, `intuition`, `references` can start on day one; `examples`
+waits for `F1Score` to exist so the code actually runs.
+
+| https://github.com/SKaiNET-developers/SKaiNET/issues/1235[#1235]
+DARC review and `@DarcValidated`
+| `review` | s |
+| Must not be any of the implementers. Walks all four phases against
+the shipped code.
+|===
+
+Lane 4 (ground-truth / CI) is deliberately *not* a sub-issue — see the
+next section.
+
+=== The Kotlin skeleton
+
+`Accuracy.kt`'s pattern, generalised. The accumulator is the only
+place that walks tensors; the metrics are formulas.
+
+[source,kotlin]
+----
+public enum class Averaging { BINARY, MACRO, MICRO }
+
+internal class ConfusionMatrixAccumulator(dim: Int = -1, threshold: Float? = null) {
+    private val tp = mutableMapOf<Int, Long>()
+    private val fp = mutableMapOf<Int, Long>()
+    private val fn = mutableMapOf<Int, Long>()
+
+    fun <T : DType, V> update(predictions: Tensor<T, V>, targets: Tensor<out DType, *>) =
+        forEachPrediction(predictions, targets, dim, threshold) { predicted, target ->
+            if (predicted == target) tp[target] = (tp[target] ?: 0) + 1
+            else { fp[predicted] = (fp[predicted] ?: 0) + 1; fn[target] = (fn[target] ?: 0) + 1 }
+        }
+
+    fun counts(): Map<Int, ClassCounts> = /* union of keys -> ClassCounts(tp, fp, fn) */
+    fun reset() { tp.clear(); fp.clear(); fn.clear() }
+}
+
+public class F1Score(
+    private val averaging: Averaging = Averaging.MACRO,
+    dim: Int = -1,
+    threshold: Float? = null,
+) : Metric {
+    override val name: String = "f1"
+    private val acc = ConfusionMatrixAccumulator(dim, threshold)
+
+    override fun <T : DType, V> update(predictions: Tensor<T, V>, targets: Tensor<out DType, *>, ctx: ExecutionContext) =
+        acc.update(predictions, targets)
+
+    override fun compute(): Double = reduce(acc.counts(), averaging) { tp, fp, fn ->
+        if (2 * tp + fp + fn == 0L) 0.0 else 2.0 * tp / (2 * tp + fp + fn)
+    }
+
+    override fun reset() = acc.reset()
+}
+----
+
+`forEachPrediction` is what #1225 extracts from `Accuracy`; `reduce`
+(#1226) implements the three averaging modes and the zero-division
+convention in one place.
+
+[[harness-gap]]
+== The ground-truth gap — where DARC hands over to SKEEP
+
+`OperationExecutor` in `skainet-test-groundtruth` maps a test case's
+operation name to one stateless `TensorOps` call and returns one
+`Tensor<FP32, Float>`. That is the right shape for `matmul`, `conv2d`,
+`relu`. It is not the shape of a `Metric`: `update()` across many
+batches, `compute()` returning a scalar `Double`, `reset()`. There is no
+`MetricExecutor` anywhere in the harness.
+
+Two honest options:
+
+[cols="1,2,2",options="header"]
+|===
+| | A — unit tests only for v1 | B — extend the harness first
+
+| What
+| Hand-computed fixtures, cross-checked once against `sklearn` by a
+human, not wired into CI.
+| A `GroundTruthMetricCase` and `MetricExecutor` beside
+`OperationExecutor`, plus a Python-side fixture format.
+
+| Cost
+| Ships this cycle. The metrics never earn the "✅ ground-truth
+validated" badge ops get.
+| Blocks three straightforward classes on a test-architecture change.
+
+| Process
+| DARC, stated explicitly as a reviewed trade-off in every PR.
+| A *runtime / test-integration pattern every future metric inherits*
+— a **SKEEP trigger**.
+|===
+
+The call: **ship via A now; track B as its own SKEEP.** Blocking the
+metrics on a harness redesign is the wrong trade-off; silently
+accepting "unit-tested only" forever is too; and improvising the
+harness extension inside whichever PR gets there first — instead of
+deciding its shape once, durably — is exactly the drift SKEEP exists
+to prevent. So:
+
+* every Code-lane PR states "unit tests only; ground-truth wiring
+  tracked in SKEEP-005";
+* https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223] is
+  the SKEEP-005 tracking issue (`skeep`, `skill:design`), and writing
+  the proposal is its Lane 0 task;
+* the proposal, not the parent issue, carries the "why this shape"
+  argument — fixture format, one batch vs. a sequence, scalar tolerance.
+
+== Doc partial and review sign-off
+
+The docs lane produces
+`docs/modules/ROOT/partials/ops/metrics/{precision,recall,f1score}.adoc`
+with the same four tags as
+`partials/ops/tensorops/matmul.adoc`. Metrics are not `TensorOps`
+functions, so the operator-doc generator will not pick the partials up;
+they are surfaced from the
+xref:how-to/metrics-and-perf-testing.adoc[metrics how-to] with
+`include::partial$…[tag=…]`.
+
+After review, the reviewer — not the implementer — annotates:
+
+[source,kotlin]
+----
+@DarcValidated(by = "First Last <user@example.com>", on = "2026-09-30")
+override fun compute(): Double { /* … */ }
+----
+
+One precedent worth flagging rather than solving: `@DarcValidated`
+targets functions and the KSP processor reads it only off `TensorOps`
+today, so the badge is recorded in source but renders on no generated
+page for a `Metric`. That is a follow-up for the doc-pipeline owner,
+noted in #1235, not a blocker.
+
+== What this example teaches
+
+* *Assess decides the shape, Code executes it.* The shared-accumulator
+  decision is one sentence on the parent, and it turns three
+  medium-sized tasks into six small ones.
+* *Research is a lane, not a preamble.* Somebody who reads sklearn
+  source and writes no Kotlin has a real, closed-ended contribution.
+* *"Check on Android" was not a smoke check.* Sizing a lane honestly
+  means actually looking; the Android host-test gap is a finding in its
+  own right.
+* *A DARC feature can trip a SKEEP trigger part-way.* Split the
+  question out, state the trade-off in every affected PR, and let the
+  SKEEP carry the design argument.

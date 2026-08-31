@@ -1,0 +1,36 @@
+# SKaiNET issue label taxonomy — source of truth for `.github/scripts/sync-labels.sh`.
+# Format: name|hex-color|description   (lines starting with # are ignored)
+# Documented in docs/modules/ROOT/pages/contributing/issue-taxonomy.adoc.
+#
+# --- Structure: how an issue relates to other issues -------------------------
+tracking|ededed|Parent/tracking issue with sub-issues
+sub-issue|ededed|Sub-issue of a tracking issue
+darc|a2eeef|Feature driven through the DARC workflow (Document / Assess / Research / Code)
+skeep|5319e7|SKEEP proposal tracking issue (durable design record)
+#
+# --- DARC phase: which phase of the workflow the task belongs to ------------
+assessment|e99695|Assessment task (DARC: A)
+research|c2e0c6|Research and evaluation tasks (DARC: R)
+coding|006b75|Implementation task (DARC: C)
+documentation|0075ca|Improvements or additions to documentation (DARC: D)
+#
+# --- Skill: what a contributor needs to know to pick the task up -------------
+skill:numerics|1d76db|PyTorch/NumPy/math background, no Kotlin required
+skill:kotlin-core|1d76db|Kotlin implementation in commonMain
+skill:android|1d76db|Android target/build/kernel work
+skill:ios|1d76db|iOS / Kotlin-Native-Apple target work
+skill:native|1d76db|Kotlin/Native (Linux, macOS) or FFM kernel work
+skill:js|1d76db|JS / Wasm target work
+skill:docs|1d76db|AsciiDoc / technical writing
+skill:review|1d76db|DARC review; must not be the task's implementer
+skill:design|5319e7|SKEEP authorship; architectural / API-shape judgement
+#
+# --- Size: honest effort estimate ------------------------------------------
+size:xs|d4f7d4|Under 1 hour
+size:s|b6ebb6|A few hours
+size:m|f9e79f|1-2 days
+size:l|f5b7a0|3+ days; likely needs its own design discussion
+#
+# --- Entry point -----------------------------------------------------------
+good first issue|7057ff|Good for newcomers; no prior SKaiNET codebase knowledge assumed
+help wanted|008672|Extra attention is needed

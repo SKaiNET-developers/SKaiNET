@@ -1,0 +1,250 @@
+= Getting started as a contributor
+:description: The two workflows SKaiNET uses for non-trivial work — DARC for features and SKEEP for durable design decisions — and how to find, claim, and finish a first task.
+
+[NOTE]
+====
+**Audience: anyone who wants to change SKaiNET itself** — from a first
+`good first issue` to a maintainer opening a new feature. Library
+*consumers* do not need this page; see xref:using/index.adoc[Using SKaiNET].
+====
+
+SKaiNET has two contribution processes. They are not alternatives and
+they are not a hierarchy; they answer two different questions:
+
+[cols="1,2,2",options="header"]
+|===
+| | DARC | SKEEP
+
+| *The question it answers*
+| "Is this the right thing to build, and is it built to the documented
+design?" — for *one feature*: an operator, a metric, a layer, a format
+reader, a kernel strategy.
+| "What is the durable shape of *this codebase* going forward?" — for
+*one architectural decision*: a public API, a DSL syntax, a storage
+model, a runtime/compiler integration point, a compatibility policy.
+
+| *Expansion*
+| **D**ocument · **A**ssess · **R**esearch · **C**ode. Cyclical;
+the prose is the deliverable that survives, the code follows.
+| **SK**aiNET **E**volution and **E**nhancement **P**rocess.
+Numbered, KEEP-style proposals with a fixed section set.
+
+| *Artefact*
+| A GitHub issue from the
+https://github.com/SKaiNET-developers/SKaiNET/blob/develop/.github/ISSUE_TEMPLATE/darc_feature_request.md[DARC
+Feature Proposal] template, decomposed into lane sub-issues; for
+operators, a doc partial plus the `@DarcValidated` annotation.
+| A file `docs/modules/skeep/pages/NNN-short-title.adoc` with a
+`Tracking issue:` header pointing at a GitHub issue from the
+https://github.com/SKaiNET-developers/SKaiNET/blob/develop/.github/ISSUE_TEMPLATE/skeep_tracking.md[SKEEP
+Proposal] template.
+
+| *Lifecycle*
+| ✖ undocumented → ⚠ prose but unreviewed → ✅ `@DarcValidated`
+| `Draft` → `Accepted` → `Implemented` (or `Superseded` / `Rejected`)
+
+| *Who signs off*
+| A reviewer who is *not* the implementer.
+| A maintainer, by moving the `Status:` field.
+
+| *Authoritative page*
+| xref:contributing/darc-workflow.adoc[DARC: advanced contribution workflow]
+| xref:skeep:index.adoc[SKEEP: SKaiNET Evolution and Enhancement Process]
+|===
+
+[[darc-or-skeep]]
+== DARC or SKEEP?
+
+Most contributions need neither. A typo, an obvious one-line bug, a
+dependency bump, a missing test for shipped behaviour — just open a
+PR (see xref:contributing/darc-workflow.adoc#_when_darc_applies[when DARC applies]).
+
+For anything larger, run down this list in order:
+
+. *Does the change trip a SKEEP trigger?* Public Kotlin API shape, DSL
+  syntax or semantics, tensor dtype/shape/storage/execution behaviour,
+  compiler/graph-export/runtime integration, compatibility or
+  migration policy, or the docs structure of a long-lived feature
+  area. If yes, **SKEEP first** — the proposal carries the "why this
+  shape" argument, and every later DARC feature links to it instead
+  of re-litigating the design.
+. *Otherwise, would a maintainer six months from now want to know why
+  the change is shaped the way it is?* If yes, **DARC**: open a
+  feature issue, decompose it into lanes, ship through the four
+  phases.
+. *Both?* A new op that also needs a new architectural pattern to
+  support it — write the SKEEP, then have the DARC issue's Document
+  section link to it. Never fold a SKEEP-sized decision into a DARC
+  sub-issue "as an afterthought"; that is precisely the drift SKEEP
+  exists to prevent.
+
+.Concrete calls
+====
+* `Precision`, `Recall`, `F1Score` metrics — additive classes behind the
+  existing `Metric` interface, no API/DSL/storage footprint: **DARC only**
+  (see xref:contributing/darc-worked-example-f1score.adoc[the worked example]).
+* Teaching the ground-truth harness to validate *stateful* metrics, not
+  just stateless tensor ops — a test-integration pattern every future
+  metric inherits: **SKEEP**.
+* A new tensor-storage model, a new tensor literal syntax: **SKEEP**
+  (SKEEP-003, SKEEP-001 respectively).
+* A new SIMD kernel for an existing op: **DARC**.
+====
+
+If you are still unsure, open a small draft SKEEP or ask on the issue
+*before* implementing the whole feature — the project's default is to
+lean toward writing the record, not skipping it.
+
+== How a feature is broken up: lanes
+
+A DARC feature issue is one parent (the Document/Assess/Research
+artefact) plus one *sub-issue per lane*. Lanes split the work by the
+skill it needs, so an Android developer who has never seen the tensor
+internals, or a PyTorch person who does not write Kotlin, can each pick
+up something real.
+
+[cols="1,2,3,1",options="header"]
+|===
+| Lane | Skill | Produces | Size
+
+| *0 · Design (SKEEP)*
+| `skill:design`
+| A numbered proposal under `docs/modules/skeep/pages/`, `Status: Draft`,
+with a tracking issue. Only when a SKEEP trigger applies — and then
+*before* lane 2 starts.
+| M–L
+
+| *1 · Numerics / Research*
+| `skill:numerics`
+| Formula, citations, and an edge-case catalogue (zero-division,
+empty batch, dtype boundaries) from PyTorch / NumPy / scikit-learn.
+No Kotlin required.
+| S–M
+
+| *2 · Kotlin core*
+| `skill:kotlin-core`
+| The `commonMain` implementation, following an existing sibling's
+pattern.
+| M–L
+
+| *3 · Platform verification*
+| `skill:android` / `skill:ios` / `skill:js` / `skill:native`
+| Confirmation the code builds and gives identical results on that
+target — or, for ops needing a hand-written kernel, the kernel itself.
+| XS–L (say which!)
+
+| *4 · Ground-truth / CI*
+| `skill:kotlin-core` + Docker
+| A wired ground-truth test case, or a scoped proposal when the op
+doesn't fit the harness's shape.
+| S–M
+
+| *5 · Docs / DARC*
+| `skill:docs`
+| The doc partial (`math` / `intuition` / `examples` / `references` tags).
+| S
+
+| *6 · Review*
+| `skill:review`
+| DARC sign-off and the `@DarcValidated` annotation. Must not be the
+implementer.
+| S
+|===
+
+Not every feature needs every lane. Whoever opens the parent issue says
+which lanes are substantive and which are trivial *for this feature* —
+that is part of the Document artefact. Lane 3 in particular ranges from
+"run the existing test suite on iOS" (an hour) to "write a NEON JNI
+kernel" (days); the sub-issue must say which.
+
+== Finding something to do
+
+The pinned issue
+https://github.com/SKaiNET-developers/SKaiNET/issues/1237[👋 New
+contributors: start here] at the top of the issue list has the searches
+below as one-click links; it is the fastest route in.
+
+Every sub-issue carries one `skill:*` label, one `size:*` label, and a
+DARC phase label, so the whole backlog is filterable — not just one
+feature's checklist. Useful searches on the
+https://github.com/SKaiNET-developers/SKaiNET/issues[issue tracker]:
+
+[cols="2,3"]
+|===
+| `is:open label:"good first issue"`
+| No prior SKaiNET codebase knowledge assumed.
+
+| `is:open label:skill:android label:size:xs`
+| Everything an Android developer can finish in under an hour, across
+all features.
+
+| `is:open label:skill:numerics`
+| Research tasks — reading PyTorch/sklearn, writing up conventions —
+no Kotlin at all.
+
+| `is:open label:tracking label:darc`
+| The parent feature issues, to see the big picture.
+
+| `is:open label:skeep`
+| Design proposals looking for review.
+|===
+
+To claim a task, comment on the sub-issue. A maintainer assigns it;
+if a task has been claimed but idle for two weeks, it is fair to ask
+whether it is free again.
+
+The full label reference, title conventions, and the `gh` commands
+maintainers use to decompose a feature are in
+xref:contributing/issue-taxonomy.adoc[Issue taxonomy].
+
+== Your first pull request
+
+. xref:contributing/build-from-source.adoc[Build from source] and run
+  the module's tests once before touching anything.
+. Branch from `develop` following Gitflow (`GITFLOW.adoc` in the repo
+  root): `feature/<issue-number>-short-title`.
+. Keep the PR scoped to its sub-issue. "While I was in there" changes
+  go into their own sub-issue — the lane decomposition only works if
+  PRs stay small enough for a lane-specific reviewer.
+. Link the sub-issue in the PR description (`Closes #NNN`) and say which
+  DARC phase it delivers. For Code-lane PRs, state explicitly what was
+  *not* validated (for example "unit tests only, ground-truth wiring is
+  tracked in SKEEP-NNN") — a reviewed, stated trade-off is fine; a
+  silent gap is not.
+. CI must be green: KtLint / Detekt, unit tests, and the binary
+  compatibility validator for public API changes.
+. Report back on the parent issue when the sub-issue closes, so the
+  parent's lane rollup stays honest.
+
+== Where things live
+
+[cols="2,3",options="header"]
+|===
+| Location | Role
+
+| xref:contributing/darc-workflow.adoc[DARC: advanced contribution workflow]
+| Authoritative definition of the four phases, when they apply, the
+operator-doc specialisation and `@DarcValidated`.
+
+| xref:skeep:index.adoc[SKEEP index]
+| Status values, proposal template, and the list of current proposals.
+
+| xref:contributing/issue-taxonomy.adoc[Issue taxonomy]
+| Labels, title conventions, templates, and how to decompose a
+feature into sub-issues.
+
+| xref:contributing/darc-worked-example-f1score.adoc[Worked example: F1Score via DARC]
+| One real feature taken through DARC end to end, including the point
+where it runs into a SKEEP trigger.
+
+| `CONTRIBUTING.md`, `GITFLOW.adoc` (repo root)
+| SKEEP authoring procedure, branch policy, commit conventions.
+
+| `.github/ISSUE_TEMPLATE/`
+| `darc_feature_request.md` (parent), `darc_lane_task.md`
+(sub-issue), `skeep_tracking.md` (SKEEP tracking issue).
+
+| `.github/labels.txt`, `.github/scripts/sync-labels.sh`
+| Source of truth for the label taxonomy and the script that applies
+it.
+|===

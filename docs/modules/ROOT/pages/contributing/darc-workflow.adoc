@@ -88,6 +88,63 @@ months from now would want to know *why* the change is shaped the way
 it is. If yes, the work belongs in DARC; if the diff speaks for
 itself, it doesn't.
 
+[[darc-and-skeep]]
+== DARC and SKEEP
+
+SKaiNET has a second process, xref:skeep:index.adoc[SKEEP] (SKaiNET
+Evolution and Enhancement Process), and the two trigger lists overlap
+enough to confuse. The distinction:
+
+[cols="1,2,2",options="header"]
+|===
+| | DARC | SKEEP
+
+| Unit of work
+| One feature: an operator, layer, module, metric, format reader,
+backend, kernel strategy.
+| One architectural decision: public API shape, DSL syntax or
+semantics, tensor dtype/shape/storage/execution behaviour,
+compiler/runtime integration, compatibility policy.
+
+| Artefact
+| Feature issue + lane sub-issues; for operators, a doc partial and
+`@DarcValidated`.
+| A numbered proposal in `docs/modules/skeep/pages/` with a fixed
+section set and a `Tracking issue:` header.
+
+| Lifecycle
+| ✖ → ⚠ → ✅ (`@DarcValidated`)
+| `Draft` → `Accepted` → `Implemented` / `Superseded` / `Rejected`
+
+| Sign-off
+| A reviewer who is not the implementer.
+| A maintainer, by moving the status field.
+|===
+
+*Rule of thumb:* if the change trips a SKEEP trigger, write the SKEEP
+first and let the DARC feature issue's Document section link to it.
+DARC decides whether and how to build *a thing*; SKEEP decides the
+*shape of the codebase* the thing lands in. When a DARC feature runs
+into a SKEEP-sized question mid-way — the
+xref:contributing/darc-worked-example-f1score.adoc[F1Score worked
+example] does, in its ground-truth lane — split the question out into
+its own SKEEP rather than settling it inside a sub-issue. The full
+decision list is in
+xref:contributing/getting-started.adoc#darc-or-skeep[Getting started
+→ DARC or SKEEP?].
+
+== Decomposing a DARC feature into lanes
+
+The four phases say *what* has to happen; they do not say *who* can
+do it. A DARC feature issue is therefore split into lane sub-issues —
+numerics research, Kotlin core, per-platform verification,
+ground-truth wiring, docs, review — each labelled with the single
+skill it needs and an honest size, so the backlog is filterable by
+"things I can do" across all features. The lanes, labels, and
+templates are defined in
+xref:contributing/issue-taxonomy.adoc[Issue taxonomy]; the parent
+issue's Document section states which lanes apply to *this* feature.
+
 == Specialisation: operator documentation
 
 Operator documentation is the largest single application of DARC in
@@ -214,6 +271,19 @@ its outcomes are encoded.
 | `.github/ISSUE_TEMPLATE/darc_feature_request.md`
 | Issue template for new DARC proposals. Section headers match the
 four phases: Document / Assess / Research / Code.
+
+| `.github/ISSUE_TEMPLATE/darc_lane_task.md`
+| Issue template for one lane of a DARC feature, opened as a native
+sub-issue of the parent. Labelled by skill, size, and phase — see
+xref:contributing/issue-taxonomy.adoc[Issue taxonomy].
+
+| `.github/labels.txt`, `.github/scripts/sync-labels.sh`
+| The label taxonomy the lane sub-issues use, and the script that
+applies it.
+
+| xref:contributing/darc-worked-example-f1score.adoc[Worked example: F1Score via DARC]
+| One feature taken through all four phases, its lane breakdown, and
+the point where it hands a question over to SKEEP.
 
 | `skainet-lang-ksp-annotations/.../DarcValidated.kt`
 | The annotation that records a passed DARC review on an operator

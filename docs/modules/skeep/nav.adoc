@@ -5,3 +5,4 @@
 ** xref:skeep:002-android-offheap-tensor-storage.adoc[SKEEP-002: Off-heap tensor storage on Android]
 ** xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003: Unifying the tensor storage model]
 ** xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a: Placement & planning resolution]
+** xref:skeep:004-virtual-tensor-layout.adoc[SKEEP-004: Virtual tensor layout]

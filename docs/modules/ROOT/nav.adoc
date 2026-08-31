@@ -54,7 +54,10 @@
 
 .Contributing
 * xref:contributing/index.adoc[Audience and scope]
+* xref:contributing/getting-started.adoc[Getting started as a contributor]
 * xref:contributing/darc-workflow.adoc[DARC: advanced contribution workflow]
+* xref:contributing/darc-worked-example-f1score.adoc[Worked example: F1Score via DARC]
+* xref:contributing/issue-taxonomy.adoc[Issue taxonomy]
 * xref:contributing/build-from-source.adoc[Build from source]
 * xref:contributing/dtype-model.adoc[The SKaiNET dtype model]
 * xref:contributing/benchmarks.adoc[Engine benchmark program]

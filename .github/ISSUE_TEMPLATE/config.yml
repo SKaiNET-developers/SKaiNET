@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Contributor getting started (DARC, SKEEP, lanes, labels)
+    url: https://skainet-developers.github.io/SKaiNET/skainet/contributing/getting-started.html
+    about: Read this first if you want to pick up a task — it explains the two workflows and how issues are labelled.
+  - name: Issue taxonomy
+    url: https://skainet-developers.github.io/SKaiNET/skainet/contributing/issue-taxonomy.html
+    about: What every label, title prefix and template means, and how to decompose a feature into lanes.

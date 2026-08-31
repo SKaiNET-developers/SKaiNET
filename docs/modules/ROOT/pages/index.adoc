@@ -29,7 +29,11 @@ the tiny dry-run sample, then run the real-runtime profile, inspect
 +
 You're modifying SKaiNET itself — building from source, adding
 kernels, running the benchmark suite, maintaining CI, operating the
-self-hosted runner. Audience admonition at the top of each page.
+self-hosted runner. New here? Read
+xref:contributing/getting-started.adoc[Getting started as a contributor]
+first: it explains the two workflows (DARC for features, SKEEP for
+design decisions) and how to find a first task. Audience admonition at
+the top of each page.
 
 [NOTE]
 ====
