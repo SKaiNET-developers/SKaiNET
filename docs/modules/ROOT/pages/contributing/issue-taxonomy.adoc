@@ -1,0 +1,224 @@
+= Issue taxonomy
+:description: What every SKaiNET issue label, title prefix, and issue template means, and how a DARC feature is decomposed into skill-labelled sub-issues.
+
+[NOTE]
+====
+**Audience: contributors looking for work, and maintainers filing it.**
+Read xref:contributing/getting-started.adoc[Getting started as a
+contributor] first for *why* issues are structured this way; this page
+is the reference for *what each label and prefix means*.
+====
+
+The source of truth for labels is `.github/labels.txt` in the repo;
+`.github/scripts/sync-labels.sh` applies it idempotently with `gh`.
+If this page and that file disagree, the file wins — fix the page.
+
+== Structure of a feature
+
+[mermaid]
+....
+flowchart TD
+    P["Parent issue<br/><i>darc_feature_request.md</i><br/>labels: tracking · darc · enhancement<br/>= the Document / Assess / Research artefact"]
+    P --> L1["[Lane 1 · numerics] …<br/>sub-issue · research · skill:numerics · size:s"]
+    P --> L2["[Lane 2 · kotlin-core] …<br/>sub-issue · coding · skill:kotlin-core · size:m"]
+    P --> L3["[Lane 3 · android] …<br/>sub-issue · coding · skill:android · size:xs"]
+    P --> L5["[Lane 5 · docs] …<br/>sub-issue · documentation · skill:docs · size:s"]
+    P --> L6["[Lane 6 · review] …<br/>sub-issue · assessment · skill:review · size:s"]
+    S["SKEEP tracking issue<br/><i>skeep_tracking.md</i><br/>labels: skeep · tracking"] -. "linked from Document<br/>section when a trigger applies" .-> P
+....
+
+* **One parent per feature.** It is the DARC Document/Assess/Research
+  artefact and never gets assigned to one person — the lanes do.
+* **One sub-issue per substantive lane**, created as a GitHub native
+  sub-issue of the parent so the parent shows a progress rollup.
+* **A SKEEP is its own tracking issue**, never a sub-issue of a feature
+  — a design record outlives the feature that first needed it.
+
+== Labels
+
+Four dimensions. A sub-issue carries exactly one label from each of
+the *phase*, *skill*, and *size* groups, plus whichever structure and
+entry-point labels apply.
+
+=== Structure
+
+[cols="1,3",options="header"]
+|===
+| Label | Meaning
+| `tracking` | Parent issue with sub-issues. Never assigned to a person.
+| `sub-issue` | One lane of a parent. Assignable, closeable on its own.
+| `darc` | The parent is a DARC feature (Document / Assess / Research / Code).
+| `skeep` | Tracking issue for a numbered SKEEP proposal.
+|===
+
+=== DARC phase
+
+Which phase of the workflow the task delivers. These labels pre-date
+the lane model and are reused as-is.
+
+[cols="1,1,3",options="header"]
+|===
+| Label | Phase | Typical lane
+| `documentation` | D — Document | Lane 5 (doc partials), or the parent itself
+| `assessment` | A — Assess | Lane 6 (review), ground-truth decisions
+| `research` | R — Research | Lane 1 (numerics), Lane 0 (SKEEP authorship)
+| `coding` | C — Code | Lanes 2, 3, 4
+|===
+
+=== Skill
+
+What a contributor must already know. Exactly one per sub-issue; if
+a task genuinely needs two skills, it is two tasks.
+
+[cols="1,3",options="header"]
+|===
+| Label | Meaning
+| `skill:numerics` | PyTorch / NumPy / scikit-learn / math background. No Kotlin required.
+| `skill:kotlin-core` | Kotlin implementation in `commonMain`.
+| `skill:android` | Android target, build, or kernel (JNI / NEON) work.
+| `skill:ios` | iOS / Kotlin-Native-Apple target work.
+| `skill:native` | Kotlin/Native (Linux, macOS) or FFM kernel work.
+| `skill:js` | JS / Wasm target work.
+| `skill:docs` | AsciiDoc / technical writing.
+| `skill:review` | DARC review. Must **not** be the task's implementer.
+| `skill:design` | SKEEP authorship: architectural / API-shape judgement.
+|===
+
+=== Size
+
+An honest wall-clock estimate for someone who has the listed skill.
+Not story points: if a task is `size:l`, it probably needs its own
+design discussion before it is a task at all.
+
+[cols="1,3",options="header"]
+|===
+| Label | Meaning
+| `size:xs` | Under 1 hour.
+| `size:s` | A few hours.
+| `size:m` | 1–2 days.
+| `size:l` | 3+ days; likely needs its own design discussion.
+|===
+
+=== Entry point
+
+[cols="1,3",options="header"]
+|===
+| Label | Meaning
+| `good first issue` | No prior SKaiNET codebase knowledge assumed. The
+task says exactly which file to copy the pattern from.
+| `help wanted` | Maintainers are actively looking for someone to pick
+this up.
+|===
+
+=== Area labels
+
+The pre-existing area labels (`tensors`, `layers`, `training`,
+`compute-backend`, `file-format:gguf`, `platform`, `quantization`, …)
+say *what part of the engine* a task touches. Apply them to the parent;
+copy to sub-issues when it helps filtering. They are orthogonal to the
+four dimensions above and are not managed by `labels.txt`.
+
+== Title conventions
+
+[cols="2,3",options="header"]
+|===
+| Pattern | Used for
+
+| `[Feature]: <what>`
+| Parent DARC issue (the template pre-fills the prefix).
+
+| `[Lane N · <skill>] <Feature> — <what this task produces>`
+| Lane sub-issue. The lane number and skill are visible in the issue
+list without opening it; the part after the dash is the deliverable,
+not the activity ("confusion-matrix accumulator", not "work on
+metrics").
+
+| `[SKEEP-NNN]: <title>`
+| SKEEP tracking issue. Matches the proposal file's number.
+|===
+
+== Templates
+
+[cols="2,3",options="header"]
+|===
+| Template | When
+
+| `.github/ISSUE_TEMPLATE/darc_feature_request.md`
+| Opening a feature. The four phase sections *are* the Document
+artefact. Add a "Lane breakdown" list at the end saying which lanes
+apply and which are skipped for this feature.
+
+| `.github/ISSUE_TEMPLATE/darc_lane_task.md`
+| One lane. Parent reference, skill, size, blocked-by, numbered steps,
+acceptance checklist.
+
+| `.github/ISSUE_TEMPLATE/skeep_tracking.md`
+| The coordination issue for a SKEEP proposal. The proposal text lives
+in `docs/modules/skeep/pages/`; this issue tracks status upkeep and
+implementation PRs.
+|===
+
+== Decomposing a feature with `gh`
+
+The parent first, then each lane as a native sub-issue:
+
+[source,bash]
+----
+# 1. Parent (Document / Assess / Research artefact)
+gh issue create \
+  --title "[Feature]: Precision, Recall and F1Score metrics" \
+  --label "enhancement,tracking,darc,training" \
+  --body-file parent.md
+
+# 2. One sub-issue per lane — --parent makes it a native sub-issue
+gh issue create --parent <parent-number> \
+  --title "[Lane 1 · numerics] Precision/Recall/F1 — averaging-mode and zero-division conventions" \
+  --label "sub-issue,research,skill:numerics,size:s,good first issue" \
+  --body-file lane-1.md
+
+gh issue create --parent <parent-number> \
+  --title "[Lane 2 · kotlin-core] Precision/Recall/F1 — shared ConfusionMatrixAccumulator" \
+  --label "sub-issue,coding,skill:kotlin-core,size:s" \
+  --body-file lane-2.md
+----
+
+Sub-issues can also be attached after the fact from the parent's
+"Create sub-issue" / "Add existing issue" button in the GitHub UI.
+
+== Keeping labels in sync
+
+[source,bash]
+----
+# Dry run: print the gh commands without executing them
+DRY_RUN=1 .github/scripts/sync-labels.sh
+
+# Apply to the current repo (needs triage permission)
+.github/scripts/sync-labels.sh
+
+# Apply to a fork or a sibling repo
+.github/scripts/sync-labels.sh -R SKaiNET-developers/SKaiNET-transformers
+----
+
+The script only creates and updates; it never deletes a label that is
+not in `labels.txt`. To add a label, add a line to the file and re-run.
+
+== Lane task anatomy
+
+A good sub-issue answers, in this order, without the reader opening
+anything else:
+
+. *Sub-issue of which parent*, so the big picture is one click away.
+. *Skill needed* — and, equally, what is *not* needed ("no tensor
+  internals knowledge required").
+. *Size*, honestly, and *blocked by* which other sub-issue if any.
+. *Numbered steps* naming the sibling file to copy the pattern from
+  (`nn/metrics/Accuracy.kt`), the exact Gradle task to run
+  (`:skainet-backends:skainet-backend-cpu:jvmTest`), and where to
+  report the result.
+. *Acceptance* as observable outcomes a reviewer can check.
+. *What to do if it goes sideways*: "open a specific bug, don't block
+  the parent on investigation here".
+
+The two lane tasks in the F1Score worked example
+(xref:contributing/darc-worked-example-f1score.adoc#lanes[lane
+breakdown]) are the reference shape.

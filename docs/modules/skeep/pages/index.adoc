@@ -5,6 +5,43 @@ SKEEP is SKaiNET's proposal track for design changes that need more durability t
 
 It is inspired by Kotlin KEEP, but scoped to SKaiNET. A SKEEP can describe public APIs, DSL changes, compiler or runtime integration points, storage semantics, documentation strategy, or migration policy.
 
+== SKEEP and DARC
+
+SKEEP is one of two contribution processes. The other,
+xref:ROOT:contributing/darc-workflow.adoc[DARC] (Document / Assess / Research
+/ Code), drives *one feature* — an operator, a metric, a kernel — through
+design, validation, and implementation. SKEEP records *one architectural
+decision* that many features will inherit.
+
+Write a SKEEP when a change affects:
+
+* public Kotlin APIs;
+* DSL syntax or semantics;
+* tensor dtype, shape, storage, or execution behaviour;
+* compiler, graph export, or runtime integration;
+* compatibility or migration policy;
+* documentation structure for a long-lived feature area.
+
+Do not write one for local bug fixes, internal refactors, dependency
+bumps, test-only changes, or additive features that sit behind an
+existing interface — those are DARC's territory, or need neither. When
+both apply, the SKEEP comes first and the DARC feature issue links to
+it. The full decision rule, with concrete calls, is in
+xref:ROOT:contributing/getting-started.adoc#darc-or-skeep[Getting started as
+a contributor → DARC or SKEEP?].
+
+== Procedure
+
+The step-by-step authoring procedure (branch name, claiming a number,
+registering in `nav.adoc` and the table below, required sections) is
+in `CONTRIBUTING.md` at the repo root, next to the code it governs.
+In short: branch `feature/skeep-NNN-short-title`, create
+`docs/modules/skeep/pages/NNN-short-title.adoc` at `Status: Draft`,
+open a tracking issue from the
+https://github.com/SKaiNET-developers/SKaiNET/blob/develop/.github/ISSUE_TEMPLATE/skeep_tracking.md[SKEEP
+Proposal] template, and put its link in the proposal's `Tracking
+issue:` header.
+
 == Numbering
 
 SKEEP files use three-digit stable numbering:
@@ -35,6 +72,15 @@ A newer SKEEP replaced the design.
 Rejected::
 The proposal was considered and intentionally not pursued.
 
+[IMPORTANT]
+====
+The status field is only trustworthy if someone moves it. The PR that
+ships a proposal's implementation must also flip its `Status:` to
+`Implemented` — do not leave that for a later reader to notice. A
+maintainer moves `Draft` to `Accepted`; the implementing PR moves
+`Accepted` to `Implemented`.
+====
+
 == Proposal Template
 
 Every proposal should include:
@@ -42,6 +88,9 @@ Every proposal should include:
 * title and SKEEP number;
 * status;
 * audience;
+* created date and tracking issue (the GitHub issue that coordinates
+  day-to-day work; the proposal is the durable record, the issue is
+  the conversation);
 * summary;
 * motivation;
 * proposed design;

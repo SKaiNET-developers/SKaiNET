@@ -22,6 +22,11 @@ The Contributing section is for the engineer who:
 - Adds or replaces kernels in the CPU backend (scalar, Panama Vector,
   the native FFM provider).
 - Operates the self-hosted runner that publishes benchmark results.
+- Picks up a first task from the skill-labelled issue backlog, or
+  files one for others to pick up.
+- Takes a feature through the
+  xref:contributing/darc-workflow.adoc[DARC workflow] (Document /
+  Assess / Research / Code).
 - Drafts or reviews durable API and architecture proposals in the
   xref:skeep:index.adoc[SKEEP proposal track].
 
@@ -30,6 +35,10 @@ Concretely:
 [cols="2,3",options="header"]
 |===
 | Page | What it answers
+| xref:contributing/getting-started.adoc[Getting started as a contributor] | **Start here.** The two workflows (DARC for features, SKEEP for design decisions), when each applies, how work is split into skill lanes, and how to find and claim a first task.
+| xref:contributing/darc-workflow.adoc[DARC: advanced contribution workflow] | The four phases, when DARC applies, the operator-documentation specialisation and the `@DarcValidated` badge.
+| xref:contributing/darc-worked-example-f1score.adoc[Worked example: F1Score via DARC] | One feature taken through all four phases and decomposed into lane sub-issues, including where it hands a question over to SKEEP.
+| xref:contributing/issue-taxonomy.adoc[Issue taxonomy] | Every label, title prefix, and issue template, plus the `gh` commands to decompose a feature into sub-issues.
 | xref:contributing/build-from-source.adoc[Build from source] | How to clone, build, and run the test suite locally.
 | xref:contributing/benchmarks.adoc[Engine benchmark program] | The Phoronix Test Suite / OpenBenchmarking publication path: methodology, manifest, lanes, CI workflow, replay, and the gated steps to actually publish a run to OpenBenchmarking.org.
 | xref:contributing/matmul-kernels.adoc[Reading the matmul benchmark] | What the published numbers mean — scalar vs. Panama vs. quantized regimes, roofline reasoning, and a checklist for interpreting any new measurement.
@@ -45,11 +54,12 @@ Concretely:
 - **What an operator does or how the public DSL works.** See
   xref:reference/operators/generated/index.adoc[Operator reference] and
   the Explanation pages.
-- **Issue reports, branch policy, commit conventions, or the detailed
-  SKEEP authoring procedure.** Those live in repo-root files:
-  `CONTRIBUTING.md`, `GITFLOW.adoc`,
-  `CHANGELOG.md`, `FAQ.md`. The published docs site intentionally
-  does not duplicate them; they belong with the code.
+- **Branch policy, commit conventions, or the detailed SKEEP authoring
+  procedure.** Those live in repo-root files: `CONTRIBUTING.md`,
+  `GITFLOW.adoc`, `CHANGELOG.md`, `FAQ.md`. The published docs site
+  intentionally does not duplicate them; they belong with the code.
+  (`CONTRIBUTING.md` carries a short summary of the DARC/SKEEP split
+  and the issue taxonomy and links back here for the full text.)
 
 == Conventions used in this section
 
