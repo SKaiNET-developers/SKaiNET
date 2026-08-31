@@ -256,6 +256,14 @@ internal class DefaultCpuOpsJvm(
     private val prepackedWeightsJvm: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
     private val PREPACK_CACHE_LIMIT_JVM: Int = 64
 
+    /**
+     * Below this many multiply-accumulates a dense FP32 matmul is faster done directly than handed
+     * to the tile-blocked SPI kernel, whose per-call setup dominates at these sizes. Sized to cover
+     * decode-step projections (m=1) while leaving prefill batches and the big vocab matmuls to the
+     * kernel — at m=32 the kernel is already ~16 GFLOP/s and pulling away.
+     */
+    private val SMALL_FP32_MATMUL_WORK: Long = 4_000_000L
+
     /** The heap packed types whose JVM kernels read input-block-major bytes. */
     private fun isHeapPackedWeightForJvm(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
         data is sk.ainet.lang.tensor.data.Q4_KTensorData || data is sk.ainet.lang.tensor.data.Q5_KTensorData ||
@@ -1097,6 +1105,33 @@ internal class DefaultCpuOpsJvm(
                     return floatResult(Shape(m, n), a.dtype, outBuffer)
                 }
             }
+        }
+
+        // Small shapes are overhead-bound, not throughput-bound. The tile-blocked SPI kernel below
+        // costs ~1ms per call whether it multiplies 1 row or 8 (Fp32GemvShapeBench: m=1 1.00ms,
+        // m=8 1.08ms — 8x the arithmetic for 8% more time), so at decode sizes essentially all of
+        // that is fixed cost. A decode step is m=1 by construction, and a model whose checkpoint
+        // ships dense FP32 tensors does this per layer: Gemma 4 E2B has 70 such projections per
+        // token and spent 73% of decode here. Do the small ones directly instead — contiguous in
+        // `b` and `out`, one pass, no setup — and leave the tiled kernel the large shapes it wins.
+        if (work <= SMALL_FP32_MATMUL_WORK) {
+            val aBuf = aWin.arr
+            val aBase = aWin.off
+            val bBuf = bWin.arr
+            val bBase = bWin.off
+            for (i in 0 until m) {
+                val aOff = aBase + i * k
+                val outOff = i * n
+                for (p in 0 until k) {
+                    val av = aBuf[aOff + p]
+                    if (av == 0f) continue
+                    val bOff = bBase + p * n
+                    for (j in 0 until n) {
+                        outBuffer[outOff + j] += av * bBuf[bOff + j]
+                    }
+                }
+            }
+            return floatResult(Shape(m, n), a.dtype, outBuffer)
         }
 
         // Route through the kernel SPI — the registered provider

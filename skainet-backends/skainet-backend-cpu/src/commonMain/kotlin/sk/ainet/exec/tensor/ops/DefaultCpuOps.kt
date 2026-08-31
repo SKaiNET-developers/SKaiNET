@@ -664,14 +664,21 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     val n = b.shape[1]
                     require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
                     val out = FloatArray(m * n)
+                    // Loop order i-p-j, not i-j-p. The inner statement below walks `b` and `out`
+                    // contiguously; the j-inner-p form it replaces read `b` with stride n, touching
+                    // a fresh cache line on nearly every multiply — for a [1536, 256] weight that is
+                    // 1536 lines per output element. Each output still accumulates its products in
+                    // ascending p, so the result is bit-identical, not merely close.
                     for (i in 0 until m) {
                         val aOff = aBase + i * k
-                        for (j in 0 until n) {
-                            var sum = 0f
-                            for (p in 0 until k) {
-                                sum += aBuf[aOff + p] * bBuf[bBase + p * n + j]
+                        val outOff = i * n
+                        for (p in 0 until k) {
+                            val av = aBuf[aOff + p]
+                            if (av == 0f) continue
+                            val bOff = bBase + p * n
+                            for (j in 0 until n) {
+                                out[outOff + j] += av * bBuf[bOff + j]
                             }
-                            out[i * n + j] = sum
                         }
                     }
                     @Suppress("UNCHECKED_CAST")
