@@ -44,6 +44,12 @@ kotlin {
         linuxX64Main { dependsOn(linuxMain.get()) }
         linuxArm64Main { dependsOn(linuxMain.get()) }
 
+        // See PlatformCpuOpsFactory.androidNative.kt for why these hang off nativeMain and
+        // not linuxMain.
+        androidNativeMain { dependsOn(nativeMain.get()) }
+        androidNativeArm32Main { dependsOn(androidNativeMain.get()) }
+        androidNativeArm64Main { dependsOn(androidNativeMain.get()) }
+
         // Golden (bit-identical) regression tests for the packed encodings — SKEEP-003 gate.
         // Shared by the JVM and Kotlin/Native test targets only: JS/Wasm compute Float in
         // double precision and are not expected to be bit-identical (they are covered by the

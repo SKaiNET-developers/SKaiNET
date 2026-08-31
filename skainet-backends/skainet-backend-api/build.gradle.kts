@@ -25,6 +25,13 @@ kotlin {
     linuxX64()
     linuxArm64()
 
+    // Android-native targets, for on-device consumers that link the engine directly
+    // (SKaiNET-transformers builds gemma-iree for androidNativeArm32). Unlike
+    // skainet-io-core this module has no posix-typed code, so arm32's Int-width
+    // ssize_t/size_t needs no separate 64-bit source set here.
+    androidNativeArm64()
+    androidNativeArm32()
+
     jvm()
 
     js {
@@ -101,6 +108,17 @@ kotlin {
 
         val linuxArm64Main by getting {
             dependsOn(linuxMain)
+        }
+
+        // Straight onto nativeMain rather than linuxMain: Android's native targets are
+        // Linux-based, but linuxMain is free to grow glibc-specific code that bionic would
+        // not carry. nativeMain holds what actually applies to both.
+        val androidNativeArm64Main by getting {
+            dependsOn(nativeMain)
+        }
+
+        val androidNativeArm32Main by getting {
+            dependsOn(nativeMain)
         }
     }
 }
