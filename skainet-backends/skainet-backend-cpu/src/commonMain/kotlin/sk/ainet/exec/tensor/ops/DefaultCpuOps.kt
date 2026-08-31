@@ -961,7 +961,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
      * decode loop reuses; anything else falls through to a fresh transpose.
      */
     @Suppress("UNCHECKED_CAST")
-    protected fun <T : DType, V> transposedDenseWeight(weight: Tensor<T, V>): Tensor<T, V>? {
+    private fun <T : DType, V> transposedDenseWeight(weight: Tensor<T, V>): Tensor<T, V>? {
         if (weight.shape.rank != 2) return null
         // Key on the TensorData itself, not a FloatArray: a weight staged by the MemorySegment
         // factory is not FloatArray-backed, and that is precisely the case that hurts most —

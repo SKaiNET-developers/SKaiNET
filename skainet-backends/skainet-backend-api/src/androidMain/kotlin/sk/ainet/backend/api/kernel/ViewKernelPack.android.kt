@@ -16,6 +16,15 @@ internal actual fun installPlatformKernelPacks(): List<String> =
             .toList()
     }.getOrElse { emptyList() }
 
+/**
+ * Provider discovery, inlined rather than delegated to `KernelServiceLoader`: that object lives in
+ * `jvmMain`, which the Android source set does not see. Same two steps it performs — discover, then
+ * register, letting [KernelRegistry] sort by priority on insertion.
+ */
 @ExperimentalMemoryApi
 internal actual fun installPlatformKernelProviders(): List<String> =
-    runCatching { KernelServiceLoader.installAll() }.getOrElse { emptyList() }
+    runCatching {
+        ServiceLoader.load(KernelProvider::class.java)
+            .mapNotNull { provider -> runCatching { KernelRegistry.register(provider); provider.name }.getOrNull() }
+            .toList()
+    }.getOrElse { emptyList() }
