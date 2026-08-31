@@ -40,6 +40,28 @@ import sk.ainet.backend.api.kernel.Fp32MatmulKernel
  * scratch-pool integration is out of scope for this kernel and lives
  * one layer up (see `ScratchPool` SPI in `skainet-lang-core`).
  *
+ * ## Few rows take a different path
+ *
+ * Both fixed costs above are `O(n * k)` and independent of `m`: packing Bᵀ, and a horizontal
+ * `reduceLanes` per output cell per K-tile. They buy nothing when there are few rows to amortize
+ * them over, and a decode step is exactly that — `m = 1`. Measured at `k=1536, n=256` on an Apple
+ * M4 before [gemvRows] existed, this kernel was **slower than [ScalarMatmulKernel]**, 0.969 ms
+ * against 0.253. So at or below [GEMV_MAX_M] rows it accumulates by outer product instead, which
+ * touches B once, contiguously, and never reduces across lanes:
+ *
+ * ```
+ *   m     tiled (before)   gemvRows (after)     native-ffm    scalar
+ *    1    0.969 ms  0.81    0.058 ms  13.63     7.65          3.05     GFLOP/s
+ *    4       —               0.230 ms  13.70    18.50         3.07
+ *    8       —               0.463 ms  13.58    21.41         3.02
+ *   16    1.332 ms  9.45    (tiled)              25.53         3.06
+ *   32    1.647 ms 15.28    (tiled)              27.69         3.10
+ * ```
+ *
+ * The tiled path stays in charge above that, where it is what the shape wants. Note the native FFM
+ * kernel wins from `m = 4` up but loses at `m = 1`, where the heap→off-heap copy a JDK 21 downcall
+ * requires costs more than the arithmetic; `Fp32KernelRaceBench` keeps these numbers honest.
+ *
  * Caller contract is identical to [Fp32MatmulKernel]: strides are in
  * floats, `out` is fully overwritten in the `m × n` block, and `k == 0`
  * zeros the output block.
@@ -50,6 +72,12 @@ public object PanamaVectorMatmulKernel : Fp32MatmulKernel {
     private const val TILE_M = 8
     private const val TILE_N = 8
     private const val TILE_K = 128
+
+    /**
+     * At or below this many rows the tiled path's O(n*k) setup outweighs its O(m*n*k) speedup, so
+     * [gemvRows] serves instead. Chosen from measurement, not theory — see `Fp32KernelRaceBench`.
+     */
+    private const val GEMV_MAX_M = 8
 
     override fun matmul(
         a: FloatArray, aOffset: Int, aStride: Int,
@@ -69,6 +97,15 @@ public object PanamaVectorMatmulKernel : Fp32MatmulKernel {
             for (j in 0 until n) out[rowOff + j] = 0f
         }
         if (k == 0) return
+
+        // Few rows: skip the tiled path entirely. Both of its fixed costs are O(n*k) — packing B
+        // transposed, and a horizontal reduceLanes per output cell per K-tile — so at small m they
+        // dwarf the O(m*n*k) arithmetic they exist to accelerate. A decode step is m=1, and there
+        // this kernel measured 0.969 ms against 0.253 for the scalar one it is supposed to beat.
+        if (m <= GEMV_MAX_M) {
+            gemvRows(a, aOffset, aStride, b, bOffset, bStride, out, outOffset, outStride, m, n, k)
+            return
+        }
 
         // Pack B^T: bt[j, kk] = b[kk, j]. Row stride in bt is k.
         val bt = FloatArray(n * k)
@@ -100,6 +137,45 @@ public object PanamaVectorMatmulKernel : Fp32MatmulKernel {
                 nTile = nEnd
             }
             mTile = mEnd
+        }
+    }
+
+    /**
+     * Outer-product accumulation over `out` rows: `out[i, :] += a[i, p] * b[p, :]`.
+     *
+     * Streams `b` and `out` contiguously along `n` and never transposes or packs anything, so the
+     * whole call costs one pass over B. There is no horizontal reduction — each lane owns one
+     * output column for the entire `k` loop — which is the other thing the tiled path pays per
+     * cell. Accumulation for a given output stays in ascending `p`, matching the scalar kernel's
+     * order rather than the tiled path's split-by-K-tile order.
+     */
+    private fun gemvRows(
+        a: FloatArray, aOffset: Int, aStride: Int,
+        b: FloatArray, bOffset: Int, bStride: Int,
+        out: FloatArray, outOffset: Int, outStride: Int,
+        m: Int, n: Int, k: Int,
+    ) {
+        val step = species.length()
+        val bound = species.loopBound(n)
+        for (i in 0 until m) {
+            val aBase = aOffset + i * aStride
+            val outRow = outOffset + i * outStride
+            for (p in 0 until k) {
+                val av = a[aBase + p]
+                if (av == 0f) continue
+                val vav = FloatVector.broadcast(species, av)
+                val bRow = bOffset + p * bStride
+                var j = 0
+                while (j < bound) {
+                    val vo = FloatVector.fromArray(species, out, outRow + j)
+                    vav.fma(FloatVector.fromArray(species, b, bRow + j), vo).intoArray(out, outRow + j)
+                    j += step
+                }
+                while (j < n) {
+                    out[outRow + j] += av * b[bRow + j]
+                    j++
+                }
+            }
         }
     }
 

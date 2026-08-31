@@ -28,18 +28,19 @@ class Fp32KernelRaceBench {
         }
         if (KernelRegistry.providers().isEmpty()) KernelServiceLoader.installAll()
 
-        val m = 1
         val k = 1536
         val n = 256
         val iterations = 300
+        for (m in intArrayOf(1, 4, 8, 16, 32)) raceAt(m, k, n, iterations)
+    }
+
+    private fun raceAt(m: Int, k: Int, n: Int, iterations: Int) {
         val a = FloatArray(m * k) { (it % 17) * 0.03f }
         val b = FloatArray(k * n) { (it % 13) * 0.02f }
         val out = FloatArray(m * n)
         val macs = m.toLong() * k * n * iterations
 
-        println("RACE providers: " + KernelRegistry.providers().joinToString {
-            "${it.name}(priority=${it.priority}, available=${it.isAvailable()})"
-        })
+        println("RACE ---- m=$m k=$k n=$n ----")
 
         for (p: KernelProvider in KernelRegistry.providers()) {
             if (!p.isAvailable()) continue
@@ -66,40 +67,6 @@ class Fp32KernelRaceBench {
             )
         )
 
-        // Narrow-float B: same problem, weight stored at 2 bytes/element instead of 4. Accumulation
-        // stays FP32 by contract, so this is a memory-traffic change, not a precision-of-math one —
-        // and at m=1 the weight read IS the work. BF16 decodes by a bit-shift (it is the top half of
-        // an FP32); FP16 needs exponent rebiasing, which the SPI docs call out as the slower decode.
-        val bBf16 = ByteArray(k * n * 2)
-        val bFp16 = ByteArray(k * n * 2)
-        for (i in 0 until k * n) {
-            val bits = java.lang.Float.floatToRawIntBits(b[i])
-            val bf = (bits ushr 16).toShort()
-            bBf16[i * 2] = (bf.toInt() and 0xFF).toByte()
-            bBf16[i * 2 + 1] = ((bf.toInt() shr 8) and 0xFF).toByte()
-            val h = java.lang.Float.floatToFloat16(b[i])
-            bFp16[i * 2] = (h.toInt() and 0xFF).toByte()
-            bFp16[i * 2 + 1] = ((h.toInt() shr 8) and 0xFF).toByte()
-        }
-        for (p: KernelProvider in KernelRegistry.providers()) {
-            if (!p.isAvailable()) continue
-            for ((label, kern, payload) in listOf(
-                Triple("bf16", p.matmulBf16(), bBf16),
-                Triple("fp16", p.matmulFp16(), bFp16),
-            )) {
-                if (kern == null) { println("RACE %-16s %s: <none>".format(p.name, label)); continue }
-                repeat(30) { kern.matmul(a, 0, k, payload, 0, n * 2, out, 0, n, m, n, k) }
-                val e = measureTime {
-                    repeat(iterations) { kern.matmul(a, 0, k, payload, 0, n * 2, out, 0, n, m, n, k) }
-                }
-                println(
-                    "RACE %-16s %s %7.3f ms/call  %6.2f GFLOP/s   [%s]".format(
-                        p.name, label, e.inWholeMicroseconds / 1000.0 / iterations,
-                        2.0 * macs / e.inWholeNanoseconds, kern::class.simpleName,
-                    )
-                )
-            }
-        }
     }
 
     private fun directLoop(a: FloatArray, b: FloatArray, out: FloatArray, m: Int, n: Int, k: Int) {
