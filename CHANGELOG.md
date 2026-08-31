@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ternary kernel packs join the self-healing dispatch SPI**
+  ([#1240](https://github.com/SKaiNET-developers/SKaiNET/issues/1240)): the `ServiceLoader`
+  service files now list `FfmTernaryKernelPackFactory` (JVM jar) and
+  `JniTernaryKernelPackFactory` (Android AAR), so `KernelDispatch.ensureInstalled()` wires the
+  exact FP32×`BITNET_B1_58` LUT gemv and the fused `BITNET_PLANES` lm_head with no bootstrap
+  call — previously a consumer loading ternary weights silently got the int8-requantize or
+  decoding-reference path (~120× slower per the #1141 bench) unless it called
+  `NativeTernaryF32GemvKernel.install()` / `NativeTernaryLmheadKernel.install()` explicitly,
+  exactly the failure mode the 0.52.0 self-healing dispatch was released to eliminate for the
+  Q-series formats. Kotlin/Native still installs explicitly (no `ServiceLoader` there); the
+  ternary tutorial's install table now says which targets are automatic.
+
 ## [0.51.0] - 2026-08-29
 
 Headline: **ternary/BitNet weights join the memory-mapped weight story 0.50.0 started for every

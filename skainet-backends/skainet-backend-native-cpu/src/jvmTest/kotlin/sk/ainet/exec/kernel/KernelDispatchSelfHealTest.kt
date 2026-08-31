@@ -48,6 +48,36 @@ class KernelDispatchSelfHealTest {
     }
 
     @Test
+    fun cold_dispatch_discovers_the_ternary_packs() {
+        KernelDispatch.clearForTesting()
+        KernelRegistry.clearForTesting()
+
+        // #1240's acceptance: the ternary packs must arrive through discovery alone — no
+        // NativeTernaryF32GemvKernel.install() / NativeTernaryLmheadKernel.install() anywhere.
+        KernelDispatch.ensureInstalled()
+
+        // The packs register only when the bundled native library resolves; on a machine
+        // without it, discovery must cost a lookup and register nothing (no crash, no entry).
+        if (!NativeTernaryF32GemvKernel.isAvailable()) {
+            println("SELFHEAL-TERNARY skipped: bundled native library unavailable")
+            return
+        }
+        val names = KernelDispatch.kernels().map { it.name }
+        assertTrue(
+            names.any { it.startsWith("ternary_f32_gemv/") },
+            "exact FP32×BITNET_B1_58 gemv expected after self-heal; got $names",
+        )
+        assertTrue(
+            names.any { it.startsWith("ternary_planes_matmul/") },
+            "fused BITNET_PLANES lm_head expected after self-heal; got $names",
+        )
+        assertTrue(
+            KernelDispatch.find(sk.ainet.backend.api.kernel.TernaryF32GemvKernel.keyFor()) != null,
+            "matmul(FP32 × BITNET_B1_58) must resolve to the LUT kernel with zero explicit installs",
+        )
+    }
+
+    @Test
     fun explicit_registration_suppresses_auto_install() {
         KernelDispatch.clearForTesting()
         KernelRegistry.clearForTesting()
