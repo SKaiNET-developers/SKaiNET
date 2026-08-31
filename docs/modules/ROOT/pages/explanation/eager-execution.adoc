@@ -6,6 +6,11 @@ distinct from the StableHLO/IREE export path. This page is the hand-authored ove
 companion xref:reference/kernel-support-matrix.adoc[kernel × platform matrix] is generated from
 the registered providers and gated against drift.
 
+This page covers the provider tier — who can compute what, on which platform. The generic path
+selects differently, on a declared descriptor of the operands rather than on dtype and priority:
+see xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm] for
+`KernelDispatch`, the `ViewKernelPack` SPI, and how a call site is matched to a kernel.
+
 Legend: ✅ available · ❌ missing.
 
 [mermaid]

@@ -28,6 +28,35 @@ public object KernelDispatch {
 
     private val kernels: MutableList<ViewKernel> = mutableListOf()
 
+    private var autoInstallAttempted: Boolean = false
+
+    /**
+     * Populate the table from platform-discovered providers and [ViewKernelPack]s, once per
+     * process, when nothing has been registered yet.
+     *
+     * [KernelRegistry] has always self-healed this way (`DefaultCpuOpsJvm.ensureKernelProviders`
+     * installs providers on first use); this dispatcher did not, so every consumer had to remember
+     * an explicit bootstrap before its first forward pass. Forgetting it is silent — dispatch
+     * simply falls to the decoding reference kernel, which is correct and about a thousand times
+     * slower — and it was forgotten repeatedly in practice, by application entry points and
+     * diagnostic harnesses alike.
+     *
+     * Order matters: providers first, because [KernelPacks.install] derives its kernels from
+     * `KernelRegistry.bestAvailable()` and would otherwise contribute nothing but the reference
+     * kernel.
+     *
+     * Explicit installation still works and still wins — a consumer that registers its own kernels
+     * before the first dispatch suppresses auto-install entirely, and later registrations override
+     * earlier ones for the same key. Call [clearForTesting] to re-arm.
+     */
+    public fun ensureInstalled() {
+        if (autoInstallAttempted || kernels.isNotEmpty()) return
+        autoInstallAttempted = true
+        if (KernelRegistry.providers().isEmpty()) installPlatformKernelProviders()
+        KernelPacks.install()
+        installPlatformKernelPacks()
+    }
+
     /** Register [kernel]; later registrations win for the same key (a pack can override the reference). */
     public fun register(kernel: ViewKernel) {
         kernels.removeAll { it.key == kernel.key && it.name == kernel.name }
@@ -40,7 +69,10 @@ public object KernelDispatch {
     /** The kernel registered for [key], or `null`. */
     public fun find(key: KernelKey): ViewKernel? = kernels.firstOrNull { it.key == key }
 
-    public fun clearForTesting() { kernels.clear() }
+    public fun clearForTesting() {
+        kernels.clear()
+        autoInstallAttempted = false
+    }
 
     /**
      * Encodings a [MappedCapableKernel] registered right now serves as a `BLOCKED_ROW_MAJOR`
@@ -111,6 +143,9 @@ public object KernelDispatch {
          */
         prepackWeights: Boolean = false,
     ) {
+        // Self-heal on first use: an empty table means nobody bootstrapped, and the silent
+        // consequence is the reference kernel for every operand pair.
+        ensureInstalled()
         val key = KernelKey.matmul(a, b)
         val exact = find(key)
         if (exact != null) {
