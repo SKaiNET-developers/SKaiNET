@@ -198,9 +198,11 @@ internal class DefaultCpuOpsJvm(
             // SegmentStorage by design). On this tier the bridge is trivial: bulk-copy the
             // activation to the heap once per call — decode-step activations are k floats, not
             // weights — and hand the common path heap views.
-            if (weight.data is sk.ainet.lang.tensor.storage.PackedBlockStorage) {
-                segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
-            }
+            // Dense weights need this bridge just as much as packed ones. The vectorized FP32
+            // kernels take heap `FloatArray` operands only, so a segment-backed activation sends
+            // the whole projection to the decoding reference kernel — and a decode-step activation
+            // is k floats, so the copy is trivial beside the matmul it unlocks.
+            segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
             return super.matmulWeightTransposed(x, weight)
         }
         // Already in feed order — the loader produced it that way (#1120). Nothing to permute and
