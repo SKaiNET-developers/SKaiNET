@@ -28,6 +28,11 @@ kotlin {
     linuxX64()
     linuxArm64()
 
+    // Android-native targets, to match the modules this one is compiled against: skainet-backend-cpu
+    // publishes them, and its commonTest depends on this module, so the target set has to close.
+    androidNativeArm64()
+    androidNativeArm32()
+
     jvm()
 
     js {

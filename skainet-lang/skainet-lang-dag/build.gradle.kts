@@ -28,6 +28,13 @@ kotlin {
     linuxX64()
     linuxArm64()
 
+    // Android-native targets, for on-device consumers that link the engine directly
+    // (SKaiNET-transformers builds gemma-iree for androidNativeArm32). Unlike
+    // skainet-io-core this module has no posix-typed code, so arm32's Int-width
+    // ssize_t/size_t needs no separate 64-bit source set here.
+    androidNativeArm64()
+    androidNativeArm32()
+
     jvm()
 
     js {
