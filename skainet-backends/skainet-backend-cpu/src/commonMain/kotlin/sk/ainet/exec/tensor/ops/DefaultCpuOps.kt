@@ -664,14 +664,21 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                     val n = b.shape[1]
                     require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
                     val out = FloatArray(m * n)
+                    // Loop order i-p-j, not i-j-p. The inner statement below walks `b` and `out`
+                    // contiguously; the j-inner-p form it replaces read `b` with stride n, touching
+                    // a fresh cache line on nearly every multiply — for a [1536, 256] weight that is
+                    // 1536 lines per output element. Each output still accumulates its products in
+                    // ascending p, so the result is bit-identical, not merely close.
                     for (i in 0 until m) {
                         val aOff = aBase + i * k
-                        for (j in 0 until n) {
-                            var sum = 0f
-                            for (p in 0 until k) {
-                                sum += aBuf[aOff + p] * bBuf[bBase + p * n + j]
+                        val outOff = i * n
+                        for (p in 0 until k) {
+                            val av = aBuf[aOff + p]
+                            if (av == 0f) continue
+                            val bOff = bBase + p * n
+                            for (j in 0 until n) {
+                                out[outOff + j] += av * bBuf[bOff + j]
                             }
-                            out[i * n + j] = sum
                         }
                     }
                     @Suppress("UNCHECKED_CAST")
@@ -937,6 +944,68 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
      * than [PREPACK_CACHE_LIMIT] distinct packed weights simply converts the overflow each time,
      * which is exactly the old behaviour.
      */
+    /**
+     * `Wᵀ` for a **dense** 2-D float weight, materialized once per weight instead of once per call.
+     *
+     * `transpose` cannot hand back a view here: the kernels want the weight input-major
+     * (`Fp32ViewMatmulKernel` declines anything whose `strides[0] != 1`), and no view of a
+     * row-major `[out, in]` buffer has that layout — only a copy does. The copy itself is a
+     * cache-hostile scatter over every element, so doing it per call is what actually costs: on
+     * Gemma 4 E2B the two dense per-layer-embedding projections are transposed 70 times per token,
+     * ~27M scattered element copies, and profiling attributed **84% of decode time** to those two
+     * matmuls while the packed projections beside them — 8x larger — ran 22x faster.
+     *
+     * This is the dense counterpart of [prepackedWeights], which has cached the packed relayout
+     * "once per weight instead of once per call" since #1096; the dense path simply never got the
+     * same treatment. Keyed on buffer identity, so it holds only for the immutable parameter a
+     * decode loop reuses; anything else falls through to a fresh transpose.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> transposedDenseWeight(weight: Tensor<T, V>): Tensor<T, V>? {
+        if (weight.shape.rank != 2) return null
+        // Key on the TensorData itself, not a FloatArray: a weight staged by the MemorySegment
+        // factory is not FloatArray-backed, and that is precisely the case that hurts most —
+        // `transpose` then falls all the way to its generic per-element fallback.
+        val source: Any = weight.data
+        transposedDenseWeights.firstOrNull { it.first === source }?.let { return it.second as Tensor<T, V> }
+        // Materialize onto the HEAP, not through `transpose`/`dataFactory`. Two reasons: a
+        // MemorySegment-backed dense weight sends `transpose` to its generic per-element fallback,
+        // and — the bigger one — the vectorized FP32 kernels only accept heap `FloatArray`
+        // operands, so a segment-backed transpose is condemned to the decoding reference kernel
+        // afterwards. Since the cache pays for one copy anyway, it may as well land where the fast
+        // kernels can read it.
+        val transposed = heapTransposeFp32(weight) ?: transpose(weight)
+        if (transposedDenseWeights.size >= TRANSPOSED_DENSE_CACHE_LIMIT) transposedDenseWeights.removeAt(0)
+        transposedDenseWeights.add(Pair(source, transposed as Tensor<*, *>))
+        return transposed
+    }
+
+    /** `Wᵀ` as a heap-backed dense FP32 tensor, or null when [weight] is not dense FP32. */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> heapTransposeFp32(weight: Tensor<T, V>): Tensor<T, V>? {
+        if (weight.dtype != FP32::class) return null
+        val rows = weight.shape[0]
+        val cols = weight.shape[1]
+        val src = runCatching { weight.data.copyToFloatArray() }.getOrNull() ?: return null
+        if (src.size != rows * cols) return null
+        val out = FloatArray(src.size)
+        for (r in 0 until rows) {
+            val base = r * cols
+            for (c in 0 until cols) out[c * rows + r] = src[base + c]
+        }
+        return newTensor(
+            sk.ainet.lang.tensor.data.DenseFloatArrayTensorData<T>(Shape(cols, rows), out)
+                as sk.ainet.lang.tensor.data.TensorData<T, V>,
+            weight.dtype,
+            weight,
+        )
+    }
+
+    private val transposedDenseWeights: MutableList<Pair<Any, Tensor<*, *>>> = mutableListOf()
+
+    /** Big enough for a deep model's dense projections (Gemma 4 E2B has 70) without unbounded growth. */
+    private val TRANSPOSED_DENSE_CACHE_LIMIT: Int = 256
+
     private val prepackedWeights: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
 
     /** How many relayouted weights to keep; beyond this the oldest is dropped and reconverted on demand. */
@@ -963,7 +1032,9 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
-        if (weight.shape.rank != 2 || !isHeapPackedWeight(weight.data)) return matmul(x, transpose(weight))
+        if (weight.shape.rank != 2 || !isHeapPackedWeight(weight.data)) {
+            return matmul(x, transposedDenseWeight(weight) ?: transpose(weight))
+        }
         // Decode the weight where it lies (#1124). The relayout below produces bytes for kernels
         // that address `packedData` in feed order themselves; this implementation has no such
         // kernel, so relayouting for it was pure harm — the result is a tensor whose shape says

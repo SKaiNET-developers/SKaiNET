@@ -1,0 +1,214 @@
+= Kernel SPI and the selection algorithm
+:description: The two kernel registries, how a backend registers kernels, how a call site is matched to one, and why a miss is silent unless you look for it.
+
+A matmul in SKaiNET does not pick its implementation from an `is`-ladder over Kotlin classes.
+It is *selected*, from a declared descriptor of the operands, out of a registry a backend
+populated. This page explains the two registries, the SPI a backend implements, the exact
+selection algorithm, and how to tell which kernel actually ran.
+
+Its companion pages: xref:explanation/eager-execution.adoc[Eager execution] maps the backends and
+platform coverage; xref:explanation/packed-weight-layout.adoc[Packed weight layout] explains the
+block orders this page matches on; xref:reference/kernel-support-matrix.adoc[the support matrix] is
+generated from real registrations.
+
+== Two registries, two jobs
+
+There are two, and confusing them is the most common source of "why is this slow".
+
+[cols="1,3,3"]
+|===
+| | `KernelRegistry` | `KernelDispatch`
+
+| Selects on
+| dtype + provider priority
+| a `KernelKey` describing *every* operand
+
+| SPI
+| `KernelProvider`
+| `ViewKernelPack` (installs `ViewKernel` s)
+
+| Answers
+| "who provides the best FP32 GEMM here?"
+| "which kernel takes *this* activation and *this* weight, in these layouts?"
+
+| Used by
+| the legacy fast paths in `DefaultCpuOps*` (`chooseQuantizedMatmulHeap` and friends)
+| `KernelDispatch.matmul`, the generic path (SKEEP-003 §5.1)
+
+| Priority model
+| scalar 0 · Panama 50 · native FFM/JNI 100 — highest available wins
+| exact key match; later registration wins for the same key
+|===
+
+`KernelRegistry` answers a question about *capability*; `KernelDispatch` answers a question about
+*applicability*. A provider can be the best available and still be unable to take a particular
+weight — off-heap, block-order-mismatched, strided — which is exactly what the key encodes.
+
+== The descriptor: `KernelKey`
+
+`KernelKey.matmul(a, b)` builds `("matmul", [OperandKey.of(a), OperandKey.of(b)], HOST, capabilities)`.
+Each `OperandKey` carries the operand's `Format` (dtype + encoding, e.g. dense FP32, `Q4_K`) and its
+`LayoutClass`, derived from the view's layout:
+
+`CONTIGUOUS`:: dense, unit-stride.
+`STRIDED`:: dense, non-unit stride — what a transposed weight view looks like.
+`BLOCKED_ROW_MAJOR`:: quantization blocks laid out along rows — the canonical GGUF order, as loaded.
+`BLOCKED_INPUT_MAJOR`:: blocks laid out input-major — what the packed SIMD kernels read.
+
+[IMPORTANT]
+====
+Key equality is **exact**. There is no subsumption and no fuzzy match: a kernel registered for
+`BLOCKED_INPUT_MAJOR` is invisible to a lookup for `BLOCKED_ROW_MAJOR`, and because `capabilities`
+is part of the data class, a kernel registered with capabilities that the lookup does not request
+can never be found by it. This is deliberate — selection is meant to be a table lookup you can
+reason about — but it means registering a kernel is not the same as it being reachable.
+====
+
+== The SPI a backend implements
+
+Two interfaces, in `skainet-backend-api`:
+
+`KernelProvider`:: a compute backend (scalar, Panama Vector, native FFM, JNI NEON, Accelerate).
+Exposes `matmulFp32()`, the packed-quant entry points, `isAvailable()` and a priority.
+
+`ViewKernelPack`:: an installable set of `ViewKernel` s for `KernelDispatch`. One method,
+`install()`, which must be idempotent and must register *nothing* rather than throw when its
+platform support is absent (a missing native library, no vector unit).
+
+=== Registration and discovery
+
+[cols="1,2,2"]
+|===
+| Platform | `KernelProvider` | `ViewKernelPack`
+
+| JVM
+| `ServiceLoader` via `KernelServiceLoader.installAll()`
+| `ServiceLoader`, discovered by `KernelDispatch.ensureInstalled()`
+
+| Android
+| `ServiceLoader` (keep `META-INF/services` through packaging)
+| `ServiceLoader`, same caveat
+
+| Kotlin/Native, wasm, JS
+| manual — e.g. `installNativeKernels()`
+| manual — call the pack's `install()` yourself
+|===
+
+A backend module declares its service the usual way, e.g. `skainet-backend-native-cpu` ships
+`META-INF/services/sk.ainet.backend.api.kernel.ViewKernelPack` naming
+`FfmRowMajorKernelPackFactory`. `ServiceLoader` needs a public no-arg constructor, which a Kotlin
+`object` does not expose, so each pack ships a thin factory class delegating to the singleton —
+the same shape `NativeKernelProviderFactory` has always used for providers.
+
+== Bootstrap: the dispatcher heals itself
+
+`KernelDispatch.matmul` calls `ensureInstalled()` first. When the table is empty and nothing has
+been registered, it performs a one-time bootstrap:
+
+. discover `KernelProvider` s, if `KernelRegistry` is empty;
+. `KernelPacks.install()`, which registers the reference kernel plus the best available provider's
+  dense-FP32 view kernels (contiguous *and* strided) and its `BLOCKED_INPUT_MAJOR` packed kernels;
+. install every discovered `ViewKernelPack` — on JVM that is the FFM row-major pack, i.e. the
+  `BLOCKED_ROW_MAJOR` kernels that serve mapped GGUF weights zero-copy.
+
+[NOTE]
+====
+Step 1 must come first. `KernelPacks.install()` defaults its provider to
+`KernelRegistry.bestAvailable()`, which is `null` on an empty registry — bootstrapping in the wrong
+order silently installs the reference kernel and nothing else. Measured on JVM: 8 of 17 kernels
+land instead of all 17, and because the row-major pack installs unconditionally, a GGUF decode path
+still looks fine while every dense-FP32 and input-block-major dispatch quietly runs on the
+reference kernel.
+====
+
+Explicit registration still wins: a consumer that registers kernels before the first dispatch
+suppresses auto-install entirely, so a curated set is never silently widened. `clearForTesting()`
+re-arms the bootstrap.
+
+== The selection algorithm
+
+[mermaid]
+----
+flowchart TD
+  A["matmul(a, b, out)"] --> B["ensureInstalled()<br/>bootstrap if the table is empty"]
+  B --> C["normalizeActivation(a)<br/>rank 1 → [1, k]; [b, s, k] → [b*s, k]"]
+  C --> D["key = KernelKey.matmul(a, b)"]
+  D --> E{"exact match?"}
+  E -->|yes| F["run it"]
+  E -->|no| G{"weight requests<br/>another activation format?"}
+  G -->|"yes, e.g. ternary wants int8"| H["requantize into caller's Scope<br/>emit AdapterInserted"]
+  H --> I{"kernel for the<br/>requantized pair?"}
+  I -->|yes| F
+  G -->|no| J{"prepackWeights = true<br/>and weight is ROW_MAJOR?"}
+  I -->|no| J
+  J -->|yes| K["prepack to INPUT_BLOCK_MAJOR<br/>O(bytes), opt-in only"]
+  K --> L{"packed kernel now?"}
+  L -->|yes| F
+  J -->|no| M["adapt activation ('gather')"]
+  L -->|no| M
+  M --> N["ReferenceMatmulKernel<br/>decodes any format, ~1000x slower"]
+----
+
+Two properties are worth stating plainly:
+
+* **Rank is normalised once, as views.** A rank-1 decode step never reaches a kernel written for
+  rank 2 — that class of `ClassCastException` disappears by construction.
+* **Adapters are visible and caller-scoped.** When an operand must be converted, the allocation
+  happens in the caller's `Scope` (a `Forward` scope inside a generation loop) and is emitted as
+  `TraceEvent.AdapterInserted`, rather than hidden inside a kernel.
+
+`prepackWeights` is off by default on purpose: the relayout is O(bytes), so doing it inside a
+decode step copies the whole weight *per token*. Prepack once at load instead
+(`TensorView.prepack`), which then hits the exact key and copies nothing.
+
+== Why a kernel declines
+
+Reaching a kernel is not the same as it accepting the work. A kernel that cannot serve an operand
+falls back and traces `reference-fallback from <name>: <reason>`. The common reasons:
+
+* `FfmRowMajorMatmulKernel` — activation must be heap-backed `FloatArray` and contiguous; the
+  output must be a heap `FloatArray`; the weight must be buffer-backed or a heap `ByteArray`.
+* `PackedViewMatmulKernel` — every operand must be `Storage.Heap`; off-heap and mapped storage are
+  not served by this tier.
+* `Fp32ViewMatmulKernel` — the output must be a heap `FloatArray`, and the weight's row stride must
+  agree with its declared layout.
+* Block alignment — a quantized tensor whose last dimension is not a multiple of the block size
+  (256 for K-quants, 32 for `Q4_0`/`Q8_0`) is rejected outright.
+
+Only `FfmRowMajorMatmulKernel` and `JniRowMajorMatmulKernel` implement `MappedCapableKernel`, i.e.
+only they read a weight straight out of mapped or direct-buffer storage. That is why
+`KernelDispatch.mappedServableEncodings()` is derived from live registrations rather than a
+hand-kept list.
+
+== Diagnosing a selection
+
+The failure mode this design has to defend against is silence: the reference kernel is *correct*
+for every format, so a miss produces right answers slowly rather than an error.
+
+`KernelDispatch.kernels()`:: what is actually registered, most recent first. On a healthy JVM
+bootstrap this is 17 entries: 7 `ffm-rowmajor-*`, 7 `native-ffm-*` packed, 2 `native-ffm-fp32`
+(contiguous and strided keys), and `reference`.
+`KernelDispatch.mappedServableEncodings()`:: which encodings can be served zero-copy from a mapping
+right now.
+The one-time warning:: the first time the reference kernel serves a *blocked* weight, the
+dispatcher prints what it could not match and how to install a pack. It fires once per process.
+`KernelDispatch.defaultSink`:: set a real `TraceSink` to see every kernel run and adapter.
+Production call sites (`DefaultCpuOps`) do not thread a sink through, so this global is how you
+observe them.
+`DispatchMode.useRegistry()`:: `-Dskainet.dispatch.registry=false` forces the legacy generic
+fallback, which is useful for bisecting a suspected dispatch problem.
+
+== Adding a backend
+
+. Implement `KernelProvider`; add a no-arg factory class; list it in
+  `META-INF/services/sk.ainet.backend.api.kernel.KernelProvider`.
+. If the backend has kernels that read a specific *layout* (packed, mapped, prepacked), implement
+  `ViewKernelPack`, add its factory to
+  `META-INF/services/sk.ainet.backend.api.kernel.ViewKernelPack`, and register one `ViewKernel` per
+  `(encoding, layout)` you actually serve. Register nothing for the rest — the reference kernel
+  keeps those correct.
+. Make `install()` a no-op when the platform cannot support it, so discovery on a machine without
+  your native library costs a lookup and changes nothing.
+. On Kotlin/Native, wasm and JS, document the manual install call — there is no discovery there.
+. Regenerate the xref:reference/kernel-support-matrix.adoc[support matrix]; it is gated against
+  drift, so a new tier that forgets this fails the build.

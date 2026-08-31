@@ -38,6 +38,7 @@
 ** xref:explanation/virtual-tensors.adoc[Virtual tensors: one logical tensor, many physical forms]
 ** xref:explanation/packed-weight-layout.adoc[Packed weight layout]
 ** xref:explanation/eager-execution.adoc[Eager execution: backends and kernels]
+** xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm]
 ** xref:explanation/quantization-process.adoc[The quantization process]
 ** xref:explanation/theory/index.adoc[Mathematical theory]
 *** xref:explanation/theory/matmul.adoc[Matrix multiplication]

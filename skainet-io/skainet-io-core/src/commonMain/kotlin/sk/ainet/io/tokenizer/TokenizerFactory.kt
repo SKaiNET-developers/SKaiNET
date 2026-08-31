@@ -46,7 +46,10 @@ public object TokenizerFactory {
             )
         return when (model) {
             "gpt2", "bpe" -> QwenByteLevelBpeTokenizer.fromGgufFields(fields)
-            "llama", "sentencepiece" -> wrapSentencePieceWithSpecialsFromGguf(
+            // "gemma4": Gemma 4 GGUFs declare their own model string but carry a
+            // standard SentencePiece vocab with CONTROL/USER_DEFINED specials
+            // (<|turn>, <turn|>, tool markers) — same shape as "llama".
+            "llama", "sentencepiece", "gemma4" -> wrapSentencePieceWithSpecialsFromGguf(
                 base = SentencePieceTokenizer.fromGgufFields(fields),
                 fields = fields,
             )
@@ -124,8 +127,11 @@ public object TokenizerFactory {
     ): Tokenizer {
         val tokens = (fields["tokenizer.ggml.tokens"] as? List<*>)
             ?.filterIsInstance<String>().orEmpty()
+        // toIntFlexible, not `as? Number`: GGUF UINT32/INT32 arrays surface as
+        // kotlin.UInt (a value class, not Number) — the plain cast silently
+        // yields an empty list, dropping every special token on such files.
         val tokenTypes = (fields["tokenizer.ggml.token_type"] as? List<*>)
-            ?.mapNotNull { (it as? Number)?.toInt() }.orEmpty()
+            ?.mapNotNull { it.toIntFlexible() }.orEmpty()
         if (tokens.isEmpty() || tokenTypes.isEmpty()) return base
 
         val specials = HashMap<String, Int>()

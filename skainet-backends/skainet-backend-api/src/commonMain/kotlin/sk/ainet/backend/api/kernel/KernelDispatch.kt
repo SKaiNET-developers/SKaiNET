@@ -28,6 +28,35 @@ public object KernelDispatch {
 
     private val kernels: MutableList<ViewKernel> = mutableListOf()
 
+    private var autoInstallAttempted: Boolean = false
+
+    /**
+     * Populate the table from platform-discovered providers and [ViewKernelPack]s, once per
+     * process, when nothing has been registered yet.
+     *
+     * [KernelRegistry] has always self-healed this way (`DefaultCpuOpsJvm.ensureKernelProviders`
+     * installs providers on first use); this dispatcher did not, so every consumer had to remember
+     * an explicit bootstrap before its first forward pass. Forgetting it is silent — dispatch
+     * simply falls to the decoding reference kernel, which is correct and about a thousand times
+     * slower — and it was forgotten repeatedly in practice, by application entry points and
+     * diagnostic harnesses alike.
+     *
+     * Order matters: providers first, because [KernelPacks.install] derives its kernels from
+     * `KernelRegistry.bestAvailable()` and would otherwise contribute nothing but the reference
+     * kernel.
+     *
+     * Explicit installation still works and still wins — a consumer that registers its own kernels
+     * before the first dispatch suppresses auto-install entirely, and later registrations override
+     * earlier ones for the same key. Call [clearForTesting] to re-arm.
+     */
+    public fun ensureInstalled() {
+        if (autoInstallAttempted || kernels.isNotEmpty()) return
+        autoInstallAttempted = true
+        if (KernelRegistry.providers().isEmpty()) installPlatformKernelProviders()
+        KernelPacks.install()
+        installPlatformKernelPacks()
+    }
+
     /** Register [kernel]; later registrations win for the same key (a pack can override the reference). */
     public fun register(kernel: ViewKernel) {
         kernels.removeAll { it.key == kernel.key && it.name == kernel.name }
@@ -40,7 +69,10 @@ public object KernelDispatch {
     /** The kernel registered for [key], or `null`. */
     public fun find(key: KernelKey): ViewKernel? = kernels.firstOrNull { it.key == key }
 
-    public fun clearForTesting() { kernels.clear() }
+    public fun clearForTesting() {
+        kernels.clear()
+        autoInstallAttempted = false
+    }
 
     /**
      * Encodings a [MappedCapableKernel] registered right now serves as a `BLOCKED_ROW_MAJOR`
@@ -77,6 +109,16 @@ public object KernelDispatch {
     }
 
     /**
+     * Process-global default [TraceSink] used when a call site does not pass one. Production
+     * call sites (e.g. `DefaultCpuOps`) rely on the parameter default, which made every
+     * reference-kernel fallback invisible — set this (e.g. from a diagnostic harness) to
+     * observe dispatch decisions everywhere without threading a sink through the ops layer.
+     */
+    public var defaultSink: TraceSink = NoopTraceSink
+
+    private var warnedReferenceFallback: Boolean = false
+
+    /**
      * Select and run `matmul(a, b)`, writing into [out]. [scope] owns any adapter the selection
      * needs; [sink] sees the kernel run and every adapter.
      *
@@ -87,7 +129,7 @@ public object KernelDispatch {
         b: TensorView,
         out: TensorView,
         scope: Scope = Scope.Ambient,
-        sink: TraceSink = NoopTraceSink,
+        sink: TraceSink = defaultSink,
         /**
          * Relayout a canonical packed weight into kernel order when that is what unlocks a packed
          * kernel (#973/#1095).
@@ -101,6 +143,9 @@ public object KernelDispatch {
          */
         prepackWeights: Boolean = false,
     ) {
+        // Self-heal on first use: an empty table means nobody bootstrapped, and the silent
+        // consequence is the reference kernel for every operand pair.
+        ensureInstalled()
         val key = KernelKey.matmul(a, b)
         val exact = find(key)
         if (exact != null) {
@@ -137,6 +182,21 @@ public object KernelDispatch {
         }
         // No exact kernel: adapt the operands a kernel would accept, then fall back to the reference,
         // which reads any format through decoding get().
+        // The reference path is correct but orders of magnitude slower than a real kernel on a
+        // blocked weight (per-element block decode) — a process that lands here on a quantized
+        // weight almost certainly forgot to install a kernel pack. Say so once, loudly, even with
+        // no sink attached: silent fallback is how a 25 s/token regression ships unnoticed.
+        if (!warnedReferenceFallback && b.layout.blocked) {
+            warnedReferenceFallback = true
+            println(
+                "[SKaiNET] KernelDispatch: no kernel registered for matmul " +
+                    "(activation=${a.format.encoding}, weight=${b.format.encoding}, " +
+                    "order=${b.layout.blockOrder}); falling back to the decoding reference " +
+                    "kernel (~1000x slower). Install a kernel pack (e.g. KernelPacks.install() " +
+                    "+ FfmRowMajorKernelPack.install()) before the first forward. " +
+                    "Further fallbacks are not reported."
+            )
+        }
         val adaptedA = adapt(a, scope, sink, "gather")
         val reference = ReferenceMatmulKernel(KernelKey.matmul(adaptedA, b))
         runTraced(reference, listOf(adaptedA, b), out, sink)

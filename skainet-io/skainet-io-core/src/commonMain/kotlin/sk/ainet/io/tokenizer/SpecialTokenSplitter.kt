@@ -77,6 +77,19 @@ public class SpecialTokenSplitter(
         return IntArray(out.size) { out[it] }
     }
 
+    /**
+     * Single-id decode must delegate to the base's own [Tokenizer.decodeToken],
+     * not to [decode] — the interface default would route through this
+     * decorator's batch path, which calls `base.decode(ids)` and thereby
+     * re-enables leading-space stripping that bases like
+     * [SentencePieceTokenizer] deliberately disable for per-token streaming.
+     * Without this override every SentencePiece GGUF with specials (all
+     * Gemma-family chat models) loses word-boundary spaces when decoded
+     * token-by-token: "the process" streams as "theprocess".
+     */
+    override fun decodeToken(id: Int): String =
+        specialIdToString[id] ?: base.decodeToken(id)
+
     override fun decode(ids: IntArray): String {
         if (ids.isEmpty()) return ""
         if (specialTokens.isEmpty()) return base.decode(ids)

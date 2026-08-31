@@ -34,6 +34,44 @@ import sk.ainet.backend.api.kernel.Fp32MatmulKernel
  * future work could add parallelChunks-style row blocking and B-tile
  * packing, but the scalar C path already lands well within the SPI
  * contract on host-arch CPUs.
+ *
+ * ## Per-call cost, and why callers avoid this kernel at small sizes
+ *
+ * The SPI hands this kernel heap `FloatArray`s, and a downcall cannot address heap memory on
+ * JDK 21, so both operands are copied off-heap on every call. That copy is proportional to the
+ * *weight*, not to the work: at `k=1536, n=256` it is 1.5 MB whatever `m` is. Measured on an
+ * Apple M4 (`Fp32GemvShapeBench`):
+ *
+ * ```
+ *   m= 1   1.002 ms/call   0.78 GFLOP/s        m= 8   1.075 ms/call   5.85 GFLOP/s
+ *   m= 4   0.992 ms/call   3.17 GFLOP/s        m=32   1.600 ms/call  15.73 GFLOP/s
+ * ```
+ *
+ * Eight times the arithmetic for 8% more time — below `m ~ 32` this is a fixed cost, so a decode
+ * step (`m = 1`) is essentially all copy. Two things were tried and measured as no-ops, so do not
+ * reach for them again: reusing the [Arena] and its segments across calls (1.025 ms vs 1.002 ms at
+ * m=1 — the allocation was never the cost), and reordering the C loops (the C kernel is already
+ * i-p-j). `DefaultCpuOpsJvm` therefore serves small shapes directly and leaves this kernel the
+ * large ones it wins.
+ *
+ * Keeping the weight off-heap so it needs no copy is the obvious escape — a weight is read-only
+ * for the life of the process — and it does not pay today, because the segment kernel that then
+ * serves it (`JvmVectorKernels.matmulFloatBlockedMemSeg`) is slower than the heap one by more than
+ * the copy costs. Measured on the same shapes, both operands `MemorySegmentTensorData`:
+ *
+ * ```
+ *   m= 1   0.943 ms/call   0.83 GFLOP/s   (heap path: 0.122 ms, 6.44)
+ *   m= 8   1.363 ms/call   4.62 GFLOP/s   (heap path: 0.770 ms, 8.17)
+ *   m=32   2.785 ms/call   9.04 GFLOP/s   (heap path: 1.618 ms, 15.55)
+ * ```
+ *
+ * So there are two independent gaps, and residency is not the lever: this kernel cannot see heap
+ * memory, and the kernel that can see off-heap memory is slow. Closing either one is worth real
+ * throughput — the packed Q4_K path next door reaches ~29 GFLOP/s on the same machine.
+ *
+ * The copy disappears on **JDK 22+**, where `Linker.Option.critical(true)` lets a downcall read
+ * heap segments directly; when the toolchain moves, pass `MemorySegment.ofArray(...)` through a
+ * critical handle and the small-shape threshold in `DefaultCpuOpsJvm` can be revisited.
  */
 internal object NativeFp32MatmulKernel : Fp32MatmulKernel {
 
