@@ -54,5 +54,30 @@ class Fp32GemvShapeBench {
             )
         }
         println("BENCH reference: the packed Q4_K path measures ~29 GFLOP/s on this machine")
+
+        // Same shapes with BOTH operands off-heap, which is what a read-only weight can simply be:
+        // `chooseMatmul` then takes its MemorySegment branch and the kernel reads the weight in
+        // place instead of copying it off-heap on every call.
+        val msCtx = DirectCpuExecutionContext(
+            tensorDataFactory = sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory(),
+        )
+        for (m in intArrayOf(1, 8, 32)) {
+            val a = msCtx.fromFloatArray<FP32, Float>(
+                Shape(m, k), FP32::class, FloatArray(m * k) { (it % 17) * 0.03f },
+            )
+            val b = msCtx.fromFloatArray<FP32, Float>(
+                Shape(k, n), FP32::class, FloatArray(k * n) { (it % 13) * 0.02f },
+            )
+            println("BENCH memseg operands: a=${a.data::class.simpleName} b=${b.data::class.simpleName}")
+            repeat(20) { a.matmul(b) }
+            val elapsed = measureTime { repeat(iterations) { a.matmul(b) } }
+            val macs = m.toLong() * k * n * iterations
+            println(
+                "BENCH memseg m=%-3d %7.3f ms/call  %6.2f GFLOP/s".format(
+                    m, elapsed.inWholeMicroseconds / 1000.0 / iterations,
+                    2.0 * macs / elapsed.inWholeNanoseconds,
+                )
+            )
+        }
     }
 }
