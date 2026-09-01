@@ -52,3 +52,21 @@ The I2_S GGUF wire-format handling in `skainet-io-gguf` was written against the
 sources of [BitNet.cpp](https://github.com/microsoft/BitNet) (MIT, © Microsoft
 Corporation) — a reimplementation of the layout rules, not copied code. See the
 interpretation notes in `sk.ainet.io.gguf.I2sRepack`.
+
+## Kotlin/Native klibs — how this notice reaches them
+
+Kotlin/Native klibs have no `META-INF` resource mechanism, so this file cannot
+physically travel inside the klib the way it travels inside the JVM jar and the
+Android AAR. The stance for klib consumers, decided in
+[#1166](https://github.com/SKaiNET-developers/SKaiNET/issues/1166):
+
+- The klibs of a release embed the same static archive compiled from the same
+  sources as the jar in **the same Maven artifact family and version** — this
+  notice, shipped in that release's jar, is the authoritative notice for every
+  artifact of the release, klibs included.
+- The source of truth is versioned in the repository: `LICENSES/MIT.txt`, the
+  `.license` sidecar next to the vendored file, and
+  `native/src/vendor/neogpu/README.md`.
+- An application that links a SKaiNET klib into a shipped binary should carry
+  the NeoGPU MIT notice in its own third-party attributions (as it should for
+  any statically linked MIT code); the license text above is the text to carry.
