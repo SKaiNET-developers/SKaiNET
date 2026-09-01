@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.52.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.52.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,9 +308,18 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.52.0
+## What's New in 0.52.1
 
-The engine stops silently running on the scalar floor:
+The self-healing dispatch now heals the ternary path too:
+
+- **Ternary kernels join the discovery set** — the BitNet b1.58 packs (`BITNET_B1_58` LUT gemv,
+  fused `BITNET_PLANES` lm_head) are now ServiceLoader-discovered like the Q-series, so a
+  consumer loads ternary weights and gets the vendored NeoGPU kernels with zero bootstrap code —
+  previously two explicit install calls stood between a BitNet model and its fast path, and
+  forgetting them was a silent ~120× slowdown. Validated downstream: SKaiNET-transformers decodes
+  BitNet-2B4T at full speed on discovery alone.
+
+Plus the 0.52.0 groundwork — the engine stops silently running on the scalar floor:
 
 - **Self-healing kernel dispatch** — `KernelDispatch` installs itself on first use through the new
   `ViewKernelPack` SPI, so an application that never called an install routine no longer loses
@@ -352,12 +361,13 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
 
-### Contributors (0.52.0)
+### Contributors (0.52.x)
 
 - **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the Gemma 4 engine-gap
   arc: self-healing kernel dispatch and the `ViewKernelPack` SPI, dense FP32 for mapped/off-heap
   storage, the decode-shaped FP32 kernel work, and Android-native targets across the downstream
-  chain
+  chain; in 0.52.1, the ternary packs joining the self-healing SPI — closing the BitNet half of
+  the same "fast path exists but never gets used" theme
 
 ### Contributors (0.51.0)
 
