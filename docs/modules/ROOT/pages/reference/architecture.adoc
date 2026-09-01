@@ -24,7 +24,7 @@ real models use, not the long tail in PyTorch / NumPy.
 * *Run untrusted user code.* Kernels are trusted code; security is
 about not corrupting memory, not about sandboxing.
 
-image::SKaiNET-compiler.svg[Architecture diagram of the SKaiNET compiler pipeline]
+image::SKaiNET-compiler.png[Architecture diagram of the SKaiNET compiler pipeline]
 
 == 2. Constraints
 

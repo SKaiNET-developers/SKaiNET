@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.51.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.52.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,20 +308,25 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.51.0
+## What's New in 0.52.0
 
-Ternary/BitNet weights join the memory-mapped weight story 0.50.0 started for every other quant
-format:
+The engine stops silently running on the scalar floor:
 
-- **Off-heap ternary storage** — `BitNetB158TensorData` no longer risks the Android ART heap-cap
-  OOM; `Storage.copyInto`/`copyFrom` give every storage kind one shared bulk-copy primitive.
-- **True zero-copy mmap** for `SEQUENTIAL`-layout (NeoGPU-converted) GGUFs, and a zero-copy
-  native gemv path for off-heap ternary weights on the JVM/FFM kernel.
-- **`I2sAotConverter`** (GGUF → GGUF): convert I2_S tensors ahead of time so a controlled model
-  pipeline never pays a runtime repack. The IREE-facing counterpart lives in
-  [SKaiNET-IREE-tools](https://github.com/SKaiNET-developers/SKaiNET-IREE-tools).
-- **Correctness fix** — scoped dense-FP32 activations no longer silently fall out of the
-  quantized matmul chooser (was producing wrong logits under `ScopedExecutionContext`).
+- **Self-healing kernel dispatch** — `KernelDispatch` installs itself on first use through the new
+  `ViewKernelPack` SPI, so an application that never called an install routine no longer loses
+  every kernel and falls back to the decoding reference path. When a fallback does happen, it now
+  says so once, loudly, instead of vanishing into a no-op trace sink.
+- **Dense FP32 from any storage kind** — mapped and off-heap weights were dequantizing because the
+  kernel serving them only recognised `Heap`, which defeated the point of memory-mapped staging.
+- **Android native across the chain** — `androidNativeArm32`/`Arm64` now build and publish from the
+  whole downstream dependency graph, not just `skainet-io-core`, so on-device consumers can
+  actually resolve what they need.
+- **Faster decode-shaped matmul** — a dense FP32 GEMV path for the m ≤ 8 shapes decode issues
+  (16.7x at m=1), a direct-loop path for small work, and a cached weight transpose. ~2.3x decode
+  and prefill measured end to end on a downstream Gemma 4 port.
+- **Gemma 4 loads through the engine's own routes** — `gemma4` is registered in `TokenizerFactory`
+  and `ModelArchitecture`, and `SpecialTokenSplitter` no longer drops word boundaries when
+  decoding token by token.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -346,6 +351,13 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.52.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the Gemma 4 engine-gap
+  arc: self-healing kernel dispatch and the `ViewKernelPack` SPI, dense FP32 for mapped/off-heap
+  storage, the decode-shaped FP32 kernel work, and Android-native targets across the downstream
+  chain
 
 ### Contributors (0.51.0)
 

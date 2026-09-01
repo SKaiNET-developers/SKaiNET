@@ -16,6 +16,100 @@
   Q-series formats. Kotlin/Native still installs explicitly (no `ServiceLoader` there); the
   ternary tutorial's install table now says which targets are automatic.
 
+## [0.52.0] - 2026-08-31
+
+Headline: **the engine stops silently running on the scalar floor.** A downstream Gemma 4 port
+was generating garbage at roughly 0.04 tok/s, and the investigation
+([#1220](https://github.com/SKaiNET-developers/SKaiNET/issues/1220)) found the cause split across
+both repositories — but the engine's share of it was one theme repeated: a fast path that exists,
+is compiled in, and never gets used, with nothing saying so. `KernelDispatch` was never populated
+in production at all, so every matmul fell back to the decoding reference kernel; dense FP32
+weights in mapped or off-heap storage missed the kernel that serves them and dequantized instead;
+and the fallback itself was routed to a no-op trace sink, which is why a ~1000x degradation could
+sit in a release undetected. Those are closed, and the dispatcher now installs itself on first use
+rather than trusting every entry point to remember. Alongside that, Android's native targets now
+run the whole dependency chain, not just its first two modules.
+
+### Added
+
+- **`ViewKernelPack` SPI and self-healing dispatch**
+  ([#1220](https://github.com/SKaiNET-developers/SKaiNET/issues/1220),
+  [#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)): `KernelDispatch` populates
+  itself on first use via `ensureInstalled()`, backed by a new `ViewKernelPack` service interface
+  with `installPlatformKernelPacks()` actuals per platform — ServiceLoader-based on JVM and
+  Android, explicit on Kotlin/Native, which has no ServiceLoader. Applications no longer have to
+  call an install routine at startup and no longer silently lose every kernel when they forget.
+  The two backends ship discovery metadata: `FfmRowMajorKernelPackFactory`
+  (`skainet-backend-native-cpu`) and `JniMappedKernelPackFactory` (`skainet-backend-jni-cpu`).
+- **`androidNativeArm32`/`androidNativeArm64` across the downstream chain**
+  ([#1239](https://github.com/SKaiNET-developers/SKaiNET/pull/1239)): `skainet-io-gguf`,
+  `skainet-lang-dag`, `skainet-compile-dag`, `skainet-compile-opt`, `skainet-backend-api`,
+  `skainet-backend-cpu`, plus `skainet-lang-models` and `skainet-compile-json` to close the target
+  set over test compilations. Only `skainet-io-core` and friends had these targets before, so a
+  consumer building for an Android device could not resolve the rest of what it needed.
+  `skainet-io-core`'s 64-bit split source set has no counterpart here: none of these modules has
+  posix-typed code, so arm32's `Int`-width `ssize_t`/`size_t` does not reach them.
+- **Mapped-serving encodings derived from kernel registrations**
+  ([#1193](https://github.com/SKaiNET-developers/SKaiNET/issues/1193),
+  [#1215](https://github.com/SKaiNET-developers/SKaiNET/pull/1215)):
+  `KernelDispatch.mappedServableEncodings()` reports which encodings a `MappedCapableKernel`
+  actually serves right now, replacing a hand-kept list that could drift from the registry it
+  described.
+- **`gemma4` in the model registries**
+  ([#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)): `TokenizerFactory` accepts
+  the architecture and `ModelArchitecture.ggufIdMap` maps `"gemma4"` to `GEMMA`, so a Gemma 4 GGUF
+  loads through the engine's own routes instead of throwing.
+- **Dense FP32 GEMV path in the Panama kernel**
+  ([#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)): `PanamaVectorMatmulKernel`
+  gains `gemvRows()` for the m ≤ 8 shapes a decode step actually issues — 16.7x at m=1 over the
+  general blocked path, which was written for prefill-sized work.
+
+### Fixed
+
+- **Dense FP32 weights in mapped or off-heap storage fell back to dequantization**
+  ([#1218](https://github.com/SKaiNET-developers/SKaiNET/pull/1218)): the kernel that serves them
+  only recognised `Heap`, so a memory-mapped model — the whole point of mapped staging — took the
+  slow path. Now served from any storage kind.
+- **The reference-kernel fallback was invisible**
+  ([#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)): `DefaultCpuOps` hardcoded
+  `NoopTraceSink` at both dispatch sites, so falling back to the decoding reference kernel emitted
+  nothing. `KernelDispatch` gains a `defaultSink` and warns once, loudly, the first time it
+  happens.
+- **`SpecialTokenSplitter` lost word boundaries when decoding token by token**
+  ([#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)): it did not override
+  `decodeToken`, so streaming consumers of any SentencePiece GGUF with special tokens saw spaces
+  disappear from the output. Also fixes `token_type` parsing, which discarded `UInt`-typed GGUF
+  metadata and could silently drop a model's special tokens.
+- **`ar`/`ranlib` selection for the aarch64 cross build on macOS hosts**
+  ([#1209](https://github.com/SKaiNET-developers/SKaiNET/pull/1209)): the build picked the host's
+  Mach-O tools for an ELF target, producing archives the linker rejected.
+
+### Performance
+
+- **Small-shape FP32 matmul** ([#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)):
+  a direct-loop path under `SMALL_FP32_MATMUL_WORK` skips blocking overhead that costs more than it
+  saves at decode sizes, and `transposedDenseWeight()` caches the transpose instead of rebuilding
+  it per call. Measured end to end on a downstream Gemma 4 port: ~2.3x on both decode and prefill.
+
+### Docs
+
+- Kernel-selection explanation page, covering the two registries and how a weight reaches a kernel
+  ([#1221](https://github.com/SKaiNET-developers/SKaiNET/pull/1221)).
+- Architecture reference gains its missing building blocks — kernel dispatch, ternary, AOT
+  conversion ([#1216](https://github.com/SKaiNET-developers/SKaiNET/pull/1216)).
+- DARC/SKEEP onboarding, issue taxonomy and an `F1Score` worked example for contributors
+  ([#1238](https://github.com/SKaiNET-developers/SKaiNET/pull/1238)).
+- `GITFLOW.adoc` reconciled with the `main` branch reset, documenting the release sequence actually
+  used from 0.51.0 onward ([#1213](https://github.com/SKaiNET-developers/SKaiNET/pull/1213)).
+- Why the `GROUP_128`/`GROUP_64` native decode kernel was closed
+  ([#1205](https://github.com/SKaiNET-developers/SKaiNET/issues/1205),
+  [#1214](https://github.com/SKaiNET-developers/SKaiNET/pull/1214)).
+
+### Dependencies
+
+- `github/codeql-action/upload-sarif` 4.37.8 → 4.37.9
+  ([#1236](https://github.com/SKaiNET-developers/SKaiNET/pull/1236)).
+
 ## [0.51.0] - 2026-08-29
 
 Headline: **ternary/BitNet weights join the memory-mapped weight story 0.50.0 started for every
