@@ -316,6 +316,10 @@ The engine stops silently running on the scalar floor:
   `ViewKernelPack` SPI, so an application that never called an install routine no longer loses
   every kernel and falls back to the decoding reference path. When a fallback does happen, it now
   says so once, loudly, instead of vanishing into a no-op trace sink.
+- **Ternary/BitNet kernels in the discovery set** — the `BITNET_B1_58` LUT gemv and the fused
+  `BITNET_PLANES` lm_head packs are ServiceLoader-discovered like the Q-series, so a BitNet
+  consumer gets the vendored NeoGPU kernels with zero bootstrap code. Validated downstream:
+  SKaiNET-transformers decodes BitNet-2B4T at full speed on discovery alone.
 - **Dense FP32 from any storage kind** — mapped and off-heap weights were dequantizing because the
   kernel serving them only recognised `Heap`, which defeated the point of memory-mapped staging.
 - **Android native across the chain** — `androidNativeArm32`/`Arm64` now build and publish from the
@@ -356,8 +360,8 @@ Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNE
 
 - **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the Gemma 4 engine-gap
   arc: self-healing kernel dispatch and the `ViewKernelPack` SPI, dense FP32 for mapped/off-heap
-  storage, the decode-shaped FP32 kernel work, and Android-native targets across the downstream
-  chain
+  storage, the decode-shaped FP32 kernel work, Android-native targets across the downstream
+  chain, and the ternary packs joining the self-healing SPI
 
 ### Contributors (0.51.0)
 
