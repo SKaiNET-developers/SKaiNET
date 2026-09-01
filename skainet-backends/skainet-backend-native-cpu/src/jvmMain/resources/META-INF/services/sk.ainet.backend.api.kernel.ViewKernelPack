@@ -1,1 +1,2 @@
 sk.ainet.exec.kernel.FfmRowMajorKernelPackFactory
+sk.ainet.exec.kernel.FfmTernaryKernelPackFactory

@@ -178,15 +178,19 @@ kotlin {
 }
 ----
 
-The same kernel, same C file, reaches every other deployment shape through its
-own one-line install:
+The same kernel, same C file, reaches every other deployment shape. On the JVM
+and Android the install is automatic: the ternary packs are `ServiceLoader`
+entries (`FfmTernaryKernelPackFactory` / `JniTernaryKernelPackFactory`), so
+`KernelDispatch.ensureInstalled()` — which runs on the first dispatch — wires
+them with no bootstrap call. Kotlin/Native has no `ServiceLoader`, so the
+explicit call remains:
 
 [cols="1,2,2",options="header"]
 |===
 | Target | Bridge | Install
-| Raspberry Pi / linuxArm64, iOS, macOS | Kotlin/Native cinterop | `NativeKnTernaryF32Gemv.install()`
-| Android | JNI (baseline `libskainet_jni.so` — every arm64 device, A72 included) | `JniTernaryF32Gemv.install()`
-| Desktop/server JVM | FFM (`java.lang.foreign`) | `NativeTernaryF32GemvKernel.install()`
+| Raspberry Pi / linuxArm64, iOS, macOS | Kotlin/Native cinterop | `NativeKnTernaryF32Gemv.install()` (explicit)
+| Android | JNI (baseline `libskainet_jni.so` — every arm64 device, A72 included) | automatic (ServiceLoader; `JniTernaryF32Gemv.install()` still works)
+| Desktop/server JVM | FFM (`java.lang.foreign`) | automatic (ServiceLoader; `NativeTernaryF32GemvKernel.install()` still works)
 |===
 
 Removing a native artifact is never an error: the pack warns and dispatch

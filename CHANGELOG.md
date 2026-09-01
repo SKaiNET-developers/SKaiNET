@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.52.0] - 2026-08-31
+## [0.52.0] - 2026-09-01
 
 Headline: **the engine stops silently running on the scalar floor.** A downstream Gemma 4 port
 was generating garbage at roughly 0.04 tok/s, and the investigation
@@ -13,7 +13,8 @@ in production at all, so every matmul fell back to the decoding reference kernel
 weights in mapped or off-heap storage missed the kernel that serves them and dequantized instead;
 and the fallback itself was routed to a no-op trace sink, which is why a ~1000x degradation could
 sit in a release undetected. Those are closed, and the dispatcher now installs itself on first use
-rather than trusting every entry point to remember. Alongside that, Android's native targets now
+rather than trusting every entry point to remember — ternary/BitNet packs included,
+so the discovery set covers every format the backends ship kernels for. Alongside that, Android's native targets now
 run the whole dependency chain, not just its first two modules.
 
 ### Added
@@ -51,6 +52,19 @@ run the whole dependency chain, not just its first two modules.
   general blocked path, which was written for prefill-sized work.
 
 ### Fixed
+
+- **Ternary kernel packs join the self-healing dispatch SPI**
+  ([#1240](https://github.com/SKaiNET-developers/SKaiNET/issues/1240),
+  [#1241](https://github.com/SKaiNET-developers/SKaiNET/pull/1241)): the `ServiceLoader`
+  service files now list `FfmTernaryKernelPackFactory` (JVM jar) and
+  `JniTernaryKernelPackFactory` (Android AAR), so `KernelDispatch.ensureInstalled()` wires the
+  exact FP32×`BITNET_B1_58` LUT gemv and the fused `BITNET_PLANES` lm_head with no bootstrap
+  call — without this, a consumer loading ternary weights silently got the int8-requantize or
+  decoding-reference path (~120× slower per the #1141 bench) unless it called
+  `NativeTernaryF32GemvKernel.install()` / `NativeTernaryLmheadKernel.install()` explicitly:
+  the exact failure mode this release's self-healing dispatch exists to eliminate, closed for
+  the ternary formats in the same release. Kotlin/Native still installs explicitly (no
+  `ServiceLoader` there); the ternary tutorial's install table says which targets are automatic.
 
 - **Dense FP32 weights in mapped or off-heap storage fell back to dequantization**
   ([#1218](https://github.com/SKaiNET-developers/SKaiNET/pull/1218)): the kernel that serves them

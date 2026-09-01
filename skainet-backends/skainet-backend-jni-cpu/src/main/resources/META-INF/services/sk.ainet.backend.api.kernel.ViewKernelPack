@@ -1,1 +1,2 @@
 sk.ainet.exec.kernel.jni.JniMappedKernelPackFactory
+sk.ainet.exec.kernel.jni.JniTernaryKernelPackFactory
