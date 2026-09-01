@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.52.1] - 2026-09-01
+
+Headline: **the self-healing dispatch now heals the ternary path too.** 0.52.0 made
+`KernelDispatch` populate itself so no consumer could silently lose its kernels — but the
+ternary packs were not in the discovery set, so a BitNet consumer still needed two explicit
+install calls or quietly ran ~120× slower. That gap is closed; a consumer on this release loads
+`BITNET_B1_58`/`BITNET_PLANES` weights and dispatches to the vendored NeoGPU kernels with zero
+bootstrap code. Validated downstream: SKaiNET-transformers' CLI dropped its last explicit kernel
+installs against this release and decodes BitNet-2B4T at full speed on discovery alone.
+
 ### Fixed
 
 - **Ternary kernel packs join the self-healing dispatch SPI**
