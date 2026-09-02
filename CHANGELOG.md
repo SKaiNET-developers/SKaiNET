@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`clamp` lowers to StableHLO**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): the traced
+  `clamp(x, minVal, maxVal)` op had no converter at all — the first gap the strict gemma3n export
+  surfaced once failures stopped being comments. Lowers to `stablehlo.clamp` with splat bounds.
+
 ## [0.52.0] - 2026-09-01
 
 Headline: **the engine stops silently running on the scalar floor.** A downstream Gemma 4 port
