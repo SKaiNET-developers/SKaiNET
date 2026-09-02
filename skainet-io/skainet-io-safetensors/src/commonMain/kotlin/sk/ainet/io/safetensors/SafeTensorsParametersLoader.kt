@@ -37,12 +37,21 @@ import kotlin.reflect.KClass
  *   existing consumers. Flip to [Bf16LoadPolicy.KEEP_NATIVE] to keep
  *   weights in their on-disk BF16 layout and let the matmul dispatch
  *   route to a vectorised BF16 kernel.
+ * @param tensorFilter Optional predicate over the file's tensor headers; a
+ *   tensor for which it returns `false` is neither read nor delivered, and
+ *   does not count toward [onProgress]'s total. `null` (default) loads every
+ *   tensor. This is the family-side hook for name allowlists and size guards
+ *   — parity with [ShardedSafeTensorsParametersLoader]'s filter (#1256): a
+ *   checkpoint that also carries tensors the requested dtype cannot accept
+ *   (int64 index tables, custom quantized payloads) can be loaded selectively
+ *   instead of failing on the first unmapped tensor.
  */
 class SafeTensorsParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
     private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
     private val bf16Policy: Bf16LoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
     private val fp16Policy: NarrowFloatLoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+    private val tensorFilter: ((StreamingSafeTensorInfo) -> Boolean)? = null,
 ) : ParametersLoader {
 
     override suspend fun <T : DType, V> load(
@@ -51,7 +60,7 @@ class SafeTensorsParametersLoader(
         onTensorLoaded: (String, Tensor<T, V>) -> Unit
     ) {
         StreamingSafeTensorsReader.open(sourceProvider()).use { reader ->
-            val tensors = reader.tensors
+            val tensors = tensorFilter?.let { keep -> reader.tensors.filter(keep) } ?: reader.tensors
             val total = tensors.size.toLong()
             var current = 0L
 
@@ -109,11 +118,13 @@ class SafeTensorsParametersLoader(
             sourceProvider: () -> RandomAccessSource,
             policy: DTypePolicy,
             onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+            tensorFilter: ((StreamingSafeTensorInfo) -> Boolean)? = null,
         ): SafeTensorsParametersLoader = SafeTensorsParametersLoader(
             sourceProvider = sourceProvider,
             onProgress = onProgress,
             bf16Policy = mapPolicyToBf16(policy),
             fp16Policy = mapPolicyToFp16(policy),
+            tensorFilter = tensorFilter,
         )
 
         internal fun mapPolicyToBf16(policy: DTypePolicy): Bf16LoadPolicy =

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`tensorFilter` on the single-file `SafeTensorsParametersLoader`**
+  ([#1256](https://github.com/SKaiNET-developers/SKaiNET/issues/1256)): parity with the sharded
+  loader — an optional predicate over the tensor headers; filtered-out tensors are neither read
+  nor delivered and do not count toward progress. Lets a family load selectively from a
+  checkpoint that also carries tensors the requested dtype cannot accept (int64 index tables,
+  custom quantized payloads) instead of failing on the first unmapped one. Threaded through
+  `withPolicy`.
+
 ## [0.53.0] - 2026-09-02
 
 Headline: **the export pipeline emits billion-parameter models.** Tracing a 4.5B-parameter
