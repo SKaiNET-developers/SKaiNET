@@ -250,13 +250,19 @@ public open class DefaultExecutionTape(
     public fun toComputeGraph(
         synthesizeExternalInputs: Boolean = false,
         inputTensorIds: Set<String> = emptySet(),
-        embedConstants: Boolean = true
+        embedConstants: Boolean = true,
+        packedConstants: sk.ainet.lang.trace.PackedConstantHandling =
+            sk.ainet.lang.trace.PackedConstantHandling.FAIL
     ): ComputeGraph {
         // Prefer trace-based offline build when traces are available to ensure
         // consistency with online GraphSink wiring rules (PRD FR6).
         if (_traces.isNotEmpty()) {
             val graph = DefaultComputeGraph()
-            val builder = TraceToGraphBuilder(graph, session, embedWeightData = embedConstants)
+            val builder = TraceToGraphBuilder(
+                graph, session,
+                embedWeightData = embedConstants,
+                packedConstants = packedConstants
+            )
             builder.addAll(_traces)
             if (synthesizeExternalInputs) {
                 builder.finalize(inputTensorIds, embedConstants = embedConstants)
