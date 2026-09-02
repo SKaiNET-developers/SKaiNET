@@ -9,6 +9,7 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
 import sk.ainet.lang.types.DType
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -58,8 +59,15 @@ class ClampConverterTest {
         graph.addNode(input); graph.addNode(clamp)
         graph.addEdge(GraphEdge("e1", input, clamp, 0, 0, input.outputs[0]))
 
-        val module = StableHloConverterFactory.createBasic().convert(graph, "clamp_missing")
-        assertTrue(module.content.contains("clamp requires minVal/maxVal"), module.content)
+        // Under the default STRICT policy (#1248) a converter Failure aborts the
+        // conversion; the point here is that it is a named Failure with the
+        // bounds diagnostic, not a "No converter found" registry miss.
+        val e = assertFailsWith<HloConversionException> {
+            StableHloConverterFactory.createBasic().convert(graph, "clamp_missing")
+        }
+        val message = e.message ?: ""
+        assertTrue("clamp requires minVal/maxVal" in message, message)
+        assertFalse("No converter found" in message, message)
     }
 
     private fun fixtureOp(opName: String, opType: String, params: Map<String, Any>): Operation = object : Operation {
