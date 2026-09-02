@@ -2,12 +2,6 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- **`clamp` lowers to StableHLO**
-  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): the traced
-  `clamp(x, minVal, maxVal)` op had no converter at all — the first gap the strict gemma3n export
-  surfaced once failures stopped being comments. Lowers to `stablehlo.clamp` with splat bounds.
 ### Changed
 
 - **StableHLO conversion fails loudly by default**
@@ -19,6 +13,13 @@
   converted throws `MissingOperandException` instead of being silently dropped and shifting later
   operands into earlier positions. `ConversionErrorPolicy.LENIENT` restores the historical
   comment-and-continue behavior for callers that inspect partially-converted modules.
+
+### Fixed
+
+- **`clamp` lowers to StableHLO**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): the traced
+  `clamp(x, minVal, maxVal)` op had no converter at all — the first gap the strict gemma3n export
+  surfaced once failures stopped being comments. Lowers to `stablehlo.clamp` with splat bounds.
 - **`indexSelect` is now routable in the StableHLO gather converter**
   ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): the KSP tracing wrapper
   emits `indexSelect`, but the registry only knew `index_select`, so traced index-select nodes
