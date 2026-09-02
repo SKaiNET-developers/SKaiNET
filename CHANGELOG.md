@@ -24,6 +24,28 @@
   now throws `PackedConstantException` instead of silently becoming a function argument and
   producing an unservable module; `PackedConstantHandling.DEQUANTIZE` (threaded through
   `toComputeGraph`) opts into dense FP32 extraction instead.
+### Changed
+
+- **StableHLO conversion fails loudly by default**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): converter failures were
+  MLIR comments — a graph whose first node failed to lower could cascade through every downstream
+  node and still "succeed" with an empty `return` and exit 0. `StableHloConverter` and every
+  `StableHloConverterFactory` entry point now take a `ConversionErrorPolicy` (default `STRICT`):
+  an unconvertible node throws `HloConversionException`, and an operand whose producer was never
+  converted throws `MissingOperandException` instead of being silently dropped and shifting later
+  operands into earlier positions. `ConversionErrorPolicy.LENIENT` restores the historical
+  comment-and-continue behavior for callers that inspect partially-converted modules.
+
+### Fixed
+
+- **`indexSelect` is now routable in the StableHLO gather converter**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): the KSP tracing wrapper
+  emits `indexSelect`, but the registry only knew `index_select`, so traced index-select nodes
+  (e.g. Gemma per-layer embeddings) could not lower. Both spellings route to the gather lowering.
+- **`StableHloConverterFactory.createBasic` registers `NeuralNetOperationsConverter`**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): parity with
+  `createExtended` — a traced model with conv/pool/norm nodes no longer fails to lower via the
+  basic factory, with registration order preserving existing op-name precedence.
 
 ## [0.52.0] - 2026-09-01
 

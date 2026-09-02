@@ -28,14 +28,20 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
     /** Selected compile target (iree device id, e.g. "torq"); handed to every context. */
     private val target: String? = null,
     /** Per-target op-granularity policy; handed to every context (null = decompose all). */
-    private val granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
+    private val granularity: sk.ainet.compile.target.OpGranularityPolicy? = null,
+    /**
+     * How conversion failures behave: [ConversionErrorPolicy.STRICT] (default)
+     * throws on the first node that fails to lower; [ConversionErrorPolicy.LENIENT]
+     * restores the historical comment-and-continue behavior (issue #1247).
+     */
+    private val errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
 ) {
 
     /**
      * Convert a ComputeGraph to StableHLO MLIR format
      */
     public fun convert(graph: ComputeGraph, functionName: String = "main"): StableHloModule {
-        val context = ConversionContext(typeMapper, graph, materializationPolicy, target, granularity)
+        val context = ConversionContext(typeMapper, graph, materializationPolicy, target, granularity, errorPolicy)
         
         // Pre-conversion validation (allow orphaned nodes for backward compatibility)
         val validationResult = graph.validate()
@@ -182,6 +188,22 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
             try {
                 processNode(node, context)
             } catch (e: Exception) {
+                if (errorPolicy == ConversionErrorPolicy.STRICT) {
+                    // Already-precise diagnostics pass through unwrapped.
+                    if (e is HloConversionException || e is MissingOperandException) throw e
+                    // Quote the name so trailing whitespace / casing surprises are
+                    // visible, and include the registry's full key set so "no
+                    // converter found" failures are self-diagnostic. Note the cause
+                    // may be an unrelated throw from a registered converter — a
+                    // known name here does not mean a registry miss (issue #1247).
+                    val known = registry.getSupportedOperations().sorted().joinToString(", ")
+                    throw HloConversionException(
+                        "Error processing node ${node.id}: op '${node.operation.name}' " +
+                            "(type=${node.operation.type}) threw ${e::class.simpleName}: " +
+                            "${e.message}. Registry known names: [$known]",
+                        e
+                    )
+                }
                 context.emitComment("Error processing node ${node.id}: ${e.message}")
                 // Quote the name so trailing whitespace / casing surprises are visible,
                 // and include the registry's full key set so "no converter found"
@@ -229,10 +251,20 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
                 }
             }
             is ConversionResult.Failure -> {
+                if (errorPolicy == ConversionErrorPolicy.STRICT) {
+                    throw HloConversionException(
+                        "Conversion failed for node ${node.id} (op '${node.operation.name}'): ${result.error}"
+                    )
+                }
                 context.emitComment("Conversion failed for node ${node.id}: ${result.error}")
                 result.fallbackComment?.let { context.emitComment(it) }
             }
             is ConversionResult.Unsupported -> {
+                if (errorPolicy == ConversionErrorPolicy.STRICT) {
+                    throw HloConversionException(
+                        "Unsupported operation ${result.operationName} for node ${node.id}: ${result.reason}"
+                    )
+                }
                 context.emitComment("Unsupported operation ${result.operationName}: ${result.reason}")
             }
         }
@@ -317,6 +349,14 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
             
             if (outputValues.isEmpty()) {
                 // No output values found - this might happen if output nodes failed to convert
+                if (errorPolicy == ConversionErrorPolicy.STRICT) {
+                    throw HloConversionException(
+                        "Module produced no return values: none of the ${outputNodes.size} " +
+                            "output node(s) [${outputNodes.joinToString(", ") { it.id }}] was " +
+                            "successfully converted. A compute-free module with an empty " +
+                            "return is never servable (issue #1247)."
+                    )
+                }
                 context.emitComment("Warning: No output values found for return statement")
                 context.emitLine("    return")
             } else {

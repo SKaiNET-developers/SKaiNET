@@ -35,7 +35,13 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
      * caller from the [sk.ainet.compile.opt.TargetOptimizers] registry and passed in;
      * `null` = decompose everything (portable default). The emitter only *reads* it.
      */
-    public val granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
+    public val granularity: sk.ainet.compile.target.OpGranularityPolicy? = null,
+    /**
+     * How operand-resolution failures behave: [ConversionErrorPolicy.STRICT]
+     * (default) throws [MissingOperandException]; [ConversionErrorPolicy.LENIENT]
+     * reproduces the historical silent-drop (see issue #1247).
+     */
+    public val errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
 ) {
     private val valueNames = mutableMapOf<String, String>()
     private val valueTypes = mutableMapOf<String, String>()
@@ -78,10 +84,24 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
      */
     public fun resolveOperands(node: GraphNode): List<String> {
         val g = graph ?: return emptyList()
-        return g.edges
+        val incoming = g.edges
             .filter { it.destination.id == node.id }
             .sortedBy { it.destinationInputIndex }
-            .mapNotNull { getValueName(it.source.id, it.sourceOutputIndex) }
+        if (errorPolicy == ConversionErrorPolicy.LENIENT) {
+            // Historical behavior: unresolved operands are dropped, and later
+            // operands slide into earlier positional slots (issue #1247).
+            return incoming.mapNotNull { getValueName(it.source.id, it.sourceOutputIndex) }
+        }
+        return incoming.map { edge ->
+            getValueName(edge.source.id, edge.sourceOutputIndex)
+                ?: throw MissingOperandException(
+                    nodeId = node.id,
+                    opName = node.operation.name,
+                    inputPort = edge.destinationInputIndex,
+                    sourceNodeId = edge.source.id,
+                    sourceOutputPort = edge.sourceOutputIndex,
+                )
+        }
     }
 
     /**
