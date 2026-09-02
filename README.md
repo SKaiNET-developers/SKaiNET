@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.52.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.53.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,29 +308,27 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.52.0
+## What's New in 0.53.0
 
-The engine stops silently running on the scalar floor:
+The export pipeline emits billion-parameter models:
 
-- **Self-healing kernel dispatch** — `KernelDispatch` installs itself on first use through the new
-  `ViewKernelPack` SPI, so an application that never called an install routine no longer loses
-  every kernel and falls back to the decoding reference path. When a fallback does happen, it now
-  says so once, loudly, instead of vanishing into a no-op trace sink.
-- **Ternary/BitNet kernels in the discovery set** — the `BITNET_B1_58` LUT gemv and the fused
-  `BITNET_PLANES` lm_head packs are ServiceLoader-discovered like the Q-series, so a BitNet
-  consumer gets the vendored NeoGPU kernels with zero bootstrap code. Validated downstream:
-  SKaiNET-transformers decodes BitNet-2B4T at full speed on discovery alone.
-- **Dense FP32 from any storage kind** — mapped and off-heap weights were dequantizing because the
-  kernel serving them only recognised `Heap`, which defeated the point of memory-mapped staging.
-- **Android native across the chain** — `androidNativeArm32`/`Arm64` now build and publish from the
-  whole downstream dependency graph, not just `skainet-io-core`, so on-device consumers can
-  actually resolve what they need.
-- **Faster decode-shaped matmul** — a dense FP32 GEMV path for the m ≤ 8 shapes decode issues
-  (16.7x at m=1), a direct-loop path for small work, and a cached weight transpose. ~2.3x decode
-  and prefill measured end to end on a downstream Gemma 4 port.
-- **Gemma 4 loads through the engine's own routes** — `gemma4` is registered in `TokenizerFactory`
-  and `ModelArchitecture`, and `SpecialTokenSplitter` no longer drops word boundaries when
-  decoding token by token.
+- **Full Gemma 3n E2B export** — the DSL → tape → StableHLO path traced a 4.5B-parameter model
+  into an OOM at a 46 GB heap; the same repro now exports the whole model in under a minute.
+  Shape-only tracing no longer materializes zero buffers, graph constants alias the live weights
+  instead of copying them, and ≥2 GiB constants travel as `BufferHandle.Floats` — an aliased
+  float array — because the tied embedding is exactly one byte over what a JVM byte array holds.
+- **Conversion fails loudly** — `StableHloConverter` is strict by default: an unconvertible node
+  throws `HloConversionException`, an unresolved operand throws `MissingOperandException`, and a
+  packed weight reaching constant extraction throws `PackedConstantException` instead of silently
+  becoming a function argument. `ConversionErrorPolicy.LENIENT` restores the old
+  comment-and-continue behavior for inspection.
+- **Sharded SafeTensors in the engine** — `ShardedSafeTensorsParametersLoader` consumes
+  `model.safetensors.index.json` with the single-file loader's BF16/FP16 policies, a fail-fast
+  dtype pre-scan, and a `tensorFilter` hook; the per-family hand-rolled loaders downstream can
+  collapse onto it.
+- **Registry gaps the strictness surfaced** — `clamp` and the camelCase `indexSelect` the tracer
+  actually emits now lower, and `createBasic` registers the neural-net converter like
+  `createExtended` does.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -355,6 +353,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.53.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the billion-parameter
+  export arc: allocation-free void tracing, aliased constant extraction, strict StableHLO
+  conversion, the array-free `BufferHandle.Floats` path, and the sharded SafeTensors loader
 
 ### Contributors (0.52.0)
 

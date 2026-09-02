@@ -2,8 +2,32 @@
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-09-02
+
+Headline: **the export pipeline emits billion-parameter models.** Tracing a 4.5B-parameter
+Gemma 3n E2B through the DSL → tape → StableHLO path could not finish on a 48 GB host
+([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): shape-only tracing
+materialized real zero buffers, constant extraction copied every weight while the originals
+stayed live, and when the converter did fail it said so in MLIR comments and exited 0 — so the
+first broken node cascaded through a thousand more and still produced a "module". Each of those
+is closed, and the last one turned out to hide a fourth: the tied embedding is exactly one byte
+larger than a JVM array can hold, which no amount of widening could fix — external constants now
+travel as the aliased float array they already are. The same repro that OOMed a 46 GB heap now
+exports the full model in under a minute with zero failure comments, and the sharded SafeTensors
+loader the transformers families kept re-implementing lives in the engine.
+
 ### Added
 
+- **`ShardedSafeTensorsParametersLoader` — the sharded-index SafeTensors loader**
+  ([#1246](https://github.com/SKaiNET-developers/SKaiNET/issues/1246),
+  [#1252](https://github.com/SKaiNET-developers/SKaiNET/pull/1252)): a `ParametersLoader` over
+  `model.safetensors.index.json`, riding `StreamingShardedSafeTensorsReader.openFromIndex` with the
+  single-file loader's BF16/FP16 policies (`withPolicy` parity), a fail-fast dtype pre-scan before
+  any tensor is delivered, and a `tensorFilter` hook so size guards and name allowlists stay
+  family-side while every dtype decision stays in the engine. The dtype dispatch and dequant
+  helpers moved into a shared internal `SafeTensorsMaterializer`, so both loaders materialize
+  identically (parity-tested). Downstream: SKaiNET-transformers' hand-rolled per-family SafeTensors
+  loaders can collapse onto it.
 - **`BufferHandle.Floats` — array-free path for ≥2 GiB constants**
   ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): external FP32 constants
   now ride the aliased `FloatArray` end-to-end (graph → `ExternalParameterRef` → `.irpa`), never
@@ -16,6 +40,14 @@
 
 ### Changed
 
+- **Void tracing allocates nothing**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247),
+  [#1249](https://github.com/SKaiNET-developers/SKaiNET/pull/1249)): `VoidTensorOps` recorded every
+  shape-propagation op into a real dense zero buffer, allocated twice and retained by the trace —
+  ~9 GB of zeros across a 30-layer Gemma 3n E2B trace. Static-shape void results are now lazy
+  placeholders (readers still see zeros; unread ops allocate nothing), `ShapeOnlyTensorData` is
+  public for consumers that hand-roll shape-only data, and `matmulWeightTransposed` no longer
+  constructs the transposed intermediate. A 4096×4096 traced op stack tracks 0 bytes.
 - **Graph constants alias live weights; packed params fail loudly**
   ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): `TraceToGraphBuilder` no
   longer copies every frozen float weight into the graph — the constant's `initial_value` aliases
