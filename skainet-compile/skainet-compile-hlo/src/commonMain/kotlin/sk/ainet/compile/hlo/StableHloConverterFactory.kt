@@ -35,7 +35,8 @@ public object StableHloConverterFactory {
     public fun createBasic(
         policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways,
         target: String? = null,
-        granularity: sk.ainet.compile.target.OpGranularityPolicy? = null
+        granularity: sk.ainet.compile.target.OpGranularityPolicy? = null,
+        errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
     ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -49,13 +50,21 @@ public object StableHloConverterFactory {
         
         // Register linear algebra operations converter
         registry.register(LinalgOperationsConverter())
-        
+
+        // Register neural network operations converter (conv / pool / norms).
+        // Registered in the same relative position as in createExtended so
+        // op-name precedence (last-writer-wins per name) stays identical —
+        // e.g. AttentionOperationsConverter still wins
+        // scaledDotProductAttention. Previously missing here, so a traced
+        // model with norms could not lower via createBasic (#1247).
+        registry.register(NeuralNetOperationsConverter())
+
         // Register activation operations converter
         registry.register(ActivationOperationsConverter())
-        
+
         // Register shape operations converter
         registry.register(ShapeOperationsConverter())
-        
+
         // Register reduction operations converter
         registry.register(ReductionOperationsConverter())
         // argMax: logits -> index, lowered to reduce-max + broadcast + compare + iota + select + reduce-min
@@ -80,7 +89,7 @@ public object StableHloConverterFactory {
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, validator, policy, target, granularity)
+        return StableHloConverter(registry, typeMapper, validator, policy, target, granularity, errorPolicy)
     }
 
     /**
@@ -91,7 +100,8 @@ public object StableHloConverterFactory {
     @JvmStatic
     @kotlin.jvm.JvmOverloads
     public fun createExtended(
-        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways,
+        errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
     ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -139,7 +149,7 @@ public object StableHloConverterFactory {
         // LLM front-door op for token-id \u2192 embedding lookups.
         registry.register(GatherOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, validator, policy)
+        return StableHloConverter(registry, typeMapper, validator, policy, errorPolicy = errorPolicy)
     }
 
     /**
@@ -150,7 +160,8 @@ public object StableHloConverterFactory {
     @JvmStatic
     @kotlin.jvm.JvmOverloads
     public fun createFast(
-        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways,
+        errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
     ): StableHloConverter {
         val registry = StableHloOperationRegistry()
         val typeMapper = TypeMapper()
@@ -168,7 +179,7 @@ public object StableHloConverterFactory {
         registry.register(ScalarOperationsConverter())
         registry.register(ConstantOperationsConverter())
 
-        return StableHloConverter(registry, typeMapper, null, policy)
+        return StableHloConverter(registry, typeMapper, null, policy, errorPolicy = errorPolicy)
     }
 
     /**
@@ -182,8 +193,9 @@ public object StableHloConverterFactory {
         registry: StableHloOperationRegistry,
         typeMapper: TypeMapper = TypeMapper(),
         validator: MlirValidator? = MlirValidator(),
-        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways
+        policy: ConstantMaterializationPolicy = ConstantMaterializationPolicy.InlineAlways,
+        errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
     ): StableHloConverter {
-        return StableHloConverter(registry, typeMapper, validator, policy)
+        return StableHloConverter(registry, typeMapper, validator, policy, errorPolicy = errorPolicy)
     }
 }

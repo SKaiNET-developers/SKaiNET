@@ -46,7 +46,10 @@ import sk.ainet.lang.graph.GraphNode
 public class GatherOperationsConverter : StableHloOperationConverter {
 
     override val supportedOperations: Set<String> = setOf(
-        "gather", "embedding", "Embedding", "index_select"
+        // "indexSelect" is the name the KSP tracing wrapper actually emits
+        // (TensorOps.indexSelect); "index_select" is the framework-style
+        // alias. Registry lookup is exact, so both must be listed (#1247).
+        "gather", "embedding", "Embedding", "index_select", "indexSelect"
     )
 
     override fun convert(
@@ -55,7 +58,9 @@ public class GatherOperationsConverter : StableHloOperationConverter {
         context: ConversionContext
     ): ConversionResult {
         return when (node.operation.name.lowercase()) {
-            "gather", "embedding", "index_select" -> convertGather(node, operands, context)
+            // "indexSelect".lowercase() is "indexselect", not "index_select" —
+            // both lowercased spellings must be matched here (#1247).
+            "gather", "embedding", "index_select", "indexselect" -> convertGather(node, operands, context)
             else -> ConversionResult.Unsupported(
                 node.operation.name,
                 "Operation not supported by GatherOperationsConverter"
