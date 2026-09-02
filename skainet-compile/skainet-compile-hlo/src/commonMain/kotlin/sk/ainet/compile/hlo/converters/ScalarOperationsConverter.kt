@@ -20,7 +20,11 @@ public class ScalarOperationsConverter : StableHloOperationConverter {
 
     override val supportedOperations: Set<String> = setOf(
         "addScalar", "subScalar", "mulScalar", "divScalar",
-        "rsubScalar", "rdivScalar"
+        "rsubScalar", "rdivScalar",
+        // clamp(tensor, minVal, maxVal): two scalar attributes, one tensor
+        // operand — the first registry gap the strict gemma3n export
+        // surfaced (#1247). Lowers to stablehlo.clamp with splat bounds.
+        "clamp"
     )
 
     override fun convert(
@@ -33,6 +37,10 @@ public class ScalarOperationsConverter : StableHloOperationConverter {
                 "${node.operation.name} requires exactly 1 tensor operand, got ${operands.size}",
                 "Unsupported ${node.operation.name} arity for node ${node.id}"
             )
+        }
+
+        if (node.operation.name == "clamp") {
+            return convertClamp(node, operands, context)
         }
 
         val scalar = extractScalar(node.operation.parameters)
@@ -73,6 +81,45 @@ public class ScalarOperationsConverter : StableHloOperationConverter {
         return ConversionResult.Success(
             outputValueName = resultValue,
             emittedOperations = listOf(constOp, op)
+        )
+    }
+
+    /**
+     * `clamp(x, minVal, maxVal)` → `stablehlo.clamp %min, %x, %max`, with the
+     * bounds materialized as splat constants of the output type. The tracer
+     * records the bounds as `minVal` / `maxVal` (see `TensorOps.clamp`).
+     */
+    private fun convertClamp(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        val params = node.operation.parameters
+        val minVal = (params["minVal"] as? Number)?.let { formatFloat(it.toDouble()) }
+        val maxVal = (params["maxVal"] as? Number)?.let { formatFloat(it.toDouble()) }
+        if (minVal == null || maxVal == null) {
+            return ConversionResult.Failure(
+                "clamp requires minVal/maxVal parameters on node ${node.id}, got ${params.keys}",
+                "Unsupported clamp (missing bounds) for node ${node.id}"
+            )
+        }
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?xf32>"
+
+        val minValue = context.nextTempValue()
+        val minOp = "$minValue = stablehlo.constant dense<$minVal> : $outputType"
+        context.emitOperation(minOp)
+        val maxValue = context.nextTempValue()
+        val maxOp = "$maxValue = stablehlo.constant dense<$maxVal> : $outputType"
+        context.emitOperation(maxOp)
+
+        val resultValue = context.nextTempValue()
+        val op = "$resultValue = stablehlo.clamp $minValue, ${operands[0]}, $maxValue : $outputType"
+        context.emitOperation(op)
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = listOf(minOp, maxOp, op)
         )
     }
 
