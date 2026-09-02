@@ -55,6 +55,16 @@ class GatherConverterTest {
     }
 
     @Test
+    fun indexSelect_camel_case_alias_routes_to_same_lowering() {
+        // The KSP tracing wrapper emits "indexSelect", not "index_select";
+        // registry lookup is exact, so the camelCase spelling must be
+        // routable too (#1247).
+        val module = buildEmbeddingModule(opName = "indexSelect")
+        assertTrue(module.content.contains("stablehlo.gather"))
+        assertFalse(module.content.contains("Unsupported operation"))
+    }
+
+    @Test
     fun embedding_lowering_carries_canonical_dim_numbers_and_slice_sizes() {
         val module = buildEmbeddingModule(opName = "embedding")
         println("[DEBUG_LOG] gather/embedding export:\n${module.content}")

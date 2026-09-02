@@ -8,6 +8,7 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
+import sk.ainet.lang.tensor.data.ShapeOnlyTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.tensor.data.views.UnsqueezedTensorData
@@ -16,11 +17,15 @@ import kotlin.reflect.KClass
 @Backend(id = "void", displayName = "Shape-only", internal = true)
 public class VoidTensorOps : TensorOps {
 
-    // Shape-only tracing. A STATIC shape still gets a real (readable) zeros buffer — existing code
-    // creates void tensors and reads their zeros, so that behavior must be preserved. A DYNAMIC shape
-    // (a `Dim.DYNAMIC` extent) cannot be allocated at all (it would throw NegativeArraySizeException),
-    // so it gets an allocation-free ShapeOnlyTensorData that carries only the Shape — which is exactly
-    // what lets a dynamic KV-cache seq dim thread through a decode trace. See ShapeOnlyDataFactory.
+    // Shape-only tracing. A STATIC shape gets a LAZY zeros placeholder: readers still see zeros
+    // (materialized and cached on first access, preserving the historical read-zeros contract), but
+    // an op result that is traced and never read allocates nothing — which is what lets a
+    // billion-parameter trace fit in memory (#1247: ~9 GB of retained dense zeros for a Gemma 3n
+    // E2B trace, worst case a weight-sized buffer per projection via matmulWeightTransposed's
+    // transpose). A DYNAMIC shape (a `Dim.DYNAMIC` extent) cannot be allocated at all (it would
+    // throw NegativeArraySizeException), so it gets an allocation-free ShapeOnlyTensorData that
+    // carries only the Shape — which is exactly what lets a dynamic KV-cache seq dim thread
+    // through a decode trace. See ShapeOnlyDataFactory.
     private val dataFactory = ShapeOnlyDataFactory
     
     /**
@@ -151,6 +156,26 @@ public class VoidTensorOps : TensorOps {
         val resultShape = calculateMatmulShape(a.shape, b.shape)
         val resultData = dataFactory.zeros<T, V>(resultShape, a.dtype)
         return VoidOpsTensor(resultData, a.dtype)
+    }
+
+    /**
+     * Shape-only `x · Wᵀ` without constructing the transposed intermediate.
+     *
+     * The interface default is `matmul(x, transpose(weight))`; this override
+     * runs the exact same validation and shape arithmetic (transpose's
+     * rank-≥2 requirement, then matmul's inner-dim and batch-broadcast
+     * checks against the transposed weight shape) but skips building the
+     * weight-shaped intermediate tensor. Note the KSP tracing wrapper has no
+     * override for this default, so a *traced* call still records
+     * transpose + matmul ops — the memory win there comes from the lazy
+     * placeholder results; this override serves direct VoidTensorOps callers.
+     */
+    override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
+        val transposedShape = calculateTransposeShape(weight.shape)
+        validateMatmulShapes(x.shape, transposedShape)
+        val resultShape = calculateMatmulShape(x.shape, transposedShape)
+        val resultData = dataFactory.zeros<T, V>(resultShape, x.dtype)
+        return VoidOpsTensor(resultData, x.dtype)
     }
 
     @InProgress("Metal", owner="ops-team", issue="GH-1234")
@@ -1089,24 +1114,13 @@ public class VoidTensorOps : TensorOps {
     }
 }
 
-/**
- * A [TensorData] that carries only a [Shape] and allocates NO backing buffer. Used by
- * [VoidTensorOps] for shape-only tracing: element access is never valid (nothing to read/write),
- * but crucially the shape may contain a dynamic extent (`-1`) that a real allocation would reject.
- */
-private class ShapeOnlyTensorData<T : DType, V>(override val shape: Shape) : TensorData<T, V> {
-    private fun noData(): Nothing =
-        error("shape-only (void) tensor carries no data — tracing propagates shapes only")
-    override fun get(vararg indices: Int): V = noData()
-    override fun set(vararg indices: Int, value: V): Unit = noData()
-    override fun copyToFloatArray(): FloatArray = noData()
-}
-
 /** Drop-in for the one `dataFactory.zeros` call VoidTensorOps makes. A static shape delegates to
- *  [DenseTensorDataFactory] (real, readable zeros — preserves existing behavior); only a DYNAMIC shape,
- *  which cannot be allocated, gets the allocation-free [ShapeOnlyTensorData] so its `-1` extent survives. */
+ *  [DenseTensorDataFactory.placeholder] — lazy zeros that materialize (and are cached) only on
+ *  first read, so a traced-and-never-read op result costs no allocation (#1247) while readers
+ *  still observe the historical zeros. A DYNAMIC shape, which cannot be allocated at all, gets the
+ *  allocation-free [ShapeOnlyTensorData] so its `-1` extent survives. */
 private object ShapeOnlyDataFactory {
     private val dense = DenseTensorDataFactory()
     fun <T : DType, V> zeros(shape: Shape, dtype: KClass<T>): TensorData<T, V> =
-        if (shape.hasDynamic()) ShapeOnlyTensorData(shape) else dense.zeros(shape, dtype)
+        if (shape.hasDynamic()) ShapeOnlyTensorData(shape) else dense.placeholder(shape, dtype)
 }

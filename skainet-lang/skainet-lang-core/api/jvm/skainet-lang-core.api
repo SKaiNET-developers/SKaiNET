@@ -5558,6 +5558,16 @@ public final class sk/ainet/lang/tensor/data/ScopedTensorDataFactory : sk/ainet/
 	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/data/TensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/ShapeOnlyTensorData : sk/ainet/lang/tensor/data/TensorData {
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;)V
+	public fun copyToFloatArray ()[F
+	public fun get ([I)Ljava/lang/Object;
+	public fun getEncoding ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
+	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public fun getView ()Lsk/ainet/lang/memory/TensorView;
+	public fun set ([ILjava/lang/Object;)V
+}
+
 public final class sk/ainet/lang/tensor/data/StorageFloatTensorData : sk/ainet/lang/tensor/data/TensorData {
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Storage$Heap;)V
 	public fun copyToFloatArray ()[F

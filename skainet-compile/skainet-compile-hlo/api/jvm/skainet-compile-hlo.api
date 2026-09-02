@@ -47,7 +47,8 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;)V
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;)V
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;)V
-	public synthetic fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)V
+	public synthetic fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun clear ()V
 	public final fun emitComment (Ljava/lang/String;)V
 	public final fun emitEncodingAnnotation (Ljava/lang/String;ILsk/ainet/lang/tensor/ops/TensorSpec;)V
@@ -55,6 +56,7 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public final fun emitModuleDeclaration (Ljava/lang/String;)V
 	public final fun emitOperation (Ljava/lang/String;)V
 	public final fun getContent ()Ljava/lang/String;
+	public final fun getErrorPolicy ()Lsk/ainet/compile/hlo/ConversionErrorPolicy;
 	public final fun getExternalParameters ()Ljava/util/List;
 	public final fun getGranularity ()Lsk/ainet/compile/target/OpGranularityPolicy;
 	public final fun getInputNodes (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
@@ -72,6 +74,14 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public final fun setValueName (Ljava/lang/String;ILjava/lang/String;)V
 	public final fun setValueName (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun setValueType (Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class sk/ainet/compile/hlo/ConversionErrorPolicy : java/lang/Enum {
+	public static final field LENIENT Lsk/ainet/compile/hlo/ConversionErrorPolicy;
+	public static final field STRICT Lsk/ainet/compile/hlo/ConversionErrorPolicy;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/compile/hlo/ConversionErrorPolicy;
+	public static fun values ()[Lsk/ainet/compile/hlo/ConversionErrorPolicy;
 }
 
 public abstract class sk/ainet/compile/hlo/ConversionResult {
@@ -153,6 +163,20 @@ public final class sk/ainet/compile/hlo/ExternalParameterRef {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/hlo/HloConversionException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/compile/hlo/MissingOperandException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;I)V
+	public final fun getInputPort ()I
+	public final fun getNodeId ()Ljava/lang/String;
+	public final fun getOpName ()Ljava/lang/String;
+	public final fun getSourceNodeId ()Ljava/lang/String;
+	public final fun getSourceOutputPort ()I
+}
+
 public final class sk/ainet/compile/hlo/MlirValidator {
 	public fun <init> ()V
 	public final fun validate (Ljava/lang/String;)Ljava/util/List;
@@ -189,7 +213,8 @@ public final class sk/ainet/compile/hlo/StableHloConverter {
 	public fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;)V
 	public fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;)V
 	public fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;)V
-	public synthetic fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)V
+	public synthetic fun <init> (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun convert (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun convert$default (Lsk/ainet/compile/hlo/StableHloConverter;Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 	public final fun convertWithOptimization (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/StableHloOptimizer;)Lsk/ainet/compile/hlo/StableHloModule;
@@ -201,18 +226,22 @@ public final class sk/ainet/compile/hlo/StableHloConverterFactory {
 	public static final fun createBasic (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createBasic (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createBasic (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
-	public static synthetic fun createBasic$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static final fun createBasic (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static synthetic fun createBasic$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createCustom (Lsk/ainet/compile/hlo/StableHloOperationRegistry;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createCustom (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createCustom (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createCustom (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
-	public static synthetic fun createCustom$default (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static final fun createCustom (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static synthetic fun createCustom$default (Lsk/ainet/compile/hlo/StableHloOperationRegistry;Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/compile/hlo/MlirValidator;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createExtended ()Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createExtended (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
-	public static synthetic fun createExtended$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static final fun createExtended (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static synthetic fun createExtended$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createFast ()Lsk/ainet/compile/hlo/StableHloConverter;
 	public static final fun createFast (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
-	public static synthetic fun createFast$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static final fun createFast (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)Lsk/ainet/compile/hlo/StableHloConverter;
+	public static synthetic fun createFast$default (Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloConverter;
 }
 
 public final class sk/ainet/compile/hlo/StableHloExportArchitecture {
