@@ -24,8 +24,6 @@
   now throws `PackedConstantException` instead of silently becoming a function argument and
   producing an unservable module; `PackedConstantHandling.DEQUANTIZE` (threaded through
   `toComputeGraph`) opts into dense FP32 extraction instead.
-### Changed
-
 - **StableHLO conversion fails loudly by default**
   ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): converter failures were
   MLIR comments — a graph whose first node failed to lower could cascade through every downstream
