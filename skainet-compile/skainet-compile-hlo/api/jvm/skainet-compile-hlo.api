@@ -41,6 +41,10 @@ public final class sk/ainet/compile/hlo/ConstantMaterializationPolicy$SizeThresh
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/hlo/ConstantTooLargeException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public final class sk/ainet/compile/hlo/ConversionContext {
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;)V
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;)V

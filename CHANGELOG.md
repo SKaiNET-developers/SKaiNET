@@ -2,8 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`BufferHandle.Floats` — array-free path for ≥2 GiB constants**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): external FP32 constants
+  now ride the aliased `FloatArray` end-to-end (graph → `ExternalParameterRef` → `.irpa`), never
+  serializing to a single `ByteArray` — the gemma3n tied embedding (262144x2048 FP32 =
+  `Int.MAX_VALUE` + 1 bytes) structurally cannot exist as one byte buffer. `IrpaWriter` streams
+  the values little-endian in 64 MiB chunks; `DefaultBufferResolver` reads through a chunked byte
+  view. Constant element counts fold in `Long`, and an oversized single-buffer serialization now
+  throws `ConstantTooLargeException` with the remediation instead of the
+  `NegativeArraySizeException` that was previously mistaken for a registry miss.
+
 ### Changed
 
+- **Graph constants alias live weights; packed params fail loudly**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): `TraceToGraphBuilder` no
+  longer copies every frozen float weight into the graph — the constant's `initial_value` aliases
+  the live buffer (read-only contract), halving weight residency during export. BF16/FP16 dense
+  weights widen to one FP32 copy. A frozen parameter with packed storage (Q4_K, Q8_0, ternary, …)
+  now throws `PackedConstantException` instead of silently becoming a function argument and
+  producing an unservable module; `PackedConstantHandling.DEQUANTIZE` (threaded through
+  `toComputeGraph`) opts into dense FP32 extraction instead.
 - **StableHLO conversion fails loudly by default**
   ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): converter failures were
   MLIR comments — a graph whose first node failed to lower could cascade through every downstream

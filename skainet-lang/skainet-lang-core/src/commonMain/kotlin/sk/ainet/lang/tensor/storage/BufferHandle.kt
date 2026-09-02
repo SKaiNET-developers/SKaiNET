@@ -42,6 +42,25 @@ public sealed interface BufferHandle {
     }
 
     /**
+     * FP32 logical values held as a primitive [FloatArray], read-only.
+     *
+     * Exists because a single [ByteArray] caps at 2 GiB − 1 while a
+     * [FloatArray] holds up to 2 Gi elements (8 GiB logical) — a
+     * 262144x2048 FP32 embedding is exactly [Int.MAX_VALUE] + 1 bytes and
+     * therefore can never be serialized into one byte buffer (issue #1247).
+     * The array typically aliases a live model weight: consumers must not
+     * mutate it, and must stream it to bytes in chunks (little-endian
+     * [Float.toRawBits]) rather than materializing a full byte copy.
+     */
+    public class Floats(
+        public val data: FloatArray,
+    ) : BufferHandle {
+        override val sizeInBytes: Long get() = data.size.toLong() * 4L
+        override val isMutable: Boolean get() = false
+        override val ownership: Ownership get() = Ownership.BORROWED
+    }
+
+    /**
      * A reference to externally-owned memory (e.g. a caller-supplied array).
      * The runtime must not free or resize it. Mutation is possible only if
      * the source explicitly permits it.

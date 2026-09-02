@@ -85,8 +85,8 @@ public class sk/ainet/lang/graph/DefaultExecutionTape : sk/ainet/tape/ExecutionT
 	protected final fun set_recordingStrategy (Lsk/ainet/tape/TapeRecordingStrategy;)V
 	public fun startRecording ()V
 	public fun stopRecording ()V
-	public final fun toComputeGraph (ZLjava/util/Set;Z)Lsk/ainet/lang/graph/ComputeGraph;
-	public static synthetic fun toComputeGraph$default (Lsk/ainet/lang/graph/DefaultExecutionTape;ZLjava/util/Set;ZILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
+	public final fun toComputeGraph (ZLjava/util/Set;ZLsk/ainet/lang/trace/PackedConstantHandling;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static synthetic fun toComputeGraph$default (Lsk/ainet/lang/graph/DefaultExecutionTape;ZLjava/util/Set;ZLsk/ainet/lang/trace/PackedConstantHandling;ILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
 }
 
 public final class sk/ainet/lang/graph/DefaultGradientTape : sk/ainet/lang/graph/DefaultExecutionTape, sk/ainet/lang/tensor/ops/DifferentiableTensorOps, sk/ainet/tape/GradientTape {
@@ -508,13 +508,27 @@ public final class sk/ainet/lang/graph/utils/GraphvizKt {
 }
 
 public final class sk/ainet/lang/tape/ExtensionsKt {
-	public static final fun toComputeGraph (Lsk/ainet/tape/ExecutionTape;ZLjava/util/Set;)Lsk/ainet/lang/graph/ComputeGraph;
-	public static synthetic fun toComputeGraph$default (Lsk/ainet/tape/ExecutionTape;ZLjava/util/Set;ILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static final fun toComputeGraph (Lsk/ainet/tape/ExecutionTape;ZLjava/util/Set;Lsk/ainet/lang/trace/PackedConstantHandling;)Lsk/ainet/lang/graph/ComputeGraph;
+	public static synthetic fun toComputeGraph$default (Lsk/ainet/tape/ExecutionTape;ZLjava/util/Set;Lsk/ainet/lang/trace/PackedConstantHandling;ILjava/lang/Object;)Lsk/ainet/lang/graph/ComputeGraph;
 }
 
 public final class sk/ainet/lang/trace/GraphSink : sk/ainet/lang/trace/OpSink {
 	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;)V
 	public fun onOpExecuted (Lsk/ainet/lang/trace/OpTrace;)V
+}
+
+public final class sk/ainet/lang/trace/PackedConstantException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun getEncodingName ()Ljava/lang/String;
+	public final fun getTensorId ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/trace/PackedConstantHandling : java/lang/Enum {
+	public static final field DEQUANTIZE Lsk/ainet/lang/trace/PackedConstantHandling;
+	public static final field FAIL Lsk/ainet/lang/trace/PackedConstantHandling;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/trace/PackedConstantHandling;
+	public static fun values ()[Lsk/ainet/lang/trace/PackedConstantHandling;
 }
 
 public final class sk/ainet/lang/trace/TapeSink : sk/ainet/lang/trace/OpSink {
@@ -523,8 +537,8 @@ public final class sk/ainet/lang/trace/TapeSink : sk/ainet/lang/trace/OpSink {
 }
 
 public final class sk/ainet/lang/trace/TraceToGraphBuilder {
-	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/TraceSession;Z)V
-	public synthetic fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/TraceSession;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/TraceSession;ZLsk/ainet/lang/trace/PackedConstantHandling;)V
+	public synthetic fun <init> (Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/lang/trace/TraceSession;ZLsk/ainet/lang/trace/PackedConstantHandling;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addAll (Ljava/lang/Iterable;)V
 	public final fun addTrace (Lsk/ainet/lang/trace/OpTrace;)V
 	public final fun finalize (Ljava/util/Set;Z)V
