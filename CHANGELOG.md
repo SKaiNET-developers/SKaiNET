@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`BufferHandle.Floats` — array-free path for ≥2 GiB constants**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): external FP32 constants
+  now ride the aliased `FloatArray` end-to-end (graph → `ExternalParameterRef` → `.irpa`), never
+  serializing to a single `ByteArray` — the gemma3n tied embedding (262144x2048 FP32 =
+  `Int.MAX_VALUE` + 1 bytes) structurally cannot exist as one byte buffer. `IrpaWriter` streams
+  the values little-endian in 64 MiB chunks; `DefaultBufferResolver` reads through a chunked byte
+  view. Constant element counts fold in `Long`, and an oversized single-buffer serialization now
+  throws `ConstantTooLargeException` with the remediation instead of the
+  `NegativeArraySizeException` that was previously mistaken for a registry miss.
+
 ### Changed
 
 - **Graph constants alias live weights; packed params fail loudly**

@@ -5,6 +5,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.ExternalParameterRef
 import sk.ainet.compile.hlo.StableHloOperationConverter
+import sk.ainet.compile.hlo.checkedIntElements
 import sk.ainet.compile.hlo.elementCountFromShape
 import sk.ainet.compile.hlo.floatArrayToLittleEndianBytes
 import sk.ainet.compile.hlo.numberListToLittleEndianBytes
@@ -410,9 +411,9 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val encoding = outputSpec.tensorEncoding
             ?: TensorEncoding.Dense(bytesPerElement = bytesPerElement(outputSpec.dtype))
         val elementCount = elementCountFromShape(outputSpec.shape)
-        if (elementCount <= 0) return null
+        if (elementCount <= 0L) return null
 
-        val logicalBytes = encoding.physicalBytes(elementCount.toLong()) ?: return null
+        val logicalBytes = encoding.physicalBytes(elementCount) ?: return null
         val scope = when (policy) {
             is ConstantMaterializationPolicy.InlineAlways -> return null
             is ConstantMaterializationPolicy.ExternalAlways -> policy.scope
@@ -424,9 +425,11 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
 
         // Serialize now. Fall back to inline on unsupported dtype —
         // a loud exception here would defeat the "default path is
-        // safe" invariant of the seam.
+        // safe" invariant of the seam. A ConstantTooLargeException is NOT
+        // caught: inlining a multi-GiB tensor as text is the wrong recovery
+        // (#1247) — it propagates with its actionable message.
         val bytes = try {
-            numberListToLittleEndianBytes(values, outputSpec.dtype, elementCount)
+            numberListToLittleEndianBytes(values, outputSpec.dtype, checkedIntElements(elementCount))
         } catch (e: IllegalArgumentException) {
             context.emitComment(
                 "external materialization fell back to inline for ${node.id}: ${e.message}"
@@ -489,9 +492,9 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val encoding = outputSpec.tensorEncoding
             ?: TensorEncoding.Dense(bytesPerElement = bytesPerElement(outputSpec.dtype))
         val elementCount = elementCountFromShape(outputSpec.shape)
-        if (elementCount <= 0) return null
+        if (elementCount <= 0L) return null
 
-        val logicalBytes = encoding.physicalBytes(elementCount.toLong()) ?: return null
+        val logicalBytes = encoding.physicalBytes(elementCount) ?: return null
         val scope = when (policy) {
             is ConstantMaterializationPolicy.InlineAlways -> return null
             is ConstantMaterializationPolicy.ExternalAlways -> policy.scope
@@ -501,13 +504,31 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
             }
         }
 
-        val bytes = try {
-            floatArrayToLittleEndianBytes(values, outputSpec.dtype, elementCount)
-        } catch (e: IllegalArgumentException) {
-            context.emitComment(
-                "external materialization fell back to inline for ${node.id}: ${e.message}"
-            )
-            return null
+        val normalizedDtype = outputSpec.dtype.uppercase()
+        val source: BufferHandle = if (
+            (normalizedDtype == "FP32" || normalizedDtype == "F32" || normalizedDtype == "FLOAT32") &&
+            values.size.toLong() == elementCount
+        ) {
+            // Array-free path (#1247): the FloatArray aliases the live module
+            // weight all the way from TraceToGraphBuilder — hand it to the
+            // packager as-is. No byte serialization means no extra copy and
+            // no 2 GiB ByteArray ceiling: the gemma3n tied embedding
+            // (262144x2048 = Int.MAX_VALUE + 1 bytes) only exports this way.
+            BufferHandle.Floats(values)
+        } else {
+            // Under-filled initializations and non-FP32 dtypes keep the
+            // padded byte serialization. ConstantTooLargeException is NOT
+            // caught — inlining a multi-GiB tensor as text is the wrong
+            // recovery; it propagates with its actionable message.
+            val bytes = try {
+                floatArrayToLittleEndianBytes(values, outputSpec.dtype, checkedIntElements(elementCount))
+            } catch (e: IllegalArgumentException) {
+                context.emitComment(
+                    "external materialization fell back to inline for ${node.id}: ${e.message}"
+                )
+                return null
+            }
+            BufferHandle.Owned(bytes)
         }
 
         val key = outputSpec.name.ifEmpty { node.id }
@@ -516,7 +537,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 scope = scope,
                 key = key,
                 encoding = encoding,
-                source = BufferHandle.Owned(bytes),
+                source = source,
                 blockOrder = outputSpec.blockOrder,
             )
         )

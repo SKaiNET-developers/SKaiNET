@@ -23,6 +23,7 @@ internal fun numberListToLittleEndianBytes(
     expectedElements: Int
 ): ByteArray {
     val count = expectedElements.coerceAtLeast(values.size)
+    requireSerializableByteCount(count, bytesPerSerializedElement(dtype), dtype)
     val normalized = dtype.uppercase()
 
     return when (normalized) {
@@ -91,6 +92,7 @@ internal fun floatArrayToLittleEndianBytes(
     expectedElements: Int
 ): ByteArray {
     val count = expectedElements.coerceAtLeast(values.size)
+    requireSerializableByteCount(count, bytesPerSerializedElement(dtype), dtype)
     val n = minOf(count, values.size)
     return when (dtype.uppercase()) {
         "FP32", "F32", "FLOAT32" -> {
@@ -125,9 +127,60 @@ internal fun floatArrayToLittleEndianBytes(
  * Expected element count for a (possibly empty) shape. Empty shape
  * (scalar) means one element; `null` / absent dims degrade to 0 so the
  * caller can detect "no declared shape".
+ *
+ * [Long] arithmetic (#1247): the gemma3n token embedding is
+ * 262144 x 2048 = 536,870,912 elements — an [Int] fold of its *byte*
+ * count goes negative, which previously surfaced as a
+ * `NegativeArraySizeException` inside the serializer and was mistaken
+ * for a registry miss ("Unsupported op 'weight' … Known names: […]").
  */
-internal fun elementCountFromShape(shape: List<Int>?): Int {
-    if (shape == null) return 0
-    if (shape.isEmpty()) return 1
-    return shape.fold(1) { acc, d -> acc * d }
+internal fun elementCountFromShape(shape: List<Int>?): Long {
+    if (shape == null) return 0L
+    if (shape.isEmpty()) return 1L
+    return shape.fold(1L) { acc, d -> acc * d }
+}
+
+/**
+ * A constant's serialized form would exceed the JVM single-array ceiling.
+ * Deliberately NOT an [IllegalArgumentException]: the converter's
+ * "unsupported dtype" fallback catches that type to retry inline emission,
+ * and inlining a multi-GiB tensor as text is exactly the wrong recovery.
+ */
+public class ConstantTooLargeException(message: String) : IllegalStateException(message)
+
+private fun bytesPerSerializedElement(dtype: String): Long = when (dtype.uppercase()) {
+    "FP64", "F64", "FLOAT64", "I64", "INT64" -> 8L
+    else -> 4L
+}
+
+/**
+ * Narrow a [Long] element count for the byte-serialization paths, which
+ * address a single array. Throws [ConstantTooLargeException] instead of
+ * truncating — truncation is how the #1247 embedding turned into a
+ * `NegativeArraySizeException`.
+ */
+internal fun checkedIntElements(elementCount: Long): Int {
+    if (elementCount > Int.MAX_VALUE - 8L) {
+        throw ConstantTooLargeException(
+            "Constant of $elementCount elements exceeds the single-array serialization " +
+                "ceiling. Use ConstantMaterializationPolicy.ExternalAlways with FP32 values — " +
+                "the external path carries a FloatArray (BufferHandle.Floats) without byte " +
+                "serialization (issue #1247)."
+        )
+    }
+    return elementCount.toInt()
+}
+
+private fun requireSerializableByteCount(count: Int, bytesPerElement: Long, dtype: String) {
+    val byteCount = count.toLong() * bytesPerElement
+    // A JVM array tops out just under Int.MAX_VALUE entries; keep a small
+    // margin for VM-specific header overhead.
+    if (byteCount > Int.MAX_VALUE - 8L) {
+        throw ConstantTooLargeException(
+            "Constant of $count $dtype elements needs $byteCount bytes; single-buffer " +
+                "serialization caps at 2 GiB - 1. Use ConstantMaterializationPolicy.ExternalAlways " +
+                "with FP32 values — the external path carries a FloatArray (BufferHandle.Floats) " +
+                "without any byte serialization (issue #1247)."
+        )
+    }
 }
