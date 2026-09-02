@@ -12,13 +12,18 @@ import sk.ainet.tape.ExecutionTape
  *   compilation where every operand must be wired through graph edges.
  * @param inputTensorIds Tensor IDs that should always become function arguments (model inputs)
  *   rather than constants, even if their data is resolvable.
+ * @param packedConstants How frozen parameters with packed/quantized storage are treated during
+ *   constant synthesis — fail loudly (default) or dequantize to dense FP32 (issue #1247).
  */
 public fun ExecutionTape.toComputeGraph(
     synthesizeExternalInputs: Boolean = false,
-    inputTensorIds: Set<String> = emptySet()
+    inputTensorIds: Set<String> = emptySet(),
+    packedConstants: sk.ainet.lang.trace.PackedConstantHandling =
+        sk.ainet.lang.trace.PackedConstantHandling.FAIL
 ): ComputeGraph {
     return when (this) {
-        is sk.ainet.lang.graph.DefaultExecutionTape -> this.toComputeGraph(synthesizeExternalInputs, inputTensorIds)
+        is sk.ainet.lang.graph.DefaultExecutionTape ->
+            this.toComputeGraph(synthesizeExternalInputs, inputTensorIds, packedConstants = packedConstants)
         else -> DefaultComputeGraph()
     }
 }

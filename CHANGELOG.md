@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Graph constants alias live weights; packed params fail loudly**
+  ([#1247](https://github.com/SKaiNET-developers/SKaiNET/issues/1247)): `TraceToGraphBuilder` no
+  longer copies every frozen float weight into the graph — the constant's `initial_value` aliases
+  the live buffer (read-only contract), halving weight residency during export. BF16/FP16 dense
+  weights widen to one FP32 copy. A frozen parameter with packed storage (Q4_K, Q8_0, ternary, …)
+  now throws `PackedConstantException` instead of silently becoming a function argument and
+  producing an unservable module; `PackedConstantHandling.DEQUANTIZE` (threaded through
+  `toComputeGraph`) opts into dense FP32 extraction instead.
+
 ## [0.52.0] - 2026-09-01
 
 Headline: **the engine stops silently running on the scalar floor.** A downstream Gemma 4 port

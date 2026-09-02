@@ -32,7 +32,14 @@ import sk.ainet.lang.tensor.ops.withTensorId
 public class TraceToGraphBuilder(
     private val graph: ComputeGraph,
     private val session: TraceSession? = null,
-    private val embedWeightData: Boolean = true
+    private val embedWeightData: Boolean = true,
+    /**
+     * How [finalize] treats frozen parameters whose data is packed/quantized
+     * and cannot become a float constant. Default [PackedConstantHandling.FAIL]
+     * throws instead of silently synthesizing a function-argument placeholder
+     * for a model weight (issue #1247).
+     */
+    private val packedConstants: PackedConstantHandling = PackedConstantHandling.FAIL
 ) {
 
     private var nextNodeId = 0L
@@ -263,12 +270,30 @@ public class TraceToGraphBuilder(
 
             // Try to resolve as a constant from the session
             val tensor = if (!forceInput && embedConstants) session?.resolve(firstRef.tensorRef) else null
-            val constantValues = tensor?.let { extractFloatArray(it) }
+            var constantValues = tensor?.let { extractFloatArray(it) }
             // Resolved tensors that carry a concrete storage encoding (Q4_K,
             // Q8_0, TernaryPacked, TurboQuant, …) propagate it onto the
             // produced spec so later compile stages can preserve the
             // quantization instead of silently re-materializing FP32.
-            val encoding = tensor?.data?.inferTensorEncoding()
+            var encoding = tensor?.data?.inferTensorEncoding()
+
+            // A frozen parameter with packed storage must never fall through to
+            // the "input" placeholder branch: that silently turns model weights
+            // into function arguments and produces an unservable module with
+            // exit 0 (issue #1247, the 190+-arg gemma3n export).
+            val packedData = tensor?.data as? sk.ainet.lang.tensor.storage.PackedBlockStorage
+            if (constantValues == null && packedData != null) {
+                when (packedConstants) {
+                    PackedConstantHandling.FAIL ->
+                        throw PackedConstantException(tensorId, encoding?.name)
+                    PackedConstantHandling.DEQUANTIZE -> {
+                        constantValues = packedData.toFloatArray()
+                        // The embedded constant is now dense FP32 — carrying the
+                        // packed encoding forward would misdescribe it.
+                        encoding = null
+                    }
+                }
+            }
 
             val syntheticNode: GraphNode
             val producedSpec: TensorSpec
@@ -376,12 +401,27 @@ public class TraceToGraphBuilder(
     private fun extractFloatArray(tensor: sk.ainet.lang.tensor.Tensor<*, *>): FloatArray? {
         val data = tensor.data
         if (data is sk.ainet.lang.tensor.data.FloatArrayTensorData) {
-            val buffer = data.buffer
-            return buffer.copyOf()
+            // ALIASED, not copied (#1247): the graph constant shares the live
+            // weight buffer. Copying doubled residency of every model weight —
+            // the module tree and TraceSession keep the original alive for the
+            // whole build, so a full E2B extraction OOMed a 46 GB heap.
+            // Contract: consumers of "initial_value"/"weights" parameters are
+            // read-only (the HLO ConstantByteSerializer and inline emitters);
+            // never mutate the array behind these parameters.
+            return data.buffer
         }
-        
-        // Nothing else is materializable here: weights are FloatArrayTensorData in export contexts, and a
-        // dynamic-shaped tensor (e.g. a `?` KV-cache input) has no volume to probe — never call `.volume`
+
+        // Narrow floats (BF16/FP16 dense) widen to one FP32 copy — this is a
+        // real conversion, not an alias, and only valid for static shapes.
+        if (data is sk.ainet.lang.tensor.data.NarrowFloatTensorData &&
+            !tensor.shape.hasDynamic()
+        ) {
+            return data.copyToFloatArray()
+        }
+
+        // Nothing else is materializable here: packed storage is handled by the
+        // caller via PackedConstantHandling, and a dynamic-shaped tensor (e.g. a
+        // `?` KV-cache input) has no volume to probe — never call `.volume`
         // on it (it throws by design). Such tensors are graph inputs, not constants to embed, so return null.
         return null
     }
