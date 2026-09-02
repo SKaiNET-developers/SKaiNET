@@ -7080,6 +7080,14 @@ public final class sk/ainet/lang/tensor/storage/BufferHandle$FileBacked : sk/ain
 	public fun isMutable ()Z
 }
 
+public final class sk/ainet/lang/tensor/storage/BufferHandle$Floats : sk/ainet/lang/tensor/storage/BufferHandle {
+	public fun <init> ([F)V
+	public final fun getData ()[F
+	public fun getOwnership ()Lsk/ainet/lang/tensor/storage/Ownership;
+	public fun getSizeInBytes ()J
+	public fun isMutable ()Z
+}
+
 public final class sk/ainet/lang/tensor/storage/BufferHandle$Owned : sk/ainet/lang/tensor/storage/BufferHandle {
 	public fun <init> ([BIJ)V
 	public synthetic fun <init> ([BIJILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -7210,6 +7218,15 @@ public final class sk/ainet/lang/tensor/storage/DeviceKind : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/storage/DeviceKind;
 	public static fun values ()[Lsk/ainet/lang/tensor/storage/DeviceKind;
+}
+
+public final class sk/ainet/lang/tensor/storage/FloatArrayByteViewAccessor : sk/ainet/lang/tensor/storage/BufferAccessor {
+	public fun <init> ([F)V
+	public fun close ()V
+	public fun getSizeInBytes ()J
+	public fun readAllBytes ()[B
+	public fun readByte (J)B
+	public fun readBytes (JI)[B
 }
 
 public abstract interface annotation class sk/ainet/lang/tensor/storage/KvCache : java/lang/annotation/Annotation {

@@ -51,6 +51,7 @@ public class DefaultBufferResolver(
 
     override fun resolve(handle: BufferHandle): BufferAccessor = when (handle) {
         is BufferHandle.Owned -> ByteArrayAccessor(handle.data, handle.offset, handle.sizeInBytes)
+        is BufferHandle.Floats -> FloatArrayByteViewAccessor(handle.data)
         is BufferHandle.Borrowed -> ByteArrayAccessor(handle.data, handle.offset, handle.sizeInBytes)
         is BufferHandle.Aliased -> resolve(handle.parent).sliced(handle.byteOffset, handle.sizeInBytes)
         is BufferHandle.FileBacked -> {
@@ -97,6 +98,51 @@ public class ByteArrayAccessor(
 }
 
 /** Helper to create a sliced accessor from any accessor. */
+/**
+ * Little-endian byte view over a [BufferHandle.Floats] array (issue #1247).
+ *
+ * The backing tensor can exceed 2 GiB of logical bytes — that is the whole
+ * point of the Floats handle — so [readAllBytes] on such a buffer throws via
+ * the Int narrowing; consumers must read in chunks ([readBytes] with a
+ * bounded length) or per element.
+ */
+public class FloatArrayByteViewAccessor(
+    private val data: FloatArray,
+) : BufferAccessor {
+
+    override val sizeInBytes: Long = data.size.toLong() * 4L
+
+    override fun readByte(offset: Long): Byte {
+        require(offset in 0 until sizeInBytes) { "Offset out of bounds: $offset" }
+        val bits = data[(offset ushr 2).toInt()].toRawBits()
+        val lane = (offset and 3L).toInt()
+        return ((bits ushr (lane * 8)) and 0xff).toByte()
+    }
+
+    override fun readBytes(offset: Long, length: Int): ByteArray {
+        require(length >= 0) { "Length must be non-negative: $length" }
+        require(offset >= 0 && offset + length <= sizeInBytes) {
+            "Range [$offset, ${offset + length}) out of bounds for $sizeInBytes bytes"
+        }
+        val out = ByteArray(length)
+        var i = 0
+        while (i < length) {
+            val at = offset + i
+            val bits = data[(at ushr 2).toInt()].toRawBits()
+            var lane = (at and 3L).toInt()
+            // Copy the remaining lanes of the current float in one go.
+            while (lane < 4 && i < length) {
+                out[i] = ((bits ushr (lane * 8)) and 0xff).toByte()
+                lane++
+                i++
+            }
+        }
+        return out
+    }
+
+    override fun close() {} // no-op: aliases a heap array owned elsewhere
+}
+
 private fun BufferAccessor.sliced(byteOffset: Long, size: Long): BufferAccessor {
     if (this is ByteArrayAccessor) return this.sliced(byteOffset, size)
     // Fallback: wrap in a delegating accessor

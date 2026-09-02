@@ -224,6 +224,7 @@ public class IrpaWriter {
     private fun writeBufferHandle(sink: Sink, handle: BufferHandle) {
         when (handle) {
             is BufferHandle.Owned -> writeByteArray(sink, handle.data, handle.offset, handle.sizeInBytes.toInt())
+            is BufferHandle.Floats -> writeFloatArrayLe(sink, handle.data)
             is BufferHandle.Borrowed -> writeByteArray(sink, handle.data, handle.offset, handle.sizeInBytes.toInt())
             is BufferHandle.FileBacked -> writeFileBackedBytes(sink, handle)
             else -> throw IllegalArgumentException(
@@ -232,6 +233,29 @@ public class IrpaWriter {
                     "other variants are out of scope — resolve them to one of the wired " +
                     "variants before handing to the writer."
             )
+        }
+    }
+
+    private fun writeFloatArrayLe(sink: Sink, data: FloatArray) {
+        // Stream little-endian in 64 MiB chunks: a Floats handle exists
+        // precisely because its logical bytes can exceed what a single
+        // ByteArray can hold (issue #1247, the 2 GiB tied embedding) —
+        // never materialize the whole payload.
+        val chunkFloats = 16 * 1024 * 1024
+        val buf = ByteArray(minOf(chunkFloats, data.size.coerceAtLeast(1)) * 4)
+        var i = 0
+        while (i < data.size) {
+            val n = minOf(chunkFloats, data.size - i)
+            var b = 0
+            for (j in i until i + n) {
+                val bits = data[j].toRawBits()
+                buf[b++] = (bits and 0xff).toByte()
+                buf[b++] = (bits ushr 8 and 0xff).toByte()
+                buf[b++] = (bits ushr 16 and 0xff).toByte()
+                buf[b++] = (bits ushr 24 and 0xff).toByte()
+            }
+            sink.write(buf, 0, b)
+            i += n
         }
     }
 

@@ -33,6 +33,7 @@ public fun TensorStorage.describe(id: sk.ainet.lang.tensor.TensorId? = null): St
     append(
         when (val b = buffer) {
             is BufferHandle.Owned -> "Owned"
+            is BufferHandle.Floats -> "Floats"
             is BufferHandle.Borrowed -> "Borrowed"
             is BufferHandle.Aliased -> "Aliased"
             is BufferHandle.FileBacked -> "Mapped"
