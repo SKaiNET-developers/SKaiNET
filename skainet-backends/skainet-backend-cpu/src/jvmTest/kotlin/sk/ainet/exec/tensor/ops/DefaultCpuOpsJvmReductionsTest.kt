@@ -58,7 +58,7 @@ class DefaultCpuOpsJvmReductionsTest {
         // Run with vector OFF by going through platform factory which will create DefaultCpuOps
         System.setProperty("skainet.cpu.vector.enabled", "false")
         val factory = platformDefaultCpuOpsFactory()
-        val scalarOps = factory(dataFactory)
+        val scalarOps = factory(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
         val rOffSum = scalarOps.sum(t, null)
         val rOffMean = scalarOps.mean(t, null)
 

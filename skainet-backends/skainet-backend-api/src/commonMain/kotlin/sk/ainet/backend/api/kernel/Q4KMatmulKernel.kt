@@ -57,4 +57,17 @@ public interface Q4KMatmulKernel {
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
     )
+
+    /**
+     * Schedule-aware entry (SKEEP-005): a kernel that splits output rows across tasks takes the
+     * split from [schedule]. The default ignores it and runs the legacy method, so an
+     * implementation that has no parallel section is unaffected.
+     */
+    public fun matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+        schedule: sk.ainet.context.schedule.Schedule,
+    ): Unit = matmul(input, inputOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset)
 }

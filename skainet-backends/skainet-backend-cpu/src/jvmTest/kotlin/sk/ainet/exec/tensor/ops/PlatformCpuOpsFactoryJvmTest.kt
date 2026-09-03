@@ -18,7 +18,7 @@ class PlatformCpuOpsFactoryJvmTest {
     fun returnsJvmOpsWhenVectorFlagEnabled() {
         System.setProperty("skainet.cpu.vector.enabled", "true")
         val factory = platformDefaultCpuOpsFactory()
-        val ops = factory(DenseTensorDataFactory())
+        val ops = factory(DenseTensorDataFactory(), sk.ainet.context.schedule.Schedule.Sequential)
         assertTrue(ops is DefaultCpuOpsJvm)
     }
 
@@ -26,7 +26,7 @@ class PlatformCpuOpsFactoryJvmTest {
     fun fallsBackToScalarOpsWhenFlagDisabled() {
         System.setProperty("skainet.cpu.vector.enabled", "false")
         val factory = platformDefaultCpuOpsFactory()
-        val ops = factory(DenseTensorDataFactory())
+        val ops = factory(DenseTensorDataFactory(), sk.ainet.context.schedule.Schedule.Sequential)
         assertTrue(ops !is DefaultCpuOpsJvm)
     }
 }

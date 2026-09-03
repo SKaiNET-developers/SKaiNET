@@ -1,5 +1,8 @@
 package sk.ainet.exec.tensor.ops
 
+import sk.ainet.context.schedule.Schedule
+import sk.ainet.exec.schedule.CoroutineSchedule
+
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorOperators
 import jdk.incubator.vector.VectorSpecies
@@ -937,6 +940,7 @@ internal object JvmVectorKernels {
         tileM: Int = 8,
         tileN: Int = 8,
         tileK: Int = 128,
+            schedule: Schedule = CoroutineSchedule.hardware(),
     ) {
         val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT.withOrder(BYTE_ORDER)
         val floatBytes = Float.SIZE_BYTES.toLong()
@@ -972,7 +976,7 @@ internal object JvmVectorKernels {
         // Parallelize over m (independent rows of the result). Each task owns
         // a contiguous mm range and writes to its own slice of `r`. Tiling on
         // n and k stays for cache locality.
-        parallelChunks(m) { mStart, mEnd ->
+        parallelChunks(m, schedule) { mStart, mEnd ->
             for (bn in 0 until nBlocks) {
                 val nStart = bn * tileN
                 val nEnd = minOf(nStart + tileN, n)

@@ -90,6 +90,13 @@ public object PerfettoTraceExporter {
                     emit(counter("live bytes", ts, mapOf(e.scope.name.lowercase() to e.liveBytesAfter)))
                 }
                 is TraceEvent.Counter -> emit(counter(e.name, ts, mapOf(e.unit to e.value)))
+                is TraceEvent.ScheduleDowngraded -> emit(
+                    instant("schedule downgraded", "schedule", ts, MAIN_TID, mapOf("requested" to e.requested, "effective" to e.effective, "reason" to e.reason)),
+                )
+                is TraceEvent.ScheduleRegion -> emit(
+                    complete("schedule ${e.op}", "schedule", (e.timeNanos - e.durationNanos) / 1000.0, e.durationNanos / 1000.0, MAIN_TID,
+                        mapOf("schedule" to e.schedule, "elements" to e.elements.toString(), "tasks" to e.tasks.toString())),
+                )
                 is TraceEvent.Plan -> emit(
                     instant(
                         "plan", "plan", ts, MAIN_TID,

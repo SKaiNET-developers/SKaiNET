@@ -34,7 +34,10 @@ import sk.ainet.lang.types.FP32
 @Backend(id = "apple", displayName = "Apple Accelerate")
 public class AccelerateCpuOps(
     dataFactory: TensorDataFactory,
-) : DefaultCpuOpsBase(dataFactory) {
+    schedule: sk.ainet.context.schedule.Schedule,
+) : DefaultCpuOpsBase(dataFactory, schedule) {
+    public constructor(dataFactory: TensorDataFactory) : this(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
+
 
     // ── matmul ──────────────────────────────────────────────────────────
 

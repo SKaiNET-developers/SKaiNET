@@ -71,7 +71,7 @@ class DefaultCpuOpsJvmElementwiseTest {
 
         // Vector OFF -> platform factory should return DefaultCpuOps
         System.setProperty("skainet.cpu.vector.enabled", "false")
-        val scalarOps = platformDefaultCpuOpsFactory()(dataFactory)
+        val scalarOps = platformDefaultCpuOpsFactory()(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
         val offAdd = scalarOps.add(tA, tB)
         val offRelu = scalarOps.relu(tA)
 

@@ -3,7 +3,7 @@ package sk.ainet.exec.tensor.ops
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.TensorOps
 
-internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> TensorOps {
+internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory, sk.ainet.context.schedule.Schedule) -> TensorOps {
     val jdkOk = isJdk21Plus()
     val vectorAvailable = jdkOk && isVectorApiAvailable()
     val useVector = (JvmCpuBackendConfig.vectorEnabled && vectorAvailable)
@@ -21,10 +21,10 @@ internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> Tenso
     }
 
     return if (useVector) {
-        { factory: TensorDataFactory -> DefaultCpuOpsJvm(factory) }
+        { factory: TensorDataFactory, schedule: sk.ainet.context.schedule.Schedule -> DefaultCpuOpsJvm(factory, schedule) }
     } else {
         // Note: BLAS acceleration not yet implemented; falling back to DefaultCpuOps
-        { factory: TensorDataFactory -> DefaultCpuOps(factory) }
+        { factory: TensorDataFactory, schedule: sk.ainet.context.schedule.Schedule -> DefaultCpuOps(factory, schedule) }
     }
 }
 
@@ -55,3 +55,7 @@ private fun isJdk21Plus(): Boolean {
         major >= 21
     }
 }
+
+
+internal actual fun platformDefaultSchedule(): sk.ainet.context.schedule.Schedule =
+    sk.ainet.exec.schedule.CoroutineSchedule.hardware()

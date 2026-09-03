@@ -1,5 +1,8 @@
 package sk.ainet.exec.kernel
 
+import sk.ainet.context.schedule.Schedule
+import sk.ainet.exec.schedule.CoroutineSchedule
+
 import jdk.incubator.vector.ByteVector
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorOperators
@@ -41,6 +44,14 @@ public object PanamaVectorQ5_KMatmulKernel : Q5KMatmulKernel {
         weight: ByteArray, weightByteOffset: Int,
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
+    ): Unit = matmul(input, inputOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset, CoroutineSchedule.hardware())
+
+    override fun matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+        schedule: Schedule,
     ) {
         require(inputDim % BLOCK_SIZE == 0) {
             "PanamaVectorQ5_KMatmulKernel: inputDim must be a multiple of $BLOCK_SIZE; got $inputDim"
@@ -48,7 +59,7 @@ public object PanamaVectorQ5_KMatmulKernel : Q5KMatmulKernel {
         if (outputDim == 0 || inputDim == 0) return
         val blocksPerInputDim = inputDim / BLOCK_SIZE
 
-        parallelChunks(outputDim) { startO, endO ->
+        parallelChunks(outputDim, schedule) { startO, endO ->
             val scaleIdx = IntArray(SUB_BLOCKS_PER_BLOCK)
             val minIdx = IntArray(SUB_BLOCKS_PER_BLOCK)
             for (o in startO until endO) {
