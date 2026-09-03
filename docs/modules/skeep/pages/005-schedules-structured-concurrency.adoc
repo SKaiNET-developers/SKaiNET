@@ -181,6 +181,25 @@ bodies. Behaviour change on the JVM only: `DirectCpuExecutionContext()` now runs
 * **Region overhead on tiny ops** — `SDPA_PARALLEL_MIN_WORK` and `Schedule.tasksFor` keep small
   calls inline; tune from the JMH numbers.
 
+== Measurements
+
+Downstream, on the SKaiNET-transformers `feature/attention-schedule` branch
+(`AttentionScheduleSpeedProfile`, Llama-3.2-1B-Instruct Q8_0, i7-9750H 6c/12t, JDK 25, 512-token
+prefill + 32 greedy tokens, 2026-09-03; greedy tokens identical in every row):
+
+[cols="3,1,1,1", options="header"]
+|===
+| Schedule / KV cache | `attn.fused_compute` | `attn.kvcache` | Decode tok/s
+
+| `Sequential` / append (0.53.0 behaviour) | 8,991 ms | 447 ms | 7.7
+| `CoroutineSchedule.hardware()` / append | 2,773 ms | 369 ms | 8.7
+| `CoroutineSchedule.hardware()` / positional (copy-free) | 2,590 ms | 10 ms | 9.7
+|===
+
+Engine microbenchmark (`SdpaScheduleBench`, same machine): see the table below.
+
+include::partial$005-sdpa-bench.adoc[]
+
 == Open Questions
 
 * Should Android get a `CoroutineSchedule` (coroutines are jvmMain-only in backend-cpu today)?
