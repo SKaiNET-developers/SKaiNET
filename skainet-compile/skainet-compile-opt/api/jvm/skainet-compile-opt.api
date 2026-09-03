@@ -149,6 +149,23 @@ public final class sk/ainet/compile/opt/passes/PowSpecializationPass : sk/ainet/
 	public fun getName ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/opt/passes/ScheduleAnnotationPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public static final field Companion Lsk/ainet/compile/opt/passes/ScheduleAnnotationPass$Companion;
+	public static final field SCHEDULE_METADATA_KEY Ljava/lang/String;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/ScheduleAnnotationPass$Companion {
+	public final fun attentionDefaults ()Ljava/util/Map;
+	public final fun getKNOWN_DIMS ()Ljava/util/Map;
+	public final fun hintOf (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/context/schedule/ScheduleHint;
+	public final fun normalizeOpName (Ljava/lang/String;)Ljava/lang/String;
+}
+
 public final class sk/ainet/compile/opt/passes/SharedWeightDeduplicationPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public static final field Companion Lsk/ainet/compile/opt/passes/SharedWeightDeduplicationPass$Companion;
 	public fun <init> ()V

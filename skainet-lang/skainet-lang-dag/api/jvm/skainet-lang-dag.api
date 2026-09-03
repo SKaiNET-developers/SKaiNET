@@ -7,6 +7,7 @@ public final class sk/ainet/lang/dag/DagBuilder {
 	public static synthetic fun op$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/List;
 	public final fun output ([Lsk/ainet/lang/dag/GraphValue;)V
 	public final fun parameter (Ljava/lang/String;Lsk/ainet/lang/tensor/ops/TensorSpec;)Lsk/ainet/lang/dag/GraphValue;
+	public final fun withAttributes (Ljava/util/Map;Lkotlin/jvm/functions/Function1;)V
 }
 
 public abstract interface annotation class sk/ainet/lang/dag/DagDsl : java/lang/annotation/Annotation {
@@ -216,6 +217,15 @@ public final class sk/ainet/lang/dag/GraphValue {
 	public final fun getSpec ()Lsk/ainet/lang/tensor/ops/TensorSpec;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/dag/ScheduleDslKt {
+	public static final fun op (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Lsk/ainet/context/schedule/ScheduleHint;Ljava/lang/String;Ljava/util/Map;)Ljava/util/List;
+	public static synthetic fun op$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/tensor/ops/Operation;Ljava/util/List;Lsk/ainet/context/schedule/ScheduleHint;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/List;
+	public static final fun parallel ([Ljava/lang/String;Ljava/lang/Integer;)Lsk/ainet/context/schedule/ScheduleHint;
+	public static synthetic fun parallel$default ([Ljava/lang/String;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/context/schedule/ScheduleHint;
+	public static final fun schedule (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/context/schedule/ScheduleHint;Lkotlin/jvm/functions/Function1;)V
+	public static final fun scheduleHint (Lsk/ainet/lang/dag/GraphNodeDefinition;)Lsk/ainet/context/schedule/ScheduleHint;
 }
 
 public final class sk/ainet/lang/dag/SymbolicDataDslKt {

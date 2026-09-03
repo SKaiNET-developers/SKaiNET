@@ -68,7 +68,11 @@ public object HloGenerator {
         } else {
             sk.ainet.compile.opt.dagPipelineFor(
                 target,
-                corePasses = listOf(sk.ainet.compile.opt.passes.LayoutAssignmentPass(target)),
+                corePasses = listOf(
+                    sk.ainet.compile.opt.passes.LayoutAssignmentPass(target),
+                    // SKEEP-005: schedule hints become `skainet.schedule` module metadata.
+                    sk.ainet.compile.opt.passes.ScheduleAnnotationPass(target),
+                ),
             ).optimize(computeGraph).graph
         }
 

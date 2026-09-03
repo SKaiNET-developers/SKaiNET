@@ -74,6 +74,24 @@ public class DagBuilder {
     private val outputs = mutableListOf<GraphValue<*>>()
     private var nextId: Long = 0
 
+    /** Attributes applied to every node recorded while a [withAttributes] block is open; inner blocks and explicit per-op attributes win. */
+    private val ambientAttributes = ArrayDeque<Map<String, Any?>>()
+
+    /**
+     * Record every node inside [block] with [attributes] merged into its own (explicit per-op
+     * attributes override ambient ones; inner blocks override outer ones). The carrier for
+     * scoped annotations such as `schedule(hint) { … }` (SKEEP-005).
+     */
+    @DagDsl
+    public fun withAttributes(attributes: Map<String, Any?>, block: DagBuilder.() -> Unit) {
+        ambientAttributes.addLast(attributes)
+        try {
+            block()
+        } finally {
+            ambientAttributes.removeLast()
+        }
+    }
+
     private fun freshNodeId(opName: String, providedId: String): String =
         providedId.ifBlank { "n${nextId++}_${opName}" }
 
@@ -115,12 +133,14 @@ public class DagBuilder {
         val nodeOutputs = outputSpecs.mapIndexed { idx, spec ->
             GraphValue<DType>(nodeId = nodeId, outputIndex = idx, spec = spec)
         }
+        val merged = if (ambientAttributes.isEmpty()) attributes else
+            ambientAttributes.fold(emptyMap<String, Any?>()) { acc, m -> acc + m } + attributes
         nodes += GraphNodeDefinition(
             id = nodeId,
             operation = operation,
             inputs = inputs,
             outputs = nodeOutputs,
-            attributes = attributes
+            attributes = merged
         )
         return nodeOutputs
     }
