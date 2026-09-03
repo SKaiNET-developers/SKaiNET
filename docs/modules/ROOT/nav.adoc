@@ -11,6 +11,7 @@
 ** xref:tutorials/minerva-getting-started.adoc[Minerva getting started]
 ** xref:tutorials/graph-dsl.adoc[Graph DSL]
 ** xref:tutorials/turboquant-getting-started.adoc[TurboQuant: KV-cache compression]
+** xref:tutorials/schedule-getting-started.adoc[Schedules: parallel ops, same results]
 ** xref:tutorials/android-classifier-getting-started.adoc[Train a classifier on Android]
 ** xref:tutorials/ternary-getting-started.adoc[Ternary networks: getting started]
 * How-to guides
@@ -39,6 +40,7 @@
 ** xref:explanation/packed-weight-layout.adoc[Packed weight layout]
 ** xref:explanation/eager-execution.adoc[Eager execution: backends and kernels]
 ** xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm]
+** xref:explanation/schedules.adoc[Algorithm and schedule]
 ** xref:explanation/quantization-process.adoc[The quantization process]
 ** xref:explanation/theory/index.adoc[Mathematical theory]
 *** xref:explanation/theory/matmul.adoc[Matrix multiplication]

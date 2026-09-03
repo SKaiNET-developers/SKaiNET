@@ -1,0 +1,198 @@
+= SKEEP-005: Schedules — structured concurrency for the compute layer
+:description: SKaiNET proposal to separate the algorithm (the DSL network) from the schedule (how the independent work inside an op is mapped onto cores), with Kotlin structured concurrency as the JVM implementation and schedule metadata that rides the ComputeGraph into StableHLO.
+
+Status: Implemented +
+Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (the first consumer is per-head attention) +
+Created: 2026-09-03 +
+Tracking issue: _to be filed_ (bugs fixed on the way: https://github.com/SKaiNET-developers/SKaiNET/issues/1259[#1259], https://github.com/SKaiNET-developers/SKaiNET/issues/1260[#1260]; observed: https://github.com/SKaiNET-developers/SKaiNET/issues/1261[#1261]) +
+Origin: the Daily-StandAPP profile on SKaiNET 0.53.0 (JFR, i7-9750H 6C/12T): attention ≈ 40 % of every decoded token, scalar and single-threaded, while the only parallelism in the stack was the native matmul's compile-time 4-thread pool and a `runBlocking(Dispatchers.Default)` island inside a few Panama kernels.
+
+== Summary
+
+A network definition says *what* is computed. Nothing in SKaiNET said *how many tasks* compute it.
+This proposal adds a second, optional half — the **schedule** — in the spirit of Halide's
+algorithm/schedule split: a small, dependency-free `Schedule` interface on the
+`ExecutionContext`, a coroutine-backed JVM implementation, the engine's first scheduled op
+(`scaledDotProductAttention`), and a metadata channel so a schedule request can ride the
+ComputeGraph into the StableHLO export. A schedule never changes a result: every implementation
+runs the same body over the same disjoint ranges, so a scheduled run is bit-identical to a
+sequential one. The DSL is untouched — the schedule is a deployment property, exactly where
+xref:ROOT:explanation/dsl-principles.adoc[The DSL is compute] says such knobs belong.
+
+== Motivation
+
+* Multi-head attention is embarrassingly parallel across heads, but both attention
+  implementations (`DefaultCpuOps.scaledDotProductAttention`, transformers'
+  `fusedDecodeAttention`) were scalar loops on one thread, and the transformers path copied the
+  whole K/V prefix per layer and token (111 MB per token at 622 positions on Llama-3.2-3B).
+* The existing parallelism was kernel-private and invisible: `parallelChunks` hard-coded
+  `Dispatchers.Default` and `availableProcessors()`, could not be turned off, could not be
+  observed, and nested a `runBlocking` on the very dispatcher a caller might already be on.
+* The compile lane had no way to say "this op is head-parallel". `skainet.tensor_layouts` showed
+  the shape such a fact should take: a module attribute a consumer may read or ignore.
+
+== Goals
+
+. One abstraction, `sk.ainet.context.schedule.Schedule`, usable from every synchronous op on
+  every Kotlin target, with no dependency in `skainet-lang-core`.
+. Structured concurrency on the JVM: a region is a `coroutineScope`; the first failure cancels
+  the siblings and is rethrown; no task outlives the region; writes happen-before its return.
+. Hardware-aware defaults: the JVM `DirectCpuExecutionContext` runs core-count coroutines out of
+  the box; every other target and every context that does not opt in runs sequentially.
+. An unhonoured request is visible (`TraceEvent.ScheduleDowngraded`), never a silent downgrade.
+. Bit-identical results under any schedule, proven by tests.
+. Schedule metadata through `dag { }` → `Operation.parameters` → `GraphNode.metadata` →
+  the `skainet.schedule` module attribute of the StableHLO export.
+
+== Non-Goals
+
+* IREE-side consumption of `skainet.schedule` (the header is metadata; lowering it into
+  dispatch hints is a later SKEEP).
+* Concurrent *forwards* on one `ExecutionContext` — still one context per thread.
+* Parallel schedules on Android, Kotlin/Native, JS or Wasm (they get `Sequential`; the JVM
+  implementation is the reference).
+* Vectorised attention kernels (a SIMD reduction changes summation order; it is a separate,
+  tolerance-tested change).
+
+== Proposed Design
+
+=== The `Schedule` contract (`skainet-lang-core`)
+
+[source,kotlin]
+----
+public interface Schedule {
+    public val parallelism: Int
+    public val name: String
+    public fun forRange(n: Int, grain: Int = 1, body: (start: Int, end: Int) -> Unit)
+    public fun forEach(count: Int, minPerTask: Int = 1, body: (index: Int) -> Unit)
+    public object Sequential : Schedule            // body(0, n), inline
+    public companion object { fun tasksFor(n, grain, parallelism): Int; fun chunkFor(n, tasks): Int }
+}
+----
+
+Contract for a `forRange` body: ranges are disjoint half-open intervals covering `[0, n)`; a
+task count of one runs inline; a body writes only into pre-allocated, disjoint output regions
+and reads only inputs that are immutable for the region; it never allocates through an
+`ExecutionContext`, never calls `ctx.ops`, and never starts a nested region (an implementation
+runs a nested call inline); the first failure is rethrown after every sibling finished or was
+cancelled; all writes happen-before the return.
+
+=== Where it hangs
+
+* `ExecutionContext.schedule: Schedule` (default `Sequential`) and
+  `ExecutionContext.withSchedule(schedule): ExecutionContext` — the same rebuild seam as
+  `withTensorDataFactory`. The default cannot rebuild, returns `this`, and emits
+  `TraceEvent.ScheduleDowngraded(requested, effective, reason)`.
+* `ScheduledExecutionContext(base, schedule) : ExecutionContext by base` and
+  `inline fun <R> ExecutionContext.withSchedule(schedule, block)` — the decorator mirrors
+  `ScopedExecutionContext`; it survives `forwardScope` because `withTensorDataFactory` keeps the
+  schedule.
+* Ops carry the schedule: `DefaultCpuOpsBase(dataFactory, schedule)`; the platform factory is
+  `(TensorDataFactory, Schedule) -> TensorOps`; `DirectCpuExecutionContext(schedule = …)` defaults
+  to `platformDefaultSchedule()` — `CoroutineSchedule.hardware()` on the JVM, `Sequential` elsewhere.
+
+=== The JVM implementation (`skainet-backend-cpu`)
+
+`CoroutineSchedule(dispatcher = Dispatchers.Default, parallelism = cores, sink)`: a region is
+`runBlocking { coroutineScope { launch(dispatcher) { … } … ; body(first chunk) } }` — the caller
+runs the first chunk itself, so no core idles on the join; a nested region (detected with a
+thread-local) runs inline so the dispatcher never waits on itself; `dedicated(parallelism)` owns
+its own pool for callers that already live on `Dispatchers.Default`. `parallelChunks(outputDim,
+schedule)` replaces the old island; the Panama Q4_K/Q5_K SPI kernels gained a schedule-aware
+overload; `ScheduleRegion` events report what ran when a sink is attached.
+
+=== First consumer: `scaledDotProductAttention`
+
+Every `(batch, head)` pair is independent — private `scores` scratch, disjoint output rows — so
+the pairs are the units of `schedule.forRange`. The per-pair arithmetic and its order are the
+sequential loop's, which is what makes the result bit-identical. Calls below
+`SDPA_PARALLEL_MIN_WORK` multiply-adds (a decode step on a handful of heads) stay inline.
+
+=== Compile lane
+
+`dag { schedule(parallel("heads")) { op(sdpa, …) } }` or `op(matmul, …, schedule =
+parallel("rows", parallelism = 8))` stamp a `ScheduleHint` under `skainet.schedule` on the node
+(the `DtypePolicyDsl` channel); `ScheduleAnnotationPass` validates the requested dimensions per
+op (sdpa: batch, heads; matmul: rows; conv: batch, out_channels), stamps the normalized hint into
+`GraphNode.metadata` and reports every rejection as a diagnostic; `StableHloConverter` emits
+`skainet.schedule = {<node> = {parallel_dims = ["heads"], parallelism = 8}}` in the module header
+beside `skainet.tensor_layouts`. One graph, extra schedule metadata.
+
+=== Thread-safety work that made it possible
+
+`KernelDispatch` and `KernelRegistry` now keep immutable snapshots with serialized writes, so
+schedule workers may dispatch concurrently. Everything else in the hot path stays single-threaded
+by contract: `ForwardScope` (bump allocator), `ScratchPool`, the `DefaultCpuOps` prepack caches,
+`KernelProfile` — hence the rule that bodies never touch a context.
+
+== Requirements
+
+=== Functional
+
+* `ctx.withSchedule(s)` changes how many tasks an op uses and nothing else.
+* `Schedule.Sequential` reproduces pre-SKEEP behaviour exactly.
+* A `ScheduleHint` on a `dag { }` op reaches the StableHLO header unchanged; an unknown
+  dimension produces a diagnostic and no metadata.
+
+=== Non-Functional
+
+* No new dependency in `skainet-lang-core`, `skainet-backend-api`, or transformer-core.
+* All API changes additive (`apiDump` diffs contain no removed lines).
+* JS/Wasm/Native builds unchanged (`Sequential` only).
+
+== Compatibility and Migration
+
+Additive throughout: new interface members with defaults, secondary constructors keeping the
+old JVM signatures (`DirectCpuExecutionContext`, `DefaultCpuOps`), SPI overloads with default
+bodies. Behaviour change on the JVM only: `DirectCpuExecutionContext()` now runs
+`scaledDotProductAttention` on the hardware schedule — bit-identical, opt out with
+`withSchedule(Schedule.Sequential)`.
+
+== Rollout Plan
+
+. Registries safe for concurrent reads (`KernelDispatchConcurrencyTest`).
+. `Schedule`, `ScheduleHint`, context seam, trace events (`ScheduledExecutionContextTest`).
+. `CoroutineSchedule`, `parallelChunks(schedule)`, ops/factory/context plumbing
+  (`CoroutineScheduleTest`, `DirectCpuExecutionContextScheduleTest`).
+. Scheduled SDPA (`SdpaScheduleParityTest`, `SdpaCoroutineParityTest`, JMH `SdpaScheduleBench`).
+. Compile lane (`ScheduleDslTest`, `ScheduleAnnotationPassTest`, `ScheduleModuleAttributeTest`).
+. Docs: xref:ROOT:explanation/schedules.adoc[Algorithm and schedule],
+  xref:ROOT:tutorials/schedule-getting-started.adoc[Schedule getting started] with an executable sample.
+. Downstream: SKaiNET-transformers per-head attention on the same `Schedule` (its own spec).
+
+== Acceptance Criteria
+
+* Parity tests assert `assertContentEquals` between sequential and scheduled outputs.
+* `apiCheck` green with dumps refreshed and no removed lines.
+* `SdpaScheduleBench` shows the hardware schedule ahead of sequential on 8 heads × 4096 keys.
+* Antora builds with the two new pages linked from `nav.adoc`.
+
+== Risks
+
+* **Nested `runBlocking` on `Dispatchers.Default`** — mitigated by caller participation, inline
+  nested regions and `dedicated()`; tested from inside a Default worker.
+* **A body that touches the context** — the contract is documented on `forRange`; the parity
+  tests run bodies on foreign threads.
+* **JIT-dependent lane reductions** — the Panama matmul's `reduceLanes` order changes when the
+  JIT intrinsifies it, so the very first call in a JVM can differ by an ULP from later ones
+  regardless of schedule (observed while writing the tests; filed as
+  https://github.com/SKaiNET-developers/SKaiNET/issues/1261[#1261]). Parity tests warm up first;
+  golden gates should do the same.
+* **Region overhead on tiny ops** — `SDPA_PARALLEL_MIN_WORK` and `Schedule.tasksFor` keep small
+  calls inline; tune from the JMH numbers.
+
+== Open Questions
+
+* Should Android get a `CoroutineSchedule` (coroutines are jvmMain-only in backend-cpu today)?
+* Should `ensureInstalled()` and `withSchedule` detect a caller already on `Dispatchers.Default`
+  and emit `ScheduleDowngraded` instead of running inline?
+* When `TargetOptimizer.stableHloPasses()` exists, which IREE attribute should
+  `skainet.schedule` lower to?
+
+== References
+
+* Halide: Ragan-Kelley et al., "Halide: decoupling algorithms from schedules", PLDI 2013.
+* Kotlin structured concurrency: `coroutineScope`, `launch`, `Dispatchers.Default`.
+* xref:ROOT:explanation/dsl-principles.adoc[The DSL is compute];
+  xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003] (the memory model the contract leans on).
+* Daily-StandAPP `docs/modules/planning/pages/verification-2026-09.adoc` — the profile that motivated this.

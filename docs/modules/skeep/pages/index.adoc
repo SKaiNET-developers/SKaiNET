@@ -126,4 +126,8 @@ Every proposal should include:
 | xref:skeep:004-virtual-tensor-layout.adoc[SKEEP-004]
 | Draft
 | Virtual tensor layout — the logical/physical split through the compile pipeline
+
+| xref:skeep:005-schedules-structured-concurrency.adoc[SKEEP-005]
+| Implemented
+| Schedules — structured concurrency for the compute layer (algorithm/schedule split)
 |===

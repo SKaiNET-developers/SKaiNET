@@ -31,6 +31,16 @@ class SamplesTest {
     }
 
     @Test
+    fun scheduleDemo_is_bit_identical_across_schedules_and_reports_regions() {
+        val r = ScheduleDemo.run()
+        assertTrue(r.defaultScheduleName.startsWith("coroutines("), "JVM default is the hardware coroutine schedule, got ${r.defaultScheduleName}")
+        kotlin.test.assertContentEquals(r.sequential, r.scheduled, "a schedule never changes a result")
+        assertEquals(1, r.regions.size, "one parallel region for one attention call")
+        assertEquals(16, r.regions.single().elements)
+        assertEquals(2, r.regions.single().tasks)
+    }
+
+    @Test
     fun quickstart_forward_produces_class_scores() {
         val pixels = FloatArray(784) { 0f }
         val scores = Quickstart.classify(pixels)

@@ -1,0 +1,169 @@
+= Algorithm and schedule
+:description: Why a network definition never says how many threads run it, what a Schedule is, the contract a scheduled body must keep, how to see which schedule actually ran, and how a schedule request travels into the compiled graph.
+
+A SKaiNET network says *what* is computed. Since SKEEP-005 a second, optional object says *how
+the independent parts of one op are mapped onto cores*: the **schedule**. The split is Halide's
+— algorithm here, schedule there — and it exists for the same reason: the same model must run on
+a phone core, a laptop and a server without being rewritten, and the choice of threads is a
+property of the deployment, not of the mathematics.
+
+This page states the principle, the contract, and how to observe it. Its companion pages:
+xref:explanation/dsl-principles.adoc[The DSL is compute] (the doctrine this follows),
+xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm] (what runs inside
+a task), xref:explanation/memory-model.adoc[The memory model] (why a task must not allocate), and
+xref:tutorials/schedule-getting-started.adoc[Schedules: parallel ops, same results] (the executable walk-through).
+
+== The principle
+
+****
+*A network definition is a pure description of computation. A schedule says how many tasks
+compute the independent parts of one op and on which threads. It lives on the execution context,
+never in the DSL — and it never changes a result: a scheduled run is bit-identical to a
+sequential one.*
+****
+
+Three consequences follow.
+
+* **No schedule words in `network { }`.** A model is defined once. Whether its attention heads
+  run on one thread or twelve is decided where the model is *run*, with
+  `ctx.withSchedule(…)`, exactly like `forwardScope` decides where activations live.
+* **The default is sequential — except where the platform already parallelised.** On the JVM a
+  `DirectCpuExecutionContext()` runs `CoroutineSchedule.hardware()`, the core-count coroutine
+  schedule; that is what the Panama matmul kernels always did, now visible and switchable.
+  Every other target and every context that does not opt in runs `Schedule.Sequential`.
+* **A request that cannot be honoured is visible.** A context that cannot rebuild its ops
+  returns itself from `withSchedule` and emits `TraceEvent.ScheduleDowngraded`. Nothing is
+  silently approximated.
+
+== What a `Schedule` is
+
+[source,kotlin]
+----
+public interface Schedule {
+    public val parallelism: Int                       // 1 = sequential
+    public val name: String                           // "sequential", "coroutines(12)", …
+    public fun forRange(n: Int, grain: Int = 1, body: (start: Int, end: Int) -> Unit)
+    public fun forEach(count: Int, minPerTask: Int = 1, body: (index: Int) -> Unit)
+    public object Sequential : Schedule
+}
+----
+
+It is deliberately small, non-suspending and dependency-free: ops are synchronous on every
+Kotlin target, and `skainet-lang-core` takes no coroutine dependency. The JVM implementation,
+`CoroutineSchedule` in `skainet-backend-cpu`, is structured concurrency in the textbook sense —
+one region is one `coroutineScope`:
+
+* the calling thread runs the first chunk itself, so no core idles blocked on the join;
+* the other chunks are `launch`ed on the dispatcher (`Dispatchers.Default` by default);
+* the scope closes only when every child has finished or been cancelled — the first failure
+  cancels the siblings and is rethrown to the caller;
+* a region reached from inside another region runs inline, so the dispatcher never waits on
+  itself; `CoroutineSchedule.dedicated(n)` owns its own pool for callers that already live on
+  `Dispatchers.Default`.
+
+== The contract a body must keep
+
+`forRange` hands a body disjoint half-open ranges covering `[0, n)`. In exchange the body promises:
+
+. it writes only into pre-allocated, disjoint regions of the output and reads only inputs
+  that are immutable for the region;
+. it never allocates through an `ExecutionContext` and never calls `ctx.ops` — the step
+  allocator (`ForwardScope`), the scratch pool and the op caches are single-threaded by design;
+. it never starts a nested region (an implementation runs one inline anyway);
+. its arithmetic and the order of that arithmetic do not depend on how the range was cut.
+
+The last promise is what makes results bit-identical. The engine's first scheduled op,
+`scaledDotProductAttention`, is the model: every `(batch, head)` pair computes exactly the loop
+it computed before, into its own rows, with its own `scores` scratch; the schedule only decides
+which pairs share a task. A tiny call (a decode step on a handful of heads) stays on the caller —
+a region costs more than it saves below `SDPA_PARALLEL_MIN_WORK` multiply-adds.
+
+== Where it hangs
+
+[cols="2,3",options="header"]
+|===
+| Seam | Role
+
+| `ExecutionContext.schedule`
+| The schedule this context's ops run under. Default `Schedule.Sequential`.
+
+| `ExecutionContext.withSchedule(s)`
+| The context rebuilt so its ops carry `s` — the same seam as `withTensorDataFactory`. A
+  context that cannot rebuild returns itself and traces `ScheduleDowngraded`.
+
+| `ctx.withSchedule(s) { scheduled -> … }`
+| The decorator form (`ScheduledExecutionContext`), composable with `forwardScope`. Tensors
+  created through `scheduled` are bound to the scheduled ops — the usual ops-binding rule.
+
+| `DirectCpuExecutionContext(schedule = …)`
+| The JVM context; omitted, it takes `platformDefaultSchedule()`.
+
+| `DefaultCpuOpsBase(dataFactory, schedule)`
+| Ops hold the schedule; `parallelChunks(outputDim, schedule)` is how a kernel asks for tasks.
+|===
+
+== What runs where
+
+[cols="1,2,2",options="header"]
+|===
+| Target | Default schedule | Parallel schedule available
+
+| JVM | `CoroutineSchedule.hardware()` — `availableProcessors()` on `Dispatchers.Default` | yes (`CoroutineSchedule`, `dedicated()`)
+| Android | `Sequential` | not yet (coroutines are a JVM-only dependency of the backend today)
+| Kotlin/Native (Linux, Apple, Android native) | `Sequential` | not yet
+| JS, Wasm | `Sequential` | no — single-threaded runtimes; a parallel schedule cannot be constructed there
+|===
+
+== How to see which schedule ran
+
+`ctx.schedule.name` tells you what a context carries. To see what actually happened, attach a
+sink:
+
+[source,kotlin]
+----
+val sink = RecordingTraceSink()
+val ctx = DirectCpuExecutionContext(schedule = CoroutineSchedule.hardware(sink = sink))
+// … run …
+sink.eventsOf<TraceEvent.ScheduleRegion>()      // op, schedule, elements, tasks, duration
+sink.eventsOf<TraceEvent.ScheduleDowngraded>()  // requested, effective, reason
+----
+
+A `ScheduleRegion` is emitted per parallel region; a `ScheduleDowngraded` whenever a request was
+not honoured. The Perfetto exporter and the Android trace sink render both.
+
+== The compile lane
+
+The eager schedule is a runtime object; the compiled graph gets the same fact as metadata. In
+the `dag { }` DSL a request is stamped on nodes the way a dtype policy is:
+
+[source,kotlin]
+----
+dag {
+    schedule(parallel("heads")) {                 // every op recorded inside
+        op(sdpa, listOf(q, k, v))
+    }
+    op(matmul, listOf(x, w), schedule = parallel("rows", parallelism = 8))
+}
+----
+
+`ScheduleAnnotationPass` (a core pass whenever a target is named) validates the requested
+dimensions against what the op can be split on — `batch`/`heads` for attention, `rows` for
+matmul, `batch`/`out_channels` for convolutions — stamps the normalised hint into the node's
+metadata and reports every rejection as a diagnostic. The StableHLO export carries it in the
+module header beside the layouts:
+
+[source,mlir]
+----
+module attributes {skainet.tensor_layouts = {…}, skainet.schedule = {attn = {parallel_dims = ["batch", "heads"], parallelism = 8}}} {
+----
+
+One graph, extra schedule metadata. A consumer that ignores the attribute computes the same
+result; turning it into IREE dispatch hints is a later step.
+
+== What this rules out
+
+* A `parallel = true` on a layer in `network { }`. The layer does not know the device.
+* A kernel that spawns its own threads. It asks the schedule for ranges.
+* A body that reaches for `ctx.zeros(...)` or `ctx.ops.matmul(...)` inside a region. It gets a
+  data race in the step allocator, not a faster op.
+* Silent fallbacks. A schedule that cannot run says so in the trace.
