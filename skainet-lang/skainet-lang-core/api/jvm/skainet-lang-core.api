@@ -622,6 +622,11 @@ public final class sk/ainet/context/schedule/ScheduleHintKt {
 	public static final field SCHEDULE_ATTRIBUTE_KEY Ljava/lang/String;
 }
 
+public abstract interface class sk/ainet/context/schedule/ScheduledOps {
+	public abstract fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
+	public abstract fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/lang/tensor/ops/TensorOps;
+}
+
 public final class sk/ainet/java/Losses {
 	public static final field INSTANCE Lsk/ainet/java/Losses;
 	public static final fun bceWithLogits ()Lsk/ainet/lang/nn/loss/Loss;

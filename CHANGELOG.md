@@ -23,6 +23,16 @@
   reported, not fixed here: [#1261](https://github.com/SKaiNET-developers/SKaiNET/issues/1261)
   (Panama matmul's first call differs by an ULP until the JIT intrinsifies `reduceLanes`). Docs: SKEEP-005,
   "Algorithm and schedule", "Schedule getting started" (executable sample).
+- **SKEEP-005 phase 2 — the compiled leg: structure at compile time, cores at run time.**
+  Grouped-query attention is native to `scaledDotProductAttention` (K/V `[b, nKV, Sk, hd]`, query
+  head `h` reads K/V head `h / (H / nKV)`; bit-identical when `nKV == H`, and to the old tiled
+  form otherwise) and lowers to StableHLO with the head groups as a batching dimension — no
+  broadcast or concatenate of K/V. `ScheduleAnnotationPass` stamps structural defaults
+  (`parallel_dims = [batch, heads]` on every attention) and flags an explicit `parallelism` as
+  advisory; defaults can never carry a core count; `HloGenerator.corePasses(target)` exposes the
+  core passes. New `ScheduledOps` seam: `DefaultCpuOps*` report and rebuild their schedule, and
+  `DefaultGraphExecutionContext` answers `schedule`/`withSchedule` from the ops it wraps, so the
+  JVM `ComputeGraphExecutor` runs under the caller's schedule. Key decision and diagram in SKEEP-005.
 - **`tensorFilter` on the single-file `SafeTensorsParametersLoader`**
   ([#1256](https://github.com/SKaiNET-developers/SKaiNET/issues/1256)): parity with the sharded
   loader — an optional predicate over the tensor headers; filtered-out tensors are neither read

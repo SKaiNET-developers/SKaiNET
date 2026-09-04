@@ -273,9 +273,10 @@ public final class sk/ainet/exec/schedule/DedicatedCoroutineSchedule : sk/ainet/
 public final class sk/ainet/exec/tensor/ops/DefaultCpuOps : sk/ainet/exec/tensor/ops/DefaultCpuOpsBase {
 	public fun <init> (Lsk/ainet/lang/tensor/data/TensorDataFactory;)V
 	public fun <init> (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/context/schedule/Schedule;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/lang/tensor/ops/TensorOps;
 }
 
-public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/ops/TensorOps {
+public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/context/schedule/ScheduledOps, sk/ainet/lang/tensor/ops/TensorOps {
 	public fun <init> (Lsk/ainet/lang/tensor/data/TensorDataFactory;)V
 	public fun <init> (Lsk/ainet/lang/tensor/data/TensorDataFactory;Lsk/ainet/context/schedule/Schedule;)V
 	public fun abs (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -307,7 +308,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	public fun ge (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun getDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
-	protected final fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
+	public final fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
 	protected final fun gradStateFrom ([Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/GradState;
 	public fun indexSelect (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun leakyRelu (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
@@ -357,6 +358,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/lang/tensor/o
 	protected final fun untransposedWeight (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun upsample2d (Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;Z)Lsk/ainet/lang/tensor/Tensor;
 	public fun variance (Lsk/ainet/lang/tensor/Tensor;Ljava/lang/Integer;)Lsk/ainet/lang/tensor/Tensor;
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/lang/tensor/ops/TensorOps;
 }
 
 protected final class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase$CpuTensor : sk/ainet/lang/tensor/Tensor {

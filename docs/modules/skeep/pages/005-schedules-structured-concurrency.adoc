@@ -46,8 +46,9 @@ xref:ROOT:explanation/dsl-principles.adoc[The DSL is compute] says such knobs be
 
 == Non-Goals
 
-* IREE-side consumption of `skainet.schedule` (the header is metadata; lowering it into
-  dispatch hints is a later SKEEP).
+* IREE-side consumption of `skainet.schedule`. Decided against, not deferred — see
+  <<_key_decision_who_schedules_what,Key decision: who schedules what>>: the header states
+  structure, the backend owns tiling, and the core count is a run-time property of the device.
 * Concurrent *forwards* on one `ExecutionContext` — still one context per thread.
 * Parallel schedules on Android, Kotlin/Native, JS or Wasm (they get `Sequential`; the JVM
   implementation is the reference).
@@ -55,6 +56,64 @@ xref:ROOT:explanation/dsl-principles.adoc[The DSL is compute] says such knobs be
   tolerance-tested change).
 
 == Proposed Design
+
+=== Key decision: who schedules what
+
+**Structure at compile time, cores at run time.** SKaiNET owns the _structure_ of the graph:
+which axes of an op are independent (`parallel_dims`), the head axis kept outermost, grouped-query
+attention expressed by indexing rather than materialised. The compiler backend (IREE) owns the
+instruction set, tiling and workgroup formation at compile time, and the placement of workgroups on
+cores at run time. The number of cores is never written into an artifact: eager code reads
+`Schedule.parallelism`; an IREE device reads the same value as its task-topology group count when
+it is created. SKaiNET's own executors — the eager ops and the JVM `ComputeGraphExecutor` — are
+ours to parallelise through `Schedule`.
+
+[mermaid]
+----
+flowchart LR
+  subgraph structure["Compile time — structure (SKaiNET owns)"]
+    DSL["network { } / dag { }<br/>algorithm only"] --> Graph["tape → ComputeGraph<br/>Q [b,H,Sq,hd] · K/V [b,nKV,Sk,hd]"]
+    Graph --> Pass["ScheduleAnnotationPass<br/>parallel_dims = [batch, heads]"]
+    Pass --> HLO["StableHLO<br/>GQA dot_general, batching [b, nKV]<br/>header skainet.schedule = advisory"]
+  end
+  subgraph isa["Compile time — ISA / tiling (IREE owns)"]
+    HLO --> VMFB[".vmfb — workgroups,<br/>no core count"]
+  end
+  subgraph cores["Run time — cores (one knob)"]
+    Knob["Schedule.parallelism<br/>SKAINET_TASK_GROUPS"]
+    Knob --> JVM["DirectCpuExecutionContext.ops<br/>eager + ComputeGraphExecutor"]
+    Knob --> Task["IREE local-task device<br/>task_topology_group_count"]
+    Graph --> JVM
+    VMFB --> Task
+  end
+----
+
+[cols="2,3,1", options="header"]
+|===
+| Decision | Owner | When
+
+| Which axes are independent; graph layout; GQA by index, never materialised
+| SKaiNET passes (`ScheduleAnnotationPass` defaults, the attention lowering)
+| compile time
+
+| Instruction set, tiling, workgroup formation
+| IREE (`iree-compile`)
+| compile time
+
+| Mapping workgroups onto cores
+| IREE task runtime, group count from the same knob as `Schedule.parallelism`
+| run time
+
+| Eager ops and the JVM `ComputeGraphExecutor`
+| SKaiNET `Schedule` (`CoroutineSchedule.hardware()` on the JVM)
+| run time
+|===
+
+Consequences: the `skainet.schedule` header is a contract for tooling — `parallel_dims` is
+structural and authoritative, `parallelism` is advisory (stamped only when the DSL asked for it,
+flagged by a diagnostic, read by no compile-time consumer). One `.vmfb` runs unchanged on a
+4-core and an 8-core device. The open question "which IREE attribute should `skainet.schedule`
+lower to?" is answered: none.
 
 === The `Schedule` contract (`skainet-lang-core`)
 
@@ -118,6 +177,21 @@ op (sdpa: batch, heads; matmul: rows; conv: batch, out_channels), stamps the nor
 `skainet.schedule = {<node> = {parallel_dims = ["heads"], parallelism = 8}}` in the module header
 beside `skainet.tensor_layouts`. One graph, extra schedule metadata.
 
+Phase 2 makes the structure explicit whether or not the DSL said anything:
+
+* `ScheduleAnnotationPass` applies `structuralDefaults()` (attention → `parallel_dims = [batch,
+  heads]`) to every op without a hint of its own; defaults may never carry a core count, and an
+  explicit `parallelism` is kept but flagged advisory. `HloGenerator.corePasses(target)` exposes
+  the layout and schedule passes for exporters that trace their own tape.
+* `scaledDotProductAttention` is grouped-query native: K/V `[b, nKV, Sk, hd]` with `nKV | H`.
+  The CPU kernel reads K/V through the group index (same loop order, bit-identical when
+  `nKV == H`); the StableHLO lowering views Q as `[b, nKV, nRep, Sq, hd]` and batches both
+  `dot_general`s over `[b, nKV]` with `nRep` a free axis — K/V are never broadcast or
+  concatenated. That is the structural statement the backend tiles over.
+* The graph/tape contexts answer `schedule` from the ops they wrap (`ScheduledOps`), so the JVM
+  `ComputeGraphExecutor` — built from `ctx.ops` — runs under the caller's schedule and a
+  `withSchedule` on a graph context yields a sibling instead of a downgrade.
+
 === Thread-safety work that made it possible
 
 `KernelDispatch` and `KernelRegistry` now keep immutable snapshots with serialized writes, so
@@ -159,6 +233,15 @@ bodies. Behaviour change on the JVM only: `DirectCpuExecutionContext()` now runs
 . Docs: xref:ROOT:explanation/schedules.adoc[Algorithm and schedule],
   xref:ROOT:tutorials/schedule-getting-started.adoc[Schedule getting started] with an executable sample.
 . Downstream: SKaiNET-transformers per-head attention on the same `Schedule` (its own spec).
+. Phase 2 — graph contexts honour the schedule of their ops (`ScheduledOps`,
+  `ComputeGraphExecutorScheduleTest`, `DefaultGraphExecutionContextScheduleTest`).
+. Phase 2 — grouped-query native SDPA, eager and lowered (`SdpaGqaParityTest`,
+  `SdpaGqaHloExportTest`).
+. Phase 2 — structural defaults and the advisory rule (`ScheduleAnnotationPassTest`,
+  `ScheduleModuleAttributeTest`), `HloGenerator.corePasses`.
+. Phase 2 downstream — transformers record GQA without `repeatKVHeads`, export harnesses stamp
+  the structural hints, OPTIMIZED-mode parity, and the IREE run-time knob
+  (`SKAINET_TASK_GROUPS` → task-topology group count) in the Android runtime.
 
 == Acceptance Criteria
 
@@ -166,6 +249,10 @@ bodies. Behaviour change on the JVM only: `DirectCpuExecutionContext()` now runs
 * `apiCheck` green with dumps refreshed and no removed lines.
 * `SdpaScheduleBench` shows the hardware schedule ahead of sequential on 8 heads × 4096 keys.
 * Antora builds with the two new pages linked from `nav.adoc`.
+* Phase 2: a graph executed through `ComputeGraphExecutor` with scheduled ops routes SDPA units
+  through that schedule, bit-identical to sequential; grouped K/V equals tiled K/V bit for bit;
+  the GQA export contains no `stablehlo.concatenate` of K/V and its header states
+  `parallel_dims` without a `parallelism`; every `.vmfb` is core-count free.
 
 == Risks
 
@@ -205,8 +292,9 @@ include::partial$005-sdpa-bench.adoc[]
 * Should Android get a `CoroutineSchedule` (coroutines are jvmMain-only in backend-cpu today)?
 * Should `ensureInstalled()` and `withSchedule` detect a caller already on `Dispatchers.Default`
   and emit `ScheduleDowngraded` instead of running inline?
-* When `TargetOptimizer.stableHloPasses()` exists, which IREE attribute should
-  `skainet.schedule` lower to?
+* ~~When `TargetOptimizer.stableHloPasses()` exists, which IREE attribute should
+  `skainet.schedule` lower to?~~ Answered in phase 2: none. The header stays advisory; the
+  structure is in the ops themselves and the core count is set on the device at run time.
 
 == References
 

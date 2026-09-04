@@ -158,7 +158,21 @@ module attributes {skainet.tensor_layouts = {…}, skainet.schedule = {attn = {p
 ----
 
 One graph, extra schedule metadata. A consumer that ignores the attribute computes the same
-result; turning it into IREE dispatch hints is a later step.
+result — and by decision no compile-time consumer reads `parallelism`.
+
+=== Who schedules what
+
+The compiled leg follows one rule: *structure at compile time, cores at run time*. SKaiNET's
+passes state the structure — an attention without any DSL hint is still stamped
+`parallel_dims = [batch, heads]`, and grouped-query attention lowers with the head groups as a
+batching dimension of both `dot_general`s instead of broadcasting or concatenating K/V. The
+compiler backend (IREE) owns the instruction set, tiling and workgroup formation, and its task
+runtime maps workgroups onto cores when the device is created. A `parallelism` that the DSL asked
+for is emitted but advisory; the same number reaches the device as its task-topology group count
+at run time, so one `.vmfb` runs unchanged on any core count. On the JVM the compiled
+`ComputeGraphExecutor` is built from the context's ops and therefore runs under the context's
+schedule like the eager path. The full decision, with a diagram, is in
+xref:skeep:005-schedules-structured-concurrency.adoc#_key_decision_who_schedules_what[SKEEP-005].
 
 == What this rules out
 

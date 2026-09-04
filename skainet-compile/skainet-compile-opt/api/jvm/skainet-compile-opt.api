@@ -164,6 +164,7 @@ public final class sk/ainet/compile/opt/passes/ScheduleAnnotationPass$Companion 
 	public final fun getKNOWN_DIMS ()Ljava/util/Map;
 	public final fun hintOf (Lsk/ainet/lang/graph/GraphNode;)Lsk/ainet/context/schedule/ScheduleHint;
 	public final fun normalizeOpName (Ljava/lang/String;)Ljava/lang/String;
+	public final fun structuralDefaults ()Ljava/util/Map;
 }
 
 public final class sk/ainet/compile/opt/passes/SharedWeightDeduplicationPass : sk/ainet/compile/opt/GraphOptimizationPass {
