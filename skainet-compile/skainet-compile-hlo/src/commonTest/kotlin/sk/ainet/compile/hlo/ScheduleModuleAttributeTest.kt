@@ -43,6 +43,24 @@ class ScheduleModuleAttributeTest {
     }
 
     @Test
+    fun defaultStampedAttentionEmitsStructureOnly() {
+        // SKEEP-005 phase 2: an sdpa without any DSL hint still states its structure in the header,
+        // and never a core count.
+        val graph = DefaultComputeGraph()
+        val qs = TensorSpec("q", listOf(1, 4, 8, 16), "FP32"); val ks = TensorSpec("k", listOf(1, 2, 8, 16), "FP32")
+        val q = GraphNode("q", InputOperation<DType, Any>(), emptyList(), listOf(qs))
+        val k = GraphNode("k", InputOperation<DType, Any>(), emptyList(), listOf(ks))
+        val v = GraphNode("v", InputOperation<DType, Any>(), emptyList(), listOf(ks))
+        val sdpa = GraphNode("attn", sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation(mapOf("causal" to true)), listOf(qs, ks, ks), listOf(TensorSpec("o", listOf(1, 4, 8, 16), "FP32")))
+        listOf(q, k, v, sdpa).forEach(graph::addNode)
+        graph.addEdge(GraphEdge("e0", q, sdpa, 0, 0, qs)); graph.addEdge(GraphEdge("e1", k, sdpa, 0, 1, ks)); graph.addEdge(GraphEdge("e2", v, sdpa, 0, 2, ks))
+        val stamped = ScheduleAnnotationPass("llvm-cpu").apply(graph).graph
+        val mlir = StableHloConverterFactory.createBasic().convert(stamped, "attn").content
+        assertTrue(mlir.contains("skainet.schedule = {attn = {parallel_dims = [\"batch\", \"heads\"]}}"), mlir)
+        assertFalse(mlir.contains("parallelism"), "structure only, no core count:\n$mlir")
+    }
+
+    @Test
     fun graphWithoutHintsKeepsTheBareHeader() {
         val mlir = toStableHlo(chain(null), "plain").content
         assertTrue(mlir.contains("module {"), mlir)
