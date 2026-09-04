@@ -283,6 +283,14 @@ prefill + 32 greedy tokens, 2026-09-03; greedy tokens identical in every row):
 | `CoroutineSchedule.hardware()` / positional (copy-free) | 2,590 ms | 10 ms | 9.7
 |===
 
+Phase 2, compiled JVM leg (`OptimizedModeScheduleParityTest`, SmolLM2-135M dequantized, 9 heads over
+3 KV heads, `compileUnoptimized`, 2026-09-04): the OPTIMIZED runtimes under `Sequential` and
+`CoroutineSchedule.hardware()` are bit-identical at every step and match the eager leg at
+position 0 within 2e-5. No measurable speedup there (≈1.18 s/step either way): the shape-[1]
+graph replays position 0, so its SDPA is far below `SDPA_PARALLEL_MIN_WORK`; the compiled leg's
+attention gain will show once the graph carries a real prefix (the KV-cache replay limitation
+documented in the transformers `StateManagementTest`, unrelated to schedules).
+
 Engine microbenchmark (`SdpaScheduleBench`, same machine): see the table below.
 
 include::partial$005-sdpa-bench.adoc[]
