@@ -50,13 +50,24 @@ class SDPAShapeValidationTest {
     }
 
     @Test
-    fun rejects_Q_and_K_with_mismatched_head_count() {
-        val q = zeros(Shape(1, 8, 1, 64))
-        val k = zeros(Shape(1, 4, 1, 64)) // K has fewer heads — ungrouped K/V tiling never happened
+    fun rejects_Q_and_K_with_nonDividing_head_count() {
+        // SKEEP-005 phase 2: grouped-query attention is native — K/V heads that DIVIDE Q heads
+        // are the contract; a count that does not divide is still a caller bug.
+        val q = zeros(Shape(1, 6, 1, 64))
+        val k = zeros(Shape(1, 4, 1, 64))
         val v = zeros(Shape(1, 4, 1, 64))
         assertFailsWith<IllegalArgumentException> {
             ctx.ops.scaledDotProductAttention(q, k, v, mask = null, scale = 1f, causal = true)
         }
+    }
+
+    @Test
+    fun accepts_grouped_query_head_counts() {
+        val q = zeros(Shape(1, 8, 1, 64))
+        val k = zeros(Shape(1, 4, 1, 64))
+        val v = zeros(Shape(1, 4, 1, 64))
+        val out = ctx.ops.scaledDotProductAttention(q, k, v, mask = null, scale = 1f, causal = true)
+        kotlin.test.assertEquals(listOf(1, 8, 1, 64), out.shape.dimensions.toList())
     }
 
     @Test
