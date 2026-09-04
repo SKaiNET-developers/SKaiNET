@@ -5,10 +5,14 @@ import sk.ainet.exec.kernel.ScalarKernelProvider
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.TensorOps
 
-internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> TensorOps {
+internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory, sk.ainet.context.schedule.Schedule) -> TensorOps {
     println("[SKaiNET] Using Accelerate-backed CPU operations (ARM NEON + AMX)")
     // Accelerate overrides dense FP32 matmul; packed-quant weights still flow through
     // DefaultCpuOpsBase, so register the scalar packed kernels (no ServiceLoader on Native).
     KernelRegistry.register(ScalarKernelProvider)
-    return { factory -> AccelerateCpuOps(factory) }
+    return { factory, schedule -> AccelerateCpuOps(factory, schedule) }
 }
+
+
+internal actual fun platformDefaultSchedule(): sk.ainet.context.schedule.Schedule =
+    sk.ainet.context.schedule.Schedule.Sequential

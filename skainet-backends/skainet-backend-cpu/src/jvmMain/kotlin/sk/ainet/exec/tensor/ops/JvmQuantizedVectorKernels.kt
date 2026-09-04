@@ -1,5 +1,8 @@
 package sk.ainet.exec.tensor.ops
 
+import sk.ainet.context.schedule.Schedule
+import sk.ainet.exec.schedule.CoroutineSchedule
+
 import jdk.incubator.vector.ByteVector
 import jdk.incubator.vector.FloatVector
 import jdk.incubator.vector.VectorOperators
@@ -147,7 +150,8 @@ internal object JvmQuantizedVectorKernels {
         inputDim: Int,
         outputDim: Int,
         output: FloatArray,
-        outputOffset: Int = 0
+        outputOffset: Int = 0,
+        schedule: Schedule = CoroutineSchedule.hardware(),
     ) {
         val blockSize = 32
         val bytesPerBlock = 34  // 2 scale + 32 codes
@@ -191,14 +195,15 @@ internal object JvmQuantizedVectorKernels {
         inputDim: Int,
         outputDim: Int,
         output: FloatArray,
-        outputOffset: Int = 0
+        outputOffset: Int = 0,
+        schedule: Schedule = CoroutineSchedule.hardware(),
     ) {
         val blockSize = 256
         val subBlockSize = 32
         val bytesPerBlock = 144  // 2 d + 2 dMin + 12 scales + 128 codes
         val blocksPerInputDim = (inputDim + blockSize - 1) / blockSize
 
-        parallelChunks(outputDim) { startO, endO ->
+        parallelChunks(outputDim, schedule) { startO, endO ->
             // Each task owns its own scratch arrays to avoid cross-thread contention.
             val codeBuf = FloatArray(subBlockSize)
             val scaleIdxBuf = IntArray(8)
@@ -307,7 +312,8 @@ internal object JvmQuantizedVectorKernels {
         inputDim: Int,
         outputDim: Int,
         output: FloatArray,
-        outputOffset: Int = 0
+        outputOffset: Int = 0,
+        schedule: Schedule = CoroutineSchedule.hardware(),
     ) {
         val blockSize = 256
         val bytesPerBlock = 210
@@ -315,7 +321,7 @@ internal object JvmQuantizedVectorKernels {
         val floatStep = floatSpecies.length()
         val loopBound = floatSpecies.loopBound(blockSize)
 
-        parallelChunks(outputDim) { startO, endO ->
+        parallelChunks(outputDim, schedule) { startO, endO ->
             // Per-task scratch — must not be shared across worker threads.
             val scratch = FloatArray(blockSize)
             for (o in startO until endO) {

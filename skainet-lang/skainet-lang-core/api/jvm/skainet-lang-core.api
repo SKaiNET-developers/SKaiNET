@@ -209,6 +209,7 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
@@ -217,6 +218,7 @@ public final class sk/ainet/context/DefaultDataExecutionContext : sk/ainet/conte
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -239,6 +241,7 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public abstract fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public abstract fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public abstract fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public abstract fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
@@ -247,6 +250,7 @@ public abstract interface class sk/ainet/context/ExecutionContext {
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -264,6 +268,7 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun getInTraining (Lsk/ainet/context/ExecutionContext;)Z
 	public static fun getMemoryScope (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public static fun getSchedule (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/context/schedule/Schedule;
 	public static fun getScratch (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/context/ExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/context/ExecutionContext;)Z
@@ -271,6 +276,7 @@ public final class sk/ainet/context/ExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withSchedule (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public static fun withTensorDataFactory (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -369,6 +375,7 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
@@ -377,6 +384,7 @@ public final class sk/ainet/context/PhaseOverridingExecutionContext : sk/ainet/c
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -400,6 +408,43 @@ public final class sk/ainet/context/ResettableExecutionObserver$DefaultImpls {
 	public static fun onTensorMaterialized (Lsk/ainet/context/ResettableExecutionObserver;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
 }
 
+public final class sk/ainet/context/ScheduledExecutionContext : sk/ainet/context/ExecutionContext {
+	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/schedule/Schedule;)V
+	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun fromData (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun fromIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun full (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;Ljava/lang/Number;)Lsk/ainet/lang/tensor/Tensor;
+	public fun getExecutionStats ()Lsk/ainet/context/ExecutionStats;
+	public fun getHooks ()Lsk/ainet/lang/nn/hooks/ForwardHooks;
+	public fun getInTraining ()Z
+	public fun getMemoryInfo ()Lsk/ainet/context/MemoryInfo;
+	public fun getMemoryScope ()Lsk/ainet/lang/memory/Scope;
+	public fun getMemoryTracker ()Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
+	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
+	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
+	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
+	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
+	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
+	public fun isRecording ()Z
+	public fun ones (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
+	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
+	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
+	public fun wrapIntArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[I)Lsk/ainet/lang/tensor/Tensor;
+	public fun zeros (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
+}
+
+public final class sk/ainet/context/ScheduledExecutionContextKt {
+	public static final fun withSchedule (Lsk/ainet/context/ExecutionContext;Lsk/ainet/context/schedule/Schedule;Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
+}
+
 public final class sk/ainet/context/ScopedExecutionContext : sk/ainet/context/ExecutionContext {
 	public fun <init> (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/memory/Scope;)V
 	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
@@ -416,6 +461,7 @@ public final class sk/ainet/context/ScopedExecutionContext : sk/ainet/context/Ex
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
@@ -424,6 +470,7 @@ public final class sk/ainet/context/ScopedExecutionContext : sk/ainet/context/Ex
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -451,6 +498,7 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun getInTraining (Lsk/ainet/context/TrainingExecutionContext;)Z
 	public static fun getMemoryScope (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public static fun getSchedule (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/context/schedule/Schedule;
 	public static fun getScratch (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/context/TrainingExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/context/TrainingExecutionContext;)Z
@@ -458,6 +506,7 @@ public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withSchedule (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public static fun withTensorDataFactory (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -513,6 +562,64 @@ public final class sk/ainet/context/observers/MemorySnapshotObserver : sk/ainet/
 	public fun onTensorMaterialized (Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;)V
 	public fun reset ()V
 	public final fun results ()Ljava/util/List;
+}
+
+public abstract interface class sk/ainet/context/schedule/Schedule {
+	public static final field Companion Lsk/ainet/context/schedule/Schedule$Companion;
+	public fun forEach (IILkotlin/jvm/functions/Function1;)V
+	public static synthetic fun forEach$default (Lsk/ainet/context/schedule/Schedule;IILkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public abstract fun forRange (IILkotlin/jvm/functions/Function2;)V
+	public static synthetic fun forRange$default (Lsk/ainet/context/schedule/Schedule;IILkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun getParallelism ()I
+}
+
+public final class sk/ainet/context/schedule/Schedule$Companion {
+	public final fun chunkFor (II)I
+	public final fun tasksFor (III)I
+}
+
+public final class sk/ainet/context/schedule/Schedule$DefaultImpls {
+	public static fun forEach (Lsk/ainet/context/schedule/Schedule;IILkotlin/jvm/functions/Function1;)V
+	public static synthetic fun forEach$default (Lsk/ainet/context/schedule/Schedule;IILkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun forRange$default (Lsk/ainet/context/schedule/Schedule;IILkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
+public final class sk/ainet/context/schedule/Schedule$Sequential : sk/ainet/context/schedule/Schedule {
+	public static final field INSTANCE Lsk/ainet/context/schedule/Schedule$Sequential;
+	public fun forEach (IILkotlin/jvm/functions/Function1;)V
+	public fun forRange (IILkotlin/jvm/functions/Function2;)V
+	public fun getName ()Ljava/lang/String;
+	public fun getParallelism ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/context/schedule/ScheduleHint {
+	public static final field Companion Lsk/ainet/context/schedule/ScheduleHint$Companion;
+	public static final field DIMS_KEY Ljava/lang/String;
+	public static final field PARALLELISM_KEY Ljava/lang/String;
+	public fun <init> (Ljava/util/List;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun copy (Ljava/util/List;Ljava/lang/Integer;)Lsk/ainet/context/schedule/ScheduleHint;
+	public static synthetic fun copy$default (Lsk/ainet/context/schedule/ScheduleHint;Ljava/util/List;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/context/schedule/ScheduleHint;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getParallelDims ()Ljava/util/List;
+	public final fun getParallelism ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public final fun toAttributeMap ()Ljava/util/Map;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/context/schedule/ScheduleHint$Companion {
+	public final fun fromAttribute (Ljava/lang/Object;)Lsk/ainet/context/schedule/ScheduleHint;
+	public final fun parallel ([Ljava/lang/String;Ljava/lang/Integer;)Lsk/ainet/context/schedule/ScheduleHint;
+	public static synthetic fun parallel$default (Lsk/ainet/context/schedule/ScheduleHint$Companion;[Ljava/lang/String;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/context/schedule/ScheduleHint;
+}
+
+public final class sk/ainet/context/schedule/ScheduleHintKt {
+	public static final field SCHEDULE_ATTRIBUTE_KEY Ljava/lang/String;
 }
 
 public final class sk/ainet/java/Losses {
@@ -2320,6 +2427,46 @@ public final class sk/ainet/lang/memory/trace/TraceEvent$Plan : sk/ainet/lang/me
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class sk/ainet/lang/memory/trace/TraceEvent$ScheduleDowngraded : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Lsk/ainet/lang/memory/trace/TraceEvent$ScheduleDowngraded;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$ScheduleDowngraded;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$ScheduleDowngraded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEffective ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public final fun getRequested ()Ljava/lang/String;
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/trace/TraceEvent$ScheduleRegion : sk/ainet/lang/memory/trace/TraceEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;IIJJ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;IIJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;IIJJ)Lsk/ainet/lang/memory/trace/TraceEvent$ScheduleRegion;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/trace/TraceEvent$ScheduleRegion;Ljava/lang/String;Ljava/lang/String;IIJJILjava/lang/Object;)Lsk/ainet/lang/memory/trace/TraceEvent$ScheduleRegion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationNanos ()J
+	public final fun getElements ()I
+	public final fun getOp ()Ljava/lang/String;
+	public final fun getSchedule ()Ljava/lang/String;
+	public final fun getTasks ()I
+	public fun getTimeNanos ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/memory/trace/TraceEvent$ScopeReset : sk/ainet/lang/memory/trace/TraceEvent {
 	public fun <init> (Lsk/ainet/lang/memory/ScopeKind;JJJ)V
 	public synthetic fun <init> (Lsk/ainet/lang/memory/ScopeKind;JJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -2482,6 +2629,7 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun getObservers ()Lsk/ainet/context/ExecutionObserverRegistry;
 	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
 	public fun getPhase ()Lsk/ainet/context/Phase;
+	public fun getSchedule ()Lsk/ainet/context/schedule/Schedule;
 	public fun getScratch ()Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public fun getTensorDataFactory ()Lsk/ainet/lang/tensor/data/TensorDataFactory;
 	public fun getTraceSink ()Lsk/ainet/lang/memory/trace/TraceSink;
@@ -2490,6 +2638,7 @@ public final class sk/ainet/lang/nn/DefaultNeuralNetworkExecutionContext : sk/ai
 	public fun placeholder (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun registerObserver (Lsk/ainet/context/ExecutionObserver;)V
 	public fun unregisterObserver (Lsk/ainet/context/ExecutionObserver;)V
+	public fun withSchedule (Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public fun withTensorDataFactory (Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public fun wrapByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun wrapFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -2816,6 +2965,7 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun getInTraining (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
 	public static fun getMemoryScope (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/memory/Scope;
 	public static fun getMemoryTracker (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/storage/MemoryTracker;
+	public static fun getSchedule (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/context/schedule/Schedule;
 	public static fun getScratch (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/tensor/scratch/ScratchPool;
 	public static fun getTraceSink (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Lsk/ainet/lang/memory/trace/TraceSink;
 	public static fun isRecording (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;)Z
@@ -2823,6 +2973,7 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContext$DefaultImpls {
 	public static fun placeholder (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun registerObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
 	public static fun unregisterObserver (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/ExecutionObserver;)V
+	public static fun withSchedule (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/context/schedule/Schedule;)Lsk/ainet/context/ExecutionContext;
 	public static fun withTensorDataFactory (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/data/TensorDataFactory;)Lsk/ainet/context/ExecutionContext;
 	public static fun wrapByteArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun wrapFloatArray (Lsk/ainet/lang/nn/NeuralNetworkExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;

@@ -26,8 +26,16 @@ import sk.ainet.lang.tensor.storage.TensorEncoding
 @ExperimentalMemoryApi
 public object KernelDispatch {
 
-    private val kernels: MutableList<ViewKernel> = mutableListOf()
+    /**
+     * Immutable snapshot, replaced wholesale under [lock] on every registration; readers on the
+     * hot path ([find], [kernels]) never see a half-built list. Schedule workers (SKEEP-005) may
+     * dispatch concurrently, so the registry must be safe to *read* from many threads while the
+     * rare writes stay serialized.
+     */
+    @kotlin.concurrent.Volatile
+    private var kernels: List<ViewKernel> = emptyList()
 
+    @kotlin.concurrent.Volatile
     private var autoInstallAttempted: Boolean = false
 
     /**
@@ -51,6 +59,12 @@ public object KernelDispatch {
      */
     public fun ensureInstalled() {
         if (autoInstallAttempted || kernels.isNotEmpty()) return
+        installOnce()
+    }
+
+    @JvmSynchronized
+    private fun installOnce() {
+        if (autoInstallAttempted || kernels.isNotEmpty()) return
         autoInstallAttempted = true
         if (KernelRegistry.providers().isEmpty()) installPlatformKernelProviders()
         KernelPacks.install()
@@ -58,19 +72,21 @@ public object KernelDispatch {
     }
 
     /** Register [kernel]; later registrations win for the same key (a pack can override the reference). */
+    @JvmSynchronized
     public fun register(kernel: ViewKernel) {
-        kernels.removeAll { it.key == kernel.key && it.name == kernel.name }
-        kernels.add(0, kernel)
+        val kept = kernels.filterNot { it.key == kernel.key && it.name == kernel.name }
+        kernels = listOf(kernel) + kept
     }
 
     /** Every registered kernel, most recently registered first. */
-    public fun kernels(): List<ViewKernel> = kernels.toList()
+    public fun kernels(): List<ViewKernel> = kernels
 
     /** The kernel registered for [key], or `null`. */
     public fun find(key: KernelKey): ViewKernel? = kernels.firstOrNull { it.key == key }
 
+    @JvmSynchronized
     public fun clearForTesting() {
-        kernels.clear()
+        kernels = emptyList()
         autoInstallAttempted = false
     }
 
@@ -114,8 +130,10 @@ public object KernelDispatch {
      * reference-kernel fallback invisible — set this (e.g. from a diagnostic harness) to
      * observe dispatch decisions everywhere without threading a sink through the ops layer.
      */
+    @kotlin.concurrent.Volatile
     public var defaultSink: TraceSink = NoopTraceSink
 
+    @kotlin.concurrent.Volatile
     private var warnedReferenceFallback: Boolean = false
 
     /**

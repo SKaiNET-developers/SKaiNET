@@ -1,0 +1,81 @@
+= Schedules: parallel ops, same results
+:description: Run one attention op sequentially and on the core-count coroutine schedule, prove the outputs are bit-identical, and read the trace that says which schedule ran.
+
+You will run `scaledDotProductAttention` three ways — on the platform default, forced
+sequential, and on an explicit two-worker coroutine schedule — compare the outputs bit for bit,
+and read the trace events a schedule emits. Every snippet below is compiled and executed in CI
+from `skainet-docs-samples` (`ScheduleDemo.kt`).
+
+== Prerequisites
+
+* JDK 21+ with the Vector API module (`--enable-preview --add-modules jdk.incubator.vector`).
+* `sk.ainet.core:skainet-lang-core` and `sk.ainet.core:skainet-backend-cpu` on the classpath.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ScheduleDemo.kt[tag=imports]
+----
+
+== Step 1 — Build the operands through the context
+
+The schedule is a property of the *context*, so build the inputs through the context you will
+run on — a tensor is bound to the ops that created it.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ScheduleDemo.kt[tag=operands]
+----
+
+== Step 2 — Run on the platform default, then sequentially
+
+`DirectCpuExecutionContext()` on the JVM carries `CoroutineSchedule.hardware()` — one task per
+logical core on `Dispatchers.Default`. `withSchedule(Schedule.Sequential)` rebuilds the same
+context with single-task ops; nothing else changes.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ScheduleDemo.kt[tag=sequential]
+----
+
+== Step 3 — Pick an explicit schedule and record what ran
+
+A `CoroutineSchedule` takes a dispatcher, a parallelism and an optional trace sink. With a
+`RecordingTraceSink` every parallel region shows up as a `ScheduleRegion` event.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ScheduleDemo.kt[tag=scheduled]
+----
+
+== Step 4 — Verify
+
+The CI assertion on this exact code is `assertContentEquals(sequential, scheduled)`: a
+schedule never changes a result. The recorded region reports the op, the schedule name, the
+number of `(batch, head)` units and the tasks they were split into.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ScheduleDemo.kt[tag=trace]
+----
+
+Expected output (shape and numbers depend on your machine):
+
+[source,text]
+----
+default schedule: coroutines(12)
+region: forRange on coroutines(2) — 16 units in 2 tasks
+outputs identical: true
+----
+
+== Where this applies today
+
+* `scaledDotProductAttention` on every CPU context (heads × batch are the units).
+* The Panama Q4_K / Q5_K matmul kernels and the FP32 tiled GEMM (output rows are the units).
+* SKaiNET-transformers' `MultiHeadAttention` reads `ctx.schedule` for per-head decode and
+  prefill — see its own "Attention schedules" page.
+
+== Next steps
+
+* xref:explanation/schedules.adoc[Algorithm and schedule] — the principle and the contract.
+* xref:skeep:005-schedules-structured-concurrency.adoc[SKEEP-005] — the design record.
+* xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm] — what runs inside a task.

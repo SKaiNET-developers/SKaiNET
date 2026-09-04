@@ -78,6 +78,27 @@ public sealed interface TraceEvent {
     /** A platform counter sample (RSS, page faults, heap, direct memory …). */
     public data class Counter(val name: String, val value: Long, val unit: String = "bytes", override val timeNanos: Long = TraceClock.nowNanos()) : TraceEvent
 
+    /**
+     * A schedule was requested that this context or target cannot honour (SKEEP-005); [effective]
+     * is what runs instead. Doctrine: a downgrade is visible, never a silent approximation.
+     */
+    public data class ScheduleDowngraded(
+        val requested: String,
+        val effective: String,
+        val reason: String,
+        override val timeNanos: Long = TraceClock.nowNanos(),
+    ) : TraceEvent
+
+    /** A parallel region ran: [elements] split into [tasks] on [schedule] for [op]. */
+    public data class ScheduleRegion(
+        val op: String,
+        val schedule: String,
+        val elements: Int,
+        val tasks: Int,
+        val durationNanos: Long = 0L,
+        override val timeNanos: Long = TraceClock.nowNanos(),
+    ) : TraceEvent
+
     /** A memory plan was computed (M0 `MemoryPlan`): the plan-vs-actual check (#1030) compares this with the allocation events. */
     public data class Plan(
         val model: String,

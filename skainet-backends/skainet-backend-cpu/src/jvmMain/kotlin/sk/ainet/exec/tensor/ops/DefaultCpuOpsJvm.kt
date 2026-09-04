@@ -44,7 +44,8 @@ import kotlin.math.max
 
 internal class DefaultCpuOpsJvm(
     dataFactory: TensorDataFactory,
-) : DefaultCpuOpsBase(dataFactory) {
+    schedule: sk.ainet.context.schedule.Schedule = sk.ainet.context.schedule.Schedule.Sequential,
+) : DefaultCpuOpsBase(dataFactory, schedule) {
 
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 
@@ -668,6 +669,7 @@ internal class DefaultCpuOpsJvm(
                             outputDim,
                             outBuffer,
                             batch * outputDim,
+                            schedule,
                         )
                     }
                 }
@@ -701,6 +703,7 @@ internal class DefaultCpuOpsJvm(
                             bData.packedData, 0,
                             inputDim, outputDim,
                             outBuffer, batch * outputDim,
+                            schedule,
                         )
                     } else {
                         JvmQuantizedVectorKernels.matmulQ4_KVec(
@@ -710,6 +713,7 @@ internal class DefaultCpuOpsJvm(
                             outputDim,
                             outBuffer,
                             batch * outputDim,
+                            schedule,
                         )
                     }
                 }
@@ -1074,6 +1078,7 @@ internal class DefaultCpuOpsJvm(
                     aMemSeg.segment, aMemSeg.segmentByteOffset,
                     bMemSeg.segment, bMemSeg.segmentByteOffset,
                     result.segment, result.segmentByteOffset,
+                    schedule = schedule,
                 )
             } else {
                 JvmVectorKernels.matmulFloatMemSeg(

@@ -7,7 +7,7 @@ import sk.ainet.exec.kernel.ScalarKernelProvider
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.TensorOps
 
-internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> TensorOps {
+internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory, sk.ainet.context.schedule.Schedule) -> TensorOps {
     // ART supports java.util.ServiceLoader, so Android discovers kernel
     // providers the same way the JVM does (#920): modules like
     // skainet-backend-jni-cpu ship a META-INF/services entry and are
@@ -21,5 +21,9 @@ internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory) -> Tenso
     // Scalar reference last: priority 0, always available — the floor the
     // registry cascades to when no accelerated provider carries a kernel.
     KernelRegistry.register(ScalarKernelProvider)
-    return { factory -> DefaultCpuOps(factory) }
+    return { factory, schedule -> DefaultCpuOps(factory, schedule) }
 }
+
+
+internal actual fun platformDefaultSchedule(): sk.ainet.context.schedule.Schedule =
+    sk.ainet.context.schedule.Schedule.Sequential

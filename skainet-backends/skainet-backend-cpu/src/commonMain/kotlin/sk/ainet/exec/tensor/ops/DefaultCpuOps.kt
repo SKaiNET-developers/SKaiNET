@@ -47,9 +47,22 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.reflect.KClass
 
+/**
+ * Below this many multiply-adds a scaled-dot-product-attention call runs on the caller's thread
+ * regardless of the context's schedule: a coroutine region costs more than it saves (SKEEP-005).
+ * 8 heads × 64 keys × 128 dims × 2 ≈ 131k is well under it; a 512-token prefill chunk is far over.
+ */
+internal const val SDPA_PARALLEL_MIN_WORK: Long = 1L shl 20
+
 @Backend(id = "cpu", displayName = "CPU")
 @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#defaultcpuops")
-public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory) : TensorOps {
+public open class DefaultCpuOpsBase(
+    protected val dataFactory: TensorDataFactory,
+    /** How this ops instance maps independent work onto cores (SKEEP-005); [Schedule.Sequential] by default. */
+    protected val schedule: sk.ainet.context.schedule.Schedule,
+) : TensorOps {
+    public constructor(dataFactory: TensorDataFactory) : this(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
+
 
     protected class CpuTensor<T : DType, V>(
         override val data: sk.ainet.lang.tensor.data.TensorData<T, V>,
@@ -3708,13 +3721,28 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
         val qBuf = query.data.copyToFloatArray()
         val kBuf = key.data.copyToFloatArray()
         val vBuf = value.data.copyToFloatArray()
+        // Hoisted out of the per-head loop: the mask is read-only for the whole call.
+        val maskBuf = mask?.data?.copyToFloatArray()
 
         val outBuf = FloatArray(batch * heads * seqQ * headDim)
 
-        for (b in 0 until batch) {
-            for (h in 0 until heads) {
+        // SKEEP-005: every (batch, head) pair is independent — private scores scratch, disjoint
+        // output rows — so the pairs are the schedule's units. The per-pair arithmetic and its
+        // order are exactly the sequential loop's, which keeps a scheduled run bit-identical.
+        // Tiny calls (decode steps on a handful of heads) stay on the caller: a region costs more
+        // than it saves below SDPA_PARALLEL_MIN_WORK multiply-adds.
+        val units = batch * heads
+        val workPerUnit = seqQ.toLong() * seqKV.toLong() * headDim.toLong() * 2L
+        val regionSchedule = if (workPerUnit * units < SDPA_PARALLEL_MIN_WORK) sk.ainet.context.schedule.Schedule.Sequential else schedule
+        regionSchedule.forRange(units, grain = 1) { unitStart, unitEnd ->
+            // Per-task scratch: a plain heap array, never the context's scratch pool or step slab
+            // (both single-threaded). Every entry is overwritten by the QK^T pass, so one array
+            // serves every unit of this task.
+            val scores = FloatArray(seqQ * seqKV)
+            for (unit in unitStart until unitEnd) {
+                val b = unit / heads
+                val h = unit % heads
                 // Compute attention scores: Q @ K^T, then scale
-                val scores = FloatArray(seqQ * seqKV)
                 for (qi in 0 until seqQ) {
                     for (ki in 0 until seqKV) {
                         var dot = 0f
@@ -3742,8 +3770,7 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
                 }
 
                 // Apply external mask if provided
-                if (mask != null) {
-                    val maskBuf = mask.data.copyToFloatArray()
+                if (maskBuf != null) {
                     for (i in scores.indices) {
                         scores[i] += maskBuf[i % maskBuf.size]
                     }
@@ -3792,4 +3819,9 @@ public open class DefaultCpuOpsBase(protected val dataFactory: TensorDataFactory
 
 }
 
-public class DefaultCpuOps(dataFactory: TensorDataFactory) : DefaultCpuOpsBase(dataFactory)
+public class DefaultCpuOps(
+    dataFactory: TensorDataFactory,
+    schedule: sk.ainet.context.schedule.Schedule,
+) : DefaultCpuOpsBase(dataFactory, schedule) {
+    public constructor(dataFactory: TensorDataFactory) : this(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
+}

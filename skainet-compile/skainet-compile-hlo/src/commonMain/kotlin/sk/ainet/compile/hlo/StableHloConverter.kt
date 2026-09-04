@@ -85,14 +85,20 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
         processNodes(topo, context)
         generateReturnStatement(outputNodes, context)
 
-        val moduleHeader = if (structuralLayouts.isNotEmpty()) {
+        val headerAttributes = mutableListOf<String>()
+        if (structuralLayouts.isNotEmpty()) {
             val layoutEntries = structuralLayouts.entries
                 .sortedBy { it.key }
                 .joinToString(", ") { (name, attr) -> "$name = $attr" }
-            "module attributes {skainet.tensor_layouts = {$layoutEntries}} {"
-        } else {
-            "module {"
+            headerAttributes += "skainet.tensor_layouts = {$layoutEntries}"
         }
+        // SKEEP-005: schedule hints ride the module header next to the layouts — one graph, extra
+        // schedule metadata. Keyed by node id; a consumer that ignores it computes the same result.
+        val schedules = collectScheduleHints(topo)
+        if (schedules.isNotEmpty()) {
+            headerAttributes += "skainet.schedule = {" + schedules.joinToString(", ") { (id, hint) -> "${mlirKey(id)} = ${scheduleAttr(hint)}" } + "}"
+        }
+        val moduleHeader = if (headerAttributes.isEmpty()) "module {" else "module attributes {${headerAttributes.joinToString(", ")}} {"
 
         val assembled = StringBuilder()
         assembled.appendLine(moduleHeader)
@@ -287,6 +293,24 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
      * machine-readable — block element counts, block bytes, bit widths, block order — so a
      * downstream consumer can size and address packed weights without a lookup table of names.
      */
+    /** `(nodeId, hint)` for every node carrying a schedule hint, in topological order. */
+    private fun collectScheduleHints(topo: List<sk.ainet.lang.graph.GraphNode>): List<Pair<String, sk.ainet.context.schedule.ScheduleHint>> =
+        topo.mapNotNull { node ->
+            val hint = sk.ainet.context.schedule.ScheduleHint.fromAttribute(node.metadata[sk.ainet.context.schedule.SCHEDULE_ATTRIBUTE_KEY])
+                ?: sk.ainet.context.schedule.ScheduleHint.fromAttribute(node.operation.parameters[sk.ainet.context.schedule.SCHEDULE_ATTRIBUTE_KEY])
+            hint?.let { node.id to it }
+        }
+
+    private fun scheduleAttr(hint: sk.ainet.context.schedule.ScheduleHint): String {
+        val dims = hint.parallelDims.joinToString(", ") { "\"$it\"" }
+        val p = hint.parallelism?.let { ", parallelism = $it" } ?: ""
+        return "{parallel_dims = [$dims]$p}"
+    }
+
+    /** MLIR dictionary keys must be bare identifiers or quoted strings. */
+    private fun mlirKey(id: String): String =
+        if (id.isNotEmpty() && (id[0].isLetter() || id[0] == '_') && id.all { it.isLetterOrDigit() || it == '_' || it == '$' || it == '.' }) id else "\"$id\""
+
     private fun collectStructuralLayouts(nodes: List<GraphNode>): Map<String, String> {
         val result = linkedMapOf<String, String>()
         for (node in nodes) {

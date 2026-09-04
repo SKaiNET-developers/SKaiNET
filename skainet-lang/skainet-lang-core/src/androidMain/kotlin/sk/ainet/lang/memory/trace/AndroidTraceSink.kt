@@ -35,6 +35,8 @@ public class AndroidTraceSink : TraceSink {
             is TraceEvent.Free -> Trace.setCounter(truncate("skainet ${event.scope.name.lowercase()} free bytes"), event.bytes)
             is TraceEvent.ScopeReset -> Trace.setCounter(truncate("skainet ${event.scope.name.lowercase()} live bytes"), event.liveBytesAfter)
             is TraceEvent.Counter -> Trace.setCounter(truncate("skainet ${event.name}"), event.value)
+            is TraceEvent.ScheduleDowngraded -> Trace.setCounter(truncate("skainet schedule downgraded"), 1L)
+            is TraceEvent.ScheduleRegion -> Trace.setCounter(truncate("skainet schedule ${event.op} tasks"), event.tasks.toLong())
             is TraceEvent.Plan -> Trace.setCounter(truncate("skainet plan total bytes"), event.totalBytes)
         }
     }

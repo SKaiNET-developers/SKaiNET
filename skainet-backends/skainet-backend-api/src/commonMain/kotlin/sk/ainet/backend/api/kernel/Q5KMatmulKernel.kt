@@ -56,4 +56,13 @@ public interface Q5KMatmulKernel {
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
     )
+
+    /** Schedule-aware entry (SKEEP-005); the default ignores [schedule] and runs the legacy method. */
+    public fun matmul(
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+        schedule: sk.ainet.context.schedule.Schedule,
+    ): Unit = matmul(input, inputOffset, weight, weightByteOffset, inputDim, outputDim, output, outputOffset)
 }

@@ -4,6 +4,25 @@
 
 ### Added
 
+- **Schedules — the compute-level algorithm/schedule split (SKEEP-005)**
+  ([#1259](https://github.com/SKaiNET-developers/SKaiNET/issues/1259) registries not safe for concurrent reads,
+  [#1260](https://github.com/SKaiNET-developers/SKaiNET/issues/1260) `parallelChunks` `runBlocking` island): a dependency-free
+  `sk.ainet.context.schedule.Schedule` on every `ExecutionContext` (`ctx.schedule`,
+  `ctx.withSchedule(s) { … }`, `ScheduledExecutionContext`), a JVM `CoroutineSchedule` built on
+  structured concurrency (caller runs the first chunk, nested regions inline, `dedicated()` pool),
+  and the first scheduled op — `scaledDotProductAttention` runs its `(batch, head)` units on the
+  context's schedule, bit-identical to the sequential loop. `parallelChunks` no longer hides a
+  `runBlocking(Dispatchers.Default)` island: it delegates to the ops' schedule, so
+  `DirectCpuExecutionContext(schedule = Schedule.Sequential)` makes every kernel single-threaded
+  and the JVM default (`CoroutineSchedule.hardware()`) spreads them across cores. Unhonoured
+  requests are visible as `TraceEvent.ScheduleDowngraded`; regions as `TraceEvent.ScheduleRegion`.
+  Compile lane: `dag { schedule(parallel("heads")) { … } }` stamps a `ScheduleHint` that
+  `ScheduleAnnotationPass` validates per op and `StableHloConverter` emits as the
+  `skainet.schedule` module attribute beside `skainet.tensor_layouts`. Registries
+  (`KernelDispatch`, `KernelRegistry`) are now safe for concurrent reads. Found on the way and
+  reported, not fixed here: [#1261](https://github.com/SKaiNET-developers/SKaiNET/issues/1261)
+  (Panama matmul's first call differs by an ULP until the JIT intrinsifies `reduceLanes`). Docs: SKEEP-005,
+  "Algorithm and schedule", "Schedule getting started" (executable sample).
 - **`tensorFilter` on the single-file `SafeTensorsParametersLoader`**
   ([#1256](https://github.com/SKaiNET-developers/SKaiNET/issues/1256)): parity with the sharded
   loader — an optional predicate over the tensor headers; filtered-out tensors are neither read

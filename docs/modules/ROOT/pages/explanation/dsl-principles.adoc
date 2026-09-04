@@ -65,6 +65,11 @@ Two halves, and both matter:
 | Which kernel serves these operands
 | `KernelKey` = op × per-operand `(Format, LayoutClass)`. Runtime holds **no memory policy** —
   it reads what is already true about the operands and picks a kernel. That is all.
+
+| **Schedule** (deployment, per context)
+| How many tasks compute the independent parts of one op, and on which threads
+| `Schedule`, `ctx.withSchedule(…)`, `skainet.schedule` graph metadata
+  (xref:explanation/schedules.adoc[Algorithm and schedule]). *Never changes a result.*
 |===
 
 The direction of information flow is strictly downward: the DSL knows nothing of forms, forms

@@ -61,6 +61,34 @@ public interface ExecutionContext {
     public fun withTensorDataFactory(factory: TensorDataFactory): ExecutionContext = this
 
     /**
+     * How this context's ops map the independent work inside one op onto cores (SKEEP-005).
+     * Default [sk.ainet.context.schedule.Schedule.Sequential]: one task, inline, today's behaviour.
+     * A schedule never changes a result — it is a deployment property, not a model property.
+     */
+    public val schedule: sk.ainet.context.schedule.Schedule
+        get() = sk.ainet.context.schedule.Schedule.Sequential
+
+    /**
+     * This context rebuilt so its ops run under [schedule] — the same seam as
+     * [withTensorDataFactory]. The default cannot rebuild, returns `this`, and — unless the request
+     * is already what this context runs — emits [sk.ainet.lang.memory.trace.TraceEvent.ScheduleDowngraded]
+     * so an unhonoured schedule is visible in the trace instead of silently sequential.
+     */
+    @OptIn(sk.ainet.lang.memory.ExperimentalMemoryApi::class)
+    public fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): ExecutionContext {
+        if (schedule !== this.schedule && traceSink.isEnabled) {
+            traceSink.emit(
+                sk.ainet.lang.memory.trace.TraceEvent.ScheduleDowngraded(
+                    requested = schedule.name,
+                    effective = this.schedule.name,
+                    reason = "context ${this::class.simpleName} cannot rebuild its ops",
+                ),
+            )
+        }
+        return this
+    }
+
+    /**
      * Workspace allocator for short-lived intermediate buffers (attention
      * scratch, RoPE tables, KV-cache slice copies, padding scratch, etc.).
      *

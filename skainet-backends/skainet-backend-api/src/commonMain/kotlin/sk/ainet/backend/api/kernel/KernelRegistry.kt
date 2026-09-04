@@ -19,23 +19,24 @@ package sk.ainet.backend.api.kernel
  *   isn't available. Callers that want a guaranteed scalar fallback
  *   can pin `sk.ainet.exec.kernel.ScalarKernelProvider` directly.
  *
- * Thread safety: [register] is not thread-safe. Call it during
- * single-threaded startup or guard with your own lock.
+ * Thread safety: writes ([register], [clearForTesting]) are serialized; reads see an immutable
+ * snapshot, so schedule workers (SKEEP-005) may query the registry concurrently.
  */
 public object KernelRegistry {
-    private val providers: MutableList<KernelProvider> = mutableListOf()
+    @kotlin.concurrent.Volatile
+    private var providers: List<KernelProvider> = emptyList()
 
     /**
      * Register a provider. Re-registering the same instance is a no-op.
      */
+    @JvmSynchronized
     public fun register(provider: KernelProvider) {
         if (providers.any { it === provider }) return
-        providers.add(provider)
-        providers.sortByDescending { it.priority }
+        providers = (providers + provider).sortedByDescending { it.priority }
     }
 
     /** All registered providers, sorted by priority descending. */
-    public fun providers(): List<KernelProvider> = providers.toList()
+    public fun providers(): List<KernelProvider> = providers
 
     /** Find a provider by name (case-insensitive), or `null`. */
     public fun find(name: String): KernelProvider? =
@@ -54,7 +55,8 @@ public object KernelRegistry {
         providers.filter { it.isAvailable() }.map { it.name }
 
     /** Test/diagnostic helper. Removes all registered providers. */
+    @JvmSynchronized
     public fun clearForTesting() {
-        providers.clear()
+        providers = emptyList()
     }
 }
