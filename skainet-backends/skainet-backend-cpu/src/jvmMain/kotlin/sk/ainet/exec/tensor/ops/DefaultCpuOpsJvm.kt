@@ -47,6 +47,9 @@ internal class DefaultCpuOpsJvm(
     schedule: sk.ainet.context.schedule.Schedule = sk.ainet.context.schedule.Schedule.Sequential,
 ) : DefaultCpuOpsBase(dataFactory, schedule) {
 
+    override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): sk.ainet.lang.tensor.ops.TensorOps =
+        if (schedule === this.schedule) this else DefaultCpuOpsJvm(dataFactory, schedule)
+
     private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 
     /**

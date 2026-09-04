@@ -38,6 +38,9 @@ public class AccelerateCpuOps(
 ) : DefaultCpuOpsBase(dataFactory, schedule) {
     public constructor(dataFactory: TensorDataFactory) : this(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
 
+    override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): sk.ainet.lang.tensor.ops.TensorOps =
+        if (schedule === this.schedule) this else AccelerateCpuOps(dataFactory, schedule)
+
 
     // ── matmul ──────────────────────────────────────────────────────────
 

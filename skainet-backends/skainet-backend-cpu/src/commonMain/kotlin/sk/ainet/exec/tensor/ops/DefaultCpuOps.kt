@@ -59,9 +59,16 @@ internal const val SDPA_PARALLEL_MIN_WORK: Long = 1L shl 20
 public open class DefaultCpuOpsBase(
     protected val dataFactory: TensorDataFactory,
     /** How this ops instance maps independent work onto cores (SKEEP-005); [Schedule.Sequential] by default. */
-    protected val schedule: sk.ainet.context.schedule.Schedule,
-) : TensorOps {
+    final override val schedule: sk.ainet.context.schedule.Schedule,
+) : TensorOps, sk.ainet.context.schedule.ScheduledOps {
     public constructor(dataFactory: TensorDataFactory) : this(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
+
+    /**
+     * The same ops family under [schedule] (SKEEP-005 phase 2). Subclasses that add kernels
+     * override this to rebuild their own class so nothing is lost on the way.
+     */
+    override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): TensorOps =
+        if (schedule === this.schedule) this else DefaultCpuOps(dataFactory, schedule)
 
 
     protected class CpuTensor<T : DType, V>(
@@ -3824,4 +3831,7 @@ public class DefaultCpuOps(
     schedule: sk.ainet.context.schedule.Schedule,
 ) : DefaultCpuOpsBase(dataFactory, schedule) {
     public constructor(dataFactory: TensorDataFactory) : this(dataFactory, sk.ainet.context.schedule.Schedule.Sequential)
+
+    override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): TensorOps =
+        if (schedule === this.schedule) this else DefaultCpuOps(dataFactory, schedule)
 }
