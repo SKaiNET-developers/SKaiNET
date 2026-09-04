@@ -373,6 +373,10 @@ public interface TensorOps {
      * platform-specific fused kernels: Flash Attention on CUDA, MPSGraph SDPA on
      * Apple Silicon, etc.
      *
+     * Grouped-query attention is native: `nKVHeads` must divide `nHeads`, and query head `h`
+     * attends to K/V head `h / (nHeads / nKVHeads)` — the same mapping the transformer modules
+     * use — so K/V are never tiled to the query head count (SKEEP-005 phase 2).
+     *
      * @param query  [batch, nHeads, seqLen, headDim]
      * @param key    [batch, nKVHeads, kvLen, headDim]
      * @param value  [batch, nKVHeads, kvLen, headDim]

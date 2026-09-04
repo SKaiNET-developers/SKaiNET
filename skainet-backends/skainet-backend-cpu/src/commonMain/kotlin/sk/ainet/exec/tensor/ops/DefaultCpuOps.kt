@@ -3700,9 +3700,12 @@ public open class DefaultCpuOpsBase(
         require(query.shape[0] == key.shape[0] && query.shape[0] == value.shape[0]) {
             "SDPA: batch mismatch — Q=${query.shape[0]} K=${key.shape[0]} V=${value.shape[0]}"
         }
-        require(query.shape[1] == key.shape[1] && query.shape[1] == value.shape[1]) {
-            "SDPA: head count mismatch — Q=${query.shape[1]} K=${key.shape[1]} V=${value.shape[1]}. " +
-                "For grouped-query attention, K/V must be tiled to Q's head count upstream."
+        require(key.shape[1] == value.shape[1]) {
+            "SDPA: K/V head count mismatch — K=${key.shape[1]} V=${value.shape[1]}"
+        }
+        require(key.shape[1] > 0 && query.shape[1] % key.shape[1] == 0) {
+            "SDPA: Q heads (${query.shape[1]}) must be a multiple of K/V heads (${key.shape[1]}) — " +
+                "grouped-query attention maps query head h onto K/V head h / (nHeads / nKVHeads)."
         }
         require(query.shape[3] == key.shape[3]) {
             "SDPA: Q head_dim (${query.shape[3]}) does not match K head_dim (${key.shape[3]})"
@@ -3719,6 +3722,11 @@ public open class DefaultCpuOpsBase(
         val seqQ = query.shape[2]
         val headDim = query.shape[3]
         val seqKV = key.shape[2]
+        // Grouped-query attention (SKEEP-005 phase 2): K/V are read in place through the
+        // head-group index instead of being tiled to Q's head count upstream. Same loop
+        // order and arithmetic as before, so nKVHeads == nHeads stays bit-identical.
+        val kvHeads = key.shape[1]
+        val nRep = heads / kvHeads
 
         // The signature default `scale = 0f` means "use the standard
         // 1/sqrt(headDim)"; applying 0 literally would flatten every softmax to
@@ -3749,12 +3757,13 @@ public open class DefaultCpuOpsBase(
             for (unit in unitStart until unitEnd) {
                 val b = unit / heads
                 val h = unit % heads
+                val kvH = h / nRep
                 // Compute attention scores: Q @ K^T, then scale
                 for (qi in 0 until seqQ) {
                     for (ki in 0 until seqKV) {
                         var dot = 0f
                         val qOff = ((b * heads + h) * seqQ + qi) * headDim
-                        val kOff = ((b * heads + h) * seqKV + ki) * headDim
+                        val kOff = ((b * kvHeads + kvH) * seqKV + ki) * headDim
                         for (d in 0 until headDim) {
                             dot += qBuf[qOff + d] * kBuf[kOff + d]
                         }
@@ -3809,7 +3818,7 @@ public open class DefaultCpuOpsBase(
                     for (d in 0 until headDim) {
                         var sum = 0f
                         for (ki in 0 until seqKV) {
-                            val vOff = ((b * heads + h) * seqKV + ki) * headDim
+                            val vOff = ((b * kvHeads + kvH) * seqKV + ki) * headDim
                             sum += scores[qi * seqKV + ki] * vBuf[vOff + d]
                         }
                         outBuf[outOff + d] = sum
