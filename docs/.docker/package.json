@@ -1,0 +1,14 @@
+{
+  "name": "skainet-docs-antora-image",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned Antora toolchain for the SKaiNET docs image; installed with npm ci from package-lock.json.",
+  "license": "MIT",
+  "dependencies": {
+    "@antora/cli": "3.1.15",
+    "@antora/lunr-extension": "gitlab:antora/antora-lunr-extension#41975fc8f62cb2219a2de2f618de1ae1482bd0ce",
+    "@antora/site-generator": "3.1.15",
+    "@mermaid-js/mermaid-cli": "github:mermaid-js/mermaid-cli#a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae",
+    "asciidoctor-kroki": "github:asciidoctor/asciidoctor-kroki#d02fbf06cdb837524f5e4e12537c05e0bb83c715"
+  }
+}

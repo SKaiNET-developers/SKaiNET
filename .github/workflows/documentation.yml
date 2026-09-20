@@ -95,18 +95,11 @@ jobs:
           name: documentation-preview-${{ github.event.number }}
           path: ./docs-preview
           
-      - name: Setup Node.js for preview server
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '18'
-          
-      - name: Install serve package
-        run: npm install -g serve
-        
       - name: Start preview server
+        # Python's built-in static server: nothing to install, so nothing unpinned to download.
         run: |
           cd docs-preview
-          serve -s . -l 3000 &
+          python3 -m http.server 3000 &
           sleep 5
           echo "Preview server started at http://localhost:3000"
           

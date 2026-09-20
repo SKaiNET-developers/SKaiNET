@@ -51,14 +51,14 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 # antora/lunr-extension: 41975fc8f62cb2219a2de2f618de1ae1482bd0ce -> v1.0.0-alpha.8
 # mermaid-js/mermaid-cli: a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae -> v11.16.0
 # asciidoctor-kroki: d02fbf06cdb837524f5e4e12537c05e0bb83c715 -> v0.18
+#
+# The five inputs above are declared in package.json; package-lock.json pins them AND every
+# transitive package by integrity hash, and `npm ci` installs exactly that. To change a version:
+# edit package.json, regenerate the lockfile in this same base image
+# (`npm install --package-lock-only`), and commit both files.
 WORKDIR /opt/antora
-RUN npm init -y && npm i --save-exact \
-      @antora/cli@3.1.15 \
-      @antora/site-generator@3.1.15 \
-      https://gitlab.com/antora/antora-lunr-extension.git#41975fc8f62cb2219a2de2f618de1ae1482bd0ce \
-      https://github.com/mermaid-js/mermaid-cli.git#a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae \
-      https://github.com/asciidoctor/asciidoctor-kroki.git#d02fbf06cdb837524f5e4e12537c05e0bb83c715 \
-    && npm cache clean --force
+COPY package.json package-lock.json ./
+RUN npm ci && npm cache clean --force
 
 # Make installed modules resolvable even when the workdir is the mounted
 # project (which has no node_modules of its own).
