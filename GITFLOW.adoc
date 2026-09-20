@@ -69,8 +69,8 @@ GitFlow is a branching model for Git that defines specific branch types and thei
 == Workflow Diagram
 
 NOTE: This diagram shows the conceptual GitFlow shape (tag on `main` after merging the release
-branch in). SKaiNET's actual sequence tags the release branch's own commit *before* touching
-`main` — see <<_release_process,Release Process>> below for the real order and why.
+branch in). SKaiNET's actual sequence tags the release PR's merge commit on `develop` *before*
+touching `main` — see <<_release_process,Release Process>> below for the real order and why.
 
 [mermaid]
 ifdef::env-github[[source,mermaid]]
@@ -167,10 +167,20 @@ git branch -d feature/lstm-layers
 === Release Process
 
 This is the sequence actually used from 0.51.0 onward — it differs from a textbook GitFlow release
-in one important way: the tag lives on the *release branch's own commit*, independent of `main`,
-because the Maven Central publish workflow triggers on the tag push (`on: push: tags: '**'` in
-`.github/workflows/publish.yml`), not on anything landing on `main`. `main` is updated *after* a
-successful publish, as an explicit last step — never before, and never as a side effect of tagging.
+in one important way: the tag lives on `develop` — on the merge commit of the release PR —
+independent of `main`, because the Maven Central publish workflow triggers on the tag push
+(`on: push: tags: '**'` in `.github/workflows/publish.yml`), not on anything landing on `main`.
+`main` is updated *after* a successful publish, as an explicit last step — never before, and never
+as a side effect of tagging.
+
+Two gates guard the tag, because a tag push publishes and a Maven Central release cannot be taken
+back:
+
+* **Dry run before the release PR merges.** The publish workflow only ever runs on a tag push, so
+  ordinary CI can never tell you it is broken. Run it by hand on the release branch first (see the
+  steps below): same pipeline, no upload.
+* **Green before tagging.** Tag only a commit whose `develop` workflows have *finished* green.
+  A release PR that was green is not the same thing as its merge commit being green.
 
 . Create a release branch from `develop`:
 +
@@ -192,28 +202,61 @@ git checkout -b release/1.2.0
 ** `gradle.properties` (`VERSION_NAME`) — its own commit, last, matching `release: X.Y.Z`
 ** Run final tests; fix any release-blocking bugs on the branch
 
+. Dry-run the publish workflow on the release branch and wait for it to go green:
++
+[source,bash]
+----
+git push origin release/1.2.0
+gh workflow run publish.yml --ref release/1.2.0
+gh run watch "$(gh run list --workflow publish.yml --branch release/1.2.0 --limit 1 --json databaseId -q '.[0].databaseId')"
+----
++
+A manually started run (`workflow_dispatch`) executes the whole release pipeline — native matrix,
+Android SDK + NDK setup, signing — but ends in `publishToMavenLocal` on the runner and is never
+given the Maven Central credentials, so it cannot upload. Its job summary lists the version and how
+many modules, POMs and signatures it produced. This is the only way to find a broken runner setup
+step *before* the tag exists (0.56.0 found one after).
+
 . Open a PR from the release branch to `develop` and merge it once CI is green — this is what
   actually brings the version bump back into the integration branch:
 +
 [source,bash]
 ----
-git push origin release/1.2.0
 gh pr create --base develop --head release/1.2.0 --title "Release 1.2.0"
-# wait for CI to go green, then merge
+# wait for CI to go green, then merge with a MERGE COMMIT (not squash, not rebase)
 ----
 
-. Tag the release branch's own `release: X.Y.Z` commit directly — not a commit on `main`, which
-  doesn't have this release yet:
+. Wait until every workflow on that merge commit has finished green on `develop` — the merge
+  commit is what gets tagged, and it has its own CI run:
 +
 [source,bash]
 ----
-git tag -a 1.2.0 <release-commit-sha> -m "SKaiNET 1.2.0 — <headline>"
+git fetch origin
+MERGE_SHA="$(git rev-parse origin/develop)"   # the "Merge pull request #… from …/release/1.2.0" commit
+gh run list --commit "$MERGE_SHA" --json workflowName,status,conclusion \
+  -q '.[] | "\(.workflowName): \(.conclusion // .status)"'
+# every line must say "success" before you continue
+----
+
+. Tag that merge commit with an annotated tag — not a commit on `main`, which doesn't have this
+  release yet, and not the release branch's `release: X.Y.Z` commit, which lacks whatever else
+  landed on `develop` alongside it:
++
+[source,bash]
+----
+git tag -a 1.2.0 "$MERGE_SHA" -m "SKaiNET 1.2.0 — <headline>"
 git push origin 1.2.0
 ----
 +
 Pushing the tag triggers the publish workflow. **Wait for it to go green before the next step** —
 a red publish run means the tag exists but nothing actually shipped to Maven Central; do not treat
 tagging alone as "released."
++
+If the publish run fails: check Maven Central first. If *nothing* was uploaded under the version,
+fix the cause on `develop` and move the tag to the new commit (delete and re-create it; tell anyone
+who fetched it to `git fetch --tags --force`) — the workflow file that runs is the one at the
+tagged commit, so re-running the old tag cannot pick up a workflow fix. If *anything* was uploaded,
+the version is burned: leave the tag alone and cut a patch release.
 
 . Once the publish workflow succeeds, merge `main` up to the release — the step every release
   before 0.51.0 skipped:
@@ -221,7 +264,7 @@ tagging alone as "released."
 [source,bash]
 ----
 git fetch origin
-git push origin <release-commit-sha>:refs/heads/main   # fast-forward; main has no protection to route around
+git push origin "$MERGE_SHA":refs/heads/main   # the tagged commit; fast-forward, main has no protection to route around
 ----
 +
 This is a manual step by design (see the `main` Branch section above) — not automated on publish
@@ -307,8 +350,10 @@ git branch -d hotfix/1.2.1
 * Block merges if tests fail
 
 === Publishing
-* A pushed tag (any branch, in practice always the `release/*` branch's own commit) is what
-  triggers the Maven Central publish workflow — not landing on `main`.
+* A pushed tag (in practice always the release PR's merge commit on `develop`) is what triggers
+  the Maven Central publish workflow — not landing on `main`.
+* The same workflow started by hand (`workflow_dispatch`) is a dry run: full pipeline into Maven
+  Local on the runner, never given the Maven Central credentials.
 * `main` is a read-only mirror of "what's been published," updated manually after the fact (see
   the Release Process above); it has no deploy step of its own.
 * `develop` is where CI runs on every push/PR; there is no separate staging deploy.

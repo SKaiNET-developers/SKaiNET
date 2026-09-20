@@ -32,10 +32,17 @@ name: release
 # target" — see SKaiNET PR #577). Linux ARM64 consumers fall back
 # cleanly to the Panama priority-50 provider.
 
+# Dry run: "Run workflow" (workflow_dispatch) on any branch executes the SAME pipeline — native
+# matrix, Android SDK + NDK setup, signing — but ends in `publishToMavenLocal` on the runner
+# instead of `publish`. It is never given the Maven Central credentials, so it cannot upload.
+# Run it on the release branch before tagging: this workflow is otherwise only ever exercised by
+# the tag push itself, which is how a broken runner setup step surfaced mid-release in 0.56.0.
+
 on:
   push:
     tags:
       - '**'
+  workflow_dispatch:
 
 # Set default permission for all jobs to none. Publishing authenticates to Maven
 # Central and signs with GPG through repository secrets, which are independent of
@@ -261,6 +268,8 @@ jobs:
           echo "SKAINET_KERNELS_MACOS_DIR=$MACOS_DIR" >> "$GITHUB_ENV"
 
       - name: Publish to MavenCentral
+        # Only a tag push publishes. A manual run takes the dry-run step below instead.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: |
           ./gradlew publish --no-configuration-cache --stacktrace \
             -PskainetKernelsX64Dir="$SKAINET_KERNELS_X64_DIR" \
@@ -273,3 +282,41 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+
+      # Dry run (workflow_dispatch): same Gradle invocation, same signing, but into the runner's
+      # ~/.m2 — and deliberately WITHOUT mavenCentralUsername/Password in the environment.
+      - name: Dry run — publish to Maven Local (no upload)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ./gradlew publishToMavenLocal --no-configuration-cache --stacktrace \
+            -PskainetKernelsX64Dir="$SKAINET_KERNELS_X64_DIR" \
+            -PskainetKernelsArm64Dir="$SKAINET_KERNELS_ARM64_DIR" \
+            -PskainetKernelsIosArm64Dir="$SKAINET_KERNELS_IOS_DIR" \
+            -PskainetKernelsIosSimulatorArm64Dir="$SKAINET_KERNELS_IOS_SIM_DIR" \
+            -PskainetKernelsMacosArm64Dir="$SKAINET_KERNELS_MACOS_DIR"
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+
+      - name: Dry run — summarize what would have been published
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -E '^VERSION_NAME=' gradle.properties | cut -d= -f2)"
+          REPO="$HOME/.m2/repository/sk/ainet"
+          MODULES="$(find "$REPO" -type d -name "$VERSION" | wc -l | tr -d ' ')"
+          POMS="$(find "$REPO" -path "*/$VERSION/*.pom" | wc -l | tr -d ' ')"
+          SIGS="$(find "$REPO" -path "*/$VERSION/*.asc" | wc -l | tr -d ' ')"
+          {
+            echo "## Publish dry run — nothing was uploaded"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA::8}\` |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Modules | ${MODULES} |"
+            echo "| POMs | ${POMS} |"
+            echo "| Signatures (.asc) | ${SIGS} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$MODULES" -gt 0 || { echo "No modules were published to Maven Local" >&2; exit 1; }
+          test "$SIGS" -gt 0 || { echo "No .asc signatures produced — signing did not run" >&2; exit 1; }
