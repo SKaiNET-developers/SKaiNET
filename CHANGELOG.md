@@ -34,7 +34,8 @@ Version note: 0.55.0 is skipped so the engine and SKaiNET-transformers share a v
   JS/Wasm build-tooling graph.
 - **Docs toolchain installed with `npm ci`**: the docs image declares its Antora inputs in
   `docs/.docker/package.json` with a committed `package-lock.json` (every transitive package pinned by
-  integrity hash); the docs preview job no longer downloads an unpinned npm package.
+  integrity hash, `js-yaml` overridden to 4.3.2); the docs preview job no longer downloads an unpinned
+  npm package.
 - Dependency bumps: kotest 6.2.5, kotlinx-benchmark 0.5.0, binary-compatibility-validator.
 
 ## [0.54.0] - 2026-09-06
