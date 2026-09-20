@@ -48,7 +48,7 @@ kotest = "6.2.5"
 # Check which graph holds a package before deciding:
 #   grep -c '^webpack@' kotlin-js-store/yarn.lock kotlin-js-store/wasm/yarn.lock
 npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
-npm-js-yaml = "4.3.1"              # GHSA-5p4m-2wfm-xmqj
+npm-js-yaml = "4.3.2"              # GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
 npm-socketio-parser = "4.2.7"      # GHSA-2m8v-j782-fhvr
 npm-fast-uri = "3.1.6"             # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx, GHSA-jqff-g426-hqxp,
                                     # GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-5jgf-p345-68v8
