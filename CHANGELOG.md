@@ -30,7 +30,11 @@ Version note: 0.55.0 is skipped so the engine and SKaiNET-transformers share a v
 
 - **SDPA shape validation follows the grouped-query contract**: Q heads must be a positive multiple of
   the K/V head count (K and V must still agree). Callers that tiled K/V upstream keep working unchanged.
-- **Security pins**: `fast-uri` 3.1.6 and `qs` 6.16.0 in the JS/Wasm dependency graph.
+- **Security pins**: `fast-uri` 3.1.6, `qs` 6.16.0 and `js-yaml` 4.3.2 (GHSA-2883-xcg3-v3hh) in the
+  JS/Wasm build-tooling graph.
+- **Docs toolchain installed with `npm ci`**: the docs image declares its Antora inputs in
+  `docs/.docker/package.json` with a committed `package-lock.json` (every transitive package pinned by
+  integrity hash); the docs preview job no longer downloads an unpinned npm package.
 - Dependency bumps: kotest 6.2.5, kotlinx-benchmark 0.5.0, binary-compatibility-validator.
 
 ## [0.54.0] - 2026-09-06
