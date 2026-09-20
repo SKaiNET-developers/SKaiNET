@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.54.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.56.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,26 +308,24 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.54.0
+## What's New in 0.56.0
 
-Structured concurrency lands as a first-class citizen — and the CI run that exercised it found a
-real deadlock:
+Grouped-query attention becomes native to the engine, and the compiled leg of SKEEP-005 lands:
 
-- **`Schedule` on every `ExecutionContext`** (SKEEP-005) — `sk.ainet.context.schedule.Schedule`
-  splits *what* an op computes from *how its independent chunks spread across cores*.
-  `scaledDotProductAttention` is the first scheduled op, `parallelChunks` no longer hides a
-  `runBlocking(Dispatchers.Default)` island, and the JVM `CoroutineSchedule.hardware()` default
-  spreads chunks across cores while `Schedule.Sequential` keeps every kernel single-threaded.
-- **A real deadlock, found by turning scheduling on** — `CoroutineSchedule.forRange`'s region
-  waited on children the pool had no thread left to run, once every worker was itself inside a
-  region; it looked like the OOM hang a first CI fix assumed. A region is now a shared chunk
-  queue, so a caller can always finish its own region alone, whatever the pool is doing.
-- **`tensorFilter` on the single-file `SafeTensorsParametersLoader`** — parity with the sharded
-  loader; lets a family load selectively from a checkpoint that carries tensors the requested
-  dtype can't accept.
-- **`ExperimentalMemoryApi` opt-in gate removed** — SKEEP-003's M0–M2 shipped complete back in
-  0.49.0, so `Storage`, `Scope`, `Format`, `TensorView`, `WeightForm`, and the rest of
-  `sk.ainet.lang.memory` no longer need `@OptIn`.
+- **Grouped-query `scaledDotProductAttention`** — K/V arrive with their own head count
+  (`[b, nKV, Sk, hd]`); query head `h` reads K/V head `h / (H / nKV)`. Bit-identical to before when
+  `nKV == H`, and to the old tiled form otherwise. Model code no longer expands K/V heads before
+  attention — not eagerly, not on the tape.
+- **Leaner StableHLO for GQA models** — attention lowers with the head groups as a batching
+  dimension, so exports carry no broadcast or concatenate of K/V.
+- **Structure at compile time, cores at run time** — `ScheduleAnnotationPass` stamps structural
+  defaults (`parallel_dims = [batch, heads]` on every attention); an explicit `parallelism` is
+  advisory and a default can never carry a core count.
+- **Graph contexts honour the schedule of their ops** — the new `ScheduledOps` seam lets
+  `DefaultGraphExecutionContext` answer `schedule`/`withSchedule` from the ops it wraps, so the JVM
+  `ComputeGraphExecutor` runs under the caller's schedule.
+
+0.55.0 is skipped so the engine and SKaiNET-transformers share a version line again.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -353,12 +351,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
 
-### Contributors (0.54.0)
+### Contributors (0.56.0)
 
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the SKEEP-005
-  structured-concurrency Schedule API, the coroutine-pool deadlock it uncovered on CI and its
-  shared-chunk-queue fix, `SafeTensorsParametersLoader` `tensorFilter` parity, and retiring the
-  `ExperimentalMemoryApi` opt-in gate now that SKEEP-003 has shipped
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — grouped-query-native
+  `scaledDotProductAttention` and its StableHLO lowering, structural schedule defaults, and
+  schedule-aware graph execution contexts (SKEEP-005 phase 2)
 
 ### Contributors (0.53.0)
 
