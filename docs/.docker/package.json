@@ -10,5 +10,8 @@
     "@antora/site-generator": "3.1.15",
     "@mermaid-js/mermaid-cli": "github:mermaid-js/mermaid-cli#a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae",
     "asciidoctor-kroki": "github:asciidoctor/asciidoctor-kroki#d02fbf06cdb837524f5e4e12537c05e0bb83c715"
+  },
+  "overrides": {
+    "js-yaml": "4.3.2"
   }
 }
