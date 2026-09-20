@@ -26,7 +26,14 @@ import kotlin.math.sqrt
  * Causal masking: when the `causal` attribute is set, an additive -inf mask
  * (built from iota row/col indices + compare + select) is added to the scaled
  * scores before softmax so each query only attends to keys at or before it.
- * An explicit `mask` operand is not yet consumed (TODO: add operands[3]).
+ * An explicit `mask` operand (operands[3]) takes priority over the iota path.
+ *
+ * Grouped-query attention (SKEEP-005 phase 2, "structure at compile time"): when K/V
+ * carry fewer heads than Q (`[b, nKV, Sk, hd]` vs `[b, H, Sq, hd]`, `nKV | H`), Q is
+ * reshaped to `[b, nKV, nRep, Sq, hd]` and both `dot_general`s batch over `[b, nKV]`
+ * with `nRep` a free axis — K/V are never broadcast or concatenated. The group
+ * structure is exactly what the compiler backend tiles over; the core count is not
+ * written anywhere (it is a run-time property of the device).
  */
 public class AttentionOperationsConverter : StableHloOperationConverter {
 
@@ -68,17 +75,39 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
 
         val headDim = qShape[rank - 1]
         val keyLen = kShape[rank - 2]
-        val scoresShape = qShape.dropLast(1) + keyLen   // [.., Sq, Sk]
+
+        // Grouped-query attention: K/V heads divide Q heads → work on Q as [b, nKV, nRep, Sq, hd].
+        val gqa = rank == 4 && kShape.size == 4 && kShape[1] != qShape[1]
+        if (gqa) {
+            val nKV = kShape[1]; val nH = qShape[1]
+            if (!Dim.isStatic(nKV) || !Dim.isStatic(nH) || nKV <= 0 || nH % nKV != 0) {
+                return ConversionResult.Failure(
+                    "SDPA grouped-query attention needs static head counts with K/V heads dividing Q heads, got Q=$nH K/V=$nKV",
+                    "Unsupported GQA head counts for ${node.id}",
+                )
+            }
+            if (qShape.hasDynamic()) {
+                return ConversionResult.Failure(
+                    "SDPA grouped-query attention needs a static query shape (reshape to [b, nKV, nRep, Sq, hd]), got $qShape",
+                    "Dynamic query shape under GQA for ${node.id}",
+                )
+            }
+        }
+        val qWork: List<Int> = if (gqa) listOf(qShape[0], kShape[1], qShape[1] / kShape[1], qShape[2], headDim) else qShape
+        val qWorkType = if (gqa) typeOf(qWork) else qType
+        val scoresShape = qWork.dropLast(1) + keyLen   // [.., Sq, Sk]  (GQA: [b, nKV, nRep, Sq, Sk])
         val scoresType = typeOf(scoresShape)
         val outputType = outSpec?.let { mapper.mapTensorType(it) } ?: typeOf(qShape.dropLast(1) + headDim)
+        val outWorkType = if (gqa) typeOf(qWork.dropLast(1) + headDim) else outputType
 
         val scaleParam = (node.operation.parameters["scale"] as? Number)?.toFloat() ?: 0f
         val scaleVal = if (scaleParam != 0f) scaleParam else (1.0f / sqrt(headDim.toFloat()))
 
         val hasBatch = rank > 2
-        val batchList = (0 until rank - 2).joinToString(", ")
+        val batchList = (0 until rank - 2).joinToString(", ")   // K/V batching dims; == Q's ([b, nKV]) under GQA too
         val batchClause = if (hasBatch) "batching_dims = [$batchList] x [$batchList], " else ""
-        val contractQK = rank - 1                 // contract head_dim of Q and K
+        val contractQ = qWork.size - 1            // contract head_dim of Q …
+        val contractK = rank - 1                  // … and K
         val sdAxis = scoresShape.size - 1         // softmax over key length
         val reducedShape = scoresShape.dropLast(1)
         val reducedType = if (reducedShape.isEmpty()) "tensor<$elem>" else typeOf(reducedShape)
@@ -87,7 +116,7 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val contractV = rank - 2                  // V key-length axis
 
         val causal = (node.operation.parameters["causal"] as? Boolean) ?: false
-        val qAxis = rank - 2 // query position in scores [.., Sq, Sk]
+        val qAxis = scoresShape.size - 2 // query position in scores [.., Sq, Sk]
         val scoresI32Type = "tensor<${dims(scoresShape)}xi32>"
         val scoresI1Type = "tensor<${dims(scoresShape)}xi1>"
 
@@ -110,8 +139,14 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
             "$scaleC = stablehlo.constant dense<$scaleVal> : tensor<$elem>",
             "$scaleB = stablehlo.broadcast_in_dim $scaleC, dims = [] : (tensor<$elem>) -> $qType",
             "$qScaled = stablehlo.multiply ${operands[0]}, $scaleB : $qType",
-            "$scores = stablehlo.dot_general $qScaled, ${operands[1]}, ${batchClause}contracting_dims = [$contractQK] x [$contractQK] : ($qType, $kType) -> $scoresType",
         )
+        // GQA: expose the head groups as a batching dim of Q — a static, copy-free reshape.
+        val qForDot = if (gqa) {
+            val qg = context.nextTempValue()
+            ops += "$qg = stablehlo.reshape $qScaled : ($qType) -> $qWorkType"
+            qg
+        } else qScaled
+        ops += "$scores = stablehlo.dot_general $qForDot, ${operands[1]}, ${batchClause}contracting_dims = [$contractQ] x [$contractK] : ($qWorkType, $kType) -> $scoresType"
 
         // Explicit additive mask (operands[3]) — e.g. a sliding-window+causal
         // mask the caller built and passed with causal=false. It already
@@ -128,8 +163,12 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
                 maskOperand
             } else {
                 val mb = context.nextTempValue()
-                val offset = scoresShape.size - maskShape.size
-                val dims = maskShape.indices.joinToString(", ") { (it + offset).toString() }
+                // Trailing-aligned. Under GQA a rank-4 mask [b, 1|H, Sq, Sk] keeps its batch on
+                // scores dim 0 and skips the nRep axis (dim 2): [0, 1, 3, 4].
+                val dims = if (gqa && maskShape.size == 4) "0, 1, 3, 4" else {
+                    val offset = scoresShape.size - maskShape.size
+                    maskShape.indices.joinToString(", ") { (it + offset).toString() }
+                }
                 ops += "$mb = stablehlo.broadcast_in_dim $maskOperand, dims = [$dims] : ($maskType) -> $scoresType"
                 mb
             }
@@ -194,7 +233,13 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         ops += "$sumV = stablehlo.reduce($expV init: $sumInit) applies stablehlo.add across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
         broadcastBack(sumV, sumB)
         ops += "$attn = stablehlo.divide $expV, $sumB : $scoresType"
-        ops += "$out = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outputType"
+        if (gqa) {
+            val outG = context.nextTempValue()
+            ops += "$outG = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outWorkType"
+            ops += "$out = stablehlo.reshape $outG : ($outWorkType) -> $outputType"
+        } else {
+            ops += "$out = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outputType"
+        }
         ops.forEach { context.emitOperation(it) }
         return ConversionResult.Success(outputValueName = out, emittedOperations = ops)
     }

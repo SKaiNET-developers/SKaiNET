@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **SKEEP-005 phase 2 — the compiled leg: structure at compile time, cores at run time.**
+  Grouped-query attention is native to `scaledDotProductAttention` (K/V `[b, nKV, Sk, hd]`, query
+  head `h` reads K/V head `h / (H / nKV)`; bit-identical when `nKV == H`, and to the old tiled
+  form otherwise) and lowers to StableHLO with the head groups as a batching dimension — no
+  broadcast or concatenate of K/V. `ScheduleAnnotationPass` stamps structural defaults
+  (`parallel_dims = [batch, heads]` on every attention) and flags an explicit `parallelism` as
+  advisory; defaults can never carry a core count; `HloGenerator.corePasses(target)` exposes the
+  core passes. New `ScheduledOps` seam: `DefaultCpuOps*` report and rebuild their schedule, and
+  `DefaultGraphExecutionContext` answers `schedule`/`withSchedule` from the ops it wraps, so the
+  JVM `ComputeGraphExecutor` runs under the caller's schedule. Key decision and diagram in SKEEP-005.
+
 ## [0.54.0] - 2026-09-06
 
 Headline: **every `ExecutionContext` gets a `Schedule` — and the CI run that exercised it found a

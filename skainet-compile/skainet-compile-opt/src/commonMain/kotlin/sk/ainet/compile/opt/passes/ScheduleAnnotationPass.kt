@@ -20,12 +20,26 @@ import sk.ainet.lang.graph.GraphNode
  *
  * Target-parameterized like [LayoutAssignmentPass]: `HloGenerator` runs it as a core pass whenever
  * a target is named.
+ *
+ * **Structure at compile time, cores at run time** (SKEEP-005 phase 2, the key decision on
+ * responsibility): [defaults] describe *structure* — which axes of an op are independent — and
+ * are applied to every op that carries no hint of its own, so an exported attention always states
+ * `parallel_dims = [batch, heads]`. They never carry a core count. A `parallelism` that arrives
+ * explicitly from the DSL is stamped and emitted unchanged but is *advisory*: the pass says so in
+ * a diagnostic, and no compile-time consumer reads it — the compiled target picks its worker
+ * count when the device is created.
  */
 public class ScheduleAnnotationPass(
     private val target: String? = null,
-    /** Hints applied to ops (by normalized name) that carry none of their own — opt-in. */
-    private val defaults: Map<String, ScheduleHint> = emptyMap(),
+    /** Structural hints for ops (by normalized name) that carry none of their own; never a core count. */
+    private val defaults: Map<String, ScheduleHint> = structuralDefaults(),
 ) : GraphOptimizationPass {
+
+    init {
+        require(defaults.values.all { it.parallelism == null }) {
+            "schedule defaults describe structure (parallel dims), never a core count: $defaults"
+        }
+    }
 
     override val name: String = "schedule-annotation(${target ?: "any"})"
 
@@ -47,6 +61,12 @@ public class ScheduleAnnotationPass(
         public fun attentionDefaults(): Map<String, ScheduleHint> =
             listOf("scaleddotproductattention", "sdpa", "attention").associateWith { ScheduleHint.parallel("batch", "heads") }
 
+        /**
+         * The structural defaults every compiled export gets (SKEEP-005 phase 2): today the
+         * attention split. Structure only — no entry carries a `parallelism`.
+         */
+        public fun structuralDefaults(): Map<String, ScheduleHint> = attentionDefaults()
+
         public fun normalizeOpName(name: String): String = name.lowercase().filter { it.isLetterOrDigit() }
 
         /** The hint stamped on [node] by this pass, or carried from the DSL; `null` when none. */
@@ -61,9 +81,8 @@ public class ScheduleAnnotationPass(
         val newNodes = graph.nodes.map { node ->
             if (node.metadata.containsKey(SCHEDULE_METADATA_KEY)) return@map node   // already stamped
             val opName = normalizeOpName(node.operation.name)
-            val requested = ScheduleHint.fromAttribute(node.operation.parameters[SCHEDULE_ATTRIBUTE_KEY])
-                ?: defaults[opName]
-                ?: return@map node
+            val explicit = ScheduleHint.fromAttribute(node.operation.parameters[SCHEDULE_ATTRIBUTE_KEY])
+            val requested = explicit ?: defaults[opName] ?: return@map node
             val allowed = KNOWN_DIMS[opName]
             if (allowed == null) {
                 diagnostics += "schedule on '${node.id}' (${node.operation.name}) rejected: op has no schedulable dimensions"
@@ -73,6 +92,10 @@ public class ScheduleAnnotationPass(
             if (unknown.isNotEmpty()) {
                 diagnostics += "schedule on '${node.id}' (${node.operation.name}) rejected: unknown dims $unknown; honoured dims: $allowed"
                 return@map node
+            }
+            if (explicit?.parallelism != null) {
+                diagnostics += "schedule on '${node.id}' (${node.operation.name}): parallelism=${explicit.parallelism} is advisory — " +
+                    "the compiled target chooses its worker count at run time (SKEEP-005)"
             }
             changed = true
             node.copy(metadata = node.metadata + (SCHEDULE_METADATA_KEY to requested.toAttributeMap()))

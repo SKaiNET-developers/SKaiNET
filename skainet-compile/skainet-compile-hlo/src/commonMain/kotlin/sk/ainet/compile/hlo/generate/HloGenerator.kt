@@ -20,6 +20,17 @@ import sk.ainet.lang.types.DType
 public object HloGenerator {
 
     /**
+     * The core passes every targeted export runs before conversion — the layout decision and
+     * the SKEEP-005 schedule annotation (structural `parallel_dims`, advisory `parallelism`).
+     * Exposed so exporters that trace their own tape and call the converter directly can run
+     * the same passes instead of re-listing them.
+     */
+    public fun corePasses(target: String): List<sk.ainet.compile.opt.GraphOptimizationPass> = listOf(
+        sk.ainet.compile.opt.passes.LayoutAssignmentPass(target),
+        sk.ainet.compile.opt.passes.ScheduleAnnotationPass(target),
+    )
+
+    /**
      * Generate StableHLO from any [Model] and a sample input tensor.
      *
      * @param model The model whose forward pass will be traced.
@@ -66,14 +77,7 @@ public object HloGenerator {
         val optimizedGraph = if (target == null) {
             computeGraph
         } else {
-            sk.ainet.compile.opt.dagPipelineFor(
-                target,
-                corePasses = listOf(
-                    sk.ainet.compile.opt.passes.LayoutAssignmentPass(target),
-                    // SKEEP-005: schedule hints become `skainet.schedule` module metadata.
-                    sk.ainet.compile.opt.passes.ScheduleAnnotationPass(target),
-                ),
-            ).optimize(computeGraph).graph
+            sk.ainet.compile.opt.dagPipelineFor(target, corePasses = corePasses(target)).optimize(computeGraph).graph
         }
 
         val converter = StableHloConverterFactory.createExtended()

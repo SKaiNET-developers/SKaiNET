@@ -39,6 +39,38 @@ public class DefaultGraphExecutionContext(
 
     private val observerRegistry = ExecutionObserverRegistry()
 
+    /**
+     * SKEEP-005 phase 2: this context does not build its ops, it wraps [baseOps]. So the schedule
+     * is whatever the base ops run under — [sk.ainet.context.schedule.ScheduledOps] answers —
+     * and [sk.ainet.context.schedule.Schedule.Sequential] for ops that know no schedule.
+     */
+    override val schedule: sk.ainet.context.schedule.Schedule
+        get() = (baseOps as? sk.ainet.context.schedule.ScheduledOps)?.schedule
+            ?: sk.ainet.context.schedule.Schedule.Sequential
+
+    /**
+     * A sibling context over `baseOps.withSchedule(schedule)` — fresh tape stack and trace
+     * session, same phase, factory, hooks, stats, tape factory, graph and sink — mirroring
+     * `DirectCpuExecutionContext.withSchedule`. When the base ops cannot be rescheduled the
+     * request is a visible downgrade (the [sk.ainet.context.ExecutionContext] default emits
+     * `TraceEvent.ScheduleDowngraded`), never a silent no-op.
+     */
+    override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): sk.ainet.context.ExecutionContext {
+        if (schedule === this.schedule) return this
+        val scheduled = baseOps as? sk.ainet.context.schedule.ScheduledOps ?: return super.withSchedule(schedule)
+        return DefaultGraphExecutionContext(
+            baseOps = scheduled.withSchedule(schedule),
+            phase = phase,
+            tensorDataFactory = tensorDataFactory,
+            hooks = hooks,
+            memoryInfo = memoryInfo,
+            executionStats = executionStats,
+            createTapeFactory = createTapeFactory,
+            computeGraph = computeGraph,
+            baseSink = baseSink,
+        )
+    }
+
     private val _tapes = DefaultTapeStack()
     override val tapeStack: TapeStack get() = _tapes
 
