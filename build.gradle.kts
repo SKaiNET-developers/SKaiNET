@@ -14,7 +14,7 @@ plugins {
     alias(libs.plugins.skainet.docs)
     alias(libs.plugins.skainet.npmPins)
     alias(libs.plugins.skainet.mavenPins)
-    id("org.jetbrains.kotlinx.benchmark") version "0.4.19" apply false
+    id("org.jetbrains.kotlinx.benchmark") version "0.5.0" apply false
 }
 
 allprojects {
@@ -37,6 +37,7 @@ skainet {
         pin("socket.io-parser", libs.versions.npm.socketio.parser, NpmPinTarget.JS)
         pin("fast-uri", libs.versions.npm.fast.uri, NpmPinTarget.JS)
         pin("serialize-javascript", libs.versions.npm.serialize.javascript, NpmPinTarget.JS)
+        pin("qs", libs.versions.npm.qs, NpmPinTarget.JS)
         pin("brace-expansion", libs.versions.npm.brace.expansion, NpmPinTarget.JS)
         pin("diff", libs.versions.npm.diff, NpmPinTarget.JS)
         pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)
