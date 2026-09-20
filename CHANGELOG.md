@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-09-20
+
+Headline: **grouped-query attention is native to the engine, and the compiled leg of SKEEP-005 lands —
+structure at compile time, cores at run time.** `scaledDotProductAttention` takes K/V with their own head
+count, so model code no longer tiles K/V up to the query heads before attention — not eagerly, not on
+the tape, and not in the exported StableHLO. Graph execution contexts now run under the schedule of the
+ops they wrap.
+
+Version note: 0.55.0 is skipped so the engine and SKaiNET-transformers share a version line again
+(transformers 0.55.0 was a transformers-only release against engine 0.54.0).
+
 ### Added
 
 - **SKEEP-005 phase 2 — the compiled leg: structure at compile time, cores at run time.**
@@ -14,6 +25,13 @@
   core passes. New `ScheduledOps` seam: `DefaultCpuOps*` report and rebuild their schedule, and
   `DefaultGraphExecutionContext` answers `schedule`/`withSchedule` from the ops it wraps, so the
   JVM `ComputeGraphExecutor` runs under the caller's schedule. Key decision and diagram in SKEEP-005.
+
+### Changed
+
+- **SDPA shape validation follows the grouped-query contract**: Q heads must be a positive multiple of
+  the K/V head count (K and V must still agree). Callers that tiled K/V upstream keep working unchanged.
+- **Security pins**: `fast-uri` 3.1.6 and `qs` 6.16.0 in the JS/Wasm dependency graph.
+- Dependency bumps: kotest 6.2.5, kotlinx-benchmark 0.5.0, binary-compatibility-validator.
 
 ## [0.54.0] - 2026-09-06
 
