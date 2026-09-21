@@ -15,7 +15,7 @@ android-compileSdk = "36"
 # 16 KB-page-aligned .so's by default (Android 15+ requirement).
 android-ndk = "28.2.13676358"
 kotlinxSerializationJson = "1.11.0"
-ktorClientCore = "3.5.2"
+ktorClientCore = "3.6.0"
 ktorClientPlugins = "3.1.1"
 logbackClassic = "1.6.3"
 kover = "0.9.9"
