@@ -10,7 +10,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines)
-            implementation(libs.kotlinx.io.core)
+            // `api`: kotlinx.io.Source / Sink are part of this module's public API (DataSourceArtifact.openSource(),
+            // copyTo(), DataSourceRemoteContent, DataSourceArtifactStore), so consumers need them on their compile
+            // classpath. As `implementation` a consumer could not call those functions without adding kotlinx-io itself.
+            api(libs.kotlinx.io.core)
             implementation(libs.kotlinx.serialization.json)
         }
 
