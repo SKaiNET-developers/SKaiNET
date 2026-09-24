@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.56.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.57.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,24 +308,18 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.56.0
+## What's New in 0.57.0
 
-Grouped-query attention becomes native to the engine, and the compiled leg of SKEEP-005 lands:
+Grouped-query KV-cache graphs export with an attention mask, and the toolchain moves to Kotlin 2.4.20:
 
-- **Grouped-query `scaledDotProductAttention`** — K/V arrive with their own head count
-  (`[b, nKV, Sk, hd]`); query head `h` reads K/V head `h / (H / nKV)`. Bit-identical to before when
-  `nKV == H`, and to the old tiled form otherwise. Model code no longer expands K/V heads before
-  attention — not eagerly, not on the tape.
-- **Leaner StableHLO for GQA models** — attention lowers with the head groups as a batching
-  dimension, so exports carry no broadcast or concatenate of K/V.
-- **Structure at compile time, cores at run time** — `ScheduleAnnotationPass` stamps structural
-  defaults (`parallel_dims = [batch, heads]` on every attention); an explicit `parallelism` is
-  advisory and a default can never carry a core count.
-- **Graph contexts honour the schedule of their ops** — the new `ScheduledOps` seam lets
-  `DefaultGraphExecutionContext` answer `schedule`/`withSchedule` from the ops it wraps, so the JVM
-  `ComputeGraphExecutor` runs under the caller's schedule.
-
-0.55.0 is skipped so the engine and SKaiNET-transformers share a version line again.
+- **Masked grouped-query attention exports to valid StableHLO** — a per-head mask under GQA is split
+  into the K/V head groups instead of broadcast onto them, and a mask onto a dynamic key length (the
+  chunked-prefill shape of a KV-cache graph) uses `dynamic_broadcast_in_dim` with the expansion hints
+  IREE 3.11 needs. Static graphs emit exactly what they did before.
+- **kotlinx-io is part of `skainet-data-source`'s API** — callers of `openSource()` / `copyTo()` no
+  longer need to declare it themselves.
+- **Kotlin 2.4.20**, AGP 9.4.1, Ktor client 3.6.0; the `webpack` security pin is retired now that
+  the Kotlin toolchain's own webpack is past the fix.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -350,6 +344,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.57.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — masked grouped-query
+  attention in the StableHLO export, the kotlinx-io API fix, the Kotlin 2.4.20 upgrade, and the
+  publish dry run
 
 ### Contributors (0.56.0)
 
