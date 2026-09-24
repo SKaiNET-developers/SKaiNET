@@ -63,6 +63,57 @@ class SdpaGqaHloExportTest {
     }
 
     @Test
+    fun perHeadMaskIsSplitIntoGroupsNotBroadcast() {
+        // [b, H, Sq, Sk] mask under GQA (H = 4, nKV = 2): the head dim must be viewed as [nKV, nRep]
+        // in the same h = kv * nRep + r order as Q. Broadcasting H onto nKV is invalid IR.
+        val mlir = StableHloConverterFactory.createBasic().convert(graph(listOf(1, 4, 8, 16), listOf(1, 2, 8, 16), causal = false, mask = listOf(1, 4, 8, 8)), "gqa_head_mask").content
+        assertTrue(mlir.contains("stablehlo.reshape %arg3 : (tensor<1x4x8x8xf32>) -> tensor<1x2x2x8x8xf32>"), "per-head mask is reshaped to [b, nKV, nRep, Sq, Sk]:\n$mlir")
+        assertFalse(mlir.contains("(tensor<1x4x8x8xf32>) -> tensor<1x2x2x8x8xf32>") && mlir.contains("broadcast_in_dim %arg3"), "per-head mask must not be broadcast onto nKV:\n$mlir")
+    }
+
+    @Test
+    fun headSharedMaskWithDynamicKeyLengthUsesAnAttributedDynamicBroadcast() {
+        // KV-cache chunk graph: mask [b, 1, Sq, past+Sq] with a dynamic key length. A static
+        // broadcast_in_dim cannot produce the dynamic scores type.
+        val d = TypeMapper.DYNAMIC_DIM
+        val mlir = StableHloConverterFactory.createBasic().convert(graph(listOf(1, 16, 32, 128), listOf(1, 8, d, 128), causal = false, mask = listOf(1, 1, 32, d)), "gqa_dyn_mask").content
+        assertFalse(mlir.contains(Regex("""stablehlo\.broadcast_in_dim %arg3[^\n]*\?""")), "no static broadcast to a dynamic type:\n$mlir")
+        assertTrue(
+            mlir.contains(
+                "\"stablehlo.dynamic_broadcast_in_dim\"(%arg3, ") &&
+                mlir.contains(
+                    "<{broadcast_dimensions = array<i64: 0, 1, 3, 4>, known_expanding_dimensions = array<i64: 1>, " +
+                        "known_nonexpanding_dimensions = array<i64: 0, 2, 3>}> : (tensor<1x1x32x?xf32>, tensor<5xi32>) -> tensor<1x8x2x32x?xf32>",
+                ),
+            "head-shared dynamic mask uses dynamic_broadcast_in_dim with expansion hints:\n$mlir",
+        )
+    }
+
+    @Test
+    fun perHeadMaskWithDynamicKeyLengthUsesADynamicReshape() {
+        val d = TypeMapper.DYNAMIC_DIM
+        val mlir = StableHloConverterFactory.createBasic().convert(graph(listOf(1, 16, 32, 128), listOf(1, 8, d, 128), causal = false, mask = listOf(1, 16, 32, d)), "gqa_dyn_head_mask").content
+        assertTrue(mlir.contains("stablehlo.dynamic_reshape %arg3, "), "per-head dynamic mask is split with dynamic_reshape:\n$mlir")
+        assertTrue(mlir.contains(": (tensor<1x16x32x?xf32>, tensor<5xi32>) -> tensor<1x8x2x32x?xf32>"), "reshape target is [b, nKV, nRep, Sq, ?]:\n$mlir")
+        assertFalse(mlir.contains(Regex("""stablehlo\.broadcast_in_dim %arg3[^\n]*\?""")), "no static broadcast to a dynamic type:\n$mlir")
+    }
+
+    @Test
+    fun broadcastMaskWithDynamicKeyLengthIsDynamicSafeWithoutGqa() {
+        // Plain multi-head attention hits the same trap: [b, 1, Sq, ?] onto scores [b, H, Sq, ?].
+        val d = TypeMapper.DYNAMIC_DIM
+        val mlir = StableHloConverterFactory.createBasic().convert(graph(listOf(1, 4, 8, 16), listOf(1, 4, d, 16), causal = false, mask = listOf(1, 1, 8, d)), "mha_dyn_mask").content
+        assertFalse(mlir.contains(Regex("""stablehlo\.broadcast_in_dim %arg3[^\n]*\?""")), "no static broadcast to a dynamic type:\n$mlir")
+        assertTrue(
+            mlir.contains(
+                "<{broadcast_dimensions = array<i64: 0, 1, 2, 3>, known_expanding_dimensions = array<i64: 1>, " +
+                    "known_nonexpanding_dimensions = array<i64: 0, 2, 3>}> : (tensor<1x1x8x?xf32>, tensor<4xi32>) -> tensor<1x4x8x?xf32>",
+            ),
+            "mask uses dynamic_broadcast_in_dim with expansion hints:\n$mlir",
+        )
+    }
+
+    @Test
     fun nonDividingHeadCountsAreRejected() {
         val ex = kotlin.test.assertFailsWith<HloConversionException> {
             StableHloConverterFactory.createBasic().convert(graph(listOf(1, 6, 8, 16), listOf(1, 4, 8, 16), causal = true), "bad")
