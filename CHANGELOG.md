@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-09-24
+
+Headline: **grouped-query KV-cache graphs export with an attention mask, and the toolchain moves to
+Kotlin 2.4.20.** The StableHLO attention converter now emits valid IR for an explicit mask under
+grouped-query attention and onto a dynamic key length, the shape of a chunked-prefill graph over a
+KV cache. Static graphs emit exactly what they did in 0.56.0.
+
+Version note: SKaiNET-transformers 0.57.0 follows on this engine release, keeping the two on one
+version line.
+
 ### Fixed
 
 - **SDPA StableHLO export: explicit masks under grouped-query attention and onto a dynamic key
@@ -14,6 +24,25 @@
   `known_nonexpanding_dimensions`, the form IREE 3.11 lowers. Static graphs are unchanged. Note:
   IREE 3.11 does not lower `dynamic_reshape`, so for IREE prefer a head-shared `[b, 1, Sq, ?]` mask
   when the key length is dynamic.
+- **`skainet-data-source` exports kotlinx-io as `api`** (#1295). `DataSourceArtifact.openSource()` /
+  `copyTo()`, `DataSourceRemoteContent` and `DataSourceArtifactStore` expose `kotlinx.io.Source` and
+  `Sink`, but kotlinx-io was an implementation dependency (runtime scope in the published POM), so
+  consumers failed with "Cannot access class kotlinx.io.Source" unless they declared it themselves.
+
+### Changed
+
+- **Kotlin 2.4.20** (#1304; supersedes #1271, #1272, #1273), with the Kotlin/JS `yarn.lock`
+  regenerated for the newer JS toolchain.
+- **Security pins**: the `webpack` pin is dropped. Kotlin 2.4.20's Gradle plugin requests webpack
+  5.108.1, already past 5.104.1, the first release clearing GHSA-8fgc-7cc6-rx7x and
+  GHSA-38r7-794h-5758, so the pin only held the bundler behind the version the plugin is tested
+  with. All other npm pins are unchanged.
+- **Dependencies**: AGP 9.4.1 (#1299), Ktor client 3.6.0 (#1296), kctfork 0.14.0 (#1300).
+- **CI**: the publish workflow gains a manual dry run (`workflow_dispatch`): the full release
+  pipeline into Maven Local, never given the Maven Central credentials (#1294). `GITFLOW.adoc`
+  documents the dry-run and green-before-tag gates. Action bumps: `actions/deploy-pages` 5.0.1
+  (#1263), `android-actions/setup-android` 4.0.4 (#1298), `github/codeql-action/upload-sarif`
+  4.38.1 (#1297).
 
 ## [0.56.0] - 2026-09-20
 
