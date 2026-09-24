@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **SDPA StableHLO export: explicit masks under grouped-query attention and onto a dynamic key
+  length** (#1302). A per-head mask `[b, H, Sq, Sk]` under GQA was broadcast onto the grouped
+  scores `[b, nKV, nRep, Sq, Sk]`, mapping `H` onto `nKV` (invalid IR even when static); it is now
+  reshaped into `[nKV, nRep]` in Q's own head order (`dynamic_reshape` when a dim is dynamic). A
+  mask that differs from a dynamic scores shape (the `?` key length of KV-cache chunk graphs) got a
+  static `broadcast_in_dim` to a dynamic type, which every backend rejects, with or without GQA; it
+  now uses `dynamic_broadcast_in_dim` with `known_expanding_dimensions` /
+  `known_nonexpanding_dimensions`, the form IREE 3.11 lowers. Static graphs are unchanged. Note:
+  IREE 3.11 does not lower `dynamic_reshape`, so for IREE prefer a head-shared `[b, 1, Sq, ?]` mask
+  when the key length is dynamic.
+
 ## [0.56.0] - 2026-09-20
 
 Headline: **grouped-query attention is native to the engine, and the compiled leg of SKEEP-005 lands —
