@@ -5,7 +5,7 @@ jsonSchemaValidator = "3.0.7"
 jsonSchemaValidatorVersion = "0.5.5"
 junit = "4.13.2"
 junitJupiter = "6.1.3"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 kotlinxCoroutines = "1.11.0"
 kotlinBrowser = "0.5.0"
 android-minSdk = "24"
@@ -44,9 +44,9 @@ kotest = "6.2.5"
 # A pin lands in BOTH lockfiles by default, because Yarn writes an entry for every
 # `resolutions` key whether or not that graph requests the package. Scope the pin
 # when only one graph has it:
-#   pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)
+#   pin("diff", libs.versions.npm.diff, NpmPinTarget.JS)
 # Check which graph holds a package before deciding:
-#   grep -c '^webpack@' kotlin-js-store/yarn.lock kotlin-js-store/wasm/yarn.lock
+#   grep -c '^diff@' kotlin-js-store/yarn.lock kotlin-js-store/wasm/yarn.lock
 npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
 npm-js-yaml = "4.3.2"              # GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
 npm-socketio-parser = "4.2.7"      # GHSA-2m8v-j782-fhvr
@@ -60,12 +60,6 @@ npm-qs = "6.16.0"                  # GHSA-4mjr-xmp4-gh2g, GHSA-x5fp-wj9c-mxmx
 # between the two majors, so the 3.x consumer is unaffected.
 npm-brace-expansion = "2.1.4"      # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg
 npm-diff = "8.0.3"                 # GHSA-73rr-hh4g-fpgx
-# KGP pins webpack to an exact version (5.101.3 for Kotlin 2.4.10), so this
-# resolution deliberately overrides the Kotlin toolchain's own choice. 5.104.1 is
-# the first release clearing both advisories. Re-check this pin on every Kotlin
-# upgrade: once KGP's own webpack moves past 5.104.1, drop the pin rather than
-# holding the bundler behind the version KGP was tested against.
-npm-webpack = "5.104.1"            # GHSA-8fgc-7cc6-rx7x, GHSA-38r7-794h-5758
 
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }

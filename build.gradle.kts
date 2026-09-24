@@ -40,7 +40,6 @@ skainet {
         pin("qs", libs.versions.npm.qs, NpmPinTarget.JS)
         pin("brace-expansion", libs.versions.npm.brace.expansion, NpmPinTarget.JS)
         pin("diff", libs.versions.npm.diff, NpmPinTarget.JS)
-        pin("webpack", libs.versions.npm.webpack, NpmPinTarget.JS)
     }
 }
 
