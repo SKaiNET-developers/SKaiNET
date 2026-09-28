@@ -126,7 +126,7 @@ kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 asciidoctorJvm = { id = "org.asciidoctor.jvm.convert", version = "4.0.5" }
-asciidoctorPdf = { id = "org.asciidoctor.jvm.pdf", version = "4.0.5" }
+asciidoctorPdf = { id = "org.asciidoctor.jvm.pdf", version = "5.0.0" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 
 skainet-docs = { id = "sk.ainet.documentation" }
