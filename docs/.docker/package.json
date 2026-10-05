@@ -12,6 +12,8 @@
     "asciidoctor-kroki": "github:asciidoctor/asciidoctor-kroki#d02fbf06cdb837524f5e4e12537c05e0bb83c715"
   },
   "overrides": {
-    "js-yaml": "4.3.2"
+    "js-yaml": "4.3.2",
+    "basic-ftp": "6.2.1",
+    "dompurify": "3.4.16"
   }
 }
