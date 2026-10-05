@@ -55,11 +55,12 @@ skainet {
         pin("io.opentelemetry:opentelemetry-api", libs.versions.maven.opentelemetry.api)
         // Jackson is pinned to the project's own audited line (already in the catalog
         // for skainet's direct use) rather than the advisories' minimum 2.18.11, so the
-        // pin can never downgrade a project configuration. The three artifacts move
-        // together: forcing databind alone would strand core/annotations on Dokka's 2.15.3.
+        // pin can never downgrade a project configuration. core moves with databind:
+        // forcing databind alone would strand core on Dokka's 2.15.3. jackson-annotations
+        // is deliberately NOT pinned — it has no patch releases (the 2.22 line is just
+        // "2.22"), so a 2.22.3 pin cannot resolve; databind's bom aligns it instead.
         pin("com.fasterxml.jackson.core:jackson-databind", libs.versions.jacksonDatabind)
         pin("com.fasterxml.jackson.core:jackson-core", libs.versions.jacksonDatabind)
-        pin("com.fasterxml.jackson.core:jackson-annotations", libs.versions.jacksonDatabind)
     }
 }
 
