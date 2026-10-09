@@ -7,7 +7,7 @@ import sk.ainet.buildlogic.root.SkainetRootExtension
 
 /**
  * Pins selected Maven/JVM coordinates to an audited version across every subproject's
- * dependency graph.
+ * dependency graph, including each project's buildscript (plugin) classpath.
  *
  * ## Why this exists
  *
@@ -66,6 +66,18 @@ class MavenPinsPlugin : Plugin<Project> {
 
         project.allprojects {
             configurations.all {
+                resolutionStrategy.eachDependency {
+                    val coordinate = "${requested.group}:${requested.name}"
+                    pins.get()[coordinate]?.let { pinned -> useVersion(pinned) }
+                }
+            }
+
+            // The buildscript (plugin) classpath is a separate configuration container that
+            // `configurations.all` above never reaches, yet it is where most CVE-flagged
+            // libraries actually live: AGP ships BouncyCastle and commons-lang3, Dokka ships
+            // Jackson, Kover ships FreeMarker. Pin it with the same map so one declaration
+            // covers both worlds.
+            buildscript.configurations.all {
                 resolutionStrategy.eachDependency {
                     val coordinate = "${requested.group}:${requested.name}"
                     pins.get()[coordinate]?.let { pinned -> useVersion(pinned) }

@@ -50,17 +50,32 @@ kotest = "6.2.5"
 npm-ws = "8.21.1"   # GHSA-96hv-2xvq-fx4p
 npm-js-yaml = "4.3.2"              # GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
 npm-socketio-parser = "4.2.7"      # GHSA-2m8v-j782-fhvr
-npm-fast-uri = "3.1.7"             # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx, GHSA-jqff-g426-hqxp,
+npm-fast-uri = "3.1.8"             # GHSA-7p8r-x3mc-p8w7, GHSA-v2hh-gcrm-f6hx, GHSA-jqff-g426-hqxp,
                                     # GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-5jgf-p345-68v8,
-                                    # GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3
+                                    # GHSA-58mr-gqgx-xq4g, GHSA-qw65-cvwx-89v3, GHSA-hrr3-gc8f-f4qj
 npm-serialize-javascript = "7.0.5" # GHSA-5c6j-r48x-rmvq, GHSA-qj8w-gfj5-8c6v
 npm-qs = "6.16.0"                  # GHSA-4mjr-xmp4-gh2g, GHSA-x5fp-wj9c-mxmx
 # One pin covers both major lines in the graph: minimatch 3.x asks for ^1.1.7 and
-# minimatch 9.x for ^2.0.2, and a Yarn resolution is global. 2.1.4 clears the fixed
-# set of both advisories (<1.1.18 and >=2.0.0 <2.1.4); the exported API is unchanged
-# between the two majors, so the 3.x consumer is unaffected.
-npm-brace-expansion = "2.1.4"      # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg
+# minimatch 9.x for ^2.0.2, and a Yarn resolution is global. 2.1.7 clears the fixed
+# sets of all advisories to date; the exported API is unchanged between the two
+# majors, so the 3.x consumer is unaffected.
+npm-brace-expansion = "2.1.7"      # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg,
+                                    # GHSA-6j4f-fj2g-mc7p, GHSA-qhr7-859c-m2p7, GHSA-q2hr-2g5m-vwhr
 npm-diff = "8.0.3"                 # GHSA-73rr-hh4g-fpgx
+npm-engine-io = "6.6.10"           # GHSA-2gc4-cqfq-p2gv
+
+# --- maven pins ---------------------------------------------------------------
+# Versions forced across every project configuration AND every buildscript
+# (plugin) classpath via sk.ainet.maven-pins — see MavenPinsPlugin. A version
+# here does nothing on its own; the root build script must name the coordinate
+# in skainet { mavenPins { } }. Verify with ./gradlew verifyMavenPins.
+maven-bouncycastle = "1.85"        # GHSA-9pwp-9qqc-pr26, GHSA-qp49-qgx5-5m26, GHSA-c3fc-8qff-9hwx,
+                                    # GHSA-wg6q-6289-32hp (AGP ships 1.80.2)
+maven-freemarker = "2.3.35"        # GHSA-27j2-h3m2-8237 (Kover ships 2.3.32)
+maven-commons-lang3 = "3.18.0"     # GHSA-j288-q9x7-2f5v (AGP ships 3.16.0)
+maven-httpclient = "4.5.14"        # GHSA-7r82-7xv7-xcpj
+maven-jsoup = "1.23.1"             # GHSA-pmhh-3w7g-xqp8
+maven-opentelemetry-api = "1.62.0" # GHSA-rcgg-9c38-7xpx
 
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jacksonDatabind" }
