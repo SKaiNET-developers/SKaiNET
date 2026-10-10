@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2023-2025 Michal Harakal and SKaiNET-developers contributors
+# SPDX-License-Identifier: MIT
+cff-version: 1.2.0
+message: >-
+  If you use SKaiNET in your research, please cite it using the
+  metadata from this file.
+title: "SKaiNET: A Kotlin Multiplatform AI Framework"
+type: software
+authors:
+  - family-names: Harakal
+    given-names: Michal
+    orcid: https://orcid.org/0009-0006-7981-4075
+  - name: SKaiNET-developers contributors
+    website: https://github.com/SKaiNET-developers
+version: "0.57.0"
+date-released: "2026-09-24"
+license: MIT
+repository-code: https://github.com/SKaiNET-developers/SKaiNET
+url: https://skainet-developers.github.io/SKaiNET/
+abstract: >-
+  A Kotlin Multiplatform AI framework: tensor operations, a typed
+  neural-network DSL for training and inference, autograd, a compiler
+  with pluggable CPU/GPU backends, and loaders for GGUF, ONNX, and
+  SafeTensors — running natively on JVM, Android, iOS, and embedded
+  targets.
+keywords:
+  - machine learning
+  - deep learning framework
+  - Kotlin Multiplatform
+  - tensors
+  - neural networks
+  - edge inference
+  - GGUF

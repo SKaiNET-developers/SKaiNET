@@ -417,6 +417,24 @@ Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNE
 
 ---
 
+## Citing
+
+If you use SKaiNET in your research, please cite it. Citation metadata lives in
+[`CITATION.cff`](CITATION.cff) (GitHub's *Cite this repository* button exports BibTeX and APA
+from it). Ready-to-paste BibTeX:
+
+```bibtex
+@misc{skainet,
+  author       = {Harakal, Michal and {SKaiNET-developers contributors}},
+  title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
+  year         = {2026},
+  note         = {Version 0.57.0. MIT License},
+  howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
+}
+```
+
+Please include the version you used (each release is tagged).
+
 ## License
 
 MIT — see [LICENCE](LICENCE).
