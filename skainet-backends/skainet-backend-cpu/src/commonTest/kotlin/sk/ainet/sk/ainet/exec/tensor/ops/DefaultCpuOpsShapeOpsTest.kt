@@ -99,6 +99,35 @@ class DefaultCpuOpsShapeOpsTest {
     }
 
     @Test
+    fun split_rank4_every_dim_matches_element_mapping() {
+        // Exercises the dense-FP32 copyInto path on every axis, with a remainder chunk:
+        // part p, element idx  ==  source element with idx[dim] + p * splitSize.
+        data(ctx) { _ ->
+            val dims = intArrayOf(2, 3, 5, 4)
+            val t = tensor<FP32, Float> {
+                shape(*dims) { init { (((it[0] * 3 + it[1]) * 5 + it[2]) * 4 + it[3]).toFloat() } }
+            }
+            for (dim in 0 until 4) {
+                val splitSize = 2
+                val parts = ops.split(t, splitSize = splitSize, dim = dim)
+                assertEquals((dims[dim] + splitSize - 1) / splitSize, parts.size)
+                for ((p, part) in parts.withIndex()) {
+                    val pd = part.shape.dimensions
+                    assertEquals(minOf(splitSize, dims[dim] - p * splitSize), pd[dim])
+                    for (a in 0 until pd[0]) for (b in 0 until pd[1]) for (c in 0 until pd[2]) for (d in 0 until pd[3]) {
+                        val src = intArrayOf(a, b, c, d).also { it[dim] += p * splitSize }
+                        assertEquals(t.data[src[0], src[1], src[2], src[3]], part.data[a, b, c, d], "dim=$dim part=$p [$a,$b,$c,$d]")
+                    }
+                }
+            }
+            // negative dim resolves like its positive twin
+            val neg = ops.split(t, splitSize = 3, dim = -1)
+            assertEquals(listOf(Shape(2, 3, 5, 3), Shape(2, 3, 5, 1)), neg.map { it.shape })
+            assertEquals(t.data[1, 2, 4, 3], neg[1].data[1, 2, 4, 0])
+        }
+    }
+
+    @Test
     fun squeeze_and_unsqueeze_behavior() {
         data(ctx) { _ ->
             val t = tensor<FP32, Float> { shape(1, 3, 1, 4) { init { it.sum().toFloat() } } }

@@ -2417,6 +2417,35 @@ public open class DefaultCpuOpsBase(
         val total = tensor.shape[nd]
         val chunks = (total + splitSize - 1) / splitSize
         val result = ArrayList<Tensor<T, V>>(chunks)
+
+        // Dense-FP32 fast path: each chunk is `outer` contiguous runs of `size * inner` floats,
+        // copied with copyInto. The generic path below costs two IntArray copies (outIdx.copyOf
+        // + the vararg spread) and a boxed value per element — RoPE's per-step split made it a
+        // top decode allocation site (#1357).
+        val win = floatWindowOf(tensor)
+        if (win != null) {
+            val dims = tensor.shape.dimensions
+            var outer = 1
+            for (i in 0 until nd) outer *= dims[i]
+            var inner = 1
+            for (i in nd + 1 until rank) inner *= dims[i]
+            var start = 0
+            for (c in 0 until chunks) {
+                val size = minOf(splitSize, total - start)
+                val run = size * inner
+                val out = FloatArray(outer * run)
+                for (o in 0 until outer) {
+                    val from = win.off + (o * total + start) * inner
+                    win.arr.copyInto(out, destinationOffset = o * run, startIndex = from, endIndex = from + run)
+                }
+                val newDims = dims.copyOf()
+                newDims[nd] = size
+                result += floatResult(Shape(newDims), tensor.dtype, out, tensor)
+                start += size
+            }
+            return result
+        }
+
         var offset = 0
         for (c in 0 until chunks) {
             val size = minOf(splitSize, total - offset)
