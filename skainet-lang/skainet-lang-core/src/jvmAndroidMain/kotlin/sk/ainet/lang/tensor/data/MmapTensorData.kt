@@ -68,6 +68,20 @@ public class MmapFloatTensorData<T : DType>(
         floatBuffer.put(flatIndex, value)
     }
 
+    /**
+     * One bulk read of the mapped floats. The TensorData default walks every element through
+     * `get(*indices)` — an IntArray copy for the spread plus a boxed Float per element — which
+     * made per-forward copies of mmap'd weights (e.g. RMSNorm gains) the top allocation site.
+     */
+    override fun copyToFloatArray(): FloatArray {
+        val out = FloatArray(shape.volume)
+        // Separate statements: on Android's (pre-Java-9) nio, position() returns Buffer.
+        val view = floatBuffer.duplicate()
+        view.position(0)
+        view.get(out)
+        return out
+    }
+
     private fun calcFlatIndex(indices: IntArray): Int {
         require(indices.size == shape.dimensions.size) {
             "Number of indices (${indices.size}) must match tensor dimensions (${shape.dimensions.size})"
