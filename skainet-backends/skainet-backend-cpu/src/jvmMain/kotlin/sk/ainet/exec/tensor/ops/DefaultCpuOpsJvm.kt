@@ -50,7 +50,10 @@ internal class DefaultCpuOpsJvm(
     override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): sk.ainet.lang.tensor.ops.TensorOps =
         if (schedule === this.schedule) this else DefaultCpuOpsJvm(dataFactory, schedule)
 
-    private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
+    // Read through JvmVectorKernels (an object → static final field): C2 constant-folds static
+    // finals but not instance finals, and the Vector API only intrinsifies with a constant species.
+    // As an instance field every FloatVector op here ran the allocating Java fallback.
+    private inline val floatSpecies: VectorSpecies<Float> get() = JvmVectorKernels.floatSpecies
 
     /**
      * On the JVM, auto-install ServiceLoader-discovered providers (Panama Vector,
@@ -917,7 +920,9 @@ internal class DefaultCpuOpsJvm(
         return super.mean(tensor, dim)
     }
 
-    private fun <T : DType, V> vectorFloatBinary(
+    // inline for the same reason as JvmVectorKernels.binaryFloat: the op lambdas must reach
+    // the vector loops as code, not as Function2 objects, or the Vector API is not intrinsified.
+    private inline fun <T : DType, V> vectorFloatBinary(
         a: Tensor<T, V>,
         b: Tensor<T, V>,
         vectorOp: (FloatVector, FloatVector) -> FloatVector,
@@ -950,37 +955,11 @@ internal class DefaultCpuOpsJvm(
 
         // Case 2: scalar broadcast
         if (aVol == 1) {
-            val aval = aBuf[aBase]
-            val speciesLen = floatSpecies.length()
-            var idx = 0
-            val loopBound = floatSpecies.loopBound(outVolume)
-            while (idx < loopBound) {
-                val va = FloatVector.broadcast(floatSpecies, aval)
-                val vb = FloatVector.fromArray(floatSpecies, bBuf, bBase + idx)
-                vectorOp(va, vb).intoArray(outBuffer, idx)
-                idx += speciesLen
-            }
-            while (idx < outVolume) {
-                outBuffer[idx] = scalarOp(aval, bBuf[bBase + idx])
-                idx++
-            }
+            JvmVectorKernels.binaryFloatScalarLeft(aBuf[aBase], bBuf, bBase, outBuffer, outVolume, vectorOp, scalarOp)
             return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
         if (bVol == 1) {
-            val bval = bBuf[bBase]
-            val speciesLen = floatSpecies.length()
-            var idx = 0
-            val loopBound = floatSpecies.loopBound(outVolume)
-            while (idx < loopBound) {
-                val va = FloatVector.fromArray(floatSpecies, aBuf, aBase + idx)
-                val vb = FloatVector.broadcast(floatSpecies, bval)
-                vectorOp(va, vb).intoArray(outBuffer, idx)
-                idx += speciesLen
-            }
-            while (idx < outVolume) {
-                outBuffer[idx] = scalarOp(aBuf[aBase + idx], bval)
-                idx++
-            }
+            JvmVectorKernels.binaryFloatScalarRight(aBuf, aBase, bBuf[bBase], outBuffer, outVolume, vectorOp, scalarOp)
             return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
         }
 
@@ -998,40 +977,22 @@ internal class DefaultCpuOpsJvm(
                 a.shape.rank >= 1 && aLast == outLast && a.shape.dimensions.dropLast(1).all { it == 1 }
             )
             if (bIsBias && aVol == outVolume) {
-                val step = floatSpecies.length()
-                val loopBoundTail = floatSpecies.loopBound(outLast)
                 for (g in 0 until groups) {
-                    val aOff = g * outLast
-                    var idx = 0
-                    while (idx < loopBoundTail) {
-                        val va = FloatVector.fromArray(floatSpecies, aBuf, aBase + aOff + idx)
-                        val vb = FloatVector.fromArray(floatSpecies, bBuf, bBase + idx)
-                        vectorOp(va, vb).intoArray(outBuffer, aOff + idx)
-                        idx += step
-                    }
-                    while (idx < outLast) {
-                        outBuffer[aOff + idx] = scalarOp(aBuf[aBase + aOff + idx], bBuf[bBase + idx])
-                        idx++
-                    }
+                    val off = g * outLast
+                    JvmVectorKernels.binaryFloat(
+                        aBuf, bBuf, outBuffer, outLast, vectorOp, scalarOp,
+                        aOffset = aBase + off, bOffset = bBase, outOffset = off,
+                    )
                 }
                 return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
             }
             if (aIsBias && bVol == outVolume) {
-                val step = floatSpecies.length()
-                val loopBoundTail = floatSpecies.loopBound(outLast)
                 for (g in 0 until groups) {
-                    val bOff = g * outLast
-                    var idx = 0
-                    while (idx < loopBoundTail) {
-                        val va = FloatVector.fromArray(floatSpecies, aBuf, aBase + idx)
-                        val vb = FloatVector.fromArray(floatSpecies, bBuf, bBase + bOff + idx)
-                        vectorOp(va, vb).intoArray(outBuffer, bOff + idx)
-                        idx += step
-                    }
-                    while (idx < outLast) {
-                        outBuffer[bOff + idx] = scalarOp(aBuf[aBase + idx], bBuf[bBase + bOff + idx])
-                        idx++
-                    }
+                    val off = g * outLast
+                    JvmVectorKernels.binaryFloat(
+                        aBuf, bBuf, outBuffer, outLast, vectorOp, scalarOp,
+                        aOffset = aBase, bOffset = bBase + off, outOffset = off,
+                    )
                 }
                 return floatResult(Shape(outShape.dimensions.copyOf()), a.dtype, outBuffer)
             }
@@ -1041,7 +1002,7 @@ internal class DefaultCpuOpsJvm(
         return null
     }
 
-    private fun <T : DType, V> vectorFloatUnary(
+    private inline fun <T : DType, V> vectorFloatUnary(
         tensor: Tensor<T, V>,
         vectorOp: (FloatVector) -> FloatVector,
         scalarOp: (Float) -> Float

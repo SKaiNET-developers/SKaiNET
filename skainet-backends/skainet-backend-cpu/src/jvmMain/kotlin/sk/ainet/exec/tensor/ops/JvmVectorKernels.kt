@@ -14,10 +14,14 @@ import java.nio.ByteOrder
  * and future API changes are easier to adapt.
  */
 internal object JvmVectorKernels {
-    private val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
+    @PublishedApi
+    internal val floatSpecies: VectorSpecies<Float> = FloatVector.SPECIES_PREFERRED
 
     // region Elementwise
-    fun binaryFloat(
+    // inline: each call site gets its own loop with the lambda body in place, so C2 sees a
+    // monomorphic FloatVector op it can intrinsify. Passed through a Function1/2 the vectors
+    // escape into the generic invoke and the Vector API runs its allocating Java fallback.
+    inline fun binaryFloat(
         a: FloatArray,
         b: FloatArray,
         out: FloatArray,
@@ -26,6 +30,7 @@ internal object JvmVectorKernels {
         scalarOp: (Float, Float) -> Float,
         aOffset: Int = 0,
         bOffset: Int = 0,
+        outOffset: Int = 0,
     ) {
         var index = 0
         val step = floatSpecies.length()
@@ -33,16 +38,64 @@ internal object JvmVectorKernels {
         while (index < loopBound) {
             val va = FloatVector.fromArray(floatSpecies, a, aOffset + index)
             val vb = FloatVector.fromArray(floatSpecies, b, bOffset + index)
-            op(va, vb).intoArray(out, index)
+            op(va, vb).intoArray(out, outOffset + index)
             index += step
         }
         while (index < length) {
-            out[index] = scalarOp(a[aOffset + index], b[bOffset + index])
+            out[outOffset + index] = scalarOp(a[aOffset + index], b[bOffset + index])
             index++
         }
     }
 
-    fun unaryFloat(
+    /** `out[i] = op(a[aOffset + i], s)` — scalar right operand, same loop shape as [binaryFloat]. */
+    inline fun binaryFloatScalarRight(
+        a: FloatArray,
+        aOffset: Int,
+        s: Float,
+        out: FloatArray,
+        length: Int,
+        op: (FloatVector, FloatVector) -> FloatVector,
+        scalarOp: (Float, Float) -> Float,
+    ) {
+        var index = 0
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(length)
+        val vs = FloatVector.broadcast(floatSpecies, s)
+        while (index < loopBound) {
+            op(FloatVector.fromArray(floatSpecies, a, aOffset + index), vs).intoArray(out, index)
+            index += step
+        }
+        while (index < length) {
+            out[index] = scalarOp(a[aOffset + index], s)
+            index++
+        }
+    }
+
+    /** `out[i] = op(s, b[bOffset + i])` — scalar left operand, same loop shape as [binaryFloat]. */
+    inline fun binaryFloatScalarLeft(
+        s: Float,
+        b: FloatArray,
+        bOffset: Int,
+        out: FloatArray,
+        length: Int,
+        op: (FloatVector, FloatVector) -> FloatVector,
+        scalarOp: (Float, Float) -> Float,
+    ) {
+        var index = 0
+        val step = floatSpecies.length()
+        val loopBound = floatSpecies.loopBound(length)
+        val vs = FloatVector.broadcast(floatSpecies, s)
+        while (index < loopBound) {
+            op(vs, FloatVector.fromArray(floatSpecies, b, bOffset + index)).intoArray(out, index)
+            index += step
+        }
+        while (index < length) {
+            out[index] = scalarOp(s, b[bOffset + index])
+            index++
+        }
+    }
+
+    inline fun unaryFloat(
         input: FloatArray,
         out: FloatArray,
         length: Int,
