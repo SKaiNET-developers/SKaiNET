@@ -1,7 +1,7 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `0.62.4` on 2026-10-25.
+Generated from `operators.json` version `0.62.4` on 2026-10-30.
 
 Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.
 
@@ -125,9 +125,9 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `Dropout` | `sk.ainet.lang.nn.layers` | ✅ | —
 | `LossModule` | `sk.ainet.lang.nn.loss` | ✅ | —
 | `BatchNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
-| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ❌ | forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied — https://github.com/SKaiNET-developers/SKaiNET/issues/1379[#1379]
+| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `LayerNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
 
-| *Done* | | *30 / 32* |
+| *Done* | | *31 / 32* |
 |===
