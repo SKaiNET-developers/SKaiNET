@@ -4,11 +4,13 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.nn.Module
 import sk.ainet.lang.nn.topology.ModuleParameter
 import sk.ainet.lang.nn.topology.ModuleParameters
-import sk.ainet.lang.ops.NotImplemented
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.*
+import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP16
+import sk.ainet.lang.types.FP32
 import kotlin.reflect.KClass
 
 /**
@@ -23,7 +25,6 @@ import kotlin.reflect.KClass
  * @param initGamma Initial gamma (scale) parameter
  * @param initBeta Initial beta (shift) parameter
  */
-@NotImplemented(reason = "forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied", issue = "#1379")
 public class GroupNormalization<T : DType, V>(
     private val numGroups: Int,
     private val numChannels: Int,
@@ -86,55 +87,64 @@ public class GroupNormalization<T : DType, V>(
 
     override fun forward(input: Tensor<T, V>, ctx: ExecutionContext): Tensor<T, V> =
         sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
-            // Reshape input to separate groups: (N, C, H, W) -> (N, G, C//G, H, W)
-            val groupedInput = reshapeForGroups(input)
-            
-            // Calculate group statistics
-            val groupMean = calculateGroupMean(groupedInput)
-            val groupVar = calculateGroupVariance(groupedInput, groupMean)
-            
-            // Normalize within groups
-            val normalized = normalizeGroups(groupedInput, groupMean, groupVar)
-            
-            // Reshape back to original format
-            val output = reshapeFromGroups(normalized, input.shape)
-            
-            if (affine) {
-                val gamma = params[0].value // weight parameter
-                val beta = params[1].value  // bias parameter
-                output * gamma + beta
+            val inputShape = input.shape
+            require(inputShape.rank >= 2) {
+                "GroupNormalization expects input of shape (N, C, ...), got rank ${inputShape.rank}"
+            }
+            require(inputShape.dimensions[1] == numChannels) {
+                "Input has ${inputShape.dimensions[1]} channels, expected $numChannels"
+            }
+
+            // Compute the numerically-sensitive normalization (mean / variance /
+            // sqrt / divide) in f32 regardless of the model dtype, mirroring
+            // LayerNormalization: a low-precision variance loses enough precision
+            // that `sqrt(var + eps)` can overflow to NaN. The affine (gamma/beta)
+            // stays in the model dtype. No-op when the model already runs f32.
+            val normalized: Tensor<T, V> = if (input.dtype != FP32::class) {
+                val xF32 = input.ops.convert(input, FP32)
+                val normF32 = normalizeGroups(xF32)
+                val modelDtype: DType = when (input.dtype) {
+                    BF16::class -> BF16
+                    FP16::class -> FP16
+                    else -> FP32
+                }
+                @Suppress("UNCHECKED_CAST")
+                (input.ops.convert(normF32, modelDtype) as Tensor<T, V>)
             } else {
-                output
+                normalizeGroups(input)
+            }
+
+            if (affine) {
+                // gamma/beta are per-channel (C); reshape to (1, C, 1, ...) so they
+                // broadcast over the batch and spatial dimensions. The reshape must run
+                // on the input's ops: the default placeholder params carry VoidTensorOps,
+                // whose reshape is shape-only and would zero the values.
+                val broadcastShape = Shape(IntArray(inputShape.rank) { idx -> if (idx == 1) numChannels else 1 })
+                val gamma = input.ops.reshape(params[0].value, broadcastShape)
+                val beta = input.ops.reshape(params[1].value, broadcastShape)
+                normalized * gamma + beta
+            } else {
+                normalized
             }
         }
 
-    private fun reshapeForGroups(input: Tensor<T, V>): Tensor<T, V> {
-        // Reshape from (N, C, H, W) to (N, G, C//G, H, W)
-        TODO("Implement group reshaping")
-    }
+    /**
+     * Normalizes with `torch.nn.GroupNorm` semantics: (N, C, *) is reshaped to
+     * (N, G, C/G * prod(*)), each group is normalized with its own biased
+     * mean/variance over the last dimension, and the result is reshaped back.
+     */
+    private fun <D : DType> normalizeGroups(input: Tensor<D, V>): Tensor<D, V> {
+        val originalShape = input.shape
+        var rest = 1
+        for (i in 2 until originalShape.rank) rest *= originalShape.dimensions[i]
+        val grouped = input.reshape(Shape(originalShape.dimensions[0], numGroups, channelsPerGroup * rest))
 
-    private fun calculateGroupMean(groupedInput: Tensor<T, V>): Tensor<T, V> {
-        // Calculate mean across spatial and channel dimensions within each group
-        TODO("Implement group mean calculation")
-    }
+        val mean = grouped.mean(dim = 2).unsqueeze(2) // (N, G, 1)
+        val centered = grouped - mean
+        // Biased variance (mean of squared deviations), matching torch.nn.GroupNorm.
+        val variance = (centered * centered).mean(dim = 2).unsqueeze(2)
+        val normalized = centered / (variance + eps).sqrt()
 
-    private fun calculateGroupVariance(groupedInput: Tensor<T, V>, groupMean: Tensor<T, V>): Tensor<T, V> {
-        // Calculate variance across spatial and channel dimensions within each group
-        TODO("Implement group variance calculation")
-    }
-
-    private fun normalizeGroups(
-        groupedInput: Tensor<T, V>, 
-        groupMean: Tensor<T, V>, 
-        groupVar: Tensor<T, V>
-    ): Tensor<T, V> {
-        // normalized = (input - mean) / sqrt(variance)
-        // Note: eps handling would need proper scalar-tensor operations
-        return (groupedInput - groupMean) / groupVar.sqrt()
-    }
-
-    private fun reshapeFromGroups(normalized: Tensor<T, V>, originalShape: Shape): Tensor<T, V> {
-        // Reshape from (N, G, C//G, H, W) back to (N, C, H, W)
-        TODO("Implement reshape from groups")
+        return normalized.reshape(originalShape)
     }
 }
