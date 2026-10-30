@@ -4012,6 +4012,23 @@ public final class sk/ainet/lang/nn/metrics/PrecisionKt {
 	public static synthetic fun precision$default (Lsk/ainet/lang/nn/metrics/Averaging;IILjava/lang/Object;)Lsk/ainet/lang/nn/metrics/Metric;
 }
 
+public final class sk/ainet/lang/nn/metrics/Recall : sk/ainet/lang/nn/metrics/Metric {
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/lang/nn/metrics/Averaging;ILjava/lang/Float;)V
+	public synthetic fun <init> (Lsk/ainet/lang/nn/metrics/Averaging;ILjava/lang/Float;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun compute ()D
+	public fun getName ()Ljava/lang/String;
+	public fun reset ()V
+	public fun update (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/context/ExecutionContext;)V
+}
+
+public final class sk/ainet/lang/nn/metrics/RecallKt {
+	public static final fun binaryRecall (F)Lsk/ainet/lang/nn/metrics/Metric;
+	public static synthetic fun binaryRecall$default (FILjava/lang/Object;)Lsk/ainet/lang/nn/metrics/Metric;
+	public static final fun recall (Lsk/ainet/lang/nn/metrics/Averaging;I)Lsk/ainet/lang/nn/metrics/Metric;
+	public static synthetic fun recall$default (Lsk/ainet/lang/nn/metrics/Averaging;IILjava/lang/Object;)Lsk/ainet/lang/nn/metrics/Metric;
+}
+
 public final class sk/ainet/lang/nn/normalization/BatchNormalization : sk/ainet/lang/nn/Module, sk/ainet/lang/nn/topology/ModuleParameters {
 	public fun <init> (IDDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/reflect/KClass;)V
 	public synthetic fun <init> (IDDZLjava/lang/String;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/reflect/KClass;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
