@@ -5,7 +5,6 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.nn.topology.ModuleParameter
 import sk.ainet.lang.nn.topology.ModuleParameters
-import sk.ainet.lang.ops.NotImplemented
 
 /**
  * Transposed Convolution (Deconvolution) layer.
@@ -37,7 +36,6 @@ import sk.ainet.lang.ops.NotImplemented
  * @param initWeights Initial weights tensor
  * @param initBias Initial bias tensor (if bias is true)
  */
-@NotImplemented(reason = "forward needs TensorOps.convTranspose2d, which no backend implements yet", issue = "#1371")
 public class TransposedConv2d<T : DType, V>(
     public val inChannels: Int,
     public val outChannels: Int,
@@ -82,7 +80,6 @@ public class TransposedConv2d<T : DType, V>(
         sk.ainet.lang.nn.hooks.withForwardHooks(ctx, this, input) {
             val weight = params.first { it.name.endsWith(".weight") }.value
             val biasValue = if (bias) params.firstOrNull { it.name.endsWith(".bias") }?.value else null
-            // Throws until a backend implements convTranspose2d (see @NotImplemented above).
             input.ops.convTranspose2d(input, weight, biasValue, stride, padding, outputPadding, dilation, groups)
         }
 

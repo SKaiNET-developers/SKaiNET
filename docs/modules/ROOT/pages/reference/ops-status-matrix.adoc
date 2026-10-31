@@ -1,7 +1,7 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `0.62.4` on 2026-10-30.
+Generated from `operators.json` version `0.62.4` on 2026-10-31.
 
 Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.
 
@@ -34,7 +34,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.conv2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.conv3d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
 | `TensorOps.convTranspose1d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
-| `TensorOps.convTranspose2d` | ✖ | — | ❌ | — | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] 
+| `TensorOps.convTranspose2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.maxPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.avgPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.upsample2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
@@ -83,7 +83,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | ✅ | ❌ stub | — | ✅ | — 
 | `Similarity.cosineDistance` | ✖ | — | ❌ | — | ✅ | ✅ | ✅ 
 
-| *Done* | *1 / 67* | *3 / 67* | *50 / 67* | *57 / 58* | *1 / 67* | *66 / 67* | *1 / 67* 
+| *Done* | *1 / 67* | *3 / 67* | *51 / 67* | *58 / 59* | *1 / 67* | *67 / 67* | *1 / 67* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].
@@ -111,7 +111,7 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `Lstm` | `sk.ainet.lang.nn` | ✅ | —
 | `MaxPool2d` | `sk.ainet.lang.nn` | ✅ | —
 | `TransposedConv1d` | `sk.ainet.lang.nn` | ✅ | —
-| `TransposedConv2d` | `sk.ainet.lang.nn` | ❌ | forward needs TensorOps.convTranspose2d, which no backend implements yet — https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371]
+| `TransposedConv2d` | `sk.ainet.lang.nn` | ✅ | —
 | `Upsample2d` | `sk.ainet.lang.nn` | ✅ | —
 | `ActivationsWrapperModule` | `sk.ainet.lang.nn.activations` | ✅ | —
 | `ELU` | `sk.ainet.lang.nn.activations` | ✅ | —
@@ -129,5 +129,5 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `LayerNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
 
-| *Done* | | *31 / 32* |
+| *Done* | | *32 / 32* |
 |===

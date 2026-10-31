@@ -246,6 +246,21 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, input.dtype)
     }
 
+    override fun <T : DType, V> convTranspose2d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        outputPadding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+        groups: Int
+    ): Tensor<T, V> {
+        val resultShape = calculateConvTranspose2dShape(input.shape, weight.shape, stride, padding, outputPadding, dilation, groups)
+        val resultData = dataFactory.zeros<T, V>(resultShape, input.dtype)
+        return VoidOpsTensor(resultData, input.dtype)
+    }
+
     override fun <T : DType, V> maxPool2d(
         input: Tensor<T, V>,
         kernelSize: Pair<Int, Int>,
@@ -911,6 +926,30 @@ public class VoidTensorOps : TensorOps {
         val kernelSize = weightShape[2]
         val outputLength = (inputLength - 1) * stride - 2 * padding + dilation * (kernelSize - 1) + outputPadding + 1
         return Shape(batch, outChannels, outputLength)
+    }
+
+    /**
+     * Calculates the result shape for convTranspose2d operation.
+     * Input shape: (batch, in_channels, height, width)
+     * Weight shape: (in_channels, out_channels_per_group, kernel_height, kernel_width)
+     * Output shape: (batch, out_channels, out_height, out_width)
+     */
+    private fun calculateConvTranspose2dShape(
+        inputShape: Shape,
+        weightShape: Shape,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        outputPadding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+        groups: Int
+    ): Shape {
+        val batch = inputShape[0]
+        val outChannels = weightShape[1] * groups
+        val outputHeight =
+            (inputShape[2] - 1) * stride.first - 2 * padding.first + dilation.first * (weightShape[2] - 1) + outputPadding.first + 1
+        val outputWidth =
+            (inputShape[3] - 1) * stride.second - 2 * padding.second + dilation.second * (weightShape[3] - 1) + outputPadding.second + 1
+        return Shape(batch, outChannels, outputHeight, outputWidth)
     }
 
     /**

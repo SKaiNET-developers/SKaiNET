@@ -1237,6 +1237,89 @@ public class DefaultGradientTape(
         return grads
     }
 
+    override fun convTranspose2dBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // Adjoint of convTranspose2d forward: out[b,oc,oh,ow] += in[b,ic,ih,iw]*w[ic,oc,kh,kw],
+        // oh = ih*sH - pH + kh*dH, ow = iw*sW - pW + kw*dW.
+        val input = inputs[0]
+        val weight = inputs[1]
+        val hasBias = inputs.size > 2
+        val (sH, sW) = pair2(attributes["stride"], 1)
+        val (pH, pW) = pair2(attributes["padding"], 0)
+        val (dH, dW) = pair2(attributes["dilation"], 1)
+        val groups = (attributes["groups"] as? Number)?.toInt() ?: 1
+
+        val batch = input.shape[0]
+        val inChannels = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+        val outChannelsPerGroup = weight.shape[1]
+        val kH = weight.shape[2]
+        val kW = weight.shape[3]
+        val outH = upstream.shape[2]
+        val outW = upstream.shape[3]
+        val inChPerGroup = inChannels / groups
+
+        val gradInput = zerosLike(input)
+        val gradWeight = zerosLike(weight)
+        val gIdx = IntArray(4)
+        val wIdx = IntArray(4)
+        val uIdx = IntArray(4)
+
+        for (b in 0 until batch) {
+            for (g in 0 until groups) {
+                for (ic in 0 until inChPerGroup) {
+                    val inCh = g * inChPerGroup + ic
+                    for (oc in 0 until outChannelsPerGroup) {
+                        val outCh = g * outChannelsPerGroup + oc
+                        for (ih in 0 until inH) {
+                            for (iw in 0 until inW) {
+                                for (kh in 0 until kH) {
+                                    val oh = ih * sH - pH + kh * dH
+                                    if (oh < 0 || oh >= outH) continue
+                                    for (kw in 0 until kW) {
+                                        val ow = iw * sW - pW + kw * dW
+                                        if (ow < 0 || ow >= outW) continue
+                                        uIdx[0] = b; uIdx[1] = outCh; uIdx[2] = oh; uIdx[3] = ow
+                                        val up = (upstream.data.get(*uIdx) as Number).toFloat()
+                                        wIdx[0] = inCh; wIdx[1] = oc; wIdx[2] = kh; wIdx[3] = kw
+                                        val w = (weight.data.get(*wIdx) as Number).toFloat()
+                                        gIdx[0] = b; gIdx[1] = inCh; gIdx[2] = ih; gIdx[3] = iw
+                                        val xVal = (input.data.get(*gIdx) as Number).toFloat()
+                                        accumulateScalar(gradInput, gIdx, up * w)
+                                        accumulateScalar(gradWeight, wIdx, xVal * up)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val grads = mutableListOf<Tensor<DType, Any>?>(gradInput, gradWeight)
+        if (hasBias) {
+            val bias = inputs[2]
+            val gradBias = zerosLike(bias)
+            val bIdx = IntArray(1)
+            val outChannels = outChannelsPerGroup * groups
+            for (oc in 0 until outChannels) {
+                var acc = 0f
+                for (b in 0 until batch) {
+                    for (oh in 0 until outH) {
+                        for (ow in 0 until outW) {
+                            uIdx[0] = b; uIdx[1] = oc; uIdx[2] = oh; uIdx[3] = ow
+                            acc += (upstream.data.get(*uIdx) as Number).toFloat()
+                        }
+                    }
+                }
+                bIdx[0] = oc
+                accumulateScalar(gradBias, bIdx, acc)
+            }
+            grads.add(gradBias)
+        }
+        return grads
+    }
+
     /** Read-add-write [src]'s value at [srcIdx] into [dest] at [destIdx]; used by scatter-add backwards. */
     private fun accumulateAt(dest: Tensor<DType, Any>, destIdx: IntArray, src: Tensor<DType, Any>, srcIdx: IntArray) {
         accumulateScalar(dest, destIdx, (src.data.get(*srcIdx) as Number).toFloat())
@@ -1302,6 +1385,7 @@ public class DefaultGradientTape(
             "conv2d" to ::conv2dBackward,
             "conv3d" to ::conv3dBackward,
             "convTranspose1d" to ::convTranspose1dBackward,
+            "convTranspose2d" to ::convTranspose2dBackward,
             "maxPool2d" to ::maxPool2dBackward,
             "avgPool2d" to ::avgPool2dBackward,
             "upsample2d" to ::upsample2dBackward,

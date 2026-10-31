@@ -6408,6 +6408,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/DifferentiableTensorOps
 	public abstract fun conv2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun conv3dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun convTranspose1dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
+	public abstract fun convTranspose2dBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun cosBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun divScalarBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
 	public abstract fun divideBackward (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;Ljava/util/Map;)Ljava/util/List;
@@ -6663,7 +6664,6 @@ public abstract interface class sk/ainet/lang/tensor/ops/MixedPrecisionTensorOps
 }
 
 public final class sk/ainet/lang/tensor/ops/MixedPrecisionTensorOps$DefaultImpls {
-	public static fun convTranspose2d (Lsk/ainet/lang/tensor/ops/MixedPrecisionTensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public static fun matmulWeightTransposed (Lsk/ainet/lang/tensor/ops/MixedPrecisionTensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun relayoutPackedWeightForKernels (Lsk/ainet/lang/tensor/ops/MixedPrecisionTensorOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 }
@@ -6837,7 +6837,7 @@ public abstract interface class sk/ainet/lang/tensor/ops/TensorOps {
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun convTranspose1d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIII)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun convTranspose1d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIIIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
-	public fun convTranspose2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun convTranspose2d (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun convTranspose2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun convert (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/tensor/Tensor;
 	public abstract fun cos (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
@@ -6917,7 +6917,6 @@ public final class sk/ainet/lang/tensor/ops/TensorOps$DefaultImpls {
 	public static synthetic fun conv2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun convTranspose1d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;IIIIIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
-	public static fun convTranspose2d (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun convTranspose2d$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;IILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun elu$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;FILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun flatten$default (Lsk/ainet/lang/tensor/ops/TensorOps;Lsk/ainet/lang/tensor/Tensor;IIILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
