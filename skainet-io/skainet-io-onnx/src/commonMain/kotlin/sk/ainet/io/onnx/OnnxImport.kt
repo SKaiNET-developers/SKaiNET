@@ -118,9 +118,17 @@ public class OnnxToComputeGraphImporter {
 
         // Map each ONNX node to a ComputeGraph node and wire edges.
         graph.nodes.forEach { nodeView ->
-            val op = nodeView.toOperation()
+            val op = nodeView.toOperation(graph.initializers)
 
-            val inputSpecs = nodeView.inputs.mapNotNull { inputName ->
+            // Ops like Clip/Pad fold their trailing initializer inputs (min/max, pads) into
+            // parameters at import time — only the data input stays wired.
+            val nodeInputs = if (op.parameters[ONNX_INPUTS_CONSUMED_AT_IMPORT] == true) {
+                nodeView.inputs.take(1)
+            } else {
+                nodeView.inputs
+            }
+
+            val inputSpecs = nodeInputs.mapNotNull { inputName ->
                 if (inputName.isEmpty()) return@mapNotNull null
                 val produced = ensureProducer(inputName, tensorInfo, computeGraph, producers)
                 produced.tensorSpec
@@ -130,7 +138,7 @@ public class OnnxToComputeGraphImporter {
                 resolveTensorSpec(outputName, tensorInfo, inputSpecs, op, idx)
             }
 
-            val initMetadata = graph.initializers.filterKeys { it in nodeView.inputs }
+            val initMetadata = graph.initializers.filterKeys { it in nodeInputs }
             val graphNode = GraphNode(
                 id = nodeView.name,
                 operation = op,
@@ -144,7 +152,7 @@ public class OnnxToComputeGraphImporter {
             computeGraph.addNode(graphNode)
 
             // Wire edges now that we have a concrete destination.
-            nodeView.inputs.forEachIndexed { inputIdx, inputName ->
+            nodeInputs.forEachIndexed { inputIdx, inputName ->
                 if (inputName.isEmpty()) return@forEachIndexed
                 val produced = ensureProducer(inputName, tensorInfo, computeGraph, producers)
                 computeGraph.addEdge(
@@ -223,7 +231,7 @@ public class OnnxToComputeGraphImporter {
         )
     }
 
-    private fun OnnxNodeView.toOperation(): Operation {
+    private fun OnnxNodeView.toOperation(initializers: Map<String, OnnxTensorView>): Operation {
         val upper = opType.uppercase()
         val attrInts = { key: String -> attributes[key]?.ints?.map { it.toSafeInt() } }
         return when (upper) {
@@ -238,16 +246,67 @@ public class OnnxToComputeGraphImporter {
             )
             "RELU" -> ReluOperation<DType, Any>()
             "SIGMOID" -> SigmoidOperation<DType, Any>()
-            "LEAKYRELU" -> OnnxPlaceholderOperation(
-                opType = opType,
+            "LEAKYRELU" -> OnnxMappedOperation(
+                opName = "leakyRelu",
                 type = "activation",
-                parameters = attributes["alpha"]?.floats?.firstOrNull()?.let { mapOf("alpha" to it) } ?: emptyMap()
+                // ONNX attribute `alpha` (default 0.01) is SKaiNET's negativeSlope.
+                parameters = mapOf("negativeSlope" to (attributes["alpha"]?.floats?.firstOrNull() ?: 0.01f))
             )
-            "SILU" -> OnnxPlaceholderOperation(
-                opType = opType,
-                type = "activation",
-                parameters = emptyMap()
-            )
+            "SILU" -> OnnxMappedOperation(opName = "silu", type = "activation")
+            "CLIP" -> {
+                // Opset < 11 carries min/max as attributes; opset >= 11 as optional initializer
+                // inputs. A min/max fed by a *dynamic* tensor cannot fold to a clamp — keep the
+                // placeholder so execution fails loudly instead of silently not clipping.
+                val minResolved = attributes["min"]?.floats?.firstOrNull()
+                    ?: resolveScalarFloatInitializer(inputs.getOrNull(1), initializers)
+                val maxResolved = attributes["max"]?.floats?.firstOrNull()
+                    ?: resolveScalarFloatInitializer(inputs.getOrNull(2), initializers)
+                val hasDynamicBound = listOfNotNull(inputs.getOrNull(1), inputs.getOrNull(2))
+                    .any { it.isNotEmpty() && it !in initializers }
+                if (hasDynamicBound) {
+                    OnnxPlaceholderOperation(
+                        opType = opType,
+                        type = "onnx",
+                        parameters = mapOf("reason" to "Clip with dynamic min/max inputs is not supported")
+                    )
+                } else {
+                    OnnxMappedOperation(
+                        opName = "clamp",
+                        type = "activation",
+                        parameters = mapOf(
+                            "minVal" to (minResolved ?: -Float.MAX_VALUE),
+                            "maxVal" to (maxResolved ?: Float.MAX_VALUE),
+                            ONNX_INPUTS_CONSUMED_AT_IMPORT to true,
+                        )
+                    )
+                }
+            }
+            "PAD" -> {
+                // Only the form pad2d covers: constant mode, zero fill, 4D input with no
+                // batch/channel padding. pads order (4D): [Nb, Cb, Hb, Wb, Ne, Ce, He, We].
+                val mode = attributes["mode"]?.strings?.firstOrNull() ?: "constant"
+                val pads = attrInts("pads")
+                    ?: inputs.getOrNull(1)?.takeIf { it.isNotEmpty() }?.let { initializers[it]?.intListOrNull() }
+                val constantValue = attributes["value"]?.floats?.firstOrNull()
+                    ?: resolveScalarFloatInitializer(inputs.getOrNull(2), initializers)
+                    ?: 0f
+                if (mode == "constant" && constantValue == 0f &&
+                    pads != null && pads.size == 8 &&
+                    pads[0] == 0 && pads[1] == 0 && pads[4] == 0 && pads[5] == 0
+                ) {
+                    OnnxPadOperation(padTop = pads[2], padLeft = pads[3], padBottom = pads[6], padRight = pads[7])
+                } else {
+                    OnnxPlaceholderOperation(
+                        opType = opType,
+                        type = "onnx",
+                        parameters = mapOf(
+                            "reason" to "Pad supports constant mode with zero value and 4D spatial-only pads",
+                            "mode" to mode,
+                            "pads" to (pads ?: emptyList<Int>()),
+                        )
+                    )
+                }
+            }
             "ADD" -> AddOperation<DType, Any>()
             "MUL" -> MultiplyOperation<DType, Any>()
             "DIV" -> DivideOperation<DType, Any>()
@@ -266,10 +325,12 @@ public class OnnxToComputeGraphImporter {
             "TRANSPOSE" -> TransposeOperation<DType, Any>(
                 parameters = attrInts("perm")?.let { mapOf("perm" to it) } ?: emptyMap()
             )
-            "BATCHNORMALIZATION" -> OnnxPlaceholderOperation(
-                opType = opType,
+            "BATCHNORMALIZATION" -> OnnxMappedOperation(
+                opName = "batchNorm",
                 type = "normalization",
-                parameters = attributes.mapValues { (_, v) -> v.ints.ifEmpty { v.floats } }
+                // Inference-mode BN: inputs are (X, scale, B, mean, var); only epsilon matters
+                // (momentum/spatial are training-time attributes).
+                parameters = mapOf("epsilon" to (attributes["epsilon"]?.floats?.firstOrNull() ?: 1e-5f))
             )
             "CONCAT" -> OnnxConcatOperation(
                 axis = attributes["axis"]?.ints?.firstOrNull()?.toSafeInt() ?: 0
@@ -353,6 +414,7 @@ private fun opShapeInference(op: Operation, inputs: List<TensorSpec>, outputInde
         is OnnxConcatOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
         is OnnxSliceOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
         is OnnxSplitOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
+        is OnnxPadOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
         is Conv2dOperation<*, *> -> inputs.firstOrNull()?.shape
         is MaxPool2dOperation<*, *> -> inputs.firstOrNull()?.shape
         is Upsample2dOperation<*, *> -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
@@ -407,9 +469,104 @@ private fun Long.toSafeInt(): Int = when {
     else -> toInt()
 }
 
+/**
+ * Marks an operation whose trailing ONNX inputs (e.g. Clip's min/max, Pad's pads tensor) were
+ * folded into [Operation.parameters] at import time: only the first (data) input is wired.
+ */
+internal const val ONNX_INPUTS_CONSUMED_AT_IMPORT: String = "onnxInputsConsumedAtImport"
+
+/** Read a scalar FLOAT initializer (float_data or little-endian raw_data), or null. */
+private fun resolveScalarFloatInitializer(
+    inputName: String?,
+    initializers: Map<String, OnnxTensorView>
+): Float? {
+    if (inputName.isNullOrEmpty()) return null
+    val proto = initializers[inputName]?.proto ?: return null
+    proto.floatData.firstOrNull()?.let { return it }
+    val raw = proto.rawData.array
+    if (proto.dataType == TensorProto.DataType.FLOAT.value && raw.size >= 4) {
+        val bits = (raw[0].toInt() and 0xFF) or
+            ((raw[1].toInt() and 0xFF) shl 8) or
+            ((raw[2].toInt() and 0xFF) shl 16) or
+            ((raw[3].toInt() and 0xFF) shl 24)
+        return Float.fromBits(bits)
+    }
+    return null
+}
+
+/** Read an INT64 initializer as an Int list (int64_data or little-endian raw_data), or null. */
+private fun OnnxTensorView.intListOrNull(): List<Int>? {
+    if (proto.int64Data.isNotEmpty()) return proto.int64Data.map { it.toSafeInt() }
+    val raw = proto.rawData.array
+    if (proto.dataType == TensorProto.DataType.INT64.value && raw.isNotEmpty() && raw.size % 8 == 0) {
+        return List(raw.size / 8) { i ->
+            var v = 0L
+            for (b in 7 downTo 0) {
+                v = (v shl 8) or (raw[i * 8 + b].toLong() and 0xFF)
+            }
+            v.toSafeInt()
+        }
+    }
+    return null
+}
+
 private class InitializerOperation(
     tensorName: String
 ) : BasePlaceholderOperation("onnx_initializer", mapOf("name" to tensorName))
+
+/**
+ * An ONNX node mapped to a real SKaiNET operation: the name matches the ComputeGraphExecutor
+ * dispatch name and [parameters] carries the attributes it reads. `execute` is never called
+ * directly — the executor dispatches on the operation name, the same way OnnxConcatOperation
+ * and friends run.
+ */
+private class OnnxMappedOperation(
+    opName: String,
+    type: String,
+    parameters: Map<String, Any> = emptyMap(),
+) : BasePlaceholderOperation(opName, parameters, type)
+
+/**
+ * ONNX `Pad` folded to SKaiNET `pad2d` (constant mode, zero fill, 4D, spatial-only pads).
+ * Carries its own shape inference: the output grows by the pads on H and W.
+ */
+private class OnnxPadOperation(
+    private val padTop: Int,
+    private val padLeft: Int,
+    private val padBottom: Int,
+    private val padRight: Int,
+) : BasePlaceholderOperation(
+    "pad2d",
+    mapOf(
+        "padTop" to padTop,
+        "padLeft" to padLeft,
+        "padBottom" to padBottom,
+        "padRight" to padRight,
+        ONNX_INPUTS_CONSUMED_AT_IMPORT to true,
+    ),
+    "shape",
+) {
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        val inputShape = inputs.firstOrNull()?.shape
+        val outputShape = if (inputShape != null && inputShape.size == 4) {
+            listOf(
+                inputShape[0],
+                inputShape[1],
+                inputShape[2] + padTop + padBottom,
+                inputShape[3] + padLeft + padRight,
+            )
+        } else {
+            inputShape
+        }
+        return listOf(
+            TensorSpec(
+                name = "pad2d_output",
+                shape = outputShape,
+                dtype = inputs.firstOrNull()?.dtype ?: "unknown"
+            )
+        )
+    }
+}
 
 private class OnnxPlaceholderOperation(
     opType: String,

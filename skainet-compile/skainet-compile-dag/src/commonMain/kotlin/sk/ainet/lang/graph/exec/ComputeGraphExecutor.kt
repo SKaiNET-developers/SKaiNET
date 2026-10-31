@@ -165,6 +165,42 @@ public class ComputeGraphExecutor(
             "exp" -> listOf(ops.exp(inputs[0]))
             "expm1" -> listOf(ops.expm1(inputs[0]))
             "sqrt" -> listOf(ops.sqrt(inputs[0]))
+            "leakyRelu", "leaky_relu" -> {
+                val negativeSlope = (params["negativeSlope"] as? Number)?.toFloat() ?: 0.01f
+                listOf(ops.leakyRelu(inputs[0], negativeSlope))
+            }
+            "clamp" -> {
+                val minVal = (params["minVal"] as? Number)?.toFloat() ?: -Float.MAX_VALUE
+                val maxVal = (params["maxVal"] as? Number)?.toFloat() ?: Float.MAX_VALUE
+                listOf(ops.clamp(inputs[0], minVal, maxVal))
+            }
+            "pad2d" -> {
+                val padLeft = (params["padLeft"] as? Number)?.toInt() ?: 0
+                val padRight = (params["padRight"] as? Number)?.toInt() ?: 0
+                val padTop = (params["padTop"] as? Number)?.toInt() ?: 0
+                val padBottom = (params["padBottom"] as? Number)?.toInt() ?: 0
+                listOf(ops.pad2d(inputs[0], padLeft, padRight, padTop, padBottom))
+            }
+            "batchNorm", "batchNormalization" -> {
+                // Inference-mode batch norm over NC*: y = scale·(x − mean)/√(var + ε) + bias,
+                // with the per-channel [C] operands reshaped to (1, C, 1, …) to broadcast.
+                require(inputs.size >= 5) {
+                    "batchNorm requires 5 inputs (x, scale, bias, mean, variance), got ${inputs.size}"
+                }
+                val x = inputs[0]
+                val epsilon = (params["epsilon"] as? Number)?.toFloat() ?: 1e-5f
+                val channels = inputs[1].shape[0]
+                val broadcastShape = Shape(IntArray(x.rank) { idx -> if (idx == 1) channels else 1 })
+                val scale = ops.reshape(inputs[1], broadcastShape)
+                val bias = ops.reshape(inputs[2], broadcastShape)
+                val mean = ops.reshape(inputs[3], broadcastShape)
+                val variance = ops.reshape(inputs[4], broadcastShape)
+                val normalized = ops.divide(
+                    ops.subtract(x, mean),
+                    ops.sqrt(ops.addScalar(variance, epsilon))
+                )
+                listOf(ops.add(ops.multiply(normalized, scale), bias))
+            }
 
             // Binary math ops
             "add" -> listOf(ops.add(inputs[0], inputs[1]))
@@ -394,7 +430,9 @@ public class ComputeGraphExecutor(
     )
 
     public companion object {
-        private val INPUT_OPS = setOf("input", "weight", "parameter", "constant")
+        // "onnx_initializer" marks imported ONNX initializer nodes: like inputs, their values
+        // come from the caller (keyed by node id or tensor name), never from dispatching.
+        private val INPUT_OPS = setOf("input", "weight", "parameter", "constant", "onnx_initializer")
 
         private val fusedOpHandlers = mutableMapOf<String, FusedOpHandler<*, *>>()
 
