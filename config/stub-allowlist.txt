@@ -28,5 +28,4 @@ skainet-io/skainet-io-iree-params/src/wasmWasiMain/kotlin/sk/ainet/io/irpa/FileB
 
 # --- Lang core: DSL and tensor views ---------------------------------------------------------
 skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/dsl/NetworkBuilder.kt|6|SKEEP-008 (#1433) mixed-precision dense<T>() / stage<T>()
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/TensorSlicingExtensions.kt|1|#1415 sliceCopy {} materialization
 skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/dsl/TensorDSL.kt|1|#1417 TensorDefineDslImpl.create() (unused; implement or delete)
