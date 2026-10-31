@@ -78,17 +78,9 @@ public fun <T : DType, V> Tensor<T, V>.sliceView(
 public fun <T : DType, V> Tensor<T, V>.sliceCopy(
     builder: TensorSliceBuilder<T, V>.() -> Unit
 ): Tensor<T, V> {
-    // First create a view to define the slice
-    val view = sliceView(builder)
-    
-    // Then materialize it into a new tensor
-    // Note: This requires a materialization strategy, which will be implemented
-    // as part of the advanced features. For now, we throw an exception to indicate
-    // this functionality is not yet implemented.
-    throw NotImplementedError(
-        "sliceCopy() requires materialization strategy implementation. " +
-        "Use sliceView() for zero-copy slicing, or implement materialization in advanced features."
-    )
+    // Build the view exactly like sliceView {} and materialize it eagerly into an
+    // independent tensor (CopyMaterializationStrategy).
+    return sliceView(builder).copyMaterialize()
 }
 
 /**
