@@ -23,7 +23,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
     
     override val supportedOperations: Set<String> = setOf(
         // Convolutional operations
-        "conv1d", "conv2d",
+        "conv1d", "conv2d", "convTranspose2d",
         // Pooling operations
         "maxPool2d", "avgPool2d", "averagePool2d",
         // Normalization operations
@@ -45,6 +45,7 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         return when (node.operation.name.lowercase()) {
             "conv1d" -> convertConv1d(node, operands, context)
             "conv2d" -> convertConv2d(node, operands, context)
+            "convtranspose2d" -> convertConvTranspose2d(node, operands, context)
             "maxpool2d" -> convertMaxPool2d(node, operands, context)
             "avgpool2d", "averagepool2d" -> convertAvgPool2d(node, operands, context)
             "batchnorm", "batchnormalization" -> convertBatchNorm(node, operands, context)
@@ -167,6 +168,73 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         )
     }
     
+    private fun convertConvTranspose2d(
+        node: GraphNode,
+        operands: List<String>,
+        context: ConversionContext
+    ): ConversionResult {
+        if (operands.size < 2) {
+            return ConversionResult.Failure(
+                "ConvTranspose2d operation requires at least 2 operands (input, weight), got ${operands.size}",
+                "Unsupported convTranspose2d arity for node ${node.id}"
+            )
+        }
+
+        val params = node.operation.parameters
+        val stride = extractStride(params)
+        val padding = extractPadding(params)
+        val outputPadding = extractOutputPadding(params)
+        val dilation = extractDilation(params)
+        val groups = params["groups"] as? Int ?: 1
+        if (groups != 1) {
+            return ConversionResult.Failure(
+                "convTranspose2d lowering supports groups == 1 only, got $groups",
+                "Grouped transposed convolution needs a kernel reshape that is not implemented yet (see #1375)"
+            )
+        }
+
+        // kH/kW come from the weight spec [C_in, C_out, kH, kW]; the transposed-conv padding
+        // rewrite below needs them.
+        val weightShape = node.inputs.getOrNull(1)?.shape
+        if (weightShape == null || weightShape.size != 4) {
+            return ConversionResult.Failure(
+                "convTranspose2d lowering requires a static 4D weight shape, got $weightShape",
+                "Missing weight shape for node ${node.id}"
+            )
+        }
+
+        val outputSpec = node.outputs.firstOrNull()
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
+            ?: "tensor<?x?x?x?xf32>"
+        val typeMapper = context.getTypeMapper()
+        val inputType = node.inputs.getOrNull(0)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?x?xf32>"
+        val weightType = node.inputs.getOrNull(1)?.let { typeMapper.mapTensorType(it) } ?: "tensor<?x?x?x?xf32>"
+        val biasType = node.inputs.getOrNull(2)?.let { typeMapper.mapTensorType(it) }
+
+        val resultValue = context.nextTempValue()
+        val operations = buildConvTranspose2dOperation(
+            resultValue = resultValue,
+            input = operands[0],
+            weight = operands[1],
+            bias = if (operands.size > 2) operands[2] else null,
+            inputType = inputType,
+            weightType = weightType,
+            outputType = outputType,
+            biasType = biasType,
+            kernelSize = weightShape[2] to weightShape[3],
+            stride = stride,
+            padding = padding,
+            outputPadding = outputPadding,
+            dilation = dilation,
+        )
+        operations.forEach { context.emitOperation(it) }
+
+        return ConversionResult.Success(
+            outputValueName = resultValue,
+            emittedOperations = operations
+        )
+    }
+
     private fun convertMaxPool2d(
         node: GraphNode,
         operands: List<String>,
@@ -1077,6 +1145,18 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
         }
     }
     
+    private fun extractOutputPadding(params: Map<String, Any>): Pair<Int, Int> {
+        return when (val outputPadding = params["outputPadding"] ?: params["output_padding"]) {
+            is Pair<*, *> -> (outputPadding.first as? Int ?: 0) to (outputPadding.second as? Int ?: 0)
+            is Int -> outputPadding to outputPadding
+            is List<*> -> {
+                val list = outputPadding.filterIsInstance<Int>()
+                if (list.size >= 2) list[0] to list[1] else 0 to 0
+            }
+            else -> 0 to 0
+        }
+    }
+
     private fun extractKernelSize(params: Map<String, Any>): Pair<Int, Int> {
         return when (val kernelSize = params["kernelSize"] ?: params["kernel_size"]) {
             is Pair<*, *> -> (kernelSize.first as? Int ?: 2) to (kernelSize.second as? Int ?: 2)
@@ -1171,6 +1251,65 @@ public class NeuralNetOperationsConverter : StableHloOperationConverter {
             "$convOp\n    $bcastOp\n    $resultValue = stablehlo.add $convResult, $biasBcast : $outputType"
         } else {
             convCore(resultValue)
+        }
+    }
+
+    /**
+     * Lower `convTranspose2d` to a regular `stablehlo.convolution` (the XLA conv-transpose
+     * rewrite): the kernel is spatially flipped (`stablehlo.reverse` on dims [2, 3]) and read
+     * with `[i, o, 0, 1]` dim numbers (weight layout is `[C_in, C_out, kH, kW]`), the stride
+     * becomes `lhs_dilate`, and the padding per axis becomes
+     * `low = dilation*(k-1) - padding`, `high = dilation*(k-1) - padding + outputPadding`.
+     */
+    private fun buildConvTranspose2dOperation(
+        resultValue: String,
+        input: String,
+        weight: String,
+        bias: String?,
+        inputType: String,
+        weightType: String,
+        outputType: String,
+        biasType: String?,
+        kernelSize: Pair<Int, Int>,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        outputPadding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+    ): List<String> {
+        val (kH, kW) = kernelSize
+        val padLowH = dilation.first * (kH - 1) - padding.first
+        val padHighH = padLowH + outputPadding.first
+        val padLowW = dilation.second * (kW - 1) - padding.second
+        val padHighW = padLowW + outputPadding.second
+
+        val reversedWeight = "${resultValue}_wrev"
+        val reverseOp = "$reversedWeight = stablehlo.reverse $weight, dims = [2, 3] : $weightType"
+
+        val convCore = { rv: String ->
+            "$rv = stablehlo.convolution($input, $reversedWeight) " +
+                    "dim_numbers = [b, f, 0, 1]x[i, o, 0, 1]->[b, f, 0, 1], " +
+                    "window = {stride = [1, 1], " +
+                    "pad = [[$padLowH, $padHighH], [$padLowW, $padHighW]], " +
+                    "lhs_dilate = [${stride.first}, ${stride.second}], " +
+                    "rhs_dilate = [${dilation.first}, ${dilation.second}]} " +
+                    "{batch_group_count = 1 : i64, feature_group_count = 1 : i64} " +
+                    ": ($inputType, $weightType) -> $outputType"
+        }
+
+        return if (bias != null) {
+            val convResult = "${resultValue}_conv"
+            val biasBcast = "${resultValue}_bias_b"
+            // bias is [Cout]; conv output is [N, Cout, H, W]; broadcast along feature dim (index 1)
+            val bcastOp = "$biasBcast = stablehlo.broadcast_in_dim $bias, dims = [1] : " +
+                    "(${biasType ?: "tensor<?xf32>"}) -> $outputType"
+            listOf(
+                reverseOp,
+                convCore(convResult),
+                bcastOp,
+                "$resultValue = stablehlo.add $convResult, $biasBcast : $outputType"
+            )
+        } else {
+            listOf(reverseOp, convCore(resultValue))
         }
     }
 

@@ -451,12 +451,6 @@ fun convTranspose2d(input:Tensor, weight:Tensor, bias:Tensor, stride:Pair, paddi
 
 `Tensor`
 
-=== Notes
-
-TIP: *all backends*: no backend kernel yet; TransposedConv2d.forward depends on it
-
-TIP: *all backends*: https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371]
-
 == maxPool2d
 
 [.darc-none]#✖ Generated facts only (no human prose)#

@@ -9,7 +9,6 @@ import sk.ainet.lang.nn.dsl.GenerateNetworkDsl
 import sk.ainet.lang.nn.dsl.ActivationDsl
 import sk.ainet.lang.ops.DarcValidated
 import sk.ainet.lang.ops.Lowering
-import sk.ainet.lang.ops.NotImplemented
 
 @GenerateTracingWrapper
 @GenerateNetworkDsl
@@ -165,11 +164,8 @@ public interface TensorOps {
      *
      * [weight] is laid out `[C_in, C_out / groups, kH, kW]` (PyTorch `ConvTranspose2d`). Output
      * spatial size per axis is `(in - 1) * stride - 2 * padding + dilation * (k - 1) + outputPadding + 1`.
-     *
-     * Not implemented on any backend yet: the default throws. Once a backend kernel lands this
-     * becomes an abstract `@Diff` op like [convTranspose1d].
      */
-    @NotImplemented(reason = "no backend kernel yet; TransposedConv2d.forward depends on it", issue = "#1371")
+    @Diff
     public fun <T : DType, V> convTranspose2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -179,7 +175,7 @@ public interface TensorOps {
         outputPadding: Pair<Int, Int> = 0 to 0,
         dilation: Pair<Int, Int> = 1 to 1,
         groups: Int = 1
-    ): Tensor<T, V> = throw NotImplementedError("convTranspose2d is not implemented on this backend yet (see #1371)")
+    ): Tensor<T, V>
 
     // Pooling operations
     @Diff

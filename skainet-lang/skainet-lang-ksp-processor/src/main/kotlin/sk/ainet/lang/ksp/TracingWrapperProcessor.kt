@@ -335,7 +335,7 @@ class TracingWrapperGenerator(
                 // Fix the type for nullable parameters that should have ? suffix
                 val correctedType = when {
                     param.name == "dim" && method.name in listOf("squeeze", "sum", "mean", "variance") && !param.type.endsWith("?") -> "${param.type}?"
-                    param.name == "bias" && method.name in listOf("conv1d", "conv2d", "conv3d", "convTranspose1d") && !param.type.endsWith("?") -> "${param.type}?"
+                    param.name == "bias" && method.name in listOf("conv1d", "conv2d", "conv3d", "convTranspose1d", "convTranspose2d") && !param.type.endsWith("?") -> "${param.type}?"
                     param.name in listOf("mask", "keyLengths") && method.name == "scaledDotProductAttention" && !param.type.endsWith("?") -> "${param.type}?"
                     else -> param.type
                 }

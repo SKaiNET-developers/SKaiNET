@@ -1814,6 +1814,129 @@ public open class DefaultCpuOpsBase(
         return newTensor(outData, input.dtype, input)
     }
 
+    override fun <T : DType, V> convTranspose2d(
+        input: Tensor<T, V>,
+        weight: Tensor<T, V>,
+        bias: Tensor<T, V>?,
+        stride: Pair<Int, Int>,
+        padding: Pair<Int, Int>,
+        outputPadding: Pair<Int, Int>,
+        dilation: Pair<Int, Int>,
+        groups: Int
+    ): Tensor<T, V> {
+        // input: [batch, C_in, H, W]; weight: [C_in, C_out/groups, kH, kW] (PyTorch ConvTranspose2d layout).
+        require(input.rank == 4) { "convTranspose2d: input must be 4D (N, C_in, H, W), got ${input.shape.dimensions.contentToString()}" }
+        require(weight.rank == 4) { "convTranspose2d: weight must be 4D (C_in, C_out/groups, kH, kW), got ${weight.shape.dimensions.contentToString()}" }
+        require(groups >= 1) { "convTranspose2d: groups must be >= 1" }
+        require(input.dtype == weight.dtype) { "convTranspose2d: dtype mismatch between input and weight: ${input.dtype} vs ${weight.dtype}" }
+        bias?.let { require(it.dtype == input.dtype) { "convTranspose2d: dtype mismatch for bias" } }
+        require(input.dtype == sk.ainet.lang.types.FP32::class || input.dtype == sk.ainet.lang.types.FP16::class) {
+            "Unsupported dtype for convTranspose2d: ${input.dtype}"
+        }
+
+        val batch = input.shape[0]
+        val inChannels = input.shape[1]
+        val inH = input.shape[2]
+        val inW = input.shape[3]
+
+        require(weight.shape[0] == inChannels) { "convTranspose2d: weight C_in ${weight.shape[0]} must equal input channels $inChannels" }
+        require(inChannels % groups == 0) { "convTranspose2d: input channels $inChannels not divisible by groups $groups" }
+
+        val outChannelsPerGroup = weight.shape[1]
+        val kH = weight.shape[2]
+        val kW = weight.shape[3]
+        val outChannels = outChannelsPerGroup * groups
+
+        val (sH, sW) = stride
+        val (pH, pW) = padding
+        val (opH, opW) = outputPadding
+        val (dH, dW) = dilation
+        require(sH > 0 && sW > 0) { "convTranspose2d: stride must be positive, got ($sH, $sW)" }
+        require(dH > 0 && dW > 0) { "convTranspose2d: dilation must be positive, got ($dH, $dW)" }
+        require(pH >= 0 && pW >= 0) { "convTranspose2d: padding must be non-negative, got ($pH, $pW)" }
+        // PyTorch: output padding must be smaller than either stride or dilation on each axis.
+        require(opH >= 0 && opH < maxOf(sH, dH) && opW >= 0 && opW < maxOf(sW, dW)) {
+            "convTranspose2d: outputPadding ($opH, $opW) must be smaller than stride or dilation"
+        }
+
+        val outH = (inH - 1) * sH - 2 * pH + dH * (kH - 1) + opH + 1
+        val outW = (inW - 1) * sW - 2 * pW + dW * (kW - 1) + opW + 1
+        require(outH > 0 && outW > 0) { "convTranspose2d: computed non-positive output shape (H=$outH, W=$outW)" }
+
+        if (bias != null) {
+            when (bias.rank) {
+                1 -> require(bias.shape[0] == outChannels) { "convTranspose2d: bias shape must be [C_out], got ${bias.shape.dimensions.contentToString()}" }
+                4 -> require(bias.shape[0] == 1 && bias.shape[1] == outChannels && bias.shape[2] == 1 && bias.shape[3] == 1) {
+                    "convTranspose2d: bias shape must be [1,C_out,1,1] when 4D, got ${bias.shape.dimensions.contentToString()}"
+                }
+                else -> error("convTranspose2d: unsupported bias rank ${bias.rank}")
+            }
+        }
+
+        val outData = dataFactory.zeros<T, V>(Shape(batch, outChannels, outH, outW), input.dtype)
+        val inData = input.data
+        val wData = weight.data
+        val inChPerGroup = inChannels / groups
+
+        // Scatter-add over the output, mirroring convTranspose1d:
+        // out[b, oc, ih*sH - pH + kh*dH, iw*sW - pW + kw*dW] += in[b, ic, ih, iw] * w[ic, oc, kh, kw]
+        for (b in 0 until batch) {
+            for (g in 0 until groups) {
+                for (ic in 0 until inChPerGroup) {
+                    val inCh = g * inChPerGroup + ic
+                    for (oc in 0 until outChannelsPerGroup) {
+                        val outCh = g * outChannelsPerGroup + oc
+                        for (ih in 0 until inH) {
+                            val ohBase = ih * sH - pH
+                            for (iw in 0 until inW) {
+                                val inputVal = inData.get(b, inCh, ih, iw) as Float
+                                if (inputVal == 0f) continue
+                                val owBase = iw * sW - pW
+                                for (kh in 0 until kH) {
+                                    val oh = ohBase + kh * dH
+                                    if (oh < 0 || oh >= outH) continue
+                                    for (kw in 0 until kW) {
+                                        val ow = owBase + kw * dW
+                                        if (ow < 0 || ow >= outW) continue
+                                        val weightVal = wData.get(inCh, oc, kh, kw) as Float
+                                        val existing = outData.get(b, outCh, oh, ow) as Float
+                                        @Suppress("UNCHECKED_CAST")
+                                        outData.set(b, outCh, oh, ow, value = (existing + inputVal * weightVal) as V)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (bias != null) {
+            val biasData = bias.data
+            for (b in 0 until batch) {
+                for (oc in 0 until outChannels) {
+                    val biasVal = when (bias.rank) {
+                        1 -> biasData.get(oc) as Float
+                        else -> biasData.get(0, oc, 0, 0) as Float
+                    }
+                    for (oh in 0 until outH) {
+                        for (ow in 0 until outW) {
+                            val existing = outData.get(b, oc, oh, ow) as Float
+                            @Suppress("UNCHECKED_CAST")
+                            outData.set(b, oc, oh, ow, value = (existing + biasVal) as V)
+                        }
+                    }
+                }
+            }
+        }
+
+        return if (bias != null) {
+            newTensor(outData, input.dtype, input, weight, bias)
+        } else {
+            newTensor(outData, input.dtype, input, weight)
+        }
+    }
+
     @TensorOp()
     override fun <T : DType, V> conv3d(
         input: Tensor<T, V>,
