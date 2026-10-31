@@ -128,11 +128,12 @@ public class DenseTensorDataFactory: TensorDataFactory {
         return when (dtype) {
             is FP32, FP16 -> {
                 val data = FloatArray(shape.volume) {
-                    // Box-Muller transform for normal distribution
-                    val u1 = random.nextFloat()
-                    val u2 = random.nextFloat()
-                    val z0 = sqrt(-2.0 * ln(u1.toDouble())).toFloat() *
-                            cos(2.0 * PI * u2.toDouble()).toFloat()
+                    // Box-Muller transform for normal distribution.
+                    // u1 must lie in (0, 1]: nextFloat()/nextDouble() can return exactly 0,
+                    // and ln(0) = -Inf leaks Inf/NaN into the output (#1454).
+                    val u1 = 1.0 - random.nextDouble()
+                    val u2 = random.nextDouble()
+                    val z0 = (sqrt(-2.0 * ln(u1)) * cos(2.0 * PI * u2)).toFloat()
                     mean + std * z0
                 }
                 createFloatTensorData(shape, data, dtype) as TensorData<T, *>
@@ -462,12 +463,13 @@ public class DenseTensorDataFactory: TensorDataFactory {
                         data[i] = spare * std + mean
                         hasSpare = false
                     } else {
-                        val u1 = random.nextFloat()
-                        val u2 = random.nextFloat()
-                        val z0 = sqrt(-2.0 * ln(u1.toDouble())).toFloat() *
-                                cos(2.0 * PI * u2.toDouble()).toFloat()
-                        val z1 = sqrt(-2.0 * ln(u1.toDouble())).toFloat() *
-                                kotlin.math.sin(2.0 * PI * u2.toDouble()).toFloat()
+                        // u1 must lie in (0, 1]: nextFloat()/nextDouble() can return exactly 0,
+                        // and ln(0) = -Inf leaks Inf/NaN into the output (#1454).
+                        val u1 = 1.0 - random.nextDouble()
+                        val u2 = random.nextDouble()
+                        val r = sqrt(-2.0 * ln(u1))
+                        val z0 = (r * cos(2.0 * PI * u2)).toFloat()
+                        val z1 = (r * kotlin.math.sin(2.0 * PI * u2)).toFloat()
 
                         data[i] = z0 * std + mean
                         spare = z1
@@ -486,12 +488,13 @@ public class DenseTensorDataFactory: TensorDataFactory {
                         data[i] = spare * std + mean
                         hasSpare = false
                     } else {
-                        val u1 = random.nextFloat()
-                        val u2 = random.nextFloat()
-                        val z0 = sqrt(-2.0 * ln(u1.toDouble())).toFloat() *
-                                cos(2.0 * PI * u2.toDouble()).toFloat()
-                        val z1 = sqrt(-2.0 * ln(u1.toDouble())).toFloat() *
-                                kotlin.math.sin(2.0 * PI * u2.toDouble()).toFloat()
+                        // u1 must lie in (0, 1]: nextFloat()/nextDouble() can return exactly 0,
+                        // and ln(0) = -Inf leaks Inf/NaN into the output (#1454).
+                        val u1 = 1.0 - random.nextDouble()
+                        val u2 = random.nextDouble()
+                        val r = sqrt(-2.0 * ln(u1))
+                        val z0 = (r * cos(2.0 * PI * u2)).toFloat()
+                        val z1 = (r * kotlin.math.sin(2.0 * PI * u2)).toFloat()
 
                         data[i] = z0 * std + mean
                         spare = z1

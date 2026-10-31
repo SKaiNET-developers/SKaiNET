@@ -97,14 +97,18 @@ class SlicingIntegrationTest {
                 assertEquals(Shape(2, 3, 2), view.shape)
                 assertTrue(view is TensorView<FP32, Float>)
 
-                // Test sliceCopy - should throw NotImplementedError for now
-                assertFailsWith<NotImplementedError> {
-                    tensor.sliceCopy {
-                        segment { range(1, 3) }
-                        segment { all() }
-                        segment { all() }
-                    }
+                // Test sliceCopy - materializes the same slice into an independent tensor (#1415)
+                val copy = tensor.sliceCopy {
+                    segment { range(1, 3) }
+                    segment { all() }
+                    segment { all() }
                 }
+                assertEquals(Shape(2, 3, 2), copy.shape)
+                // Same values as the view, but writes to the source do not reach the copy.
+                assertEquals(view.data[0, 0, 0], copy.data[0, 0, 0])
+                tensor.data.set(1, 0, 0, value = -500f)
+                assertEquals(-500f, view.data[0, 0, 0], "view shares memory with the source")
+                assertEquals(6f, copy.data[0, 0, 0], "copy is independent of the source")
 
                 println("[DEBUG_LOG] sliceView() vs sliceCopy() behavioral differences validated")
                 view

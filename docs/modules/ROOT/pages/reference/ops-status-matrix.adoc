@@ -125,9 +125,9 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `Dropout` | `sk.ainet.lang.nn.layers` | ✅ | —
 | `LossModule` | `sk.ainet.lang.nn.loss` | ✅ | —
 | `BatchNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
-| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ❌ | forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied — https://github.com/SKaiNET-developers/SKaiNET/issues/1379[#1379]
+| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `LayerNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
 
-| *Done* | | *31 / 32* |
+| *Done* | | *32 / 32* |
 |===

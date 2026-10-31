@@ -66,6 +66,8 @@ kotlin {
             dependencies {
                 implementation(libs.junit)
                 implementation(libs.kotlinx.coroutines.test)
+                // Real CPU ops for import-and-execute tests of the mapped ONNX operations.
+                implementation(project(":skainet-backends:skainet-backend-cpu"))
             }
         }
 
