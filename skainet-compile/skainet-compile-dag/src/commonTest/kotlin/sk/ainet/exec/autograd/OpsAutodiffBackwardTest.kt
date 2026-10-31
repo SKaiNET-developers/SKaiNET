@@ -218,6 +218,32 @@ class OpsAutodiffBackwardTest {
         }
     }
 
+    @Test
+    fun convTranspose2d_backward_matches_finite_diff() {
+        // input [1,1,2,2], weight [in=1, outPerGroup=1, 2x2], stride 1, padding 0.
+        val w = floatArrayOf(0.5f, -1.2f, 0.8f, 0.3f)
+        assertGradMatchesFiniteDiff(Shape(1, 1, 2, 2), floatArrayOf(0.3f, -0.2f, 0.7f, 0.4f)) { c, x ->
+            val wT = floatTensor(c, Shape(1, 1, 2, 2), w)
+            x.ops.convTranspose2d(
+                x, wT, null,
+                stride = 1 to 1, padding = 0 to 0, outputPadding = 0 to 0, dilation = 1 to 1, groups = 1,
+            )
+        }
+    }
+
+    @Test
+    fun convTranspose2d_backward_stride2_padding1_matches_finite_diff() {
+        // Strided + padded variant: exercises the oh/ow bounds checks in the adjoint.
+        val w = floatArrayOf(0.5f, -1.2f, 0.8f, 0.3f, -0.4f, 0.9f, 0.2f, -0.6f, 1.1f)
+        assertGradMatchesFiniteDiff(Shape(1, 1, 2, 2), floatArrayOf(0.3f, -0.2f, 0.7f, 0.4f)) { c, x ->
+            val wT = floatTensor(c, Shape(1, 1, 3, 3), w)
+            x.ops.convTranspose2d(
+                x, wT, null,
+                stride = 2 to 2, padding = 1 to 1, outputPadding = 1 to 1, dilation = 1 to 1, groups = 1,
+            )
+        }
+    }
+
     // ── regression: softmax/logSoftmax backward with a negative dim on rank>=3 (issue #863) ──
 
     @Test
