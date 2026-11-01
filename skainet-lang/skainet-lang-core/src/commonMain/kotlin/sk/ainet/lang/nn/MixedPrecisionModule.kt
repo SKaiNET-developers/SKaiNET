@@ -39,6 +39,10 @@ import sk.ainet.lang.types.DType
  * }
  * ```
  */
+@Deprecated(
+    message = "Never implemented; replaced by PrecisionBoundary (SKEEP-008, #1433). Will be removed.",
+    replaceWith = ReplaceWith("PrecisionBoundary", "sk.ainet.lang.nn.PrecisionBoundary"),
+)
 public abstract class MixedPrecisionModule<TInput : DType, TOutput : DType, V>(
     protected val inputType: TInput,
     protected val outputType: TOutput,
@@ -210,6 +214,10 @@ public abstract class MixedPrecisionModule<TInput : DType, TOutput : DType, V>(
  * @param TInternal The internal computation precision type
  * @param V The value type corresponding to the DType
  */
+@Deprecated(
+    message = "Never implemented; replaced by PrecisionBoundary (SKEEP-008, #1433). Will be removed.",
+    replaceWith = ReplaceWith("PrecisionBoundary", "sk.ainet.lang.nn.PrecisionBoundary"),
+)
 public abstract class InternalMixedPrecisionModule<TIO : DType, TInternal : DType, V>(
     private val ioType: TIO,
     private val internalType: TInternal,

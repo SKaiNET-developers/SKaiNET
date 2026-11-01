@@ -1,0 +1,141 @@
+= Mixed Precision: Why a Layer's Dtype Is Worth Choosing
+:description: Why SKaiNET lets one layer or one stage run in a narrower dtype than the rest of the network, what that buys (and doesn't buy yet), and how the PrecisionBoundary design keeps every cast visible.
+
+A network built with the {framework_name} DSL has one dtype: `sequential<FP32, Float> { … }`
+fixes it for every layer. Mixed precision (SKEEP-008, tracked in
+https://github.com/SKaiNET-developers/SKaiNET/issues/1433[#1433]) loosens that — one layer or
+one block can run in another dtype while the network around it stays unchanged:
+
+[source,kotlin]
+----
+val model = sequential<FP32, Float> {
+    input(784)
+    dense(256, dtype = BF16) { }     // one BF16 layer in an FP32 network
+    activation { it.relu() }
+    stage("head", dtype = FP16) {    // a whole FP16 block
+        dense(64) { }
+        dense(10)
+    }
+}
+----
+
+This page explains why that is worth having, what it costs, and where the current
+implementation stops.
+
+== Precision is not uniformly needed
+
+The observation behind every mixed-precision system — PyTorch AMP, JAX's dtype promotion,
+ONNX Runtime's float16 transforms — is that a network's tolerance for rounding is wildly
+uneven. The matmul-heavy bulk of a model (dense and convolution layers) tolerates 16-bit
+floats well: their error statistics average out over thousands of multiply-accumulates. A few
+places do not: softmax and normalization (small differences of large numbers), accumulators,
+and the loss. Forcing the whole network to the precision its most sensitive operation needs
+wastes memory and bandwidth on the 95% that doesn't care.
+
+Per-layer `dense(dtype = …)` and per-block `stage(id, dtype = …)` are exactly that dial: keep
+the skeleton FP32, drop the bulk into a cheaper dtype, and keep the choice *local* — a
+narrow layer is opt-in per call, never a network-wide default.
+
+== What the two 16-bit floats trade away
+
+[cols="1,2,2",options="header"]
+|===
+| | *FP16* | *BF16*
+
+| Layout
+| 1 sign, 5 exponent, 10 mantissa bits
+| 1 sign, 8 exponent, 7 mantissa bits
+
+| Range
+| overflows past 65 504
+| FP32's full range
+
+| Precision
+| ~3 decimal digits
+| ~2 decimal digits
+
+| Failure mode
+| overflow to `Inf` in activations with large magnitudes
+| coarse rounding; sums of many small values drift
+|===
+
+BF16 keeps FP32's exponent, so anything that fits in FP32 fits in BF16 — it trades mantissa
+for safety and is usually the first thing to try. FP16 is more precise per bit but needs the
+values to stay small. The `convert` codecs handle overflow (to infinity) and NaN correctly,
+but a model can still *silently* degrade — which is why the dtype appears in the code at the
+call site, not in a config file.
+
+== Why it matters for SKaiNET's targets
+
+{framework_name} runs on Kotlin Multiplatform targets where the usual mixed-precision
+arguments are amplified:
+
+* *Memory-constrained hosts.* A browser tab (wasm), an Android app, an iOS app — environments
+  where halving or quartering a model's working set decides whether it runs at all.
+* *Bandwidth-bound inference.* Most inference time is spent moving weights, not multiplying
+  them. Fewer bytes per element means fewer bytes through the cache hierarchy per token.
+* *Models that arrive mixed.* GGUF and ONNX models in the wild already mix precisions —
+  quantized matmul weights next to FP32 norms. A DSL that can only express one dtype has no
+  faithful home for them.
+
+[IMPORTANT]
+====
+Today the memory and bandwidth benefits are *not yet realized*: FP16 and BF16 tensors are
+float-backed (the values are rounded to the 16-bit format, the storage is still 4 bytes per
+element). Real 2-byte storage belongs to the storage model (SKEEP-003). What mixed precision
+gives you now is the *numerics* — a faithful simulation of the narrow format, the DSL surface,
+and exports that carry the casts — so models can be validated against 16-bit behaviour before
+the storage catches up, and the API doesn't change when it does.
+====
+
+== The design: one visible boundary
+
+The DSL wraps a mixed-precision layer or stage in a single module, `PrecisionBoundary`. Its
+forward pass is two casts around the wrapped module:
+
+[source,kotlin]
+----
+val x = ctx.ops.convert(input, innerType)    // cast in
+ctx.ops.convert(inner.forward(x, ctx), outerType)  // cast back out
+----
+
+Three properties follow from using `TensorOps.convert` — an ordinary tensor op — rather than
+hiding the conversion inside the layer:
+
+* *Free when degenerate.* `convert` returns its input unchanged when the dtypes already
+  match, so a boundary between equal dtypes costs nothing.
+* *Visible in traces and exports.* The tracing wrappers record `convert` like any other op,
+  and the StableHLO converter lowers it to `stablehlo.convert` — a compiled or exported graph
+  shows exactly where precision changes, and a later optimisation pass can fold adjacent
+  cast pairs.
+* *Honest about cost.* Every boundary copies its input and its output. A network that
+  switches dtype every layer can be *slower* than all-FP32, especially while narrow dtypes
+  are float-backed. Few, coarse boundaries (a `stage` around a block) beat many fine ones.
+
+The dtype is passed as a *value* (`dense(256, dtype = BF16)`), not as a type argument. The
+earlier API sketched `dense<BF16>(256)`, but an interface method's type parameter cannot be
+`reified`, so the implementation had no `KClass` to build the layer's tensors with — those
+overloads could never be implemented and are now deprecated. Passing the `DType` object gives
+the implementation both the instance (for `convert`) and `dtype::class` (for tensor creation).
+
+== What it does not do (yet)
+
+* *Training.* `convert` is not differentiable today, so gradients stop at a boundary: a
+  mixed-precision layer or stage is inference-only. SKEEP-008 phase A3 makes `convert` a
+  `@Diff` op, which lifts this.
+* *Automatic mixed precision.* There is no autocast policy, no FP32 master weights, no loss
+  scaling. The dtype is always an explicit, local choice in the code.
+* *Integer layers.* A cast to Int8 truncates; it is not quantization. Integer inference goes
+  through packed encodings and the quantized kernels — see
+  xref:explanation/quantization-process.adoc[The quantization process]. Mixed precision and
+  quantization are complementary, not competing: one changes the *float format* a layer
+  computes in, the other changes the *encoding* weights are stored and multiplied in.
+
+== Where to look
+
+* `sk.ainet.lang.nn.PrecisionBoundary` — the boundary module.
+* `NeuralNetworkDsl.dense(outputDimension, dtype, …)` and `stage(id, dtype, …)` — the DSL
+  entry points.
+* `TensorOps.convert` — the cast, including FP16/BF16 rounding through the format codecs.
+* xref:skeep:008-precision-and-encoding-conversion.adoc[SKEEP-008] — the full design,
+  including the storage-side `repackTo`/`requantizeTo` split and the phased rollout.
