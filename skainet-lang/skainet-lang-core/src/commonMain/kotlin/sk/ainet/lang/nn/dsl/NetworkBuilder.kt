@@ -11,6 +11,7 @@ import sk.ainet.lang.nn.Input
 import sk.ainet.lang.nn.Linear
 import sk.ainet.lang.nn.MaxPool2d
 import sk.ainet.lang.nn.Module
+import sk.ainet.lang.nn.PrecisionBoundary
 import sk.ainet.lang.nn.Upsample2d
 import sk.ainet.lang.nn.normalization.BatchNormalization
 import sk.ainet.lang.nn.normalization.GroupNormalization
@@ -166,27 +167,39 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
     public fun gru(hiddenSize: Int, id: String = "", content: GRU<T, V>.() -> Unit = {})
 
     /**
-     * Creates a dense layer with precision override and specified output dimension.
-     * This allows individual layers to use different precision than the network default.
+     * Creates a dense layer whose weights and computation use [dtype] while the network stays
+     * in its own dtype: the layer's input is cast to [dtype] and its output cast back
+     * (SKEEP-008, #1433). The cast is `TensorOps.convert`, which is not differentiable yet,
+     * so a mixed-precision layer is inference-only: gradients stop at its boundary.
      *
-     * @param TLayer The precision type for this specific layer
      * @param outputDimension The number of neurons/output features
+     * @param dtype The dtype the layer's weights and computation use (e.g. `FP16`, `BF16`)
      * @param id Optional identifier for the layer
-     * @param content Configuration block for weights, bias, and activation
+     * @param content Configuration block for weights, bias, and activation, typed in [dtype]
      */
+    public fun <TLayer : DType> dense(
+        outputDimension: Int,
+        dtype: TLayer,
+        id: String = "",
+        content: DENSE<TLayer, V>.() -> Unit = {},
+    )
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
     public fun <TLayer : DType> dense(
         outputDimension: Int,
         id: String = "",
         content: DENSE<TLayer, V>.() -> Unit = {}
     ): Module<T, V>
 
-    /**
-     * Creates a dense layer with precision override without specifying output dimension.
-     *
-     * @param TLayer The precision type for this specific layer
-     * @param id Optional identifier for the layer
-     * @param content Configuration block where output dimension, weights, and bias are set
-     */
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
     public fun <TLayer : DType> dense(
         id: String = "",
         content: DENSE<TLayer, V>.() -> Unit = {}
@@ -438,18 +451,26 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
     public fun stage(id: String, content: NeuralNetworkDsl<T, V>.() -> Unit)
 
     /**
-     * Creates a precision-scoped stage within the network.
-     * This allows grouping layers with a specific precision type that differs
-     * from the network default, enabling fine-grained mixed-precision control.
+     * Creates a stage whose layers all use [dtype] while the network stays in its own dtype:
+     * the stage's input is cast to [dtype] and its output cast back (SKEEP-008, #1433).
+     * The cast is `TensorOps.convert`, which is not differentiable yet, so a mixed-precision
+     * stage is inference-only: gradients stop at its boundary.
      *
-     * Unlike the basic stage method, this version allows changing the precision
-     * type for all layers within the stage scope.
-     *
-     * @param TStage The precision type for all layers within this stage
      * @param id Identifier for the stage
-     * @param content DSL block containing layers with TStage precision
-     * @return Module that handles the precision conversion automatically
+     * @param dtype The dtype all layers in this stage use (e.g. `FP16`, `BF16`)
+     * @param content DSL block containing the stage's layers, typed in [dtype]
      */
+    public fun <TStage : DType> stage(
+        id: String,
+        dtype: TStage,
+        content: NeuralNetworkDsl<TStage, V>.() -> Unit,
+    )
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: stage(id, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
     public fun <TStage : DType> stage(
         id: String,
         content: NeuralNetworkDsl<TStage, V>.() -> Unit
@@ -1321,28 +1342,90 @@ public class StageImpl<T : DType, V>(
 
     override fun <TLayer : DType> dense(
         outputDimension: Int,
+        dtype: TLayer,
         id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> {
-        // Create a mixed-precision module that handles conversion
-        TODO("Mixed-precision dense implementation needed")
-    }
-
-    override fun <TLayer : DType> dense(
-        id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> {
-        // Create a mixed-precision module that handles conversion
-        TODO("Mixed-precision dense implementation needed")
+        content: DENSE<TLayer, V>.() -> Unit,
+    ) {
+        val inputDimension = lastDimension
+        lastDimension = outputDimension
+        currentShape = intArrayOf(outputDimension)
+        val layerName = getDefaultName(id, "linear", modules.size)
+        val impl = DenseImpl<TLayer, V>(
+            executionContext,
+            inputDimension = inputDimension,
+            _outputDimension = outputDimension,
+            id = layerName,
+            kClass = dtype.witnessOf(),
+        )
+        impl.content()
+        val innerModules = impl.create()
+        val inner = if (innerModules.size == 1) innerModules[0] else MLP(*innerModules.toTypedArray(), name = layerName)
+        modules += PrecisionBoundary(
+            name = layerName,
+            inner = inner,
+            innerType = dtype,
+            outerType = dtypeInstanceOf(kClass),
+        )
     }
 
     override fun <TStage : DType> stage(
         id: String,
-        content: NeuralNetworkDsl<TStage, V>.() -> Unit
-    ): Module<T, V> {
-        // Create a mixed-precision stage that handles conversion
-        TODO("Mixed-precision stage implementation needed")
+        dtype: TStage,
+        content: NeuralNetworkDsl<TStage, V>.() -> Unit,
+    ) {
+        val stageImpl = StageImpl<TStage, V>(executionContext, id, dtype.witnessOf())
+        stageImpl.lastDimension = lastDimension
+        stageImpl.currentShape = currentShape?.copyOf()
+        stageImpl.content()
+        lastDimension = stageImpl.lastDimension
+        currentShape = stageImpl.currentShape?.copyOf()
+        modules += PrecisionBoundary(
+            name = id,
+            inner = stageImpl.create(),
+            innerType = dtype,
+            outerType = dtypeInstanceOf(kClass),
+        )
     }
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
+    override fun <TLayer : DType> dense(
+        outputDimension: Int,
+        id: String,
+        content: DENSE<TLayer, V>.() -> Unit
+    ): Module<T, V> = error(
+        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
+            "dense(outputDimension, dtype = FP16, id) { ... }"
+    )
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
+    override fun <TLayer : DType> dense(
+        id: String,
+        content: DENSE<TLayer, V>.() -> Unit
+    ): Module<T, V> = error(
+        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
+            "dense(outputDimension, dtype = FP16, id) { ... }"
+    )
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: stage(id, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
+    override fun <TStage : DType> stage(
+        id: String,
+        content: NeuralNetworkDsl<TStage, V>.() -> Unit
+    ): Module<T, V> = error(
+        "Mixed-precision stage was redesigned (SKEEP-008): pass the dtype as a value, " +
+            "stage(id, dtype = FP16) { ... }"
+    )
 
     override fun batchNorm(
         numFeatures: Int,
@@ -1715,28 +1798,90 @@ public class NeuralNetworkDslImpl<T : DType, V>(
 
     override fun <TLayer : DType> dense(
         outputDimension: Int,
+        dtype: TLayer,
         id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> {
-        // Create a mixed-precision module that handles conversion
-        TODO("Mixed-precision dense implementation needed")
-    }
-
-    override fun <TLayer : DType> dense(
-        id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> {
-        // Create a mixed-precision module that handles conversion
-        TODO("Mixed-precision dense implementation needed")
+        content: DENSE<TLayer, V>.() -> Unit,
+    ) {
+        val inputDimension = lastDimension
+        lastDimension = outputDimension
+        currentShape = intArrayOf(outputDimension)
+        val layerName = getDefaultName(id, "linear", modules.size)
+        val impl = DenseImpl<TLayer, V>(
+            executionContext,
+            inputDimension = inputDimension,
+            _outputDimension = outputDimension,
+            id = layerName,
+            kClass = dtype.witnessOf(),
+        )
+        impl.content()
+        val innerModules = impl.create()
+        val inner = if (innerModules.size == 1) innerModules[0] else MLP(*innerModules.toTypedArray(), name = layerName)
+        modules += PrecisionBoundary(
+            name = layerName,
+            inner = inner,
+            innerType = dtype,
+            outerType = dtypeInstanceOf(kClass),
+        )
     }
 
     override fun <TStage : DType> stage(
         id: String,
-        content: NeuralNetworkDsl<TStage, V>.() -> Unit
-    ): Module<T, V> {
-        // Create a mixed-precision stage that handles conversion
-        TODO("Mixed-precision stage implementation needed")
+        dtype: TStage,
+        content: NeuralNetworkDsl<TStage, V>.() -> Unit,
+    ) {
+        val stageImpl = StageImpl<TStage, V>(executionContext, id, dtype.witnessOf())
+        stageImpl.lastDimension = lastDimension
+        stageImpl.currentShape = currentShape?.copyOf()
+        stageImpl.content()
+        lastDimension = stageImpl.lastDimension
+        currentShape = stageImpl.currentShape?.copyOf()
+        modules += PrecisionBoundary(
+            name = id,
+            inner = stageImpl.create(),
+            innerType = dtype,
+            outerType = dtypeInstanceOf(kClass),
+        )
     }
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
+    override fun <TLayer : DType> dense(
+        outputDimension: Int,
+        id: String,
+        content: DENSE<TLayer, V>.() -> Unit
+    ): Module<T, V> = error(
+        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
+            "dense(outputDimension, dtype = FP16, id) { ... }"
+    )
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
+    override fun <TLayer : DType> dense(
+        id: String,
+        content: DENSE<TLayer, V>.() -> Unit
+    ): Module<T, V> = error(
+        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
+            "dense(outputDimension, dtype = FP16, id) { ... }"
+    )
+
+    @Deprecated(
+        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
+            "SKEEP-008); pass the dtype as a value: stage(id, dtype = FP16) { ... }",
+        level = DeprecationLevel.ERROR,
+    )
+    override fun <TStage : DType> stage(
+        id: String,
+        content: NeuralNetworkDsl<TStage, V>.() -> Unit
+    ): Module<T, V> = error(
+        "Mixed-precision stage was redesigned (SKEEP-008): pass the dtype as a value, " +
+            "stage(id, dtype = FP16) { ... }"
+    )
 
     override fun batchNorm(
         numFeatures: Int,
@@ -1994,6 +2139,14 @@ public class NeuralNetworkDslImpl<T : DType, V>(
     // LLM / Transformer layer implementations moved to skainet-transformers llm-core TransformerDsl.kt
 }
 
+
+/** The [KClass] witness of a dtype instance, typed to the instance's own type (dtypes are objects). */
+@Suppress("UNCHECKED_CAST")
+private fun <T : DType> T.witnessOf(): KClass<T> = this::class as KClass<T>
+
+/** The dtype object whose witness is [kClass]: the DSL impls hold the witness, [PrecisionBoundary] needs the instance. */
+@Suppress("UNCHECKED_CAST")
+private fun <T : DType> dtypeInstanceOf(kClass: KClass<T>): T = DType.fromWitness(kClass) as T
 
 @NetworkDsl
 public class NetworkBuilder<T : DType, V> {

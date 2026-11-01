@@ -44,6 +44,7 @@
 ** xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm]
 ** xref:explanation/schedules.adoc[Algorithm and schedule]
 ** xref:explanation/quantization-process.adoc[The quantization process]
+** xref:explanation/mixed-precision.adoc[Mixed precision]
 ** xref:explanation/theory/index.adoc[Mathematical theory]
 *** xref:explanation/theory/matmul.adoc[Matrix multiplication]
 ** xref:explanation/examples/index.adoc[Worked examples]
