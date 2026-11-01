@@ -5774,6 +5774,7 @@ public final class sk/ainet/lang/tensor/data/Requantizers {
 	public final fun getSupported ()Ljava/util/List;
 	public final fun quantize (Lsk/ainet/lang/tensor/storage/TensorEncoding;[FLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/TensorData;
 	public final fun supports (Lsk/ainet/lang/tensor/storage/TensorEncoding;)Z
+	public final fun validateShape (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/Shape;)V
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/RowDequantSource {
@@ -8118,6 +8119,9 @@ public final class sk/ainet/lang/tensor/storage/TensorStorage {
 	public final fun isMutable ()Z
 	public final fun memoryReport ()Lsk/ainet/lang/tensor/storage/StorageMemoryReport;
 	public final fun repackTo (Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun repackTo (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferResolver;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun requantizeTo (Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/storage/TensorStorage;
+	public final fun requantizeTo (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/storage/BufferResolver;)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public fun toString ()Ljava/lang/String;
 }
 
