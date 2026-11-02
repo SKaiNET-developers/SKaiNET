@@ -36,10 +36,6 @@ internal class TensorDefineDslImpl<T : DType, V>(
 ) : TensorDefineDsl<T, V> {
 
 
-    fun create(): Tensor<T, V> {
-        TODO("Not yet implemented")
-    }
-
     override fun tensor(content: TensorFactoryContext<T, V>.() -> Tensor<T, V>): Tensor<T, V> {
         val context = TensorFactoryContext<T, V>(executionContext, dtype)
         return context.content()
