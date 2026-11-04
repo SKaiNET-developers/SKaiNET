@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **StableHLO-phase target passes** (`skainet-compile-opt`, `skainet-compile-hlo`): `TargetOptimizer.stableHloPasses()` and `TargetOptimizers.registerStableHloPasses(target) { … }` / `stableHloPassesFor(target)` wire the `STABLE_HLO` phase. A `StableHloPass` rewrites the emitted module's text into valid StableHLO; `toStableHlo(graph, …, passes = …)` and `StableHloModule.applyPasses(passes)` apply them in order. The existing `toStableHlo` signatures are unchanged.
+- **TOSA preparation passes** (`sk.ainet.compile.hlo.tosa`): `DivideByBroadcastPass` (a divide by a broadcast becomes a multiply by the broadcast reciprocal, or by `rsqrt` for a `sqrt`) and `RankTwoWeightMatmulPass` (`[1, M, K] · [K, N]` as a rank-2 dot) shape a module for StableHLO's own `--stablehlo-prepare-for-tosa --stablehlo-legalize-to-tosa`; `TosaFinish` translates what that legalization leaves (`broadcast_in_dim`, `rsqrt`, batched attention `dot_general`s) and throws `TosaFinishException` on anything else. Moonshine v2 tiny streaming encoder (64 frames) on an SL2610 with the Torq NPU's `tosa-torq` input: one dispatch per call, golden transcripts identical to the recipe-side rewrite they replace.
+
 ## [0.62.4] - 2026-10-25
 
 Headline: **the arm64 release — the JVM on macOS sends its dense FP32 products to Accelerate, and the native dense
