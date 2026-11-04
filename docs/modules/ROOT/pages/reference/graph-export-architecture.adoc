@@ -75,6 +75,7 @@ The current StableHLO implementation already follows most of this shape:
 * `StableHloOperationRegistry` maps operation names to converters.
 * `StableHloConverterFactory` creates standard converter sets.
 * `StableHloModule` is the backend result object.
+* `TypeMapper` maps logical dtypes to MLIR element types and fails on a dtype without one (xref:contributing/dtype-model.adoc#dtype-to-element-type[dtype model]).
 
 StableHLO should keep its public API and MLIR output stable while adopting shared diagnostics where useful.
 

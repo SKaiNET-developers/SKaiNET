@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **StableHLO export maps `Int4` to `i4` and fails on a dtype without an element type** (`skainet-compile-hlo`): `TypeMapper.mapDType` turned every name it did not know, `Int4` and `Ternary` among them, into `f32`, so a typed `Int4` or `Ternary` tensor exported as a module whose types disagreed with its data. `Int4`/`I4` now map to `i4`; an unset dtype (`""`, `unknown`, what the DSL records when none is given) stays `f32`; any other unknown name throws `IllegalArgumentException` naming the dtype. Quantized weights are unaffected: they reach the emitter as dense tensors with a storage encoding.
+
 ## [0.62.4] - 2026-10-25
 
 Headline: **the arm64 release — the JVM on macOS sends its dense FP32 products to Accelerate, and the native dense

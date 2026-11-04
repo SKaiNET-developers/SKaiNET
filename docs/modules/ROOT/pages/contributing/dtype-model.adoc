@@ -95,6 +95,49 @@ in alongside `"Float32"` and `"BFloat16"`. The string convention
 matches what GGUF / SafeTensors loaders and the StableHLO converter
 already use for format identification.
 
+[[dtype-to-element-type]]
+== Logical dtype → StableHLO element type
+
+When a graph is exported, `TypeMapper.mapDType` (skainet-compile-hlo)
+turns each tensor's logical dtype string into an MLIR element type.
+A quantized weight does not travel as a dtype: it reaches the emitter
+as a dense tensor whose spec carries a `TensorEncoding`, and the
+encoding goes to the `skainet.tensor_layouts` module attribute.
+
+[mermaid]
+----
+flowchart LR
+  L["Loader<br/>GGUF / SafeTensors"] --> T["Tensor<br/>logical dtype + TensorData"]
+  T --> S["TensorSpec<br/>dtype string, encoding"]
+  S --> M{"TypeMapper.mapDType"}
+  M -->|"FP32, BF16, Int8, Int4, …"| E["element type<br/>f32, bf16, i8, i4, …"]
+  M -->|"unset: '', unknown"| F["f32"]
+  M -->|"no element type: Ternary, Q4_K, …"| X["IllegalArgumentException"]
+  S -->|"encoding: Q4_K, Q8_0, TernaryPacked, …"| A["skainet.tensor_layouts<br/>module attribute"]
+  E --> H["StableHLO module"]
+  F --> H
+  A --> H
+----
+
+[cols="2,1,3",options="header"]
+|===
+| Dtype string (any case) | Element type | Notes
+| `FP32`, `F32`, `Float32` / `FP64` | `f32` / `f64` |
+| `BF16`, `BFloat16` / `FP16`, `Float16` | `bf16` / `f16` |
+| `Int4`, `I4` | `i4` | `Int4` used to fall through to `f32`
+| `Int8` / `Int16` / `Int32` / `Int64` | `i8` / `i16` / `i32` / `i64` |
+| `UInt8` … `UInt64` | `ui8` … `ui64` |
+| `BOOL`, `Boolean` | `i1` |
+| `""`, `unknown` | `f32` | what the DSL and the tape record when no dtype is set
+| anything else (`Ternary`, `Q4_K`, …) | — | throws `IllegalArgumentException`
+|===
+
+An unknown name used to become `f32` silently, so a typed `Int4` or
+`Ternary` tensor produced a module whose types disagreed with its
+data. Now export stops at the first such tensor, naming the dtype.
+`Ternary` has no MLIR element type: dequantize it, or keep it packed
+as a `TernaryPacked` encoding.
+
 == Fail-fast: `KernelStrictness`
 
 The RFC's "fail before execution" rule has a small, ready
