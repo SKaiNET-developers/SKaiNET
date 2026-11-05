@@ -162,17 +162,78 @@ public data class TensorStorage(
     }
 
     /**
-     * Re-encode this storage into a different physical encoding.
-     * Currently a stub — actual transcoding requires backend kernels.
+     * Re-encode this storage *without changing the represented values* (SKEEP-008, #1433).
      *
-     * @throws UnsupportedOperationException always (until backends implement this)
+     * Supported: the same encoding (returns `this`), and decoding to `Dense(4)` — from any
+     * packed encoding [TensorStorageFactory.toTensorData] can read, and from narrow dense
+     * (`Dense(2)` FP16/BF16). Decoding is bit-exact: every FP16/BF16 value and every
+     * dequantized block value is exactly representable in FP32, so the result holds the same
+     * values the source's `dequantizeBlock`/codec gives, as owned dense FP32 host storage.
+     *
+     * Anything that would round or quantize throws and names [requantizeTo] — precision loss
+     * is always a visible, named call.
+     *
+     * [BufferHandle.FileBacked] sources need the overload that takes a [BufferResolver].
      */
-    public fun repackTo(targetEncoding: TensorEncoding): TensorStorage {
+    public fun repackTo(targetEncoding: TensorEncoding): TensorStorage =
+        repackTo(targetEncoding, DefaultBufferResolver())
+
+    /** [repackTo], reading through [resolver] for handles that need platform support. */
+    public fun repackTo(targetEncoding: TensorEncoding, resolver: BufferResolver): TensorStorage {
         if (encoding == targetEncoding) return this
-        throw UnsupportedOperationException(
-            "Repacking from ${encoding.name} to ${targetEncoding.name} is not yet implemented"
+        if (targetEncoding != TensorEncoding.Dense(bytesPerElement = 4)) {
+            throw UnsupportedOperationException(
+                "repackTo is lossless-only: ${encoding.name} -> ${targetEncoding.name} would change " +
+                    "the values. Use requantizeTo for lossy re-encoding (supported targets: " +
+                    "${sk.ainet.lang.tensor.data.Requantizers.supported.joinToString { it.name }})."
+            )
+        }
+        return denseFp32Copy(resolver)
+    }
+
+    /**
+     * Re-encode this storage, *accepting precision loss* (SKEEP-008, #1433). Supported targets
+     * are exactly [sk.ainet.lang.tensor.data.Requantizers.supported] — the same set a loader's
+     * `EncodingRequest.RequantizeTo` accepts. A packed or narrow source is decoded to FP32
+     * first, then quantized. The target encoding and shape are validated before the buffer is
+     * read, with the loader's messages.
+     *
+     * The result is owned packed host storage; [logicalType], shape and placement device are
+     * kept. [BufferHandle.FileBacked] sources need the overload that takes a [BufferResolver].
+     */
+    public fun requantizeTo(targetEncoding: TensorEncoding): TensorStorage =
+        requantizeTo(targetEncoding, DefaultBufferResolver())
+
+    /** [requantizeTo], reading through [resolver] for handles that need platform support. */
+    public fun requantizeTo(targetEncoding: TensorEncoding, resolver: BufferResolver): TensorStorage {
+        if (encoding == targetEncoding) return this
+        sk.ainet.lang.tensor.data.Requantizers.validateShape(targetEncoding, shape)
+        val floats = decodeToFloats(resolver)
+        val quantized = sk.ainet.lang.tensor.data.Requantizers.quantize(targetEncoding, floats, shape)
+        val packed = quantized as? PackedBlockStorage ?: throw IllegalStateException(
+            "quantizer for ${targetEncoding.name} did not produce packed block data"
+        )
+        return TensorStorage(
+            shape = shape,
+            logicalType = logicalType,
+            encoding = targetEncoding,
+            buffer = BufferHandleFactory.owned(packed.packedData),
+            placement = placement.copy(domain = MemoryDomain.HOST_HEAP),
         )
     }
+
+    /** Decode this storage's values into an owned dense FP32 host copy (shape and device kept). */
+    private fun denseFp32Copy(resolver: BufferResolver): TensorStorage = TensorStorage(
+        shape = shape,
+        dtype = sk.ainet.lang.types.FP32,
+        encoding = TensorEncoding.Dense(bytesPerElement = 4),
+        buffer = BufferHandleFactory.owned(decodeToFloats(resolver)),
+        placement = placement.copy(domain = MemoryDomain.HOST_HEAP),
+    )
+
+    /** This storage's values as FP32, decoded through [TensorStorageFactory.toTensorData]. */
+    private fun decodeToFloats(resolver: BufferResolver): FloatArray =
+        TensorStorageFactory.toTensorData<DType, Any>(copyToHost(resolver)).copyToFloatArray()
 
     private fun sizeBytes(): Int = physicalBytes.toInt()
 

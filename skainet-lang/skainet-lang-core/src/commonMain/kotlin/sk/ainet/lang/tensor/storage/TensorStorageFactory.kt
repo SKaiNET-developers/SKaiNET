@@ -7,8 +7,15 @@ import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
 import sk.ainet.lang.tensor.data.DenseIntArrayTensorData
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
+import sk.ainet.lang.tensor.data.BitNetB158TensorData
+import sk.ainet.lang.tensor.data.BitNetPlanesTensorData
+import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
+import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
+import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.TensorData
@@ -254,6 +261,27 @@ public object TensorStorageFactory {
             }
             is TensorEncoding.Q8_0 -> {
                 Q8_0BlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.Q4_0 -> {
+                Q4_0BlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.Q5_0 -> {
+                Q5_0BlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.Q5_1 -> {
+                Q5_1BlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.Q5_K -> {
+                Q5_KBlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.Q6_K -> {
+                Q6_KBlockTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.BITNET_PLANES -> {
+                BitNetPlanesTensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
+            }
+            is TensorEncoding.BITNET_B1_58 -> {
+                BitNetB158TensorData.fromRawBytes(storage.shape, bytes) as TensorData<T, V>
             }
             else -> throw UnsupportedOperationException(
                 "toTensorData not supported for encoding ${storage.encoding.name}"
