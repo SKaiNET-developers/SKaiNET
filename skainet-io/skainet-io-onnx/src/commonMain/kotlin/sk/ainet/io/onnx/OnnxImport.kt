@@ -244,6 +244,54 @@ public class OnnxToComputeGraphImporter {
                     attrInts("kernel_shape")?.let { put("kernelShape", it) }
                 }
             )
+            "CONVTRANSPOSE" -> {
+                // ONNX weight layout equals TensorOps.convTranspose{1,2}d ([C_in, C_out/groups, k...]).
+                // ONNX pads are [*_begins..., *_ends...] per spatial axis while SKaiNET takes one
+                // symmetric padding per axis, so asymmetric pads (and auto_pad/output_shape, which
+                // derive pads at runtime) keep the placeholder and fail loudly on execute.
+                val strides = attrInts("strides")
+                val pads = attrInts("pads")
+                val dilations = attrInts("dilations")
+                val outputPadding = attrInts("output_padding")
+                val group = attributes["group"]?.ints?.firstOrNull()?.toSafeInt() ?: 1
+                val autoPad = attributes["auto_pad"]?.strings?.firstOrNull() ?: "NOTSET"
+                val spatialRank = attrInts("kernel_shape")?.size
+                    ?: strides?.size
+                    ?: dilations?.size
+                    ?: pads?.let { it.size / 2 }
+                    ?: inputs.getOrNull(1)?.takeIf { it.isNotEmpty() }
+                        ?.let { initializers[it]?.shape?.size?.minus(2) }
+                val symmetricPads = pads == null ||
+                    (pads.size == 2 * (spatialRank ?: 0) &&
+                        (0 until pads.size / 2).all { pads[it] == pads[it + pads.size / 2] })
+                val supported = autoPad == "NOTSET" && "output_shape" !in attributes &&
+                    symmetricPads && (spatialRank == 1 || spatialRank == 2)
+                when {
+                    !supported -> OnnxPlaceholderOperation(
+                        opType = opType,
+                        type = "onnx",
+                        parameters = mapOf(
+                            "reason" to "ConvTranspose supports 1D/2D with auto_pad=NOTSET, " +
+                                "symmetric pads and no output_shape",
+                            "autoPad" to autoPad,
+                        )
+                    )
+                    spatialRank == 1 -> OnnxConvTranspose1dOperation(
+                        stride = strides?.get(0) ?: 1,
+                        padding = pads?.get(0) ?: 0,
+                        outputPadding = outputPadding?.get(0) ?: 0,
+                        dilation = dilations?.get(0) ?: 1,
+                        groups = group,
+                    )
+                    else -> OnnxConvTranspose2dOperation(
+                        stride = strides ?: listOf(1, 1),
+                        padding = pads?.take(2) ?: listOf(0, 0),
+                        outputPadding = outputPadding ?: listOf(0, 0),
+                        dilation = dilations ?: listOf(1, 1),
+                        groups = group,
+                    )
+                }
+            }
             "RELU" -> ReluOperation<DType, Any>()
             "SIGMOID" -> SigmoidOperation<DType, Any>()
             "LEAKYRELU" -> OnnxMappedOperation(
@@ -415,6 +463,8 @@ private fun opShapeInference(op: Operation, inputs: List<TensorSpec>, outputInde
         is OnnxSliceOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
         is OnnxSplitOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
         is OnnxPadOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
+        is OnnxConvTranspose1dOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
+        is OnnxConvTranspose2dOperation -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
         is Conv2dOperation<*, *> -> inputs.firstOrNull()?.shape
         is MaxPool2dOperation<*, *> -> inputs.firstOrNull()?.shape
         is Upsample2dOperation<*, *> -> op.inferOutputs(inputs).getOrNull(outputIndex)?.shape
@@ -561,6 +611,90 @@ private class OnnxPadOperation(
         return listOf(
             TensorSpec(
                 name = "pad2d_output",
+                shape = outputShape,
+                dtype = inputs.firstOrNull()?.dtype ?: "unknown"
+            )
+        )
+    }
+}
+
+/**
+ * ONNX `ConvTranspose` (1D) mapped to SKaiNET `convTranspose1d`. Output length is
+ * `(in - 1) * stride - 2 * padding + dilation * (k - 1) + outputPadding + 1`.
+ */
+private class OnnxConvTranspose1dOperation(
+    private val stride: Int,
+    private val padding: Int,
+    private val outputPadding: Int,
+    private val dilation: Int,
+    private val groups: Int,
+) : BasePlaceholderOperation(
+    "convTranspose1d",
+    mapOf(
+        "stride" to stride,
+        "padding" to padding,
+        "outputPadding" to outputPadding,
+        "dilation" to dilation,
+        "groups" to groups,
+    ),
+    "convolution",
+) {
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        val x = inputs.getOrNull(0)?.shape
+        val w = inputs.getOrNull(1)?.shape
+        val outputShape = if (x != null && w != null && x.size == 3 && w.size == 3) {
+            listOf(
+                x[0],
+                w[1] * groups,
+                (x[2] - 1) * stride - 2 * padding + dilation * (w[2] - 1) + outputPadding + 1,
+            )
+        } else {
+            x
+        }
+        return listOf(
+            TensorSpec(
+                name = "convTranspose1d_output",
+                shape = outputShape,
+                dtype = inputs.firstOrNull()?.dtype ?: "unknown"
+            )
+        )
+    }
+}
+
+/** ONNX `ConvTranspose` (2D) mapped to SKaiNET `convTranspose2d`; same output formula per H/W axis. */
+private class OnnxConvTranspose2dOperation(
+    private val stride: List<Int>,
+    private val padding: List<Int>,
+    private val outputPadding: List<Int>,
+    private val dilation: List<Int>,
+    private val groups: Int,
+) : BasePlaceholderOperation(
+    "convTranspose2d",
+    mapOf(
+        "stride" to stride,
+        "padding" to padding,
+        "outputPadding" to outputPadding,
+        "dilation" to dilation,
+        "groups" to groups,
+    ),
+    "convolution",
+) {
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        val x = inputs.getOrNull(0)?.shape
+        val w = inputs.getOrNull(1)?.shape
+        val outputShape = if (x != null && w != null && x.size == 4 && w.size == 4) {
+            listOf(
+                x[0],
+                w[1] * groups,
+                (x[2] - 1) * stride[0] - 2 * padding[0] + dilation[0] * (w[2] - 1) + outputPadding[0] + 1,
+                (x[3] - 1) * stride[1] - 2 * padding[1] + dilation[1] * (w[3] - 1) + outputPadding[1] + 1,
+            )
+        } else {
+            x
+        }
+        return listOf(
+            TensorSpec(
+                name = "convTranspose2d_output",
                 shape = outputShape,
                 dtype = inputs.firstOrNull()?.dtype ?: "unknown"
             )
