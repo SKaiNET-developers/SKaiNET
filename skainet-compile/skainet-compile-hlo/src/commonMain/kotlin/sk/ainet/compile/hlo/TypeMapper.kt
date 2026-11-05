@@ -12,13 +12,22 @@ import sk.ainet.lang.tensor.ops.TensorSpec
 public class TypeMapper {
     
     /**
-     * Map SKaiNET data type string to MLIR element type
+     * Map SKaiNET data type string to MLIR element type.
+     *
+     * An unset dtype (`""`, `"unknown"`: what the DSL records when no type is
+     * given) maps to `f32`. Any other name without an MLIR element type, such as
+     * `Ternary`, throws: mapping it to `f32` would emit a module whose types
+     * silently disagree with the data. Quantized weights reach the emitter as
+     * dense tensors with a storage encoding, not as these dtypes.
+     *
+     * @throws IllegalArgumentException for a dtype with no MLIR element type
      */
     public fun mapDType(dtype: String): String = when (dtype.uppercase()) {
         "FP32", "F32", "FLOAT32" -> "f32"
         "FP64", "F64", "FLOAT64" -> "f64"
         "I32", "INT32" -> "i32"
         "I64", "INT64" -> "i64"
+        "I4", "INT4" -> "i4"
         "I8", "INT8" -> "i8"
         "I16", "INT16" -> "i16"
         "UI8", "UINT8" -> "ui8"
@@ -28,10 +37,10 @@ public class TypeMapper {
         "BF16", "BFLOAT16" -> "bf16"
         "FP16", "F16", "FLOAT16" -> "f16"
         "BOOL", "BOOLEAN" -> "i1"
-        else -> {
-            // Default fallback with warning
-            "f32" // Could emit warning here
-        }
+        "", "UNKNOWN" -> "f32"
+        else -> throw IllegalArgumentException(
+            "dtype '$dtype' has no MLIR element type; dequantize it to a float type or carry it as a storage encoding"
+        )
     }
     
     /**
