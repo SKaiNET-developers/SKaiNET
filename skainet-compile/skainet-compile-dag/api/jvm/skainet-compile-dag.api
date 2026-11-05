@@ -530,11 +530,17 @@ public final class sk/ainet/lang/trace/PackedConstantException : java/lang/Illeg
 }
 
 public final class sk/ainet/lang/trace/PackedConstantHandling : java/lang/Enum {
+	public static final field Companion Lsk/ainet/lang/trace/PackedConstantHandling$Companion;
 	public static final field DEQUANTIZE Lsk/ainet/lang/trace/PackedConstantHandling;
 	public static final field FAIL Lsk/ainet/lang/trace/PackedConstantHandling;
+	public static final field KEEP_PACKED Lsk/ainet/lang/trace/PackedConstantHandling;
+	public static final field PACKED_WEIGHT_PARAM Ljava/lang/String;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/trace/PackedConstantHandling;
 	public static fun values ()[Lsk/ainet/lang/trace/PackedConstantHandling;
+}
+
+public final class sk/ainet/lang/trace/PackedConstantHandling$Companion {
 }
 
 public final class sk/ainet/lang/trace/TapeSink : sk/ainet/lang/trace/OpSink {

@@ -10,10 +10,12 @@ import sk.ainet.compile.hlo.elementCountFromShape
 import sk.ainet.compile.hlo.floatArrayToLittleEndianBytes
 import sk.ainet.compile.hlo.numberListToLittleEndianBytes
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.trace.PackedConstantHandling
 import sk.ainet.lang.tensor.ops.blockOrder
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.tensorEncoding
 import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
@@ -222,6 +224,18 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         val initialValue = node.operation.parameters["initial_value"]
         val isTrainable = node.operation.parameters["trainable"] as? Boolean ?: true
         
+        // A weight kept packed (PackedConstantHandling.KEEP_PACKED) has no dense form to emit; only
+        // a consumer that reads it packed may take it, and none did.
+        val packed = node.operation.parameters[PackedConstantHandling.PACKED_WEIGHT_PARAM] as? PackedBlockStorage
+        if (packed != null) {
+            return ConversionResult.Failure(
+                "${node.operation.name} ${node.id} (${node.outputs.firstOrNull()?.name}) is packed ${packed.encoding.name} " +
+                    "and no op consumes it packed. Only a Q8_0 / Q4_0 weight used as x · Wᵀ by a single matmul is " +
+                    "folded (BlockQuantMatmulFusionPass); trace with PackedConstantHandling.DEQUANTIZE for the rest.",
+                "packed weight ${node.id} reached constant emission"
+            )
+        }
+
         val outputSpec = node.outputs.firstOrNull()
         val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?xf32>"

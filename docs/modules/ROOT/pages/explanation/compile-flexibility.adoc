@@ -100,6 +100,33 @@ carries what goes around it:
 The legalization runs outside SKaiNET (`stablehlo-opt`, built from the same LLVM as the
 compiler that reads its output).
 
+=== Block-quantized weights for an NPU kernel
+
+A Q8_0 or Q4_0 `Linear` can reach the compiler as integer codes and per-block scales instead of
+a dense FP32 copy. Three pieces carry it:
+
+* the trace keeps the weight packed: `toComputeGraph(…, packedConstants = KEEP_PACKED)` (or
+  `HloGenerator.generate(…, packedConstants = …)`);
+* `BlockQuantMatmulFusionPass` (DAG phase) folds `weight → transpose → matmul` into one
+  `block_quant_matmul` node that holds the packed storage;
+* `BlockQuantMatmulConverter` emits that node as a `linalg` chain: a `linalg.generic` computing
+  `(sitofp(codes) - zp) * scale` over `[nB, 32, N]` (`i8` or `i4` codes, `bf16` scales broadcast
+  over each 32-element block), then `collapse_shape`, `expand_shape` and `linalg.batch_matmul`
+  with a `bf16` activation. All constants are inline.
+
+[source,kotlin]
+----
+TargetOptimizers.registerDagPasses("torq") { listOf(BlockQuantMatmulFusionPass()) }
+----
+
+This is the form the Torq compiler (2.3.0, `--iree-input-type=stablehlo-torq`) matches to its
+`mixed_quant_matmul` kernel when the activation has one row. That kernel takes only positive
+scales, so a block with a negative scale `d` is stored exactly as codes `-1 - c`, zero point
+`-1` and scale `-d` (ggml Q4_0 sets `d = max / -8`, about half its blocks are negative). A
+packed weight the pass did not fold, such as a tied embedding, makes the export fail; trace
+with `DEQUANTIZE` for those. Stock IREE `llvm-cpu` has given wrong results for `i4` weights, so
+keep Q4_0 to targets that were checked.
+
 == Why exact GELU needs care
 
 [cols="1,3"]

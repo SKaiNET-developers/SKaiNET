@@ -25,6 +25,21 @@ public enum class PackedConstantHandling {
      * use only when the export target genuinely needs dense constants.
      */
     DEQUANTIZE,
+
+    /**
+     * Keep the packed data as is: the weight node carries the
+     * [sk.ainet.lang.tensor.storage.PackedBlockStorage] under [PACKED_WEIGHT_PARAM]
+     * and keeps its encoding, with no float copy. Something downstream must
+     * consume it: `BlockQuantMatmulFusionPass` folds a Q8_0 / Q4_0 weight into
+     * the matmul that reads it, and the StableHLO emitter refuses a packed
+     * weight that is still a plain constant.
+     */
+    KEEP_PACKED;
+
+    public companion object {
+        /** Weight-node parameter holding the packed storage under [KEEP_PACKED]. */
+        public const val PACKED_WEIGHT_PARAM: String = "packed_weight"
+    }
 }
 
 /**
