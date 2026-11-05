@@ -136,9 +136,12 @@ public final class sk/ainet/compile/hlo/ConversionResult$Unsupported : sk/ainet/
 }
 
 public final class sk/ainet/compile/hlo/Dag2hloKt {
+	public static final fun applyPasses (Lsk/ainet/compile/hlo/StableHloModule;Ljava/util/List;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static final fun toStableHlo (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static final fun toStableHlo (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Ljava/util/List;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static final fun toStableHlo (Lsk/ainet/lang/graph/ResolvedComputeGraph;Ljava/lang/String;ZLjava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun toStableHlo$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+	public static synthetic fun toStableHlo$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun toStableHlo$default (Lsk/ainet/lang/graph/ResolvedComputeGraph;Ljava/lang/String;ZLjava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static final fun toStableHloLegacy (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun toStableHloLegacy$default (Lsk/ainet/lang/graph/ComputeGraph;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
@@ -621,6 +624,56 @@ public final class sk/ainet/compile/hlo/lowering/LoweringSpec {
 public final class sk/ainet/compile/hlo/lowering/LoweringSpecKt {
 	public static final fun emitComposite (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/lowering/LoweringSpec;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 	public static final fun emitComposite (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/lowering/LoweringSpec;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/tosa/DivideByBroadcastPass : sk/ainet/compile/opt/StableHloPass {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/tosa/DivideByBroadcastPass;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun rewrite (Ljava/lang/String;)Lkotlin/Pair;
+}
+
+public final class sk/ainet/compile/hlo/tosa/RankTwoWeightMatmulPass : sk/ainet/compile/opt/StableHloPass {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/tosa/RankTwoWeightMatmulPass;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun rewrite (Ljava/lang/String;)Lkotlin/Pair;
+}
+
+public final class sk/ainet/compile/hlo/tosa/TosaFinish {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/tosa/TosaFinish;
+	public final fun finish (Ljava/lang/String;)Lsk/ainet/compile/hlo/tosa/TosaFinish$Result;
+}
+
+public final class sk/ainet/compile/hlo/tosa/TosaFinish$Result {
+	public fun <init> (Ljava/lang/String;IIIII)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun copy (Ljava/lang/String;IIIII)Lsk/ainet/compile/hlo/tosa/TosaFinish$Result;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/tosa/TosaFinish$Result;Ljava/lang/String;IIIIIILjava/lang/Object;)Lsk/ainet/compile/hlo/tosa/TosaFinish$Result;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBatchedMatmuls ()I
+	public final fun getBroadcasts ()I
+	public final fun getMlir ()Ljava/lang/String;
+	public final fun getRoots ()I
+	public final fun getTiled ()I
+	public final fun getWeightMatmuls ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/tosa/TosaFinishException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class sk/ainet/compile/hlo/tosa/TosaPreparation {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/tosa/TosaPreparation;
+	public final fun getLEGALIZE_ARGS ()Ljava/util/List;
+	public final fun passes ()Ljava/util/List;
 }
 
 public final class sk/ainet/compile/hlo/validation/BenchmarkResults {

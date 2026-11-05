@@ -70,6 +70,22 @@ public fun toStableHlo(
 }
 
 /**
+ * [toStableHlo], then the StableHLO-phase [passes] applied to the emitted module, in order.
+ * Resolve them at the call site with `TargetOptimizers.stableHloPassesFor(target)`.
+ */
+public fun toStableHlo(
+    graph: ComputeGraph,
+    functionName: String = "main",
+    target: String? = null,
+    granularity: sk.ainet.compile.target.OpGranularityPolicy? = null,
+    passes: List<sk.ainet.compile.opt.StableHloPass>,
+): StableHloModule = toStableHlo(graph, functionName, target, granularity).applyPasses(passes)
+
+/** This module with [passes] applied to its content, in order (`this` when [passes] is empty). */
+public fun StableHloModule.applyPasses(passes: List<sk.ainet.compile.opt.StableHloPass>): StableHloModule =
+    if (passes.isEmpty()) this else copy(content = passes.fold(content) { mlir, pass -> pass.apply(mlir) })
+
+/**
  * Export a [sk.ainet.lang.graph.ResolvedComputeGraph] into a StableHLO
  * MLIR module — the dtype-resolved entry point that the W7
  * `DTypeConstraintResolutionPass` produces.

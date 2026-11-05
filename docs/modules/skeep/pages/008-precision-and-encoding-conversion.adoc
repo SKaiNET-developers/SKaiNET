@@ -241,6 +241,10 @@ has today and gains the cases that are pure re-encodings. Anything that rounds g
   source follows `copyMaterialize`: `FileBacked` and `Aliased` buffers are read through the
   resolver, and a device-resident buffer throws as it does today.
 * `logicalType`, shape and placement device are kept; `encoding`, buffer and byte size change.
+  One exception: `repackTo(Dense(4))` from narrow dense (`Dense(2)` FP16/BF16) decodes to FP32
+  and the result dtype is FP32 — every 16-bit value is exactly representable, so the values are
+  bit-exact, and a `Dense(4)` buffer tagged FP16/BF16 has no defined byte layout anywhere in
+  the codebase.
 * `requantizeTo` validates up front, with the same message a loader gives:
   `Requantizers.supports(target)` must be true, and the shape must block (for example the last
   dimension a multiple of 32 for Q4_0).

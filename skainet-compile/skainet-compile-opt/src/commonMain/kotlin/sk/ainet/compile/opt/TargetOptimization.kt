@@ -16,8 +16,8 @@ public enum class CompilePhase { TAPE, DAG, STABLE_HLO }
  * a model definition — the StableHLO stays portable.
  *
  * Contribute passes per phase by overriding the phase you need; the rest default
- * to empty. Today [dagPasses] (graph rewrites) is wired; tape / StableHLO phase
- * hooks follow the same shape when their pass types are needed.
+ * to empty. [dagPasses] (graph rewrites) and [stableHloPasses] (rewrites of the
+ * emitted module) are wired; a tape phase hook follows the same shape when needed.
  */
 public interface TargetOptimizer {
     /** Backend/device id this optimizer contributes to (matches the target name). */
@@ -34,9 +34,30 @@ public interface TargetOptimizer {
      */
     public fun granularity(): sk.ainet.compile.target.OpGranularityPolicy? = null
 
+    /**
+     * StableHLO-phase rewrites of the emitted module, in order. They must keep the module
+     * valid, portable StableHLO: a target uses them to shape the module for the vendor
+     * toolchain that consumes it (e.g. `sk.ainet.compile.hlo.tosa.TosaPreparation` before a
+     * StableHLO → TOSA legalization). Callers resolve them with
+     * [TargetOptimizers.stableHloPassesFor] and hand them to `toStableHlo(...)`.
+     */
+    public fun stableHloPasses(): List<StableHloPass> = emptyList()
+
     // Future phases keep the same shape, e.g.:
     //   public fun tapePasses(): List<TapePass> = emptyList()
-    //   public fun stableHloPasses(): List<StableHloPass> = emptyList()
+}
+
+/**
+ * A StableHLO-phase pass: rewrites an emitted module's MLIR text into equivalent MLIR text.
+ * Text-level (like the emitter's own output), so it carries no dependency on the emitter
+ * module; it must leave the module valid StableHLO.
+ */
+public interface StableHloPass {
+    /** Short name for logs and diagnostics. */
+    public val name: String
+
+    /** The rewritten module. Return [mlir] unchanged when nothing applies. */
+    public fun apply(mlir: String): String
 }
 
 /**
@@ -63,6 +84,17 @@ public object TargetOptimizers {
         })
     }
 
+    /**
+     * Callback-style registration of StableHLO-phase passes:
+     * `registerStableHloPasses("torq") { TosaPreparation.passes() }`.
+     */
+    public fun registerStableHloPasses(target: String, passes: () -> List<StableHloPass>) {
+        register(object : TargetOptimizer {
+            override val target: String = target
+            override fun stableHloPasses(): List<StableHloPass> = passes()
+        })
+    }
+
     /** Optimizers registered for [target] (empty if none / null). */
     public fun forTarget(target: String?): List<TargetOptimizer> =
         target?.let { registry[it]?.toList() } ?: emptyList()
@@ -75,6 +107,10 @@ public object TargetOptimizers {
      */
     public fun granularityFor(target: String?): sk.ainet.compile.target.OpGranularityPolicy? =
         forTarget(target).firstNotNullOfOrNull { it.granularity() }
+
+    /** StableHLO-phase passes for [target], in registration order (empty if none / null). */
+    public fun stableHloPassesFor(target: String?): List<StableHloPass> =
+        forTarget(target).flatMap { it.stableHloPasses() }
 
     /** Test/reset hook. */
     public fun clear(): Unit = registry.clear()

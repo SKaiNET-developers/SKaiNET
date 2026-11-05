@@ -35,7 +35,7 @@ public sealed interface PreTokenizer {
      * behaviours (`Removed`, `MergedWithPrevious`, …) are accepted for the common cases.
      */
     public class Split(public val pattern: String, public val behavior: String = "Isolated", public val invert: Boolean = false) : PreTokenizer {
-        private val regex = Regex(pattern)
+        private val regex = compileTokenizerSplitRegex(pattern)
         override fun split(text: String): List<String> {
             if (text.isEmpty()) return emptyList()
             val out = ArrayList<String>()

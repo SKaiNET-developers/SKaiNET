@@ -103,6 +103,14 @@ block is applied to every segment; unknown normalizer or pre-tokenizer types fai
 * `bosTokenId` / `eosTokenId` stay nullable; `vocabSize` counts added tokens above `model.vocab`.
 * `TokenizerFactory.fromGguf` / `fromTokenizerJson` forward to `TextFrontEnds`; failures surface as
   `UnsupportedTokenizerException`, a subclass of `UnsupportedFrontEndException`.
+* On JVM, `Split` regex patterns enable Unicode character classes (`\s`, `\d`, `\w` and
+  their negations), so nonbreaking spaces and non-ASCII digits follow the checkpoint's
+  tokenizer semantics. The pattern text is preserved, and explicit inline flags retain their
+  JVM scope. Java's Unicode character-class mode also enables Unicode case folding when case
+  insensitivity is requested. Android already always uses Unicode character classes and
+  https://developer.android.com/reference/java/util/regex/Pattern#UNICODE_CHARACTER_CLASS[ignores this flag].
+  Other targets retain their existing Kotlin `Regex` behavior; this does not establish
+  complete regex-dialect parity across platforms.
 
 == Goldens
 
