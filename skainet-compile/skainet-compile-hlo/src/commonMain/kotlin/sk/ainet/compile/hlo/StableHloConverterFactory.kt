@@ -2,6 +2,7 @@ package sk.ainet.compile.hlo
 
 import sk.ainet.compile.hlo.converters.ActivationOperationsConverter
 import sk.ainet.compile.hlo.converters.ArgMaxOperationsConverter
+import sk.ainet.compile.hlo.converters.BlockQuantMatmulConverter
 import sk.ainet.compile.hlo.converters.AttentionOperationsConverter
 import sk.ainet.compile.hlo.converters.ConstantOperationsConverter
 import sk.ainet.compile.hlo.converters.GatherOperationsConverter
@@ -81,6 +82,8 @@ public object StableHloConverterFactory {
 
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
+        // block_quant_matmul exists only where BlockQuantMatmulFusionPass ran; packed weights stay packed
+        registry.register(BlockQuantMatmulConverter())
 
         // Register attention (scaledDotProductAttention) converter
         registry.register(AttentionOperationsConverter())
@@ -141,6 +144,8 @@ public object StableHloConverterFactory {
 
         // Register constant operations converter
         registry.register(ConstantOperationsConverter())
+        // block_quant_matmul exists only where BlockQuantMatmulFusionPass ran; packed weights stay packed
+        registry.register(BlockQuantMatmulConverter())
 
         // Register attention (scaledDotProductAttention) converter
         registry.register(AttentionOperationsConverter())
@@ -178,6 +183,8 @@ public object StableHloConverterFactory {
         registry.register(UnaryMathConverter())
         registry.register(ScalarOperationsConverter())
         registry.register(ConstantOperationsConverter())
+        // block_quant_matmul exists only where BlockQuantMatmulFusionPass ran; packed weights stay packed
+        registry.register(BlockQuantMatmulConverter())
 
         return StableHloConverter(registry, typeMapper, null, policy, errorPolicy = errorPolicy)
     }

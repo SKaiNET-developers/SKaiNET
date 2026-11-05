@@ -49,6 +49,12 @@ public object HloGenerator {
          * [sk.ainet.compile.opt.TargetOptimizers].
          */
         target: String? = null,
+        /**
+         * How packed (quantized) weights are traced. [sk.ainet.lang.trace.PackedConstantHandling.KEEP_PACKED]
+         * keeps Q8_0 / Q4_0 weights packed for a target that registered
+         * [sk.ainet.compile.opt.passes.BlockQuantMatmulFusionPass].
+         */
+        packedConstants: sk.ainet.lang.trace.PackedConstantHandling = sk.ainet.lang.trace.PackedConstantHandling.FAIL,
     ): StableHloModule {
         val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
         val traceInput = sampleInput.bind(ctx)
@@ -68,7 +74,8 @@ public object HloGenerator {
 
         val computeGraph = tape?.toComputeGraph(
             synthesizeExternalInputs = true,
-            inputTensorIds = setOf(inputRefId)
+            inputTensorIds = setOf(inputRefId),
+            packedConstants = packedConstants
         ) ?: error("Failed to create compute graph: no execution tape was recorded")
 
         // The optimizer pipeline joins the production path here (#1180): with no target named,

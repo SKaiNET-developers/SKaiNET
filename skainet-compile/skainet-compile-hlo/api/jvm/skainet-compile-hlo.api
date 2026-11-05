@@ -398,6 +398,12 @@ public final class sk/ainet/compile/hlo/converters/BasicMathConverter : sk/ainet
 	public fun getSupportedOperations ()Ljava/util/Set;
 }
 
+public final class sk/ainet/compile/hlo/converters/BlockQuantMatmulConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
+	public fun <init> ()V
+	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
+	public fun getSupportedOperations ()Ljava/util/Set;
+}
+
 public final class sk/ainet/compile/hlo/converters/ConstantOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
@@ -570,8 +576,8 @@ public final class sk/ainet/compile/hlo/examples/ValidationDemonstrationResult {
 public final class sk/ainet/compile/hlo/generate/HloGenerator {
 	public static final field INSTANCE Lsk/ainet/compile/hlo/generate/HloGenerator;
 	public final fun corePasses (Ljava/lang/String;)Ljava/util/List;
-	public final fun generate (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun generate$default (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun generate (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/trace/PackedConstantHandling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun generate$default (Lsk/ainet/compile/hlo/generate/HloGenerator;Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/lang/trace/PackedConstantHandling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public final class sk/ainet/compile/hlo/generate/HloGeneratorJvmKt {

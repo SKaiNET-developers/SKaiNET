@@ -292,26 +292,32 @@ public class TraceToGraphBuilder(
                         // packed encoding forward would misdescribe it.
                         encoding = null
                     }
+                    PackedConstantHandling.KEEP_PACKED -> Unit
                 }
             }
+            val keptPacked = if (constantValues == null && packedConstants == PackedConstantHandling.KEEP_PACKED) packedData else null
 
             val syntheticNode: GraphNode
             val producedSpec: TensorSpec
-            if (constantValues != null) {
-                // Create a constant/weight node with embedded values
+            if (constantValues != null || keptPacked != null) {
+                // Create a constant/weight node with embedded values (or, under
+                // KEEP_PACKED, the packed storage itself)
                 val weightShape = tensor!!.shape.dimensions.toList()
                 val weightDtype = tensor.dtype.simpleName ?: "FP32"
                 val nodeId = "n${nextNodeId++}_weight"
                 val op = TraceBackedOperation(
                     name = "weight",
                     type = "constant",
-                    parameters = mapOf(
+                    parameters = if (keptPacked != null) mapOf(
+                        PackedConstantHandling.PACKED_WEIGHT_PARAM to keptPacked,
+                        "trainable" to false
+                    ) else mapOf(
                         // Store the primitive FloatArray, NOT .toList(): boxing a
                         // real LLM weight (e.g. 262153x640 embedding) into a
                         // List<Float> is ~2.7GB and OOMs the trace. The HLO
                         // converter handles FloatArray for both inline and
                         // external (.irpa) materialization.
-                        "initial_value" to constantValues,
+                        "initial_value" to constantValues!!,
                         "trainable" to false
                     )
                 )
