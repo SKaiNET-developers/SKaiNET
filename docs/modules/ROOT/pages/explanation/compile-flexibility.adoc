@@ -42,8 +42,9 @@ image::compile-stage-seams-dark.svg["Four compile stages with the knobs at each 
 | The converter registry (13 families) emits `stablehlo` and `chlo`. Ops with a
   `LoweringSpec` can be kept as a `stablehlo.composite` or decomposed inline, per op, by the
   target's `OpGranularityPolicy`. `ConstantMaterializationPolicy` decides whether weights are
-  inline constants or external `.irpa` parameters.
-| core, vendor (`TargetOptimizer.granularity()`), exporter
+  inline constants or external `.irpa` parameters. `StableHloPass`es then rewrite the emitted
+  module for the toolchain that consumes it (for example the TOSA preparation passes).
+| core, vendor (`TargetOptimizer.granularity()`, `stableHloPasses()`), exporter
 
 | ④ IREE
 | Backend and flags (`llvm-cpu`, `vulkan-spirv`, or a vendor fork). IREE owns legalization,
@@ -59,13 +60,45 @@ public interface TargetOptimizer {
     public val target: String
     public fun dagPasses(): List<GraphOptimizationPass> = emptyList()
     public fun granularity(): OpGranularityPolicy? = null
+    public fun stableHloPasses(): List<StableHloPass> = emptyList()
 }
 ----
 
-`CompilePhase` declares three phases, `TAPE`, `DAG` and `STABLE_HLO`. Only the DAG phase is
-wired today: `dagPasses()` runs after the core passes, and `granularity()` is read when the
-graph is lowered. The tape and StableHLO phases are declared but have no call sites yet, and
-`iree-compile` flags are still set per target by the caller rather than through a provider.
+`CompilePhase` declares three phases, `TAPE`, `DAG` and `STABLE_HLO`. The DAG and StableHLO
+phases are wired: `dagPasses()` runs after the core passes, `granularity()` is read when the
+graph is lowered, and `stableHloPasses()` rewrite the emitted module, in registration order. The
+caller resolves them by target name and hands them to the emitter:
+
+[source,kotlin]
+----
+TargetOptimizers.registerStableHloPasses("my-npu") { TosaPreparation.passes() }
+
+val module = toStableHlo(graph, "encoder", target = "my-npu",
+    passes = TargetOptimizers.stableHloPassesFor("my-npu"))
+----
+
+A StableHLO pass works on the module text and must leave it valid StableHLO. The tape phase
+has no call sites yet, and `iree-compile` flags are still set per target by the caller rather
+than through a provider.
+
+=== The TOSA preparation passes
+
+Some NPU toolchains compile TOSA better than StableHLO: an input pipeline that makes a whole
+function one dispatch avoids paying the runtime's per-dispatch cost hundreds of times per call.
+StableHLO's own `--stablehlo-prepare-for-tosa --stablehlo-legalize-to-tosa`
+(`TosaPreparation.LEGALIZE_ARGS`) does most of the conversion. `sk.ainet.compile.hlo.tosa`
+carries what goes around it:
+
+* `DivideByBroadcastPass`, before: `x / broadcast(sqrt(z))` becomes `x * broadcast(rsqrt(z))`
+  and `x / broadcast(y)` becomes `x * broadcast(1 / y)`, so the reciprocal runs on the row, not
+  on the broadcast tile, and no `sqrt` turns into `pow`;
+* `RankTwoWeightMatmulPass`, before: a `[1, M, K] · [K, N]` weight matmul as a rank-2 dot, the
+  only form the legalization turns into `tosa.matmul` itself;
+* `TosaFinish`, after: translates the ops the legalization leaves (`broadcast_in_dim`, `rsqrt`,
+  batched attention `dot_general`s) and fails on any other StableHLO op left over.
+
+The legalization runs outside SKaiNET (`stablehlo-opt`, built from the same LLVM as the
+compiler that reads its output).
 
 == Why exact GELU needs care
 
@@ -227,8 +260,9 @@ case in the IREE conformance suite, whose reference oracles still use the tanh f
 
 As of 0.61.0 no shipped target registers `GeluApproximationLegalizationPass` or keeps `gelu`
 fused; `my-npu` and `my-dsp` on this page are example names, and the mechanisms are exercised
-by tests. The `TAPE` and `STABLE_HLO` hook phases are declared but not wired, and there is no
-provider interface for `iree-compile` flags yet.
+by tests. The `STABLE_HLO` phase is wired; the `TAPE` phase is declared but not wired, and there
+is no provider interface for `iree-compile` flags yet. The TOSA preparation passes are not
+registered for any target by SKaiNET itself: a backend or a build recipe registers them.
 
 == Related pages
 

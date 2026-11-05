@@ -60,6 +60,11 @@ public final class sk/ainet/compile/opt/GraphPruningKt {
 	public static final fun prunedToOutputs (Lsk/ainet/lang/graph/ComputeGraph;Ljava/util/Set;)Lsk/ainet/lang/graph/ComputeGraph;
 }
 
+public abstract interface class sk/ainet/compile/opt/StableHloPass {
+	public abstract fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun getName ()Ljava/lang/String;
+}
+
 public final class sk/ainet/compile/opt/TargetOptimizationKt {
 	public static final fun dagPipelineFor (Ljava/lang/String;Ljava/util/List;I)Lsk/ainet/compile/opt/GraphOptimizationPipeline;
 	public static synthetic fun dagPipelineFor$default (Ljava/lang/String;Ljava/util/List;IILjava/lang/Object;)Lsk/ainet/compile/opt/GraphOptimizationPipeline;
@@ -69,11 +74,13 @@ public abstract interface class sk/ainet/compile/opt/TargetOptimizer {
 	public fun dagPasses ()Ljava/util/List;
 	public abstract fun getTarget ()Ljava/lang/String;
 	public fun granularity ()Lsk/ainet/compile/target/OpGranularityPolicy;
+	public fun stableHloPasses ()Ljava/util/List;
 }
 
 public final class sk/ainet/compile/opt/TargetOptimizer$DefaultImpls {
 	public static fun dagPasses (Lsk/ainet/compile/opt/TargetOptimizer;)Ljava/util/List;
 	public static fun granularity (Lsk/ainet/compile/opt/TargetOptimizer;)Lsk/ainet/compile/target/OpGranularityPolicy;
+	public static fun stableHloPasses (Lsk/ainet/compile/opt/TargetOptimizer;)Ljava/util/List;
 }
 
 public final class sk/ainet/compile/opt/TargetOptimizers {
@@ -83,6 +90,8 @@ public final class sk/ainet/compile/opt/TargetOptimizers {
 	public final fun granularityFor (Ljava/lang/String;)Lsk/ainet/compile/target/OpGranularityPolicy;
 	public final fun register (Lsk/ainet/compile/opt/TargetOptimizer;)V
 	public final fun registerDagPasses (Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V
+	public final fun registerStableHloPasses (Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V
+	public final fun stableHloPassesFor (Ljava/lang/String;)Ljava/util/List;
 }
 
 public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/compile/opt/GraphOptimizationPass {

@@ -202,6 +202,32 @@ public class ComputeGraphExecutor(
                 listOf(ops.add(ops.multiply(normalized, scale), bias))
             }
 
+            // Convolution ops
+            "convTranspose1d" -> listOf(
+                ops.convTranspose1d(
+                    input = inputs[0],
+                    weight = inputs[1],
+                    bias = inputs.getOrNull(2),
+                    stride = (params["stride"] as? Number)?.toInt() ?: 1,
+                    padding = (params["padding"] as? Number)?.toInt() ?: 0,
+                    outputPadding = (params["outputPadding"] as? Number)?.toInt() ?: 0,
+                    dilation = (params["dilation"] as? Number)?.toInt() ?: 1,
+                    groups = (params["groups"] as? Number)?.toInt() ?: 1,
+                )
+            )
+            "convTranspose2d" -> listOf(
+                ops.convTranspose2d(
+                    input = inputs[0],
+                    weight = inputs[1],
+                    bias = inputs.getOrNull(2),
+                    stride = params.intPair("stride", 1 to 1),
+                    padding = params.intPair("padding", 0 to 0),
+                    outputPadding = params.intPair("outputPadding", 0 to 0),
+                    dilation = params.intPair("dilation", 1 to 1),
+                    groups = (params["groups"] as? Number)?.toInt() ?: 1,
+                )
+            )
+
             // Binary math ops
             "add" -> listOf(ops.add(inputs[0], inputs[1]))
             "subtract" -> listOf(ops.subtract(inputs[0], inputs[1]))
@@ -450,6 +476,23 @@ public class ComputeGraphExecutor(
         }
     }
 }
+
+/**
+ * Reads a per-axis Int pair recorded either as a `Pair` (direct op parameters), a two-element
+ * list (KSP traces and the ONNX importer), or a single number applied to both axes.
+ */
+private fun Map<String, Any>.intPair(key: String, default: Pair<Int, Int>): Pair<Int, Int> =
+    when (val value = this[key]) {
+        is Pair<*, *> -> ((value.first as? Number)?.toInt() ?: default.first) to
+            ((value.second as? Number)?.toInt() ?: default.second)
+        is List<*> -> if (value.size == 2 && value.all { it is Number }) {
+            (value[0] as Number).toInt() to (value[1] as Number).toInt()
+        } else {
+            default
+        }
+        is Number -> value.toInt() to value.toInt()
+        else -> default
+    }
 
 /**
  * Handler for executing a fused operation.
