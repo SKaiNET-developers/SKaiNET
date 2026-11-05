@@ -406,7 +406,7 @@ public open class DefaultCpuOpsBase(
         floatBinaryFast(a, b) { x, y -> x + y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = av as Float;
                     val y = bv as Float; (x + y) as V
                 }
@@ -429,7 +429,7 @@ public open class DefaultCpuOpsBase(
         floatBinaryFast(a, b) { x, y -> x - y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = av as Float;
                     val y = bv as Float; (x - y) as V
                 }
@@ -452,7 +452,7 @@ public open class DefaultCpuOpsBase(
         floatBinaryFast(a, b) { x, y -> x * y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = av as Float;
                     val y = bv as Float; (x * y) as V
                 }
@@ -475,7 +475,7 @@ public open class DefaultCpuOpsBase(
         floatBinaryFast(a, b) { x, y -> x / y }?.let { return it }
         return elementwise(a, b) { av, bv, dtype ->
             when (dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = av as Float;
                     val y = bv as Float; (x / y) as V
                 }
@@ -886,7 +886,7 @@ public open class DefaultCpuOpsBase(
             val bBatchIdx = mapBatchIndexEff(batchIdx, bEff)
 
             when (a.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     var acc = 0.0f
                     var k = 0
                     while (k < kA) {
@@ -1525,7 +1525,7 @@ public open class DefaultCpuOpsBase(
             val ow = outIdx[3]
 
             when (input.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     var acc = 0.0f
                     val groupIdx = (oc * groups) / cOut
                     val inCStart = groupIdx * cInPerGroup
@@ -1672,7 +1672,7 @@ public open class DefaultCpuOpsBase(
             val ol = outIdx[2]
 
             when (input.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     var acc = 0.0f
                     val groupIdx = (oc * groups) / cOut
                     val inCStart = groupIdx * cInPerGroup
@@ -1830,7 +1830,11 @@ public open class DefaultCpuOpsBase(
         require(groups >= 1) { "convTranspose2d: groups must be >= 1" }
         require(input.dtype == weight.dtype) { "convTranspose2d: dtype mismatch between input and weight: ${input.dtype} vs ${weight.dtype}" }
         bias?.let { require(it.dtype == input.dtype) { "convTranspose2d: dtype mismatch for bias" } }
-        require(input.dtype == sk.ainet.lang.types.FP32::class || input.dtype == sk.ainet.lang.types.FP16::class) {
+        require(
+            input.dtype == sk.ainet.lang.types.FP32::class ||
+                input.dtype == sk.ainet.lang.types.FP16::class ||
+                input.dtype == sk.ainet.lang.types.BF16::class
+        ) {
             "Unsupported dtype for convTranspose2d: ${input.dtype}"
         }
 
@@ -2004,7 +2008,7 @@ public open class DefaultCpuOpsBase(
             val ow = outIdx[4]
 
             when (input.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     var acc = 0.0f
                     val groupIdx = (oc * groups) / cOut
                     val inCStart = groupIdx * cInPerGroup
@@ -2141,7 +2145,7 @@ public open class DefaultCpuOpsBase(
             }
 
             UpsampleMode.Bilinear -> {
-                require(input.dtype == FP32::class || input.dtype == FP16::class) {
+                require(input.dtype == FP32::class || input.dtype == FP16::class || input.dtype == BF16::class) {
                     "upsample2d: Bilinear mode is only implemented for float dtypes (got ${input.dtype})"
                 }
                 dataFactory.init<T, V>(outShape, input.dtype) { idx ->
@@ -2216,7 +2220,7 @@ public open class DefaultCpuOpsBase(
             val hBase = oh * sH - pH
             val wBase = ow * sW - pW
             when (input.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     var best = Float.NEGATIVE_INFINITY
                     var kh = 0
                     while (kh < kH) {
@@ -2295,7 +2299,7 @@ public open class DefaultCpuOpsBase(
             val hBase = oh * sH - pH
             val wBase = ow * sW - pW
             when (input.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     var sum = 0.0f
                     var count = 0
                     var kh = 0
@@ -2625,7 +2629,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> if (x < 0f) 0f else x }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (if (v < 0f) 0f else v) as V
@@ -2646,7 +2650,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> if (x < 0f) negativeSlope * x else x }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (if (v < 0f) negativeSlope * v else v) as V
@@ -2667,7 +2671,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> if (x >= 0f) x else alpha * (kotlin.math.exp(x) - 1f) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (if (v >= 0f) v else alpha * (kotlin.math.exp(v) - 1f)) as V
@@ -2710,7 +2714,7 @@ public open class DefaultCpuOpsBase(
             }
         }
         when (tensor.dtype) {
-            sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+            sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                 val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { outIdx ->
                     // For the slice defined by outIdx except for nd, compute softmax at that position
                     val idxMax = outIdx.copyOf()
@@ -2771,7 +2775,7 @@ public open class DefaultCpuOpsBase(
             }
         }
         when (tensor.dtype) {
-            sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+            sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                 val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { outIdx ->
                     val idx = outIdx.copyOf()
                     var maxVal = Float.NEGATIVE_INFINITY
@@ -2802,7 +2806,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> 1.0f / (1.0f + kotlin.math.exp(-x)) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (1.0f / (1.0f + kotlin.math.exp(-x))) as V
@@ -2818,7 +2822,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> x * (1.0f / (1.0f + kotlin.math.exp(-x))) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = tensor.data.get(*idx) as Float
                     val s = 1.0f / (1.0f + kotlin.math.exp(-x))
                     @Suppress("UNCHECKED_CAST")
@@ -2840,7 +2844,7 @@ public open class DefaultCpuOpsBase(
         // Tanh approximation of GELU
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = tensor.data.get(*idx) as Float
                     val x3 = x * x * x
                     val inner = x + 0.044715f * x3
@@ -2861,7 +2865,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> ErfKernel.geluExact(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     ErfKernel.geluExact(x) as V
@@ -2877,7 +2881,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> ErfKernel.erf(x.toDouble()).toFloat() }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     ErfKernel.erf(x.toDouble()).toFloat() as V
@@ -2907,7 +2911,7 @@ public open class DefaultCpuOpsBase(
                 tensor.data.get(*outIdx) as V
             } else {
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         @Suppress("UNCHECKED_CAST")
                         0.0f as V
                     }
@@ -2963,7 +2967,7 @@ public open class DefaultCpuOpsBase(
             val outShape = Shape()
             val outData = dataFactory.init<T, V>(outShape, tensor.dtype) {
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         var acc = 0.0f
                         val dims = tensor.shape.dimensions
                         if (dims.isEmpty()) {
@@ -3030,7 +3034,7 @@ public open class DefaultCpuOpsBase(
             val outShape = Shape(outDims)
             val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { outIdx ->
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         var acc = 0.0f
                         val inIdx = IntArray(rank)
                         var o = 0
@@ -3150,7 +3154,7 @@ public open class DefaultCpuOpsBase(
             val count = if (tensor.volume == 0) 0 else tensor.volume
             val outData = dataFactory.init<T, V>(outShape, tensor.dtype) {
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         if (count == 0) {
                             @Suppress("UNCHECKED_CAST") (0.0f as V)
                         } else {
@@ -3218,7 +3222,7 @@ public open class DefaultCpuOpsBase(
             val n = inDims[nd]
             val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { outIdx ->
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         if (n == 0) {
                             @Suppress("UNCHECKED_CAST") (0.0f as V)
                         } else {
@@ -3272,7 +3276,7 @@ public open class DefaultCpuOpsBase(
             val n = tensor.volume
             val outData = dataFactory.init<T, V>(outShape, tensor.dtype) {
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         if (n == 0) {
                             @Suppress("UNCHECKED_CAST") (0.0f as V)
                         } else {
@@ -3354,7 +3358,7 @@ public open class DefaultCpuOpsBase(
             val n = inDims[nd]
             val outData = dataFactory.init<T, V>(outShape, tensor.dtype) { outIdx ->
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         if (n == 0) {
                             @Suppress("UNCHECKED_CAST") (0.0f as V)
                         } else {
@@ -3411,7 +3415,8 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> {
         require(
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
-                tensor.dtype == sk.ainet.lang.types.FP16::class
+                tensor.dtype == sk.ainet.lang.types.FP16::class ||
+                tensor.dtype == sk.ainet.lang.types.BF16::class
         ) { "sqrt supports only FP16/FP32, got ${tensor.dtype}" }
 
         floatUnaryFast(tensor) { x -> sqrt(x) }?.let { return it }
@@ -3432,7 +3437,8 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> pow(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         require(
             a.dtype == sk.ainet.lang.types.FP32::class ||
-                a.dtype == sk.ainet.lang.types.FP16::class
+                a.dtype == sk.ainet.lang.types.FP16::class ||
+                a.dtype == sk.ainet.lang.types.BF16::class
         ) { "pow supports only FP16/FP32, got ${a.dtype}" }
         require(a.shape == b.shape) { "pow requires matching shapes; got ${a.shape} and ${b.shape}" }
         floatBinaryFast(a, b) { x, y -> scalarPow(x, y) }?.let { return it }
@@ -3453,7 +3459,8 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> powScalar(a: Tensor<T, V>, n: Number): Tensor<T, V> {
         require(
             a.dtype == sk.ainet.lang.types.FP32::class ||
-                a.dtype == sk.ainet.lang.types.FP16::class
+                a.dtype == sk.ainet.lang.types.FP16::class ||
+                a.dtype == sk.ainet.lang.types.BF16::class
         ) { "powScalar supports only FP16/FP32, got ${a.dtype}" }
         val nFloat = n.toFloat()
         val nInt = n.toInt()
@@ -3493,7 +3500,8 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> log(tensor: Tensor<T, V>): Tensor<T, V> {
         require(
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
-                tensor.dtype == sk.ainet.lang.types.FP16::class
+                tensor.dtype == sk.ainet.lang.types.FP16::class ||
+                tensor.dtype == sk.ainet.lang.types.BF16::class
         ) { "log supports only FP16/FP32, got ${tensor.dtype}" }
         floatUnaryFast(tensor) { x -> ln(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3508,7 +3516,8 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> log2(tensor: Tensor<T, V>): Tensor<T, V> {
         require(
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
-                tensor.dtype == sk.ainet.lang.types.FP16::class
+                tensor.dtype == sk.ainet.lang.types.FP16::class ||
+                tensor.dtype == sk.ainet.lang.types.BF16::class
         ) { "log2 supports only FP16/FP32, got ${tensor.dtype}" }
         floatUnaryFast(tensor) { x -> kmLog2(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3523,7 +3532,8 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> log10(tensor: Tensor<T, V>): Tensor<T, V> {
         require(
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
-                tensor.dtype == sk.ainet.lang.types.FP16::class
+                tensor.dtype == sk.ainet.lang.types.FP16::class ||
+                tensor.dtype == sk.ainet.lang.types.BF16::class
         ) { "log10 supports only FP16/FP32, got ${tensor.dtype}" }
         floatUnaryFast(tensor) { x -> kmLog10(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3541,7 +3551,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> kotlin.math.abs(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     kotlin.math.abs(v) as V
@@ -3562,7 +3572,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> if (x > 0f) 1f else if (x < 0f) -1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (if (v > 0f) 1f else if (v < 0f) -1f else 0f) as V
@@ -3584,7 +3594,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> x.coerceIn(minVal, maxVal) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     v.coerceIn(minVal, maxVal) as V
@@ -3605,7 +3615,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> if (x < value) 1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (if (v < value) 1f else 0f) as V
@@ -3626,7 +3636,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> if (x >= value) 1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val v = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     (if (v >= value) 1f else 0f) as V
@@ -3677,7 +3687,7 @@ public open class DefaultCpuOpsBase(
             } else {
                 // Zero padding
                 when (tensor.dtype) {
-                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                         @Suppress("UNCHECKED_CAST") (0f as V)
                     }
                     sk.ainet.lang.types.Int32::class -> {
@@ -3919,7 +3929,7 @@ public open class DefaultCpuOpsBase(
         floatUnaryFast(tensor) { x -> kotlin.math.tanh(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
             when (tensor.dtype) {
-                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class, sk.ainet.lang.types.BF16::class -> {
                     val x = tensor.data.get(*idx) as Float
                     @Suppress("UNCHECKED_CAST")
                     kotlin.math.tanh(x) as V

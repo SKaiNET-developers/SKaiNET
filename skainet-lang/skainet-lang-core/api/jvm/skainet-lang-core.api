@@ -2997,6 +2997,12 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContextKt {
 	public static final fun definition (Lkotlin/jvm/functions/Function2;)Lsk/ainet/lang/nn/Module;
 }
 
+public final class sk/ainet/lang/nn/PrecisionBoundary : sk/ainet/lang/nn/Module {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/nn/Module;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)V
+	public fun getModules ()Ljava/util/List;
+	public fun getName ()Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/nn/TrainingRunnerKt {
 	public static final fun trainStep (Lsk/ainet/lang/nn/Module;Lsk/ainet/lang/nn/loss/Loss;Lsk/ainet/lang/nn/optim/Optimizer;Lsk/ainet/context/ExecutionContext;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 }
@@ -3526,10 +3532,12 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IZLjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public abstract fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public abstract fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun dense (ILsk/ainet/lang/types/DType;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public abstract fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILsk/ainet/lang/types/DType;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public abstract fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
@@ -3553,6 +3561,7 @@ public abstract interface class sk/ainet/lang/nn/dsl/NeuralNetworkDsl : sk/ainet
 	public static synthetic fun softmax$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;ILjava/lang/Object;)V
 	public abstract fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public abstract fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public abstract fun stage (Ljava/lang/String;Lsk/ainet/lang/types/DType;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public abstract fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
 	public static synthetic fun upsample2d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
@@ -3569,6 +3578,7 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDsl$DefaultImpls {
 	public static synthetic fun conv3d$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;Lkotlin/Triple;IZLjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILjava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;ILsk/ainet/lang/types/DType;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lsk/ainet/lang/nn/Module;
 	public static synthetic fun dense$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public static synthetic fun flatten$default (Lsk/ainet/lang/nn/dsl/NeuralNetworkDsl;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
@@ -3597,6 +3607,7 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public final fun create ()Lsk/ainet/lang/nn/Module;
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun dense (ILsk/ainet/lang/types/DType;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
@@ -3618,6 +3629,7 @@ public final class sk/ainet/lang/nn/dsl/NeuralNetworkDslImpl : sk/ainet/lang/nn/
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun stage (Ljava/lang/String;Lsk/ainet/lang/types/DType;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
 }
@@ -3638,6 +3650,7 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public final fun create ()Lsk/ainet/lang/nn/Module;
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (ILjava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun dense (ILsk/ainet/lang/types/DType;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun dense (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun flatten (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
@@ -3661,6 +3674,7 @@ public final class sk/ainet/lang/nn/dsl/StageImpl : sk/ainet/lang/nn/dsl/NeuralN
 	public fun softmax (ILjava/lang/String;)V
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/nn/Module;
 	public fun stage (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public fun stage (Ljava/lang/String;Lsk/ainet/lang/types/DType;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public fun upsample2d (Lkotlin/Pair;Lsk/ainet/lang/tensor/ops/UpsampleMode;ZLjava/lang/String;)V
 }

@@ -1,7 +1,7 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `0.62.4` on 2026-10-31.
+Generated from `operators.json` version `0.62.4` on 2026-11-01.
 
 Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.
 
@@ -110,6 +110,7 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `Linear` | `sk.ainet.lang.nn` | ✅ | —
 | `Lstm` | `sk.ainet.lang.nn` | ✅ | —
 | `MaxPool2d` | `sk.ainet.lang.nn` | ✅ | —
+| `PrecisionBoundary` | `sk.ainet.lang.nn` | ✅ | —
 | `TransposedConv1d` | `sk.ainet.lang.nn` | ✅ | —
 | `TransposedConv2d` | `sk.ainet.lang.nn` | ✅ | —
 | `Upsample2d` | `sk.ainet.lang.nn` | ✅ | —
@@ -129,5 +130,5 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `LayerNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
 
-| *Done* | | *32 / 32* |
+| *Done* | | *33 / 33* |
 |===
