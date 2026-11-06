@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- **Block-quant export reads loader-backed weights** (`skainet-compile-hlo`): `BlockQuantMatmulConverter` read Q8_0 / Q4_0 blocks only from heap `packedData`, so a weight from the GGUF loader (`BufferPackedTensorData`, whose `packedData` throws) failed the export. It now reads the ggml blocks through the weight's packed view, which works for both.
 - **StableHLO export maps `Int4` to `i4` and fails on a dtype without an element type** (`skainet-compile-hlo`): `TypeMapper.mapDType` turned every name it did not know, `Int4` and `Ternary` among them, into `f32`, so a typed `Int4` or `Ternary` tensor exported as a module whose types disagreed with its data. `Int4`/`I4` now map to `i4`; an unset dtype (`""`, `unknown`, what the DSL records when none is given) stays `f32`; any other unknown name throws `IllegalArgumentException` naming the dtype. Quantized weights are unaffected: they reach the emitter as dense tensors with a storage encoding.
 
 ### Added

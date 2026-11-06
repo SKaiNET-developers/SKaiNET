@@ -5,6 +5,9 @@ import sk.ainet.compile.opt.passes.BlockQuantMatmulFusionPass
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.tape.toComputeGraph
+import sk.ainet.lang.memory.PackedBlockDecoder
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q4_0Quantizer
@@ -124,6 +127,25 @@ class BlockQuantMatmulExportTest {
                 // only the scale is rounded (f16 → bf16, 8 significant bits)
                 assertTrue(abs(got - want) <= abs(want) / 128f + 1e-7f, "($o, ${b * 32 + j}): $got vs $want")
             }
+        }
+    }
+
+    @Test
+    fun offHeapStyleStorageReadsTheSameBlocks() {
+        // A loader-backed weight (e.g. a mapped GGUF) has no heap packedData, only the storage behind
+        // its packed view.
+        for (heap in listOf(Q8_0Quantizer.quantize(weights(7), Shape(n, k)), Q4_0Quantizer.quantize(weights(8), Shape(n, k)))) {
+            val bytes = heap.packedData.copyOf()
+            val viewOnly = object : PackedBlockStorage by heap {
+                override val packedData: ByteArray get() = throw UnsupportedOperationException("off-heap")
+                override val packedStorage: Storage get() = Storage.Heap.wrap(bytes, mutable = false)
+                override val packedView: TensorView
+                    get() = TensorView.packed(packedStorage, shape, encoding, PackedBlockDecoder(heap))
+            }
+            val a = BlockQuantWeight.of(heap)
+            val b = BlockQuantWeight.of(viewOnly)
+            assertTrue(a.codes.contentEquals(b.codes) && a.scales.contentEquals(b.scales), "${heap.encoding.name} differs")
+            assertEquals(a.zeroPoints?.toList(), b.zeroPoints?.toList())
         }
     }
 

@@ -5,8 +5,6 @@ import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.compile.opt.passes.BlockQuantMatmulFusionPass
 import sk.ainet.lang.graph.GraphNode
-import sk.ainet.lang.tensor.data.Q4_0TensorData
-import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
@@ -203,37 +201,49 @@ internal class BlockQuantWeight(
             val n = storage.shape[0]
             val k = storage.shape[1]
             require(k % BLOCK == 0) { "block-quant weight in = $k is not a multiple of $BLOCK" }
-            val (bits, scaleOf, codeOf) = when (storage.encoding) {
-                TensorEncoding.Q8_0 -> {
-                    val q = storage as? Q8_0TensorData ?: throw IllegalArgumentException("Q8_0 storage ${storage::class.simpleName} has no block accessors")
-                    Triple(8, q::getBlockScale, { blk: Int, j: Int -> q.getCode(blk, j).toInt() })
-                }
-                TensorEncoding.Q4_0 -> {
-                    val q = storage as? Q4_0TensorData ?: throw IllegalArgumentException("Q4_0 storage ${storage::class.simpleName} has no block accessors")
-                    Triple(4, q::getBlockScale, { blk: Int, j: Int -> q.getCode(blk, j).toInt() - 8 })
-                }
+            // Canonical ggml blocks, read through the storage behind the packed view: heap and
+            // off-heap (mapped GGUF) weights alike. Q8_0: f16 d + 32 int8 codes. Q4_0: f16 d + 16
+            // bytes, low nibbles elements 0..15, high nibbles 16..31, value (q - 8) * d.
+            val (bits, bytesPerBlock) = when (storage.encoding) {
+                TensorEncoding.Q8_0 -> 8 to 34
+                TensorEncoding.Q4_0 -> 4 to 18
                 else -> throw IllegalArgumentException("block-quant matmul supports Q8_0 and Q4_0, not ${storage.encoding.name}")
             }
+            val view = storage.packedView
+            val source = view.storage
+            val base = view.layout.offsetBytes
             val nB = k / BLOCK
             val codes = ByteArray(nB * BLOCK * n)
             val scales = ShortArray(nB * n)
             var zeroPoints: ShortArray? = null
+            val row = ByteArray(nB * bytesPerBlock)
+            val block = IntArray(BLOCK)
             for (o in 0 until n) {
+                source.copyInto(row, 0, base + o.toLong() * row.size, row.size)
                 for (b in 0 until nB) {
-                    val blk = o * nB + b
-                    val d = scaleOf(blk)
+                    val at0 = b * bytesPerBlock
+                    val d = halfToFloat((row[at0].toInt() and 0xFF) or ((row[at0 + 1].toInt() and 0xFF) shl 8))
+                    if (bits == 8) {
+                        for (j in 0 until BLOCK) block[j] = row[at0 + 2 + j].toInt()
+                    } else {
+                        for (j in 0 until 16) {
+                            val q = row[at0 + 2 + j].toInt() and 0xFF
+                            block[j] = (q and 0x0F) - 8
+                            block[j + 16] = (q ushr 4) - 8
+                        }
+                    }
                     val at = b * n + o
                     when {
                         d > 0f -> {
                             scales[at] = bf16(d)
-                            for (j in 0 until BLOCK) codes[(b * BLOCK + j) * n + o] = codeOf(blk, j).toByte()
+                            for (j in 0 until BLOCK) codes[(b * BLOCK + j) * n + o] = block[j].toByte()
                         }
                         d < 0f -> {
                             // (c - 0) * d == (-1 - c - (-1)) * -d, and -1 - c stays in range for i8 and i4.
                             scales[at] = bf16(-d)
                             val zp = zeroPoints ?: ShortArray(nB * n).also { zeroPoints = it }
                             zp[at] = BF16_MINUS_ONE
-                            for (j in 0 until BLOCK) codes[(b * BLOCK + j) * n + o] = (-1 - codeOf(blk, j)).toByte()
+                            for (j in 0 until BLOCK) codes[(b * BLOCK + j) * n + o] = (-1 - block[j]).toByte()
                         }
                         // An all-zero block: zero codes, and a scale the kernel accepts (it rejects 0).
                         else -> scales[at] = BF16_ONE
@@ -241,6 +251,19 @@ internal class BlockQuantWeight(
                 }
             }
             return BlockQuantWeight(k, n, bits, codes, scales, zeroPoints)
+        }
+
+        /** IEEE half bits → FP32. */
+        fun halfToFloat(h: Int): Float {
+            val sign = (h ushr 15) and 1
+            val exp = (h ushr 10) and 0x1F
+            val mant = h and 0x3FF
+            val magnitude = when (exp) {
+                0 -> mant * 5.9604645e-8f  // subnormal: mant * 2^-24
+                0x1F -> if (mant == 0) Float.POSITIVE_INFINITY else Float.NaN
+                else -> Float.fromBits(((exp + 112) shl 23) or (mant shl 13))
+            }
+            return if (sign == 1) -magnitude else magnitude
         }
 
         /** FP32 → bf16 bits, rounded to nearest even. */
