@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.62.4"))
+    implementation(platform("sk.ainet:skainet-bom:0.63.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,76 +308,32 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.62.4
+## What's New in 0.63.0
 
-An arm64 release. On macOS the JVM's dense FP32 products — `A · B` on heap or segment-backed operands and `x · Wᵀ`
-on a resident dense weight — now go to Accelerate's SGEMM by default, which runs on the matrix units of Apple
-silicon and threads itself; `JvmBlas` had never reached a BLAS before (the framework lookup and the heap downcall
-both failed silently), and `-Dskainet.cpu.blas.enabled=false` restores the bundled kernels. Elsewhere the default
-stays off and `skainet.cpu.blas.library` names an OpenBLAS or reference BLAS to use. The native dense FP32 kernels
-get register tiles on AArch64 (Apple silicon, Android arm64, Linux arm64): an 8 × 8 tile of lane-indexed FMAs over a
-packed panel of B for `A · B` and a four-by-three tile for `x · Wᵀ`, bit-identical across slices, threads and whole
-calls, exercised on Apple silicon by the macOS CI leg. Both are unmeasured on arm64 in this release; the pull
-requests (#1449, #1450) say how to run the bench.
+Block-quantized weights reach an NPU through StableHLO, and the engine gains mixed precision, explicit re-encoding,
+`convTranspose2d` and a working ONNX import path.
 
-### Carried from 0.62.3
-
-A load-time and kernel release. `StreamingGGUFReader` decodes the GGUF metadata from 64 KB blocks instead of one
-source read per value, and `TextFrontEnds.fromGguf` builds a SentencePiece tokenizer in one pass over the vocabulary
-instead of three to four copies of it; `fields`, the public API and the token ids stay the same. On a Gemma-3
-tokenizer GGUF a file-source parse drops from 1.0 s to 21–45 ms on the JVM and from 23.3 s to 1.2 s on a 32-bit ARM
-Android device, where read + build on the first load in a process goes from 8.4–11.2 s to 6.0–6.4 s. The native
-dense FP32 `A · B` kernel gets an AVX2/FMA register-tiled lane on x86-64 (63 × 1024 × 1024: 21 → 281 GFLOP/s), and
-no longer overwrites the parts of a sub-block caller's output buffer outside the block.
-
-### Carried from 0.62.2
-
-A performance release for the JVM native lane. The dense FP32 `x · Wᵀ` kernel — what every resident dense
-weight resolves to once `skainet-backend-native-cpu` is on the classpath — now splits its work across the
-context `Schedule` (SKEEP-005) instead of a fixed four-thread C pool, and on x86-64 hosts with AVX2 and FMA
-runs a runtime-selected eight-lane register-tiled lane; threaded, sliced and single calls stay bit-identical.
-A single 63 × 1024 × 1024 call goes from 29.6 to 131.7 GFLOP/s on a six-core laptop, and a ModernBERT-large
-encoder request in the LayaMoE example from 13.0 s to 6.4 s with unchanged answers. The text front-end
-indexes added tokens by first character and length, so a Gemma chat turn encodes in 36 µs instead of 2.0 ms.
-`CoroutineSchedule.forRange` never hands a body an empty range any more.
-
-### Carried from 0.62.1
-
-A fix release on top of 0.62.0: the native FFM bindings of the Q8_0, Q4_0, Q5_0 and Q5_1 kernels
-copied a zero-filled staging buffer back from index 0, so a product served row by row — any
-quantize-at-load encoder on the JVM with `skainet-backend-native-cpu` on the classpath — kept only
-its last row. Single-row decode steps were never affected. A regression test now covers every packed
-format for one, seven and fifty rows. Also: the YOLOv8 model code moves out of core into its cartridge
-blueprint (`skainet-model-yolo` is gone; `Letterbox`, `BoundingBox` and `nonMaxSuppression` stay in
-`skainet-data-media`), the StableHLO `softmax` axis and `logSoftmax` lowering are fixed, and the docs
-gain *Flexibility at every compile stage* and the SKEEP-008 draft on precision and encoding conversion.
-
-### Carried from 0.62.0
-
-JVM ↔ Kotlin/Wasm parity: the browser tier runs the same kernels as the JVM, keeps its activations
-in the sidecar, and reads models the way the JVM does — with every remaining difference documented.
-
-- **Every kernel on the wasm tier** — explicit SIMD128 bodies for every matmul format (K-quants,
-  Q5_0/Q5_1, dense FP32/BF16/FP16), the ternary BitNet kernels, elementwise, activation and
-  reduction kernels, fused softmax, normalisation and banded attention, and convolutions as
-  im2col + GEMM, all threaded over the sidecar's row pool. Chains of ops stay resident in the
-  sidecar's linear memory (`Storage.OffHeap` in a browser) and come back to the Kotlin heap only when
-  something outside needs them.
-- **Both directions** — the JVM binds the same C kernels through FFM: the direct `x · Wᵀ` kernel
-  (no transposed weight copy), fused softmax, layer and RMS normalisation, and SDPA with
-  key lengths, windows and grouped-query heads. One C source per kernel serves every native build.
-- **Browser IO** — `Blob` sources address `Long` positions (shards over 2 GB), copy in bulk, and
-  serve blocking reads inside a Web Worker; sharded SafeTensors load from Blobs;
-  `PlannerProfile.BROWSER`; `MemoryProbe` reports the JavaScript heap, linear memory and the
-  sidecar's resident bytes; `skainet-data-source` resolves HTTP and Hugging Face URIs over `fetch`
-  on Kotlin/JS and Kotlin/Wasm.
-- **One benchmark table** — the `engine-*` scenarios of the JVM publish harness run with identical
-  shapes in `wasm-bench`, and the kernel support matrix names what each tier serves and why the
-  rest is N/A. The operator coverage matrix is generated from backend data, with StableHLO, backward
-  and NN-layer columns and a CI leg that rejects unmarked stubs.
-- **JVM decode allocation** — four fixes from the BitNet 2B4T profile: the ternary GEMV on the
-  shared row pool (+19 % decode), intrinsified Vector API elementwise paths, a dense `split` fast
-  path and bulk copies from mapped tensors.
+- **Q8_0 / Q4_0 weights to an NPU** — `PackedConstantHandling.KEEP_PACKED` keeps a packed weight in the traced
+  graph, `BlockQuantMatmulFusionPass` folds every `x · Wᵀ` over one, and the StableHLO export emits the
+  dequantize-then-`batch_matmul` chain with `i8` / `i4` codes and `bf16` scales inline. Torq 2.3.0
+  (`--iree-input-type=stablehlo-torq`) compiles it to its `mixed_quant_matmul` kernel: the whole FunctionGemma 270M
+  decode step runs on an SL2610 NPU in one dispatch at 162 ms per step, with the same next token as the f32
+  reference. Weights from the GGUF loader (off-heap) export the same as heap ones.
+- **StableHLO and TOSA passes** — the `STABLE_HLO` phase of a target optimizer rewrites the emitted module, and
+  `DivideByBroadcastPass`, `RankTwoWeightMatmulPass` and `TosaFinish` prepare a module for StableHLO's own TOSA
+  legalization (Moonshine's streaming encoder runs on an NPU through `tosa-torq` in one dispatch). `Int4` maps to
+  `i4`.
+- **Mixed precision per layer** — `dense(64, dtype = BF16) { }` and `stage("head", dtype = FP16) { }` build a layer
+  in another dtype behind a `PrecisionBoundary` that casts in and out (inference only). The generic
+  `dense<T>()` / `stage<T>()` overloads, which could only throw, are deprecated at `ERROR` level.
+- **Re-encoding storages** — `repackTo(Dense(4))` decodes every packed encoding with a dequantizer bit-exactly, and
+  `requantizeTo` is the explicit lossy direction.
+- **New ops and layers** — `convTranspose2d` with backward and StableHLO lowering, the `GroupNormalization` forward
+  pass, `sliceCopy {}`, and precision, recall and F1 metrics with binary, macro and micro averaging.
+- **ONNX** — `LeakyRelu`, `Silu`, `Clip`, `BatchNormalization`, `Pad` and `ConvTranspose` import as executable ops,
+  and `OnnxModelReader.open` reads metadata up front and each tensor on demand.
+- **Fixes** — the JVM tokenizer's `Split` regex follows Unicode character classes, and `randn` never returns
+  `Inf` / `NaN`.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -402,6 +358,17 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.63.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the block-quant StableHLO export and its
+  fusion pass with the Torq board checks, the StableHLO-phase and TOSA preparation passes, mixed precision and
+  `repackTo` / `requantizeTo` (SKEEP-008), `convTranspose2d`, the ONNX op mappings and streaming reader,
+  `GroupNormalization`, `sliceCopy`, the tokenizer and `randn` fixes, and the release
+- **Edwin** ([@EdinEd](https://github.com/EdinEd)) — the precision, recall and F1 metrics with the `Averaging`
+  strategy and the shared confusion-matrix accumulator (#1222)
+- [@S0L0-R00T-DEV](https://github.com/S0L0-R00T-DEV) — the removal of the unused `TensorDefineDslImpl.create()`
+  stub (#1471)
 
 ### Contributors (0.62.4)
 
@@ -544,7 +511,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.62.4. MIT License},
+  note         = {Version 0.63.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```

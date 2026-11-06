@@ -2,16 +2,50 @@
 
 ## [Unreleased]
 
-### Fixed
+## [0.63.0] - 2026-11-06
 
-- **Block-quant export reads loader-backed weights** (`skainet-compile-hlo`): `BlockQuantMatmulConverter` read Q8_0 / Q4_0 blocks only from heap `packedData`, so a weight from the GGUF loader (`BufferPackedTensorData`, whose `packedData` throws) failed the export. It now reads the ggml blocks through the weight's packed view, which works for both.
-- **StableHLO export maps `Int4` to `i4` and fails on a dtype without an element type** (`skainet-compile-hlo`): `TypeMapper.mapDType` turned every name it did not know, `Int4` and `Ternary` among them, into `f32`, so a typed `Int4` or `Ternary` tensor exported as a module whose types disagreed with its data. `Int4`/`I4` now map to `i4`; an unset dtype (`""`, `unknown`, what the DSL records when none is given) stays `f32`; any other unknown name throws `IllegalArgumentException` naming the dtype. Quantized weights are unaffected: they reach the emitter as dense tensors with a storage encoding.
+Headline: **block-quantized weights reach an NPU through StableHLO, and the engine gains mixed precision, explicit
+re-encoding, `convTranspose2d` and a working ONNX import path** (see *Added*). With `PackedConstantHandling.KEEP_PACKED`
+and `BlockQuantMatmulFusionPass`, a Q8_0 / Q4_0 `Linear` exports as the dequantize-then-`batch_matmul` chain that
+Torq 2.3.0 compiles to its `mixed_quant_matmul` kernel: the full FunctionGemma 270M decode step (127 projections) runs
+on an SL2610 NPU in one dispatch at 162 ms per step, picking the same next token as the f32 reference. A layer can run
+in another dtype through `PrecisionBoundary` (`dense(64, dtype = BF16) { }`), storages re-encode with `repackTo` /
+`requantizeTo`, and ONNX graphs with `ConvTranspose`, `LeakyRelu`, `Silu`, `Clip`, `BatchNormalization` and `Pad`
+import as executable ops. The generic `dense<T>()` / `stage<T>()` overloads, which could only ever throw, are now
+deprecated at `ERROR` level.
 
 ### Added
 
 - **Block-quantized weights through StableHLO export** (`skainet-compile-dag`, `skainet-compile-opt`, `skainet-compile-hlo`): `PackedConstantHandling.KEEP_PACKED` keeps a packed weight as its storage instead of failing or dequantizing; `BlockQuantMatmulFusionPass` folds a Q8_0 / Q4_0 weight used as `x · Wᵀ` into a `block_quant_matmul` node; `BlockQuantMatmulConverter` (registered in every converter set) emits it as `(sitofp(codes) - zp) * scale` over `[nB, 32, N]` `i8` / `i4` codes with `bf16` scales, then `linalg.batch_matmul`, all constants inline. A packed weight left unfolded fails the export. On an SL2610, Torq 2.3.0 with `--iree-input-type=stablehlo-torq` compiles the emitted Q8_0 and Q4_0 projections to its `mixed_quant_matmul` kernel and matches the dequantized weight (cosine 0.999996); `TorqBlockQuantGoldenTest` checks the match when `SKAINET_TORQ_COMPILE` names the compiler. `HloGenerator.generate` takes `packedConstants`.
 - **StableHLO-phase target passes** (`skainet-compile-opt`, `skainet-compile-hlo`): `TargetOptimizer.stableHloPasses()` and `TargetOptimizers.registerStableHloPasses(target) { … }` / `stableHloPassesFor(target)` wire the `STABLE_HLO` phase. A `StableHloPass` rewrites the emitted module's text into valid StableHLO; `toStableHlo(graph, …, passes = …)` and `StableHloModule.applyPasses(passes)` apply them in order. The existing `toStableHlo` signatures are unchanged.
 - **TOSA preparation passes** (`sk.ainet.compile.hlo.tosa`): `DivideByBroadcastPass` (a divide by a broadcast becomes a multiply by the broadcast reciprocal, or by `rsqrt` for a `sqrt`) and `RankTwoWeightMatmulPass` (`[1, M, K] · [K, N]` as a rank-2 dot) shape a module for StableHLO's own `--stablehlo-prepare-for-tosa --stablehlo-legalize-to-tosa`; `TosaFinish` translates what that legalization leaves (`broadcast_in_dim`, `rsqrt`, batched attention `dot_general`s) and throws `TosaFinishException` on anything else. Moonshine v2 tiny streaming encoder (64 frames) on an SL2610 with the Torq NPU's `tosa-torq` input: one dispatch per call, golden transcripts identical to the recipe-side rewrite they replace.
+- **Mixed precision per layer** (`skainet-lang-core`, SKEEP-008 phase A1, #1469): `PrecisionBoundary` (`sk.ainet.lang.nn`) wraps a module built in another dtype and casts in and out with `TensorOps.convert` (free when the dtypes match, recorded by the tracing wrappers, lowered to `stablehlo.convert`); the DSL takes the dtype as a value, `dense(64, dtype = BF16) { }` and `stage("head", dtype = FP16) { }`. Inference only for now. Explanation article `explanation/mixed-precision.adoc`.
+- **Lossless `repackTo` and explicit lossy `requantizeTo`** (`skainet-lang-core`, SKEEP-008 phase B1, #1470): `TensorStorage.repackTo` decodes any packed encoding with a dequantizer, and narrow dense FP16 / BF16, to `Dense(4)` bit-exactly instead of throwing; `TensorStorage.requantizeTo` is the visible lossy call, accepting exactly `Requantizers.supported`. `TensorStorageFactory.toTensorData` decodes Q4_0, Q5_0, Q5_1, Q5_K, Q6_K, `BITNET_PLANES` and `BITNET_B1_58` too.
+- **`convTranspose2d`** (`skainet-lang-core`, `skainet-backend-cpu`, `skainet-compile-dag`, `skainet-compile-hlo`, #1464): an abstract `@Diff` op with PyTorch `conv_transpose2d` semantics (weight `[C_in, C_out/groups, kH, kW]`, groups, dilation, output padding), a validated CPU scatter-add kernel, input / weight / bias backward, and the StableHLO lowering as a `stablehlo.convolution` with `lhs_dilate = stride` over the spatially reversed kernel. `TransposedConv2d` works end to end.
+- **ONNX import executes more graphs** (`skainet-io-onnx`, `skainet-compile-dag`, #1466, #1468): `LeakyRelu`, `Silu`, `Clip`, `BatchNormalization` (inference mode), `Pad` (constant, zero, spatial) and `ConvTranspose` (1D / 2D, `auto_pad=NOTSET`, symmetric pads) map to real operations instead of placeholders that threw on execution; forms that cannot be mapped faithfully keep the placeholder and still fail loudly. `ComputeGraphExecutor` dispatches `leakyRelu`, `clamp`, `pad2d`, `batchNorm`, `convTranspose1d` and `convTranspose2d`, and binds `onnx_initializer` nodes by id or tensor name.
+- **Streaming `OnnxModelReader`** (`skainet-io-onnx`, #1465): `OnnxModelReader.open(source)` / `open(filePath)` reads the metadata and an index of every initializer, and `loadTensor(name)` reads and decodes one tensor lazily (`FLOAT`, `INT32`, `INT64`); unsupported dtypes, `external_data` and size mismatches fail instead of returning padded data. It replaces the no-arg constructor, which could only throw.
+- **`GroupNormalization` forward pass** (`skainet-lang-core`, #1463): per-group biased mean and variance in f32 with `eps`, per-channel affine broadcast, matching `torch.nn.GroupNorm`; `groupNorm {}` no longer crashes on the first forward.
+- **`Tensor.sliceCopy {}`** (`skainet-lang-core`, #1467): builds the slice like `sliceView {}` and materializes an independent copy instead of throwing `NotImplementedError`.
+- **Precision, recall and F1 metrics** (`skainet-lang-core`, #1458, #1460, #1461, #1462): `Precision`, `Recall` and `F1Score` with `precision()` / `binaryPrecision()`, `recall()` / `binaryRecall()` and `f1Score()` / `binaryF1Score()`, the `Averaging` strategy (`BINARY`, `MACRO`, `MICRO`) and a shared confusion-matrix accumulator; zero denominators give 0.0.
+
+### Changed
+
+- **Dependencies**: Ktor client 3.6.1 (#1472), kotlinx-io 0.9.2 (#1474), JMH plugin 0.7.4 (#1473), AGP 9.5.1 (#1457, #1482), logback 1.6.6 (#1456), asciidoctor PDF 5.1.0 (#1452), CodeQL upload-sarif 4.39.2 (#1453, #1481).
+
+### Deprecated
+
+- **`dense<TLayer>()` and `stage<TStage>()`** (`skainet-lang-core`, #1469): the generic overloads could never work (an interface method's type parameter cannot be `reified`) and are now `@Deprecated(level = ERROR)`; use `dense(outputDimension, dtype = FP16) { }` / `stage(id, dtype = FP16) { }`.
+
+### Removed
+
+- The unused `TensorDefineDslImpl.create()` stub (`skainet-lang-core`, #1471).
+
+### Fixed
+
+- **Block-quant export reads loader-backed weights** (`skainet-compile-hlo`): `BlockQuantMatmulConverter` read Q8_0 / Q4_0 blocks only from heap `packedData`, so a weight from the GGUF loader (`BufferPackedTensorData`, whose `packedData` throws) failed the export. It now reads the ggml blocks through the weight's packed view, which works for both.
+- **StableHLO export maps `Int4` to `i4` and fails on a dtype without an element type** (`skainet-compile-hlo`): `TypeMapper.mapDType` turned every name it did not know, `Int4` and `Ternary` among them, into `f32`, so a typed `Int4` or `Ternary` tensor exported as a module whose types disagreed with its data. `Int4`/`I4` now map to `i4`; an unset dtype (`""`, `unknown`, what the DSL records when none is given) stays `f32`; any other unknown name throws `IllegalArgumentException` naming the dtype. Quantized weights are unaffected: they reach the emitter as dense tensors with a storage encoding.
+- **Tokenizer `Split` regex follows Unicode on the JVM** (`skainet-frontend-text`, #1477): the pattern compiles with `UNICODE_CHARACTER_CLASS`, so `\w`, `\s` and friends match non-ASCII characters as Hugging Face tokenizers do; a no-break space split wrongly before and gave wrong token ids (found on LFM2.5-350M).
+- **`randn` never returns `Inf` / `NaN`** (`skainet-lang-core`, #1455): Box-Muller draws `u1` from (0, 1] instead of [0, 1), so `ln(u1)` stays finite, and the transform stays in double precision until the final cast.
 
 ## [0.62.4] - 2026-10-25
 
