@@ -59,7 +59,7 @@ jobs:
           - os: ubuntu-latest
             arch_label: linux-x86_64
             lib_name: libskainet_kernels.so
-          - os: macos-14
+          - os: macos-15
             arch_label: macos-arm64
             lib_name: libskainet_kernels.dylib
           - os: windows-latest
