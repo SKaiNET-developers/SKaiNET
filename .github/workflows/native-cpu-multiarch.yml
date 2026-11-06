@@ -47,7 +47,7 @@ jobs:
           # Re-add once the runner-side issue is resolved (or replace with
           # a self-hosted ARM64 runner). Linux ARM64 consumers fall back
           # to the priority-50 Panama Vector provider until then.
-          - os: macos-14
+          - os: macos-15
             arch_label: macos-arm64
             lib_name: libskainet_kernels.dylib
           - os: windows-latest
