@@ -19,12 +19,12 @@ An Android project with Kotlin. Add the SKaiNET modules:
 [source,kotlin]
 ----
 dependencies {
-    implementation("sk.ainet.core:skainet-lang-core:0.62.4")     // tensors, DSL, training
-    implementation("sk.ainet.core:skainet-backend-cpu:0.62.4")   // CPU ops
-    implementation("sk.ainet.core:skainet-compile-dag:0.62.4")   // autograd (training context)
-    implementation("sk.ainet.core:skainet-data-api:0.62.4")      // Dataset / DataBatch
-    implementation("sk.ainet.core:skainet-data-simple:0.62.4")   // embedded Iris
-    runtimeOnly("sk.ainet.core:skainet-backend-jni-cpu:0.62.4")  // NEON kernels (see below)
+    implementation("sk.ainet.core:skainet-lang-core:0.63.0")     // tensors, DSL, training
+    implementation("sk.ainet.core:skainet-backend-cpu:0.63.0")   // CPU ops
+    implementation("sk.ainet.core:skainet-compile-dag:0.63.0")   // autograd (training context)
+    implementation("sk.ainet.core:skainet-data-api:0.63.0")      // Dataset / DataBatch
+    implementation("sk.ainet.core:skainet-data-simple:0.63.0")   // embedded Iris
+    runtimeOnly("sk.ainet.core:skainet-backend-jni-cpu:0.63.0")  // NEON kernels (see below)
 }
 ----
 

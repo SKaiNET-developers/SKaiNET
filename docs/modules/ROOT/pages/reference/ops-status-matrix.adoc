@@ -1,7 +1,7 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `0.62.4` on 2026-11-01.
+Generated from `operators.json` version `0.63.0` on 2026-11-01.
 
 Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.
 
