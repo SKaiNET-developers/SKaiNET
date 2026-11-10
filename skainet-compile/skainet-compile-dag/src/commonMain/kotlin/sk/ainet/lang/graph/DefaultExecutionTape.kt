@@ -848,35 +848,19 @@ public class DefaultGradientTape(
     override fun flattenBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
     
     override fun concatBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        val dim = (attributes["dim"] as? Int) ?: 0
-        val grads = mutableListOf<Tensor<DType, Any>?>()
+        val rawDim = (attributes["dim"] as? Int) ?: 0
+        val dim = if (rawDim < 0) upstream.shape.rank + rawDim else rawDim
+        // Each input's gradient is its own slice of the upstream along `dim`, at the offset where
+        // the forward placed it. `narrow` takes any slice length, so inputs of different sizes
+        // along `dim` get the right slice (splitting the upstream by one input's size and
+        // indexing `offset / size` only worked when every input had the same size).
         var offset = 0
-        for (input in inputs) {
+        return inputs.map { input ->
             val size = input.shape[dim]
-            if (size == 0) {
-                grads.add(null)
-                continue
-            }
-            try {
-                // Since DefaultCpuOps.split(tensor, splitSize, dim) produces chunks of splitSize,
-                // and the last chunk might be smaller, we can only use it if all chunks except
-                // possibly the last one match splitSize.
-                // However, concat might have arbitrary sizes.
-                // For now, let's try to slice it if possible, but we don't have slice yet.
-                // If all sizes are equal, split(upstream, size, dim) works perfectly.
-                val chunks = upstream.ops.split(upstream, size, dim)
-                val chunkIndex = offset / size
-                if (chunkIndex < chunks.size) {
-                    grads.add(chunks[chunkIndex])
-                } else {
-                    grads.add(null)
-                }
-            } catch (e: Exception) {
-                grads.add(null)
-            }
+            val grad = if (size == 0) null else upstream.ops.narrow(upstream, dim, offset, size)
             offset += size
+            grad
         }
-        return grads
     }
 
     override fun splitBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -886,7 +870,9 @@ public class DefaultGradientTape(
         // Kept here only to satisfy the DifferentiableTensorOps interface.
         return listOf(null)
     }
-    override fun squeezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.unsqueeze(upstream, (attributes["dim"] as? Int) ?: 0)) // simplistic
+    // squeeze only drops size-1 axes, so the gradient is the upstream laid out in the input's
+    // shape — whichever axes `dim = null` removed (unsqueezing dim 0 alone got the shape wrong).
+    override fun squeezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.reshape(upstream, inputs[0].shape))
     override fun unsqueezeBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> = listOf(upstream.ops.squeeze(upstream, (attributes["dim"] as? Int) ?: 0))
     override fun sigmoidBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // d(sigmoid(x))/dx = sigmoid(x) * (1 - sigmoid(x)) = output * (1 - output)

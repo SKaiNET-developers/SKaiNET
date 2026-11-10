@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`concat` backward with inputs of different sizes** (`skainet-compile-dag`, #1490): the rule split the upstream gradient by one input's size and picked chunk `offset / size`, which only lines up when every input has the same extent along the concat axis; other shapes got another input's slice, or `null`, without an error. Each input now receives its own `narrow` of the upstream at the offset the forward gave it, for any sizes and a negative `dim`.
+- **`squeeze` backward with no axis** (`skainet-compile-dag`, #1490): `squeeze(x)` removes every size-1 axis, but the backward unsqueezed dim 0 alone, so `x: [1, 3, 1]` got a `[1, 3]` gradient. The gradient is now the upstream reshaped to the input's shape.
+
 ## [0.63.0] - 2026-11-06
 
 Headline: **block-quantized weights reach an NPU through StableHLO, and the engine gains mixed precision, explicit
