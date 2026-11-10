@@ -80,10 +80,10 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.erf` | ✖ | composite · decompose | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.sin` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.cos` | ✖ | — | ✅ | ✅ | — | ✅ | — 
-| `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | ✅ | ❌ stub | — | ✅ | — 
+| `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | ✅ | ✅ | — | ✅ | — 
 | `Similarity.cosineDistance` | ✖ | — | ❌ | — | ✅ | ✅ | ✅ 
 
-| *Done* | *1 / 67* | *3 / 67* | *51 / 67* | *58 / 59* | *1 / 67* | *67 / 67* | *1 / 67* 
+| *Done* | *1 / 67* | *3 / 67* | *51 / 67* | *59 / 59* | *1 / 67* | *67 / 67* | *1 / 67* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].
