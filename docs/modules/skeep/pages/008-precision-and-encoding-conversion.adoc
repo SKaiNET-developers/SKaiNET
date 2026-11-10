@@ -200,7 +200,7 @@ public class PrecisionBoundary<TOuter : DType, TInner : DType, V>(
 A tensor that already has the target dtype is passed through without calling `convert` (the
 tracing wrapper would record the call even though the backend returns its input), so a boundary
 between equal dtypes costs nothing and leaves no cast in a trace. Two consecutive boundaries of the same inner dtype are a cast followed by its
-inverse; a later optimisation pass may fold them, and nothing in this design depends on that.
+inverse; `CastFoldingPass` (#1494) folds them, and nothing in this design depends on that.
 
 Weights of a `TLayer` dense are created in `TLayer` by the existing initialisers. User-supplied
 weight tensors must already be `TLayer`; the DSL does not silently cast them.
@@ -349,15 +349,19 @@ Each phase is a DARC feature with lane sub-issues, linked from the tracking issu
   *Resolved: no.* Only the value form shipped.
 . Should a stage boundary that ends in the same dtype as the next stage elide the cast pair at
   DSL time, or leave that to a compile pass? +
-  *Open.* The DSL elides only the degenerate case (inner dtype equal to the network dtype). Two
-  adjacent boundaries still export a `narrow -> f32` cast followed by `f32 -> narrow`; folding
-  that pair is left to a compile pass.
+  *Resolved: a compile pass.* The DSL elides only the degenerate case (inner dtype equal to
+  the network dtype). `CastFoldingPass`
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1494[#1494]) folds a cast that follows
+  an exact widening, so `narrow -> f32 -> narrow` between two adjacent boundaries becomes one
+  cast or none. Merging the boundaries in the DSL was rejected: it would change the module
+  tree the user wrote and would not help hand-written or imported graphs.
 . Is `TensorStorage` the right owner of `requantizeTo`, or should it be a free function in
   `sk.ainet.lang.tensor.data` next to `Requantizers`, keeping `TensorStorage` a descriptor? +
   *Resolved:* it is a member of `TensorStorage`, next to `repackTo`.
 . Does phase 2 need per-boundary `DTypePolicy` metadata, so that
   `DTypeConstraintResolutionPass` can see and validate the boundaries in a compiled graph? +
   *Open.* A3 did not need it: the boundaries are ordinary `convert` nodes in the graph.
+  Tracked in https://github.com/SKaiNET-developers/SKaiNET/issues/1495[#1495].
 
 == References
 

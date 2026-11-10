@@ -107,8 +107,8 @@ hiding the conversion inside the layer:
   cast in a trace or an export.
 * *Visible in traces and exports.* The tracing wrappers record `convert` like any other op,
   and the StableHLO converter lowers it to `stablehlo.convert` — a compiled or exported graph
-  shows exactly where precision changes, and a later optimisation pass can fold adjacent
-  cast pairs.
+  shows exactly where precision changes, and `CastFoldingPass` folds the cast pair between
+  adjacent boundaries.
 * *Honest about cost.* Every boundary copies its input and its output. A network that
   switches dtype every layer can be *slower* than all-FP32, especially while narrow dtypes
   are float-backed. Few, coarse boundaries (a `stage` around a block) beat many fine ones.
@@ -137,9 +137,21 @@ module has this shape (abridged: constants, transposes and bias adds are left ou
 %v21 = stablehlo.convert %v20 : (tensor<1x10xf16>) -> tensor<1x10xf32>       // and back out
 ----
 
-The `bf16 -> f32` cast followed directly by `f32 -> f16` is the price of two adjacent
-boundaries with different inner dtypes: the network's own dtype is always restored in
-between. `MixedPrecisionExportTest` pins this output.
+The `bf16 -> f32` cast followed directly by `f32 -> f16` is what two adjacent boundaries
+with different inner dtypes record: each one restores the network's dtype, so the tensor is
+widened only to be narrowed again. `MixedPrecisionExportTest` pins this output.
+
+`CastFoldingPass`, part of the default optimization pipelines, removes that round trip. A
+widening from FP16 or BF16 to FP32 is exact, so narrowing the widened tensor gives the same
+values as narrowing the original, and the two casts fold into one:
+
+[source,mlir]
+----
+%v13 = stablehlo.convert %v12 : (tensor<1x256xbf16>) -> tensor<1x256xf16>    // BF16 dense straight into the FP16 stage
+----
+
+Between two boundaries of the *same* inner dtype nothing is left at all. The pass never
+touches the other order, `f32 -> bf16 -> f32`: that pair is the rounding the layer asked for.
 
 == Training through a boundary
 

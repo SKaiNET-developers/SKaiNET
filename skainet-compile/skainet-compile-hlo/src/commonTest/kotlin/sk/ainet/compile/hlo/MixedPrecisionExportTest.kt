@@ -1,8 +1,13 @@
 package sk.ainet.compile.hlo
 
+import sk.ainet.compile.opt.passes.CastFoldingPass
 import sk.ainet.compile.opt.passes.DtypeForwardPropagationPass
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.graph.ComputeGraph
+import sk.ainet.lang.graph.DefaultComputeGraph
+import sk.ainet.lang.graph.GraphEdge
+import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.graph.exec.ComputeGraphExecutor
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.nn.Module
 import sk.ainet.lang.nn.definition
@@ -10,6 +15,8 @@ import sk.ainet.lang.nn.network
 import sk.ainet.lang.tape.toComputeGraph
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.ops.GenericOperation
+import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -135,6 +142,64 @@ class MixedPrecisionExportTest {
         assertTrue(graph.getTopologicalOrder().none { it.operation.name == "convert" })
         val mlir = StableHloConverterFactory.createExtended().convert(graph, "same").content
         assertTrue(convertLines(mlir).isEmpty(), "no cast expected:\n$mlir")
+    }
+
+    @Test
+    fun castFolding_dropsTheRoundTripBetweenAdjacentBoundaries() {
+        // The BF16 dense is directly followed by the FP16 stage: bf16 -> f32 -> f16 is one
+        // exact widening followed by a narrowing, and folds to bf16 -> f16 (#1494).
+        val folded = CastFoldingPass().apply(trace(::mixedNetwork))
+        assertTrue(folded.changed)
+
+        val mlir = StableHloConverterFactory.createExtended().convert(folded.graph, "mixed").content
+
+        assertFalse("Unsupported" in mlir, mlir)
+        assertEquals(
+            listOf(
+                "(tensor<1x4xf32>) -> tensor<1x4xbf16>",
+                "(tensor<1x3xbf16>) -> tensor<1x3xf16>",
+                "(tensor<1x2xf16>) -> tensor<1x2xf32>",
+            ),
+            convertLines(mlir).map { it.substringAfter(" : ") },
+            mlir,
+        )
+    }
+
+    @Test
+    fun castFolding_givesBitIdenticalResults() {
+        // The cast chain two adjacent boundaries produce, on values no 16-bit format holds:
+        // executing the folded graph must reproduce the unfolded one bit for bit.
+        fun cast(id: String, from: String, to: String) = GraphNode(
+            id = id,
+            operation = GenericOperation("convert"),
+            inputs = listOf(TensorSpec("t", listOf(1, 6), from)),
+            outputs = listOf(TensorSpec("t", listOf(1, 6), to)),
+        )
+        val graph = DefaultComputeGraph()
+        var previous = graph.addNode(
+            GraphNode("x", GenericOperation("input"), emptyList(), listOf(TensorSpec("x", listOf(1, 6), "FP32")))
+        )
+        val steps = listOf("FP32", "BF16", "FP32", "FP16", "FP32")
+        for (i in 1 until steps.size) {
+            val node = graph.addNode(cast("c$i", steps[i - 1], steps[i]))
+            graph.addEdge(GraphEdge("e$i", previous, node, tensorSpec = TensorSpec("t", listOf(1, 6), steps[i - 1])))
+            previous = node
+        }
+        val folded = CastFoldingPass().apply(graph).graph
+        assertEquals(3, folded.nodes.count { it.operationName == "convert" })
+
+        val cpu = DirectCpuExecutionContext()
+        val values = floatArrayOf(0.1234567f, -1.7654321f, 2.3456789f, 65000.5f, 1.0e-6f, -3.3333333f)
+        val x = cpu.fromFloatArray<FP32, Float>(Shape(1, 6), FP32::class, values)
+
+        fun run(g: ComputeGraph): List<Int> {
+            val out = ComputeGraphExecutor(g, cpu.ops).execute(mapOf("x" to x)).values.single()
+            return List(6) { out.data[0, it].toRawBits() }
+        }
+
+        val expected = run(graph)
+        assertEquals(expected, run(folded))
+        assertTrue(expected != values.map { it.toRawBits() }, "the chain must round, or it proves nothing")
     }
 
     @Test

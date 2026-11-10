@@ -107,6 +107,12 @@ public final class sk/ainet/compile/opt/passes/BlockQuantMatmulFusionPass : sk/a
 public final class sk/ainet/compile/opt/passes/BlockQuantMatmulFusionPass$Companion {
 }
 
+public final class sk/ainet/compile/opt/passes/CastFoldingPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public fun <init> ()V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
 public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
