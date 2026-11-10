@@ -348,7 +348,15 @@ public interface TensorOps {
     @Diff
     public fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int = 0): Tensor<T, V>
 
-    // Type conversion operations. Non-differentiable by design (dtype cast).
+    /**
+     * Casts [tensor] to [targetType]. Narrowing to FP16 / BF16 rounds to the format.
+     *
+     * Differentiable between floating-point dtypes (SKEEP-008 phase A3): the backward pass
+     * casts the upstream gradient back to the dtype of [tensor], treating the rounding as
+     * the identity (a straight-through estimate). A cast from or to an integer dtype has no
+     * gradient.
+     */
+    @Diff
     public fun <TFrom : DType, TTo : DType, V> convert(
         tensor: Tensor<TFrom, V>,
         targetType: TTo

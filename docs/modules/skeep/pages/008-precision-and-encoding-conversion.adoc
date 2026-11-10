@@ -1,11 +1,27 @@
 = SKEEP-008: Precision and encoding conversion
 :description: SKaiNET proposal for the two ways a tensor's numeric form changes after it exists: a per-layer or per-stage dtype in the network DSL (mixed precision), and re-encoding stored weights between dense and packed formats (repackTo and an explicit, lossy requantizeTo).
 
-Status: Draft +
+Status: Implemented +
 Audience: SKaiNET maintainers and contributors; users of the network DSL; loader and kernel authors who consume `TensorEncoding` +
 Created: 2026-10-21 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/1433[#1433] +
 Origin: the stub inventory behind the operator coverage matrix (https://github.com/SKaiNET-developers/SKaiNET/pull/1370[#1370]). Six `TODO()` stubs in `NetworkBuilder.kt` (`dense<TLayer>()` ×2, `stage<TStage>()`, in both DSL implementations) and `TensorStorage.repackTo`, which throws for every encoding change, were left without a tracking issue because both change public API semantics.
+
+== Implementation status
+
+[cols="1,3,2",options="header"]
+|===
+| Phase | What shipped | Where
+
+| B1 | Lossless `repackTo`, lossy `requantizeTo` | https://github.com/SKaiNET-developers/SKaiNET/pull/1470[#1470], 0.63.0
+| A1 | `PrecisionBoundary`, `dense(dtype = …)`, `stage(id, dtype = …)`, deprecations | https://github.com/SKaiNET-developers/SKaiNET/pull/1469[#1469], 0.63.0
+| A2 | Trace and StableHLO export pinned by `MixedPrecisionExportTest`; a same-dtype boundary no longer records a cast | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492]
+| A3 | `convert` is `@Diff`; gradient check and training through a boundary in `MixedPrecisionBackwardTest` | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492]
+| A4 | Generic `dense<T>()` / `stage<T>()` overloads and the `MixedPrecision*` scaffold removed | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492]
+|===
+
+The sections below are the proposal as accepted. Where the implementation differs, the text
+says so; phase 1 restrictions that A3 lifted are kept for the record.
 
 == Summary
 
@@ -181,8 +197,9 @@ public class PrecisionBoundary<TOuter : DType, TInner : DType, V>(
 }
 ----
 
-`convert` already returns its input when the dtype matches, so a boundary between equal dtypes
-costs nothing. Two consecutive boundaries of the same inner dtype are a cast followed by its
+A tensor that already has the target dtype is passed through without calling `convert` (the
+tracing wrapper would record the call even though the backend returns its input), so a boundary
+between equal dtypes costs nothing and leaves no cast in a trace. Two consecutive boundaries of the same inner dtype are a cast followed by its
 inverse; a later optimisation pass may fold them, and nothing in this design depends on that.
 
 Weights of a `TLayer` dense are created in `TLayer` by the existing initialisers. User-supplied
@@ -328,13 +345,19 @@ Each phase is a DARC feature with lane sub-issues, linked from the tracking issu
 
 . Should a `reified` extension (`dense<FP16>(64)`) be offered as sugar over the value form? It
   reads well, but extensions named like members interact badly with overload resolution and IDE
-  completion.
+  completion. +
+  *Resolved: no.* Only the value form shipped.
 . Should a stage boundary that ends in the same dtype as the next stage elide the cast pair at
-  DSL time, or leave that to a compile pass?
+  DSL time, or leave that to a compile pass? +
+  *Open.* The DSL elides only the degenerate case (inner dtype equal to the network dtype). Two
+  adjacent boundaries still export a `narrow -> f32` cast followed by `f32 -> narrow`; folding
+  that pair is left to a compile pass.
 . Is `TensorStorage` the right owner of `requantizeTo`, or should it be a free function in
-  `sk.ainet.lang.tensor.data` next to `Requantizers`, keeping `TensorStorage` a descriptor?
+  `sk.ainet.lang.tensor.data` next to `Requantizers`, keeping `TensorStorage` a descriptor? +
+  *Resolved:* it is a member of `TensorStorage`, next to `repackTo`.
 . Does phase 2 need per-boundary `DTypePolicy` metadata, so that
-  `DTypeConstraintResolutionPass` can see and validate the boundaries in a compiled graph?
+  `DTypeConstraintResolutionPass` can see and validate the boundaries in a compiled graph? +
+  *Open.* A3 did not need it: the boundaries are ordinary `convert` nodes in the graph.
 
 == References
 

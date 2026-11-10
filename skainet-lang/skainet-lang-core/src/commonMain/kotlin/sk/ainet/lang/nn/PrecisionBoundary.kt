@@ -9,13 +9,17 @@ import sk.ainet.lang.types.DType
  * the input is cast to [innerType], [inner] runs, and the result is cast back to
  * [outerType] (SKEEP-008, #1433).
  *
- * The casts use [sk.ainet.lang.tensor.ops.TensorOps.convert], which returns its input
- * unchanged when the dtypes already match, so a boundary between equal dtypes costs
- * nothing. `convert` is recorded by the tracing wrappers and lowers to
- * `stablehlo.convert`, so the boundary stays visible in traces and exports.
+ * The casts use [sk.ainet.lang.tensor.ops.TensorOps.convert]. A tensor that already has
+ * the target dtype is passed through without calling it, so a boundary between equal
+ * dtypes costs nothing and leaves no cast in a trace. Otherwise `convert` is recorded by
+ * the tracing wrappers and lowers to `stablehlo.convert`, so the boundary stays visible
+ * in traces and exports.
  *
- * `convert` is not differentiable (SKEEP-008 phase A3 lifts this), so gradients stop at
- * the boundary: the wrapped layers do not train.
+ * `convert` is differentiable between floating-point dtypes, so gradients cross the
+ * boundary and the wrapped layers train. The gradient is cast like the values: it is
+ * rounded to [innerType] where it enters the wrapped module and widened back to
+ * [outerType] where it leaves. There is no FP32 master copy of the weights and no loss
+ * scaling; that is automatic mixed precision, which this module does not do.
  */
 public class PrecisionBoundary<TOuter : DType, TInner : DType, V>(
     override val name: String,
@@ -31,7 +35,17 @@ public class PrecisionBoundary<TOuter : DType, TInner : DType, V>(
         get() = listOf(inner as Module<TOuter, V>)
 
     override fun onForward(input: Tensor<TOuter, V>, ctx: ExecutionContext): Tensor<TOuter, V> {
-        val x = ctx.ops.convert(input, innerType)
-        return ctx.ops.convert(inner.forward(x, ctx), outerType)
+        val x = cast(input, innerType, ctx)
+        return cast(inner.forward(x, ctx), outerType, ctx)
     }
+
+    // A tracing wrapper records every `convert` call, also the one that returns its input,
+    // so the same-dtype case is skipped here rather than left to the backend.
+    @Suppress("UNCHECKED_CAST")
+    private fun <TFrom : DType, TTo : DType> cast(
+        tensor: Tensor<TFrom, V>,
+        target: TTo,
+        ctx: ExecutionContext,
+    ): Tensor<TTo, V> =
+        if (tensor.dtype == target::class) tensor as Tensor<TTo, V> else ctx.ops.convert(tensor, target)
 }

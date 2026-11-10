@@ -1156,6 +1156,27 @@ public class DefaultGradientTape(
         return listOf(upstream.ops.tril(upstream, k))
     }
 
+    override fun convertBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(convert)/dx is taken as the identity: the rounding of a narrowing cast is passed
+        // straight through. The gradient goes back in the source dtype, so a gradient entering
+        // an FP16 / BF16 region is itself rounded to that format, as the forward values are.
+        val input = inputs[0]
+        // A backend may return its input for a same-dtype cast. That call is still recorded,
+        // with one tensor as both input and output; a gradient for it would be added to itself.
+        if (session.refOf(input).id == session.refOf(output).id) return listOf(null)
+        val sourceType = floatDTypeOf(input) ?: return listOf(null)
+        if (floatDTypeOf(output) == null) return listOf(null)
+        return listOf(upstream.ops.convert(upstream, sourceType))
+    }
+
+    /** The dtype instance of a floating-point tensor that `convert` can target, else `null`. */
+    private fun floatDTypeOf(tensor: Tensor<DType, Any>): DType? = when (tensor.dtype) {
+        sk.ainet.lang.types.FP32::class -> sk.ainet.lang.types.FP32
+        sk.ainet.lang.types.FP16::class -> sk.ainet.lang.types.FP16
+        sk.ainet.lang.types.BF16::class -> sk.ainet.lang.types.BF16
+        else -> null
+    }
+
     override fun gatherBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // gather(input[vocab,emb], indices, dim=0) -> backward scatter-adds upstream rows into the gathered rows.
         // Differentiable w.r.t. input only; indices gradient is null.
@@ -1475,6 +1496,7 @@ public class DefaultGradientTape(
             "sin" to ::sinBackward,
             "cos" to ::cosBackward,
             "tril" to ::trilBackward,
+            "convert" to ::convertBackward,
             "gather" to ::gatherBackward,
             "indexSelect" to ::indexSelectBackward,
             "unfold" to ::unfoldBackward,

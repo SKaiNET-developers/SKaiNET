@@ -169,8 +169,9 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
     /**
      * Creates a dense layer whose weights and computation use [dtype] while the network stays
      * in its own dtype: the layer's input is cast to [dtype] and its output cast back
-     * (SKEEP-008, #1433). The cast is `TensorOps.convert`, which is not differentiable yet,
-     * so a mixed-precision layer is inference-only: gradients stop at its boundary.
+     * (SKEEP-008, #1433). The cast is `TensorOps.convert`, which is differentiable between
+     * floating-point dtypes, so the layer trains: gradients cross the boundary and are
+     * rounded to [dtype] on the way in, as the forward values are.
      *
      * @param outputDimension The number of neurons/output features
      * @param dtype The dtype the layer's weights and computation use (e.g. `FP16`, `BF16`)
@@ -183,27 +184,6 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
         id: String = "",
         content: DENSE<TLayer, V>.() -> Unit = {},
     )
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    public fun <TLayer : DType> dense(
-        outputDimension: Int,
-        id: String = "",
-        content: DENSE<TLayer, V>.() -> Unit = {}
-    ): Module<T, V>
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    public fun <TLayer : DType> dense(
-        id: String = "",
-        content: DENSE<TLayer, V>.() -> Unit = {}
-    ): Module<T, V>
 
     /**
      * Applies an activation function as a separate layer.
@@ -453,8 +433,9 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
     /**
      * Creates a stage whose layers all use [dtype] while the network stays in its own dtype:
      * the stage's input is cast to [dtype] and its output cast back (SKEEP-008, #1433).
-     * The cast is `TensorOps.convert`, which is not differentiable yet, so a mixed-precision
-     * stage is inference-only: gradients stop at its boundary.
+     * The cast is `TensorOps.convert`, which is differentiable between floating-point dtypes,
+     * so the stage trains: gradients cross the boundary and are rounded to [dtype] on the way
+     * in, as the forward values are.
      *
      * @param id Identifier for the stage
      * @param dtype The dtype all layers in this stage use (e.g. `FP16`, `BF16`)
@@ -465,16 +446,6 @@ public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
         dtype: TStage,
         content: NeuralNetworkDsl<TStage, V>.() -> Unit,
     )
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: stage(id, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    public fun <TStage : DType> stage(
-        id: String,
-        content: NeuralNetworkDsl<TStage, V>.() -> Unit
-    ): Module<T, V>
 }
 
 public interface WandBTensorValueContext<T : DType, V> {
@@ -1387,46 +1358,6 @@ public class StageImpl<T : DType, V>(
         )
     }
 
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    override fun <TLayer : DType> dense(
-        outputDimension: Int,
-        id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> = error(
-        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
-            "dense(outputDimension, dtype = FP16, id) { ... }"
-    )
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    override fun <TLayer : DType> dense(
-        id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> = error(
-        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
-            "dense(outputDimension, dtype = FP16, id) { ... }"
-    )
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: stage(id, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    override fun <TStage : DType> stage(
-        id: String,
-        content: NeuralNetworkDsl<TStage, V>.() -> Unit
-    ): Module<T, V> = error(
-        "Mixed-precision stage was redesigned (SKEEP-008): pass the dtype as a value, " +
-            "stage(id, dtype = FP16) { ... }"
-    )
-
     override fun batchNorm(
         numFeatures: Int,
         eps: Double,
@@ -1842,46 +1773,6 @@ public class NeuralNetworkDslImpl<T : DType, V>(
             outerType = dtypeInstanceOf(kClass),
         )
     }
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    override fun <TLayer : DType> dense(
-        outputDimension: Int,
-        id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> = error(
-        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
-            "dense(outputDimension, dtype = FP16, id) { ... }"
-    )
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: dense(outputDimension, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    override fun <TLayer : DType> dense(
-        id: String,
-        content: DENSE<TLayer, V>.() -> Unit
-    ): Module<T, V> = error(
-        "Mixed-precision dense was redesigned (SKEEP-008): pass the dtype as a value, " +
-            "dense(outputDimension, dtype = FP16, id) { ... }"
-    )
-
-    @Deprecated(
-        message = "The dtype type argument cannot be implemented (no KClass at runtime, " +
-            "SKEEP-008); pass the dtype as a value: stage(id, dtype = FP16) { ... }",
-        level = DeprecationLevel.ERROR,
-    )
-    override fun <TStage : DType> stage(
-        id: String,
-        content: NeuralNetworkDsl<TStage, V>.() -> Unit
-    ): Module<T, V> = error(
-        "Mixed-precision stage was redesigned (SKEEP-008): pass the dtype as a value, " +
-            "stage(id, dtype = FP16) { ... }"
-    )
 
     override fun batchNorm(
         numFeatures: Int,

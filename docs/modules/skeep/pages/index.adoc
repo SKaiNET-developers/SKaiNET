@@ -140,6 +140,6 @@ Every proposal should include:
 | The browser lane — packed SIMD128 kernels as a sidecar module, quantize-at-load for SafeTensors, and the common-code fixes that keep wasm off the reference kernel
 
 | xref:skeep:008-precision-and-encoding-conversion.adoc[SKEEP-008]
-| Draft
+| Implemented
 | Precision and encoding conversion — per-layer and per-stage dtype in the network DSL, lossless `repackTo` and lossy `requantizeTo` for stored weights
 |===
