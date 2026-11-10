@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`scaledDotProductAttention` backward** (`skainet-compile-dag`, #1384): the attention adjoint (dQ, dK, dV and the dense mask's gradient) replaces the stub that returned `null`, so attention layers train. It honours `scale`, `causal`, sliding `window` / `rightContext`, `keyLengths` and the dense mask, recomputes the probabilities instead of storing them, and reduces grouped-query heads into their shared K/V. Masked scores get exactly zero gradient. `SdpaBackwardTest` checks every option against finite differences and three cases against PyTorch autograd; `stubbedBackwardOpNames` is empty and the coverage matrix's Backward column is complete.
+
 ## [0.63.0] - 2026-11-06
 
 Headline: **block-quantized weights reach an NPU through StableHLO, and the engine gains mixed precision, explicit
