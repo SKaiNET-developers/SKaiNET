@@ -22,7 +22,11 @@ public class DefaultGraphExecutionContext(
     override val baseOps: TensorOps = VoidTensorOps(),
     override val phase: Phase = Phase.EVAL,
     override val tensorDataFactory: TensorDataFactory = DenseTensorDataFactory(),
-    override val hooks: ForwardHooks? = null,
+    /**
+     * Forward hooks of the caller. The context's own [hooks] wrap them to follow the module
+     * call stack (see [PrecisionBoundaryScope]) and call them unchanged.
+     */
+    hooks: ForwardHooks? = null,
     override val memoryInfo: MemoryInfo = MemoryInfo.getEmptyInfo(),
     override val executionStats: ExecutionStats = ExecutionStats(),
     override val createTapeFactory: (GraphExecutionContext) -> ExecutionTape =
@@ -36,6 +40,11 @@ public class DefaultGraphExecutionContext(
      */
     private val baseSink: OpSink = NoOpSink,
     ) : GraphExecutionContext {
+
+    private val userHooks: ForwardHooks? = hooks
+    private val boundaryScope = PrecisionBoundaryScope(userHooks)
+
+    override val hooks: ForwardHooks get() = boundaryScope
 
     private val observerRegistry = ExecutionObserverRegistry()
 
@@ -62,7 +71,7 @@ public class DefaultGraphExecutionContext(
             baseOps = scheduled.withSchedule(schedule),
             phase = phase,
             tensorDataFactory = tensorDataFactory,
-            hooks = hooks,
+            hooks = userHooks,
             memoryInfo = memoryInfo,
             executionStats = executionStats,
             createTapeFactory = createTapeFactory,
@@ -121,11 +130,13 @@ public class DefaultGraphExecutionContext(
     private val _ops: KspTensorOps by lazy {
         val dynamicSink = object : OpSink {
             override fun onOpExecuted(trace: sk.ainet.lang.trace.OpTrace) {
+                // An op that runs inside a PrecisionBoundary carries the declared dtype (#1495).
+                val scoped = boundaryScope.annotate(trace)
                 val tape = tapeStack.currentTape
                 if (tapeStack.isRecording() && tape != null) {
-                    TapeSink(tape).onOpExecuted(trace)
+                    TapeSink(tape).onOpExecuted(scoped)
                 }
-                baseSink.onOpExecuted(trace)
+                baseSink.onOpExecuted(scoped)
             }
         }
         val sharedSession = sk.ainet.lang.trace.TraceSession()

@@ -1,12 +1,16 @@
 package sk.ainet.compile.hlo
 
+import sk.ainet.compile.opt.GraphOptimizationPipeline
 import sk.ainet.compile.opt.passes.CastFoldingPass
+import sk.ainet.compile.opt.passes.DTypeConstraintResolutionPass
 import sk.ainet.compile.opt.passes.DtypeForwardPropagationPass
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.lang.dag.DTYPE_POLICY_ATTRIBUTE_KEY
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.graph.GraphEdge
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.graph.PRECISION_BOUNDARY_METADATA_KEY
 import sk.ainet.lang.graph.exec.ComputeGraphExecutor
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.nn.Module
@@ -18,6 +22,7 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.GenericOperation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.types.BF16
+import sk.ainet.lang.types.DTypePolicy
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
@@ -200,6 +205,97 @@ class MixedPrecisionExportTest {
         val expected = run(graph)
         assertEquals(expected, run(folded))
         assertTrue(expected != values.map { it.toRawBits() }, "the chain must round, or it proves nothing")
+    }
+
+    // ── declared dtype as a checked contract (#1495) ──────────────────────────────────────────
+
+    private fun declared(node: GraphNode): Pair<String, DTypePolicy>? {
+        val boundary = node.metadata[PRECISION_BOUNDARY_METADATA_KEY] as? String ?: return null
+        return boundary to (node.metadata[DTYPE_POLICY_ATTRIBUTE_KEY] as DTypePolicy)
+    }
+
+    @Test
+    fun trace_marksOpsInsideABoundaryWithItsDeclaredDtype() {
+        val nodes = trace(::mixedNetwork).getTopologicalOrder()
+
+        val marked = nodes.mapNotNull { node -> declared(node)?.let { node.operationName to it } }
+        assertEquals(
+            setOf(
+                "bf16Dense" to DTypePolicy.Prefer(BF16),
+                "head" to DTypePolicy.Prefer(FP16),
+            ),
+            marked.map { it.second }.toSet(),
+        )
+        // Three dense layers: a matmul and a bias add each, plus the weight transposes.
+        assertEquals(3, marked.count { it.first == "matmul" })
+        assertEquals(3, marked.count { it.first == "add" })
+
+        // The boundary's own casts have a different dtype on one side by design; inputs and
+        // weights are not ops of the region.
+        for (node in nodes) {
+            if (node.operationName in setOf("convert", "input", "weight")) {
+                assertEquals(null, declared(node), "${node.id} must not carry a boundary policy")
+            }
+            // Where an op ran is metadata; its parameters stay what it computes.
+            assertFalse(DTYPE_POLICY_ATTRIBUTE_KEY in node.operation.parameters, node.id)
+            assertFalse(PRECISION_BOUNDARY_METADATA_KEY in node.operation.parameters, node.id)
+        }
+    }
+
+    @Test
+    fun trace_withoutBoundaries_carriesNoPolicy() {
+        val graph = trace { ctx ->
+            definition {
+                network<FP32, Float>(ctx) {
+                    input(4)
+                    dense(3, "h1")
+                    dense(2, "h2")
+                }
+            }
+        }
+        assertTrue(graph.nodes.all { it.metadata.isEmpty() }, graph.nodes.map { it.id to it.metadata }.toString())
+    }
+
+    @Test
+    fun constraintPass_acceptsAnUntouchedNetwork_andReportsARetypedBoundary() {
+        val untouched = DTypeConstraintResolutionPass().apply(trace(::mixedNetwork))
+        assertTrue(untouched.diagnostics.isEmpty(), untouched.diagnostics.toString())
+
+        // Coercing every float source to BF16 turns the FP16 stage into a BF16 one. The
+        // user declared FP16 there, and the pass now says so instead of staying silent.
+        val coerced = DtypeForwardPropagationPass(targetFloatDtype = "BF16").apply(trace(::mixedNetwork)).graph
+        val diagnostics = DTypeConstraintResolutionPass().apply(coerced).diagnostics
+
+        assertTrue(diagnostics.isNotEmpty(), "the retyped FP16 stage must be reported")
+        assertTrue(diagnostics.all { "precision boundary 'head'" in it && "Float16" in it }, diagnostics.toString())
+        // The BF16 dense still computes in BF16: nothing to report for it.
+        assertTrue(diagnostics.none { "bf16Dense" in it }, diagnostics.toString())
+    }
+
+    @Test
+    fun defaultPipeline_keepsATracedMixedPrecisionGraphConnected() {
+        // Every op inside a boundary now carries a policy, so the constraint pass visits it.
+        val graph = trace(::mixedNetwork)
+        val optimized = GraphOptimizationPipeline(
+            passes = listOf(DTypeConstraintResolutionPass(), CastFoldingPass()),
+        ).optimize(graph).graph
+
+        // One cast pair folded: one node and one edge fewer, nothing else lost.
+        assertEquals(graph.nodes.size - 1, optimized.nodes.size)
+        assertEquals(graph.edges.size - 1, optimized.edges.size)
+        val mlir = StableHloConverterFactory.createExtended().convert(optimized, "mixed").content
+        assertFalse("Unsupported" in mlir, mlir)
+        assertEquals(3, convertLines(mlir).size, mlir)
+        assertTrue("(%arg0: tensor<1x4xf32>) -> (tensor<1x2xf32>)" in mlir, mlir)
+    }
+
+    @Test
+    fun castFolding_keepsTheBoundaryPolicies() {
+        val before = trace(::mixedNetwork)
+        val after = CastFoldingPass().apply(trace(::mixedNetwork)).graph
+
+        fun policies(g: ComputeGraph) = g.getTopologicalOrder().mapNotNull { n -> declared(n)?.let { n.operationName to it } }
+        assertEquals(policies(before), policies(after))
     }
 
     @Test

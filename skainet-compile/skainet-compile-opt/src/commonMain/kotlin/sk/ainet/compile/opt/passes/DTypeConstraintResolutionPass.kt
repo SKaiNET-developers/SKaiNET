@@ -3,6 +3,7 @@ package sk.ainet.compile.opt.passes
 import sk.ainet.compile.opt.GraphOptimizationPass
 import sk.ainet.compile.opt.GraphOptimizationResult
 import sk.ainet.lang.graph.ComputeGraph
+import sk.ainet.lang.graph.DefaultComputeGraph
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
@@ -52,11 +53,20 @@ public class DTypeConstraintResolutionPass : GraphOptimizationPass {
 
     override fun apply(graph: ComputeGraph): GraphOptimizationResult {
         val diagnostics = mutableListOf<String>()
-        var changed = false
+        val resolved = LinkedHashMap<String, GraphNode>()
 
         for (node in graph.nodes) {
             val policy = node.metadata[POLICY_KEY] as? DTypePolicy ?: continue
+            // A policy that comes from a precision boundary is about the float format the
+            // region computes in; an index or mask input inside it is not a violation.
+            val boundary = node.metadata[BOUNDARY_KEY] as? String
             val inputDtypes = node.inputs.map { it.dtype }
+                .filter { boundary == null || isFloatDtypeString(it) }
+            val subject = if (boundary == null) {
+                "Node '${node.id}' (${node.operationName})"
+            } else {
+                "Node '${node.id}' (${node.operationName}) in precision boundary '$boundary'"
+            }
 
             when (policy) {
                 DTypePolicy.Any -> { /* permissive; no-op */ }
@@ -80,7 +90,7 @@ public class DTypeConstraintResolutionPass : GraphOptimizationPass {
                     val targetName = policy.target.name
                     for ((i, dtypeStr) in inputDtypes.withIndex()) {
                         if (!dtypeStringMatches(dtypeStr, policy.target)) {
-                            diagnostics += "Node '${node.id}' (${node.operationName}) prefers " +
+                            diagnostics += "$subject prefers " +
                                 "$targetName but input $i has dtype '$dtypeStr' — using the existing dtype."
                         }
                     }
@@ -103,13 +113,24 @@ public class DTypeConstraintResolutionPass : GraphOptimizationPass {
 
             // Mark the node as resolved by this pass. Use copy to keep
             // the immutable-copy convention the other passes follow.
-            val resolved = node.copy(metadata = node.metadata + (RESOLVED_KEY to true))
-            graph.removeNode(node)
-            graph.addNode(resolved)
-            changed = true
+            if (node.metadata[RESOLVED_KEY] != true) {
+                resolved[node.id] = node.copy(metadata = node.metadata + (RESOLVED_KEY to true))
+            }
         }
 
-        return GraphOptimizationResult(graph, changed = changed, diagnostics = diagnostics)
+        if (resolved.isEmpty()) return GraphOptimizationResult(graph, changed = false, diagnostics = diagnostics)
+
+        // Rebuild so the edges point at the marked nodes. Replacing a node in place
+        // (removeNode + addNode) would drop every edge connected to it.
+        val newGraph = DefaultComputeGraph()
+        val added = HashMap<String, GraphNode>()
+        for (node in graph.nodes) added[node.id] = newGraph.addNode(resolved[node.id] ?: node)
+        for (edge in graph.edges) {
+            val source = added[edge.source.id] ?: continue
+            val destination = added[edge.destination.id] ?: continue
+            newGraph.addEdge(edge.copy(source = source, destination = destination))
+        }
+        return GraphOptimizationResult(newGraph, changed = true, diagnostics = diagnostics)
     }
 
     /**
@@ -134,9 +155,21 @@ public class DTypeConstraintResolutionPass : GraphOptimizationPass {
         }
     }
 
+    private fun isFloatDtypeString(dtypeStr: String): Boolean =
+        FLOAT_DTYPES.any { dtypeStringMatches(dtypeStr, it) }
+
     public companion object {
         /** Attribute key shared with the DSL extension (W6). */
         public const val POLICY_KEY: String = "dtype_policy"
+
+        /**
+         * Metadata key naming the `PrecisionBoundary` a traced node was recorded inside
+         * (`sk.ainet.lang.graph.PRECISION_BOUNDARY_METADATA_KEY`, #1495). Such a node's
+         * policy applies to its floating-point inputs only.
+         */
+        public const val BOUNDARY_KEY: String = "precision_boundary"
+
+        private val FLOAT_DTYPES: List<DType> = listOf(FP16, BF16, FP32, FP64)
 
         /** Marker the pass writes onto every node it visits. */
         public const val RESOLVED_KEY: String = "dtype_resolved"

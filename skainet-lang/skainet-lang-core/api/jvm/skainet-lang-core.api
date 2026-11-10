@@ -2937,8 +2937,10 @@ public final class sk/ainet/lang/nn/NeuralNetworkExecutionContextKt {
 
 public final class sk/ainet/lang/nn/PrecisionBoundary : sk/ainet/lang/nn/Module {
 	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/nn/Module;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/types/DType;)V
+	public final fun getInnerType ()Lsk/ainet/lang/types/DType;
 	public fun getModules ()Ljava/util/List;
 	public fun getName ()Ljava/lang/String;
+	public final fun getOuterType ()Lsk/ainet/lang/types/DType;
 }
 
 public final class sk/ainet/lang/nn/TrainingRunnerKt {

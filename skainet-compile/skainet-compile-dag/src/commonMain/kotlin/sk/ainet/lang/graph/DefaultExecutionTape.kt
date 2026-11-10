@@ -103,7 +103,8 @@ public open class DefaultExecutionTape(
             val op = object : sk.ainet.lang.tensor.ops.Operation {
                 override val name: String = trace.opType
                 override val type: String = "trace"
-                override val parameters: Map<String, Any> = trace.attributes.filterValues { it != null } as Map<String, Any>
+                override val parameters: Map<String, Any> =
+                    trace.attributes.filter { (key, value) -> value != null && key !in TRACE_METADATA_KEYS } as Map<String, Any>
                 override fun <T : sk.ainet.lang.types.DType, V> execute(inputs: List<sk.ainet.lang.tensor.Tensor<T, V>>): List<sk.ainet.lang.tensor.Tensor<T, V>> = emptyList()
                 override fun validateInputs(inputs: List<TensorSpec>): sk.ainet.lang.tensor.ops.ValidationResult = sk.ainet.lang.tensor.ops.ValidationResult.Valid
                 override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> = outputs

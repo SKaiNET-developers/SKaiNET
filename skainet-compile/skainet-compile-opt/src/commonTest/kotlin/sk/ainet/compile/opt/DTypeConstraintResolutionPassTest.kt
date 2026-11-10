@@ -8,6 +8,7 @@ import kotlin.test.assertTrue
 import sk.ainet.compile.opt.passes.DTypeConstraintResolutionPass
 import sk.ainet.compile.opt.passes.DtypeConstraintViolationException
 import sk.ainet.lang.graph.DefaultComputeGraph
+import sk.ainet.lang.graph.GraphEdge
 import sk.ainet.lang.graph.GraphNode
 import sk.ainet.lang.tensor.ops.GenericOperation
 import sk.ainet.lang.tensor.ops.TensorSpec
@@ -116,5 +117,65 @@ class DTypeConstraintResolutionPassTest {
         val msg = ex.message ?: ""
         assertTrue(msg.contains("OneOf"), msg)
         assertTrue(msg.contains("Float32"), msg)
+    }
+
+    @Test
+    fun resolved_nodes_keep_their_edges() {
+        // Marking a node used to replace it in place, which dropped every edge connected to it.
+        val g = DefaultComputeGraph()
+        val a = g.addNode(node("a", opName = "input"))
+        val b = g.addNode(node("b", policy = DTypePolicy.Prefer(FP32)))
+        val c = g.addNode(node("c", opName = "relu"))
+        g.addEdge(GraphEdge("ab", a, b, tensorSpec = a.outputs.single()))
+        g.addEdge(GraphEdge("bc", b, c, tensorSpec = b.outputs.single()))
+
+        val result = DTypeConstraintResolutionPass().apply(g)
+
+        assertTrue(result.changed)
+        assertEquals(listOf("a" to "b", "b" to "c"), result.graph.edges.map { it.source.id to it.destination.id })
+        assertEquals(listOf("a", "b", "c"), result.graph.getTopologicalOrder().map { it.id })
+        val marked = result.graph.nodes.single { it.id == "b" }
+        assertEquals(true, marked.metadata[DTypeConstraintResolutionPass.RESOLVED_KEY])
+        assertTrue(result.graph.edges.all { it.source in result.graph.nodes && it.destination in result.graph.nodes })
+    }
+
+    @Test
+    fun a_second_run_changes_nothing() {
+        val g = DefaultComputeGraph()
+        g.addNode(node("n0", policy = DTypePolicy.Require(FP32)))
+
+        val first = DTypeConstraintResolutionPass().apply(g)
+        val second = DTypeConstraintResolutionPass().apply(first.graph)
+
+        assertTrue(first.changed)
+        assertFalse(second.changed, "an already resolved graph must let a pipeline converge")
+    }
+
+    @Test
+    fun boundary_policy_applies_to_float_inputs_only() {
+        // An op recorded inside a precision boundary: its float input is checked against the
+        // declared dtype, an index input is not.
+        fun boundaryNode(floatDtype: String) = GraphNode(
+            id = "g",
+            operation = GenericOperation("gather"),
+            inputs = listOf(
+                TensorSpec(name = "table", shape = listOf(8, 4), dtype = floatDtype),
+                TensorSpec(name = "ids", shape = listOf(2), dtype = "Int32"),
+            ),
+            outputs = listOf(TensorSpec(name = "rows", shape = listOf(2, 4), dtype = floatDtype)),
+            metadata = mapOf(
+                DTypeConstraintResolutionPass.POLICY_KEY to DTypePolicy.Prefer(BF16),
+                DTypeConstraintResolutionPass.BOUNDARY_KEY to "encoder",
+            ),
+        )
+
+        val kept = DefaultComputeGraph().also { it.addNode(boundaryNode("BF16")) }
+        assertEquals(emptyList(), DTypeConstraintResolutionPass().apply(kept).diagnostics)
+
+        val retyped = DefaultComputeGraph().also { it.addNode(boundaryNode("FP32")) }
+        val diagnostics = DTypeConstraintResolutionPass().apply(retyped).diagnostics
+        assertEquals(1, diagnostics.size, diagnostics.toString())
+        assertTrue("in precision boundary 'encoder'" in diagnostics.single(), diagnostics.single())
+        assertTrue("input 0" in diagnostics.single() && "FP32" in diagnostics.single(), diagnostics.single())
     }
 }
