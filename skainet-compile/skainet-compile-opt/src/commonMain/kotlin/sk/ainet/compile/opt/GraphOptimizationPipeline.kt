@@ -2,6 +2,7 @@ package sk.ainet.compile.opt
 
 import sk.ainet.lang.graph.ComputeGraph
 import sk.ainet.compile.opt.passes.ConstantFoldingPass
+import sk.ainet.compile.opt.passes.CastFoldingPass
 import sk.ainet.compile.opt.passes.DTypeConstraintResolutionPass
 import sk.ainet.compile.opt.passes.DeadCodeEliminationPass
 import sk.ainet.compile.opt.passes.LLMFusionPass
@@ -81,6 +82,9 @@ public class GraphOptimizationPipeline(
                 // is the boundary where dtype problems surface — every
                 // later pass can assume dtype-validity.
                 DTypeConstraintResolutionPass(),
+                // Fold casts that change no value (a widening followed by another
+                // cast, a cast to the same dtype) while the graph is still unfused.
+                CastFoldingPass(),
                 // Rewrite pow(x, 2) to multiply(x, x) before fusion so
                 // the downstream passes see the multiply form. Runs after
                 // dtype resolution (still benefits from resolved dtypes)
@@ -98,6 +102,7 @@ public class GraphOptimizationPipeline(
         public fun createAggressive(): GraphOptimizationPipeline = GraphOptimizationPipeline(
             passes = listOf(
                 DTypeConstraintResolutionPass(),
+                CastFoldingPass(),
                 PowSpecializationPass(),
                 DeadCodeEliminationPass(),
                 ConstantFoldingPass(),
@@ -110,7 +115,8 @@ public class GraphOptimizationPipeline(
          * Creates an LLM-optimized pipeline with transformer-specific passes.
          *
          * Pass ordering:
-         * 0. DTypeConstraintResolution — resolve dtype policies before fusion
+         * 0. DTypeConstraintResolution — resolve dtype policies before fusion,
+         *    then CastFolding — drop casts that change no value
          * 1. TransposeElimination — fold transposes into matmuls
          * 2. SharedWeightDedup — deduplicate tied weights (e.g. token_embd ↔ output)
          * 3. LLMFusion — fuse RMSNorm, SwiGLU, QKV patterns
@@ -120,6 +126,7 @@ public class GraphOptimizationPipeline(
         public fun createLLM(): GraphOptimizationPipeline = GraphOptimizationPipeline(
             passes = listOf(
                 DTypeConstraintResolutionPass(),
+                CastFoldingPass(),
                 TransposeEliminationPass(),
                 SharedWeightDeduplicationPass(),
                 LLMFusionPass(),

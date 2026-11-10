@@ -352,6 +352,16 @@ public class ComputeGraphExecutor(
                 listOf(ops.gather(inputs[0], indices, dim))
             }
 
+            // Dtype cast. The target is the node's output dtype, which is what tracing
+            // records and what the StableHLO converter reads.
+            "convert", "cast", "to" -> {
+                val targetName = node.outputs.firstOrNull()?.dtype
+                    ?: error("cast node '${node.id}' declares no output dtype")
+                val target = dtypeNamed(targetName)
+                    ?: error("cast node '${node.id}' targets unknown dtype '$targetName'")
+                listOf(ops.convert(inputs[0], target) as Tensor<T, V>)
+            }
+
             // Pass-through / identity
             "identity", "input", "weight", "constant", "parameter" -> {
                 if (inputs.isNotEmpty()) inputs.toList() else listOf()
@@ -399,6 +409,18 @@ public class ComputeGraphExecutor(
             "sqrt" -> ops.sqrt(inputs[0])
             else -> error("Cannot decompose fused op component '$opName'")
         }
+    }
+
+    /**
+     * The dtype a tensor spec names. Specs carry the short spelling tracing records
+     * (`FP16`, `BF16`, `FP32`) or a format's own (`f32`, `float32`), not [DType.name].
+     */
+    private fun dtypeNamed(name: String): DType? = when (val upper = name.uppercase()) {
+        "FP16", "F16", "FLOAT16" -> sk.ainet.lang.types.FP16
+        "BF16", "BFLOAT16" -> sk.ainet.lang.types.BF16
+        "FP32", "F32", "FLOAT32" -> sk.ainet.lang.types.FP32
+        "FP64", "F64", "FLOAT64" -> sk.ainet.lang.types.FP64
+        else -> DType.entries.firstOrNull { it.name.uppercase() == upper }
     }
 
     private fun isInputNode(node: GraphNode): Boolean =
