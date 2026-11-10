@@ -18,6 +18,12 @@ import sk.ainet.tape.RecordedOperation
 import sk.ainet.tape.TapeStack
 import kotlin.math.exp
 import kotlin.math.floor
+import kotlin.math.sqrt
+import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
+import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.tensor.operators.OpsBoundTensor
+import sk.ainet.lang.tensor.ops.AttentionMask
+import sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation
 import sk.ainet.lang.tensor.ops.AddOperation
 import sk.ainet.lang.tensor.ops.DivideOperation
 import sk.ainet.lang.tensor.ops.MatmulOperation
@@ -1038,11 +1044,97 @@ public class DefaultGradientTape(
         return listOf(ops.multiply(upstream, gradX))
     }
 
+    /**
+     * The attention adjoint (#1384). With `S = s·Q·Kᵀ + M`, `P = softmax(S)`, `O = P·V`:
+     *
+     * ```
+     * dV = Pᵀ·dO          dP = dO·Vᵀ          dS = P ⊙ (dP − rowsum(dP ⊙ P))
+     * dQ = s·dS·K         dK = s·dSᵀ·Q        dM = dS, summed to the mask's shape
+     * ```
+     *
+     * `P` is recomputed instead of stored. Everything runs in a rank-5 layout
+     * `[batch, kvHeads, nRep, seqQ, …]`: grouped-query K/V (`[batch, kvHeads, 1, …]`) broadcast
+     * against the `nRep` query heads of their group in `matmul`, and their gradients come back
+     * through one `sum` over the `nRep` axis. The structural rules (causal, window, key padding)
+     * are rebuilt from [AttentionMask.additive], the definition the forward kernel reads, so a
+     * masked score has `P = 0` and therefore exactly zero gradient; the dense mask is added on top,
+     * trailing-aligned like the forward. `keyLengths` is integer and gets no gradient.
+     */
     override fun scaledDotProductAttentionBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
-        // SDPA backward is complex; stub returns null gradients (not differentiable through this path).
-        // Full backward would require recomputing attention weights from Q,K,V.
-        // Listed in stubbedBackwardOpNames so the coverage matrix shows the gap.
-        return inputs.map { null }
+        val layout = ScaledDotProductAttentionOperation.operandLayout(inputs.size, attributes)
+        val q = inputs[0]; val k = inputs[1]; val v = inputs[2]
+        val mask = layout.maskIndex?.let { inputs[it] }
+        val lengths = layout.lengthsIndex?.let { inputs[it] }
+        val causal = when (val c = attributes["causal"]) { is Boolean -> c; is String -> c.toBoolean(); else -> false }
+        val window = (attributes["window"] as? Number)?.toInt() ?: 0
+        val rightContext = (attributes["rightContext"] as? Number)?.toInt() ?: 0
+        val ops = q.ops
+
+        val batch = q.shape[0]; val heads = q.shape[1]; val seqQ = q.shape[2]; val headDim = q.shape[3]
+        val kvHeads = k.shape[1]; val seqKV = k.shape[2]
+        val nRep = heads / kvHeads
+        val scaleAttr = (attributes["scale"] as? Number)?.toFloat() ?: 0f
+        val scale = if (scaleAttr == 0f) (1.0 / sqrt(headDim.toDouble())).toFloat() else scaleAttr
+        val lastTwo = intArrayOf(0, 1, 2, 4, 3)
+
+        val q5 = ops.reshape(q, Shape(batch, kvHeads, nRep, seqQ, headDim))
+        val k5 = ops.reshape(k, Shape(batch, kvHeads, 1, seqKV, headDim))
+        val v5 = ops.reshape(v, Shape(batch, kvHeads, 1, seqKV, headDim))
+        val dO5 = ops.reshape(upstream, Shape(batch, kvHeads, nRep, seqQ, headDim))
+
+        // S = s·Q·Kᵀ + structural mask + dense mask, then P = softmax(S)
+        var scores = ops.mulScalar(ops.matmul(q5, ops.permute(k5, lastTwo)), scale)
+        if (causal || window > 0 || lengths != null) {
+            val lens = lengths?.let { t -> IntArray(batch) { b -> (t.data.get(b) as Number).toInt() } }
+            val additive = AttentionMask.additive(batch, seqQ, seqKV, causal, window, rightContext, lens)
+            @Suppress("UNCHECKED_CAST")
+            val data = DenseFloatArrayTensorData<DType>(Shape(batch, 1, 1, seqQ, seqKV), additive) as TensorData<DType, Any>
+            scores = ops.add(scores, OpsBoundTensor.fromData(data, q.dtype, ops))
+        }
+        val mask5 = mask?.let { ops.reshape(it, sdpaMaskShape5(it.shape, heads, kvHeads, nRep)) }
+        if (mask5 != null) scores = ops.add(scores, mask5)
+        val p = ops.softmax(scores, 4)
+
+        val dV5 = ops.sum(ops.matmul(ops.permute(p, lastTwo), dO5), 2)
+        val dP = ops.matmul(dO5, ops.permute(v5, lastTwo))
+        val dS = softmaxGrad(dP, p, 4)
+        val dQ5 = ops.mulScalar(ops.matmul(dS, k5), scale)
+        val dK5 = ops.mulScalar(ops.sum(ops.matmul(ops.permute(dS, lastTwo), q5), 2), scale)
+
+        val grads = arrayOfNulls<Tensor<DType, Any>>(inputs.size)
+        grads[0] = ops.reshape(dQ5, q.shape)
+        grads[1] = ops.reshape(dK5, k.shape)
+        grads[2] = ops.reshape(dV5, v.shape)
+        if (mask != null && mask5 != null) {
+            grads[layout.maskIndex!!] = ops.reshape(sumToShape(dS, mask5.shape), mask.shape)
+        }
+        return grads.toList()
+    }
+
+    /**
+     * The rank-5 view of an SDPA dense mask, trailing-aligned to `[batch | 1, heads | kvHeads | 1, seqQ | 1, seqKV | 1]`
+     * as the forward broadcasts it: the head axis splits into `[kvHeads, nRep]`, `[kvHeads, 1]` or `[1, 1]`.
+     */
+    private fun sdpaMaskShape5(mask: Shape, heads: Int, kvHeads: Int, nRep: Int): Shape {
+        val d = mask.dimensions
+        require(d.size <= 4) { "SDPA mask rank ${d.size} > 4" }
+        val padded = IntArray(4) { i -> val j = i - (4 - d.size); if (j >= 0) d[j] else 1 }
+        val (h0, h1) = when (padded[1]) {
+            1 -> 1 to 1
+            kvHeads -> kvHeads to 1
+            heads -> kvHeads to nRep
+            else -> throw IllegalArgumentException("SDPA mask head dimension ${padded[1]} is neither 1, kvHeads ($kvHeads) nor heads ($heads)")
+        }
+        return Shape(padded[0], h0, h1, padded[2], padded[3])
+    }
+
+    /** Sum [t] over every axis where [target] is 1 and [t] is not; same rank in and out. */
+    private fun <T : DType, V> sumToShape(t: Tensor<T, V>, target: Shape): Tensor<T, V> {
+        var g = t
+        for (i in target.dimensions.indices) {
+            if (target.dimensions[i] == 1 && g.shape.dimensions[i] != 1) g = g.ops.unsqueeze(g.ops.sum(g, i), i)
+        }
+        return g
     }
 
     override fun sinBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -1396,9 +1488,9 @@ public class DefaultGradientTape(
      * Dispatched ops whose backward rule is still a stub that returns `null` gradients, so
      * gradients silently stop there. Rendered as ❌ in the Backward column of the operator
      * coverage matrix (BackwardCoverageDumpTest). Remove an entry in the change that
-     * implements its rule. scaledDotProductAttention: #1384.
+     * implements its rule. Empty since scaledDotProductAttention gained its adjoint (#1384).
      */
-    internal val stubbedBackwardOpNames: Set<String> = setOf("scaledDotProductAttention")
+    internal val stubbedBackwardOpNames: Set<String> = emptySet()
 
     private fun buildBackwardFromTrace(
         trace: OpTrace,
