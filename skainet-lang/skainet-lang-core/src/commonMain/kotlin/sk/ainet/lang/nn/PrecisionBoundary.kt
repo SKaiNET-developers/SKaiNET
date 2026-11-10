@@ -15,6 +15,10 @@ import sk.ainet.lang.types.DType
  * the tracing wrappers and lowers to `stablehlo.convert`, so the boundary stays visible
  * in traces and exports.
  *
+ * A tracing context marks every op recorded inside the wrapped module with
+ * `DTypePolicy.Prefer(innerType)`, so `DTypeConstraintResolutionPass` reports a boundary
+ * whose ops a later pass retyped.
+ *
  * `convert` is differentiable between floating-point dtypes, so gradients cross the
  * boundary and the wrapped layers train. The gradient is cast like the values: it is
  * rounded to [innerType] where it enters the wrapped module and widened back to
@@ -24,8 +28,10 @@ import sk.ainet.lang.types.DType
 public class PrecisionBoundary<TOuter : DType, TInner : DType, V>(
     override val name: String,
     private val inner: Module<TInner, V>,
-    private val innerType: TInner,
-    private val outerType: TOuter,
+    /** The dtype the wrapped module's weights and computation use. */
+    public val innerType: TInner,
+    /** The dtype of the surrounding network, which the boundary's input and output have. */
+    public val outerType: TOuter,
 ) : Module<TOuter, V>() {
 
     @Suppress("UNCHECKED_CAST")

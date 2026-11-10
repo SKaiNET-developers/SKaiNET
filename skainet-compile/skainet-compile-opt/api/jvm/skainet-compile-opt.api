@@ -120,6 +120,7 @@ public final class sk/ainet/compile/opt/passes/ConstantFoldingPass : sk/ainet/co
 }
 
 public final class sk/ainet/compile/opt/passes/DTypeConstraintResolutionPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public static final field BOUNDARY_KEY Ljava/lang/String;
 	public static final field Companion Lsk/ainet/compile/opt/passes/DTypeConstraintResolutionPass$Companion;
 	public static final field POLICY_KEY Ljava/lang/String;
 	public static final field RESOLVED_KEY Ljava/lang/String;

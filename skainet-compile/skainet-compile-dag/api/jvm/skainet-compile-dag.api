@@ -334,6 +334,10 @@ public final class sk/ainet/lang/graph/OutputDesignatedGraph : sk/ainet/lang/gra
 	public fun validate ()Lsk/ainet/lang/tensor/ops/ValidationResult;
 }
 
+public final class sk/ainet/lang/graph/PrecisionBoundaryScopeKt {
+	public static final field PRECISION_BOUNDARY_METADATA_KEY Ljava/lang/String;
+}
+
 public final class sk/ainet/lang/graph/ResolvedComputeGraph {
 	public static final field BACKEND_ASSIGNMENT_METADATA_KEY Ljava/lang/String;
 	public static final field Companion Lsk/ainet/lang/graph/ResolvedComputeGraph$Companion;

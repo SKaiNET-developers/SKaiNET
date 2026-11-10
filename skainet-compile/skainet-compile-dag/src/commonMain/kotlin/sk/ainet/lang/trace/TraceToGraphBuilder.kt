@@ -60,7 +60,14 @@ public class TraceToGraphBuilder(
      * and registering the outputs as new producers.
      */
     public fun addTrace(trace: OpTrace) {
-        val parameters = trace.attributes.filterValues { it != null }.toMutableMap() as MutableMap<String, Any>
+        val parameters = trace.attributes
+            .filter { (key, value) -> value != null && key !in sk.ainet.lang.graph.TRACE_METADATA_KEYS }
+            .toMutableMap() as MutableMap<String, Any>
+        // Where the op ran (its precision boundary and declared dtype) is node metadata: the
+        // constraint pass reads it there, and operation parameters stay what the op computes.
+        val metadata = trace.attributes
+            .filter { (key, value) -> value != null && key in sk.ainet.lang.graph.TRACE_METADATA_KEYS }
+            .mapValues { it.value as Any }
         
         // If we have a session and weight embedding is enabled, try to resolve
         // constant inputs (weights/biases) for operations that need them during codegen.
@@ -190,7 +197,8 @@ public class TraceToGraphBuilder(
             id = nodeId,
             operation = op,
             inputs = inputSpecs,
-            outputs = outputSpecs
+            outputs = outputSpecs,
+            metadata = metadata,
         )
         graph.addNode(node)
 

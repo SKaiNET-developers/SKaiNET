@@ -360,8 +360,14 @@ Each phase is a DARC feature with lane sub-issues, linked from the tracking issu
   *Resolved:* it is a member of `TensorStorage`, next to `repackTo`.
 . Does phase 2 need per-boundary `DTypePolicy` metadata, so that
   `DTypeConstraintResolutionPass` can see and validate the boundaries in a compiled graph? +
-  *Open.* A3 did not need it: the boundaries are ordinary `convert` nodes in the graph.
-  Tracked in https://github.com/SKaiNET-developers/SKaiNET/issues/1495[#1495].
+  *Resolved: yes, as metadata on the region*
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1495[#1495]). A tracing context marks
+  every op recorded inside a boundary with `DTypePolicy.Prefer(innerType)` and the boundary's
+  name; the boundary's own casts are not marked. `DTypeConstraintResolutionPass` checks the
+  preference against the node's floating-point inputs and reports a region that a later pass
+  retyped. `Prefer`, not `Require`: coercing a mixed-precision model to one dtype for a target
+  is allowed, but no longer silent. A cast strategy or callback on `PrecisionBoundary` was
+  considered and rejected: a lambda is invisible to the compile pipeline.
 
 == References
 

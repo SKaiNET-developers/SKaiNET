@@ -153,6 +153,27 @@ values as narrowing the original, and the two casts fold into one:
 Between two boundaries of the *same* inner dtype nothing is left at all. The pass never
 touches the other order, `f32 -> bf16 -> f32`: that pair is the rounding the layer asked for.
 
+== A declared dtype is a checked preference
+
+Tracing marks every op that runs inside a boundary with the dtype the code declared for it:
+the graph node carries `DTypePolicy.Prefer(dtype)` and the boundary's name as metadata. The
+boundary's own two casts are not marked, since their job is to have a different dtype on one
+side.
+
+`DTypeConstraintResolutionPass`, the first pass of the default pipelines, checks that
+preference against the node's floating-point inputs. Nothing is reported for an untouched
+network. If a later pass retypes the region — `DtypeForwardPropagationPass(targetFloatDtype =
+"BF16")` coerces a whole graph to one float dtype, which is what some NPU targets need — a
+second run of the constraint pass says so:
+
+[source,text]
+----
+Node 'n17_matmul' (matmul) in precision boundary 'head' prefers Float16 but input 0 has dtype 'BF16' — using the existing dtype.
+----
+
+It is a diagnostic, not an error: retyping a mixed-precision model for a single-dtype target
+is a legitimate choice, and it should be a visible one.
+
 == Training through a boundary
 
 `convert` is differentiable between floating-point dtypes, so a mixed-precision layer or
@@ -188,6 +209,8 @@ parameters are not affected.
 == Where to look
 
 * `sk.ainet.lang.nn.PrecisionBoundary` — the boundary module.
+* `DTypeConstraintResolutionPass` and `PRECISION_BOUNDARY_METADATA_KEY` — the declared dtype
+  as graph metadata, and the pass that checks it.
 * `NeuralNetworkDsl.dense(outputDimension, dtype, …)` and `stage(id, dtype, …)` — the DSL
   entry points.
 * `TensorOps.convert` — the cast, including FP16/BF16 rounding through the format codecs.
