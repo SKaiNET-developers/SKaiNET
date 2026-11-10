@@ -82,6 +82,35 @@ class RepackRequantizeTest {
     }
 
     @Test
+    fun repackTo_encodingsWithoutAQuantizer_toDense_reproduceDequantizedValues_bitExact() {
+        // No quantizer produces these, so the blocks are synthetic: every byte below 0x3C keeps
+        // the FP16 / FP32 scale fields finite. 512 elements is two K-quant super-blocks.
+        val blockShape = Shape(2, 256)
+        val encodings = listOf(
+            TensorEncoding.Q5_0, TensorEncoding.Q5_1, TensorEncoding.Q5_K, TensorEncoding.Q6_K,
+            TensorEncoding.BITNET_B1_58,
+        )
+        for (encoding in encodings) {
+            val byteCount = checkNotNull(encoding.physicalBytes(blockShape.volume.toLong())).toInt()
+            val bytes = ByteArray(byteCount) { ((it * 37 + 11) % 60).toByte() }
+            val source = TensorStorage(
+                shape = blockShape,
+                dtype = FP32,
+                encoding = encoding,
+                buffer = BufferHandleFactory.owned(bytes),
+            )
+            val dequantized = floatsOf(source)
+            assertTrue(dequantized.any { it != 0f }, "$encoding: the synthetic blocks must decode to something")
+
+            val dense = source.repackTo(TensorEncoding.Dense(4))
+
+            assertEquals(TensorEncoding.Dense(4), dense.encoding, "$encoding")
+            assertEquals(blockShape, dense.shape, "$encoding")
+            assertContentEquals(dequantized, floatsOf(dense), "$encoding")
+        }
+    }
+
+    @Test
     fun repackTo_narrowDense_widensExactly() {
         // Dense(2) FP16 bytes -> Dense(4) FP32; every FP16 value is exactly representable.
         val fp16Values = FloatArray(values.size) { Fp16Codec.decode(Fp16Codec.encode(values[it])) }

@@ -122,6 +122,40 @@ class MixedPrecisionDslTest {
     }
 
     @Test
+    fun bf16DenseAndFp16StageInOneNetwork_runAndRound() {
+        // The SKEEP-008 acceptance network: both boundary kinds in one FP32 network.
+        val mixed = definition {
+            network<FP32, Float>(ctx) {
+                input(2)
+                dense(3, dtype = BF16, id = "layer1") {
+                    weights { fromArray(w1) }
+                    bias { fromArray(b1) }
+                }
+                stage("head", dtype = FP16) {
+                    dense(2, "layer2") {
+                        weights { fromArray(w2) }
+                        bias { fromArray(b2) }
+                    }
+                }
+            }
+        }
+
+        val reference = fp32Reference(ctx).forward(input(), ctx)
+        val result = mixed.forward(input(), ctx)
+
+        assertEquals(Shape(1, 2), result.shape)
+        assertEquals(FP32::class, result.dtype, "the last boundary must cast back to the network dtype")
+        assertEquals(2, mixed.modules.filterIsInstance<PrecisionBoundary<*, *, *>>().size)
+        var maxDiff = 0f
+        for (c in 0 until 2) {
+            val diff = abs(result.data[0, c] - reference.data[0, c])
+            assertTrue(diff <= 5e-2f, "mixed network drifted too far at $c: diff=$diff")
+            maxDiff = maxOf(maxDiff, diff)
+        }
+        assertTrue(maxDiff > 0f, "narrow rounding must change the result, or the casts never happened")
+    }
+
+    @Test
     fun sameDtypeBoundary_isExact() {
         // convert returns its input when the dtype matches, so an FP32 stage inside an
         // FP32 network reproduces the reference bit-exactly.

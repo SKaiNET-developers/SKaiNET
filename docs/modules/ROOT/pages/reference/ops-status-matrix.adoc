@@ -72,7 +72,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.lt` | ✖ | — | ❌ | — | — | ✅ | — 
 | `TensorOps.ge` | ✖ | — | ❌ | — | — | ✅ | — 
 | `TensorOps.tril` | ✖ | — | ❌ | ✅ | — | ✅ | — 
-| `TensorOps.convert` | ✖ | — | ✅ | — | — | ✅ | — 
+| `TensorOps.convert` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.gather` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.indexSelect` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.exp` | ✖ | — | ✅ | ✅ | — | ✅ | — 
@@ -83,7 +83,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | ✅ | ✅ | — | ✅ | — 
 | `Similarity.cosineDistance` | ✖ | — | ❌ | — | ✅ | ✅ | ✅ 
 
-| *Done* | *1 / 67* | *3 / 67* | *51 / 67* | *59 / 59* | *1 / 67* | *67 / 67* | *1 / 67* 
+| *Done* | *1 / 67* | *3 / 67* | *51 / 67* | *60 / 60* | *1 / 67* | *67 / 67* | *1 / 67* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].

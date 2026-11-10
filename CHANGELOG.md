@@ -4,11 +4,19 @@
 
 ### Fixed
 
+- **A same-dtype `PrecisionBoundary` leaves no cast in a trace** (`skainet-lang-core`, SKEEP-008 phase A2, #1433): `stage("body", dtype = FP32)` inside an FP32 network called `convert`, which returns its input on the CPU backend but is still recorded by the tracing wrapper, so the exported module carried two `stablehlo.convert` `f32 -> f32`. The boundary now passes a tensor of the target dtype through without calling `convert`.
 - **`concat` backward with inputs of different sizes** (`skainet-compile-dag`, #1490): the rule split the upstream gradient by one input's size and picked chunk `offset / size`, which only lines up when every input has the same extent along the concat axis; other shapes got another input's slice, or `null`, without an error. Each input now receives its own `narrow` of the upstream at the offset the forward gave it, for any sizes and a negative `dim`.
 - **`squeeze` backward with no axis** (`skainet-compile-dag`, #1490): `squeeze(x)` removes every size-1 axis, but the backward unsqueezed dim 0 alone, so `x: [1, 3, 1]` got a `[1, 3]` gradient. The gradient is now the upstream reshaped to the input's shape.
 
+### Removed
+
+- **`dense<TLayer>()`, `stage<TStage>()` and the mixed-precision scaffold** (`skainet-lang-core`, SKEEP-008 phase A4, #1433): the generic overloads of `NeuralNetworkDsl`, deprecated at `ERROR` level in 0.63.0, are gone; use `dense(outputDimension, dtype = FP16) { }` / `stage(id, dtype = FP16) { }`. `MixedPrecisionModule`, `InternalMixedPrecisionModule` and `MixedPrecisionTensorOps`, deprecated in 0.63.0 and never implemented, are removed, together with `MixedPrecisionException`, which only they could throw. A third-party `NeuralNetworkDsl` implementation drops its three overrides.
+
 ### Added
 
+- **Training through a mixed-precision boundary** (`skainet-lang-core`, `skainet-compile-dag`, SKEEP-008 phase A3, #1433): `TensorOps.convert` is a `@Diff` op. Its backward rule treats the cast as the identity and casts the upstream gradient back to the source dtype, so a gradient entering an FP16 / BF16 region is rounded to that format and the layers behind `dense(dtype = …)` / `stage(id, dtype = …)` train; a cast from or to an integer dtype has no gradient. `MixedPrecisionBackwardTest` checks the rule, a finite-difference gradient through FP16 boundaries, parity with the all-FP32 network, and an SGD run. The inference-only notes are gone; the ops matrix Backward column reads 60/60.
+- **SKEEP-008 acceptance tests** (`skainet-lang-core`, `skainet-backend-cpu`, #1433): `repackTo(Dense(4))` is checked bit-exact for Q5_0, Q5_1, Q5_K, Q6_K and `BITNET_B1_58` too, and one FP32 network with both a BF16 `dense` and an FP16 `stage` runs against the FP32 reference.
+- **Mixed-precision export test** (`skainet-compile-hlo`, SKEEP-008 phase A2, #1433): `MixedPrecisionExportTest` traces an FP32 network with one BF16 `dense` and one FP16 `stage` and pins the result: one `convert` pair per boundary in the graph, inner layers typed in the narrow dtype, and `stablehlo.convert` `f32 -> bf16`, `bf16 -> f32`, `f32 -> f16`, `f16 -> f32` in the exported module.
 - **`scaledDotProductAttention` backward** (`skainet-compile-dag`, #1384): the attention adjoint (dQ, dK, dV and the dense mask's gradient) replaces the stub that returned `null`, so attention layers train. It honours `scale`, `causal`, sliding `window` / `rightContext`, `keyLengths` and the dense mask, recomputes the probabilities instead of storing them, and reduces grouped-query heads into their shared K/V. Masked scores get exactly zero gradient. `SdpaBackwardTest` checks every option against finite differences and three cases against PyTorch autograd; `stubbedBackwardOpNames` is empty and the coverage matrix's Backward column is complete.
 
 ## [0.63.0] - 2026-11-06

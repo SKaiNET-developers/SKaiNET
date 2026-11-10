@@ -102,8 +102,9 @@ ctx.ops.convert(inner.forward(x, ctx), outerType)  // cast back out
 Three properties follow from using `TensorOps.convert` — an ordinary tensor op — rather than
 hiding the conversion inside the layer:
 
-* *Free when degenerate.* `convert` returns its input unchanged when the dtypes already
-  match, so a boundary between equal dtypes costs nothing.
+* *Free when degenerate.* A tensor that already has the target dtype is passed through
+  without a `convert` call, so a boundary between equal dtypes costs nothing and leaves no
+  cast in a trace or an export.
 * *Visible in traces and exports.* The tracing wrappers record `convert` like any other op,
   and the StableHLO converter lowers it to `stablehlo.convert` — a compiled or exported graph
   shows exactly where precision changes, and a later optimisation pass can fold adjacent
@@ -115,14 +116,55 @@ hiding the conversion inside the layer:
 The dtype is passed as a *value* (`dense(256, dtype = BF16)`), not as a type argument. The
 earlier API sketched `dense<BF16>(256)`, but an interface method's type parameter cannot be
 `reified`, so the implementation had no `KClass` to build the layer's tensors with — those
-overloads could never be implemented and are now deprecated. Passing the `DType` object gives
+overloads could never be implemented and have been removed. Passing the `DType` object gives
 the implementation both the instance (for `convert`) and `dtype::class` (for tensor creation).
+
+== What an export looks like
+
+Tracing a network and exporting it to StableHLO gives one `stablehlo.convert` pair per
+boundary, with everything between them typed in the narrow format. For the network above
+without its `relu`, so that the BF16 layer is directly followed by the FP16 stage, the
+module has this shape (abridged: constants, transposes and bias adds are left out):
+
+[source,mlir]
+----
+%v6  = stablehlo.convert %arg0 : (tensor<1x784xf32>) -> tensor<1x784xbf16>   // into the BF16 dense
+%v10 = stablehlo.dot_general %v6, %v7, ... -> tensor<1x256xbf16>
+%v13 = stablehlo.convert %v12 : (tensor<1x256xbf16>) -> tensor<1x256xf32>    // and back out
+%v14 = stablehlo.convert %v13 : (tensor<1x256xf32>) -> tensor<1x256xf16>     // into the FP16 stage
+%v15 = stablehlo.dot_general %v14, %v8, ... -> tensor<1x64xf16>
+%v18 = stablehlo.dot_general %v17, %v9, ... -> tensor<1x10xf16>
+%v21 = stablehlo.convert %v20 : (tensor<1x10xf16>) -> tensor<1x10xf32>       // and back out
+----
+
+The `bf16 -> f32` cast followed directly by `f32 -> f16` is the price of two adjacent
+boundaries with different inner dtypes: the network's own dtype is always restored in
+between. `MixedPrecisionExportTest` pins this output.
+
+== Training through a boundary
+
+`convert` is differentiable between floating-point dtypes, so a mixed-precision layer or
+stage trains like any other. Its backward rule treats the cast as the identity and casts the
+gradient back to the source dtype:
+
+* where the gradient *leaves* a narrow region (the cast back out, seen from the loss side
+  first) it is rounded to the narrow format, exactly as the forward values were on the way in;
+* where it *enters* the outer network again it is widened, which is exact.
+
+The weights behind a boundary are stored in the narrow dtype, their gradients have that dtype
+too, and the optimizer updates them in place. That is a faithful simulation of training in the
+narrow format, with its limits: an update smaller than half a unit in the last place of a
+weight is lost. Keeping FP32 master weights and scaling the loss to avoid that is automatic
+mixed precision, which is out of scope (see below). A cast from or to an integer dtype has no
+gradient.
+
+One thing to know when checking gradients by hand: `input(n)` clears `requiresGrad` on the
+tensor it receives unless asked not to (`input(n, requiresGrad = true)`). With the flag
+cleared, the first cast has nothing to propagate and the network *input* gets no gradient; the
+parameters are not affected.
 
 == What it does not do (yet)
 
-* *Training.* `convert` is not differentiable today, so gradients stop at a boundary: a
-  mixed-precision layer or stage is inference-only. SKEEP-008 phase A3 makes `convert` a
-  `@Diff` op, which lifts this.
 * *Automatic mixed precision.* There is no autocast policy, no FP32 master weights, no loss
   scaling. The dtype is always an explicit, local choice in the code.
 * *Integer layers.* A cast to Int8 truncates; it is not quantization. Integer inference goes

@@ -1,30 +1,15 @@
-package sk.ainet.lang.tensor.ops
+package sk.ainet.lang.types
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
-import sk.ainet.lang.types.*
 import kotlin.test.assertEquals
 
 /**
- * Unit tests for MixedPrecisionTensorOps conversion methods.
- *
- * This test suite covers Task 1.4.1 requirements for testing TensorOps conversion methods
- * and ensures that all conversion methods work correctly with different precision types.
- *
- * Note: This is a simplified test that validates the interface exists and compiles.
- * Full functional testing would require more complex tensor implementations.
+ * DType compatibility, promotion and precision-validation rules: which dtypes mix, what
+ * they promote to, and what the validation helpers report.
  */
-class MixedPrecisionTensorOpsTest {
-
-    @Test
-    fun testMixedPrecisionTensorOpsInterfaceExists() {
-        // Test that the MixedPrecisionTensorOps interface exists
-        // This is a compile-time validation - if this compiles, the interface exists
-        val interfaceName = MixedPrecisionTensorOps::class.simpleName
-        assertNotNull(interfaceName, "MixedPrecisionTensorOps interface should exist")
-        assertEquals(interfaceName, "MixedPrecisionTensorOps", "Interface should have correct name")
-    }
+class DTypeCompatibilityTest {
 
     @Test
     fun testDTypeCompatibilityMethods() {
