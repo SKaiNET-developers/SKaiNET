@@ -931,6 +931,39 @@ internal class DefaultCpuOpsJvm(
         return reshape(result2d, Shape(leading + outputDim))
     }
 
+    /**
+     * SPIKE (#1507): `[batch, in] × feed-order packed weight` through [sk.ainet.backend.api.kernel.KernelDispatch].
+     *
+     * No downcast: the operands describe themselves as views. The weight reaches `matmul` as
+     * `[in, out]` data whose bytes are already input-block-major but whose `blockOrder` still says
+     * row-major, so the view is re-described here as what the bytes are: `[out, in]`,
+     * `INPUT_BLOCK_MAJOR`. The kernel is then found by `(FP32 contiguous) × (FP32/Q4_K blocked
+     * input-major)`, whatever class holds the bytes.
+     */
+    private fun <T : DType, V> q4kViaKernelKey(a: Tensor<T, V>, b: Tensor<T, V>, batchSize: Int, inputDim: Int, outputDim: Int): Tensor<T, V>? {
+        val aView = a.data.view ?: return null
+        val raw = b.data.view ?: return null
+        val decoder = raw.decoderOrNull() ?: return null
+        val wView = sk.ainet.lang.memory.TensorView.packed(
+            storage = raw.storage,
+            shape = Shape(outputDim, inputDim),
+            encoding = raw.format.encoding,
+            decoder = decoder,
+            blockOrder = sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR,
+        )
+        sk.ainet.backend.api.kernel.KernelDispatch.ensureInstalled()
+        val kernel = sk.ainet.backend.api.kernel.KernelDispatch.find(
+            sk.ainet.backend.api.kernel.KernelKey.matmul(aView, wView),
+        ) ?: return null
+        val out = FloatArray(batchSize * outputDim)
+        val outView = sk.ainet.lang.memory.TensorView.dense(
+            sk.ainet.lang.memory.Storage.Heap.wrap(out), Shape(batchSize, outputDim), FP32,
+        )
+        kernel.run(listOf(aView, wView), outView)
+        Q4KKeyDispatchSpike.lastKernel = kernel.name
+        return floatResult(Shape(batchSize, outputDim), a.dtype, out)
+    }
+
     private fun <T : DType, V> chooseQuantizedMatmul2D(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         val bData = b.data
         val bShape = b.shape
@@ -960,6 +993,12 @@ internal class DefaultCpuOpsJvm(
             // A packed/encoded *activation* (encoding != null) still bails: this chooser's
             // kernels want dense FP32 input.
             else -> if (aData.encoding == null) aData.copyToFloatArray() else return null
+        }
+
+        // SPIKE (#1507, SKEEP-003 G4): Q4_K chosen by the weight's Format through a KernelKey
+        // lookup instead of the `is Q4_KTensorData` arm below. Off by default.
+        if (Q4KKeyDispatchSpike.enabled && bData.encoding == sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K) {
+            q4kViaKernelKey(a, b, batchSize, inputDim, outputDim)?.let { return it }
         }
 
         return when (bData) {
@@ -1493,3 +1532,13 @@ private val SEGMENT_PROBE_THREAD: Thread = Thread { }
  * keeps the per-call staging (an activation copy, an arena) a rounding error beside the dot products.
  */
 private const val WT_COLUMN_GRAIN: Int = 16
+
+/** SPIKE (#1507): switch for the Q4_K `KernelKey` dispatch path in [DefaultCpuOpsJvm]. Not for release. */
+public object Q4KKeyDispatchSpike {
+    @kotlin.concurrent.Volatile
+    public var enabled: Boolean = java.lang.Boolean.getBoolean("skainet.spike.q4k.key")
+
+    /** Name of the kernel the key path ran last; `null` until it has run. */
+    @kotlin.concurrent.Volatile
+    public var lastKernel: String? = null
+}
