@@ -7817,7 +7817,6 @@ public final class sk/ainet/lang/tensor/storage/TensorStorage {
 
 public final class sk/ainet/lang/tensor/storage/TensorStorageFactory {
 	public static final field INSTANCE Lsk/ainet/lang/tensor/storage/TensorStorageFactory;
-	public final fun borrowFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fileBacked (Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/storage/TensorEncoding;Ljava/lang/String;JJ)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;[F)Lsk/ainet/lang/tensor/storage/TensorStorage;
 	public final fun fromIntArray (Lsk/ainet/lang/tensor/Shape;[I)Lsk/ainet/lang/tensor/storage/TensorStorage;
