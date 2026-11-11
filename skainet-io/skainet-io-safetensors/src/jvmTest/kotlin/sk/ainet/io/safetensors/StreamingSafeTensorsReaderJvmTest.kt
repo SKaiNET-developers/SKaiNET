@@ -2,6 +2,7 @@ package sk.ainet.io.safetensors
 
 import org.junit.Test
 import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.io.openRandomAccessSource
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -118,7 +119,7 @@ class StreamingSafeTensorsReaderJvmTest {
             mapOf("tensor" to TensorSpec("F32", listOf(2), 8))
         )
 
-        val source = createRandomAccessSource(file.absolutePath)
+        val source = openRandomAccessSource(file.absolutePath)
         assertNotNull(source, "Factory should return non-null on JVM")
 
         source.use {
@@ -128,7 +129,7 @@ class StreamingSafeTensorsReaderJvmTest {
 
     @Test
     fun factoryFunction_returnsNullForNonexistentFile() {
-        val source = createRandomAccessSource("/nonexistent/path/file.safetensors")
+        val source = openRandomAccessSource("/nonexistent/path/file.safetensors")
         assertEquals(null, source)
     }
 

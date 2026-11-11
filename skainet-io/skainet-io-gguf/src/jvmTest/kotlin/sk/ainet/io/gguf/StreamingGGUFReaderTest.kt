@@ -4,6 +4,7 @@ import kotlinx.io.asSource
 import kotlinx.io.buffered
 import org.junit.Test
 import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.io.openRandomAccessSource
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.assertEquals
@@ -190,9 +191,9 @@ class StreamingGGUFReaderTest {
     @Test
     fun factory_function_returns_random_access_source_on_jvm() {
         val testFile = getTestResourceAsFile()
-        val source = createRandomAccessSource(testFile.absolutePath)
+        val source = openRandomAccessSource(testFile.absolutePath)
 
-        assertNotNull(source, "createRandomAccessSource should return non-null on JVM")
+        assertNotNull(source, "openRandomAccessSource should return non-null on JVM")
 
         source.use {
             assertTrue(it.size > 0, "File size should be positive")

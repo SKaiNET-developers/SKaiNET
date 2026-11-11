@@ -6,6 +6,7 @@ import onnx.ModelProto
 import onnx.TensorProto
 import pbandk.decodeFromByteArray
 import sk.ainet.io.model.*
+import sk.ainet.io.openRandomAccessSource
 import sk.ainet.model.ModelFormat
 
 /**
@@ -59,7 +60,7 @@ public class OnnxModelParser : BaseModelParser(), AutoCloseable {
             _filePath = filePath
 
             // Try streaming mode first (JVM only)
-            val streamingSource = createOnnxRandomAccessSource(filePath)
+            val streamingSource = openRandomAccessSource(filePath)
 
             if (streamingSource != null) {
                 // Streaming mode: parse metadata only (~1-10 MB memory)

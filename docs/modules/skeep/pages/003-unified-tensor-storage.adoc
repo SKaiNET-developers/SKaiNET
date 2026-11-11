@@ -25,7 +25,7 @@ https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
 
 | One view mechanism
 | Partly
-| `OneViewMechanismTest` covers slice, transpose and unsqueeze on the new view. The public `slice()` family still returns the deprecated `SlicedTensorView` (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]).
+| `OneViewMechanismTest` covers slice, transpose and unsqueeze on the new view. The public `slice()` family returns a tensor whose `data.view` is that view; `SlicedTensorView` and the old `TensorView` marker are removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). Other derived data, such as `UnsqueezedTensorData`, still has no view (https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
 
 | A packed tensor reports FP32 and its encoding; no dispatch site downcasts to a concrete `TensorData` class outside the data package
 | Not met
@@ -41,7 +41,7 @@ https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
 |===
 
 Decisions 1, 2 (naming and package), 6, 9, 11, 12 and 13 are delivered; `LogicalDType` is
-deprecated and its removal is https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]. The rest:
+removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). The rest:
 
 [cols="1,4,3",options="header"]
 |===

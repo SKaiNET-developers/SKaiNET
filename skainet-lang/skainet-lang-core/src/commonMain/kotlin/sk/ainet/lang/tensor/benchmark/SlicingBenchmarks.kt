@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // the pre-#1034 view mechanism: kept working until the next major
-
 package sk.ainet.lang.tensor.benchmark
 
 import sk.ainet.benchmark.BenchmarkCaseBuilder
@@ -10,7 +8,7 @@ import sk.ainet.benchmark.BenchmarkExecutionScope
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.sliceView
-import sk.ainet.lang.tensor.materialize
+import sk.ainet.lang.tensor.copyElements
 import sk.ainet.lang.types.DType
 import kotlin.random.Random
 
@@ -87,7 +85,7 @@ private fun <T : DType, V> BenchmarkExecutionScope.tensor(): Tensor<T, V> =
 private fun <T : DType, V> BenchmarkCaseBuilder.runViewVsCopy() {
     run {
         val tensor = tensor<T, V>()
-        val slicePatterns = listOf<(Tensor<T, V>) -> sk.ainet.lang.tensor.TensorView<T, V>>(
+        val slicePatterns = listOf<(Tensor<T, V>) -> Tensor<T, V>>(
             { t ->
                 t.sliceView {
                     segment { range(0, minOf(8, t.shape[0])) }
@@ -121,7 +119,7 @@ private fun <T : DType, V> BenchmarkCaseBuilder.runViewVsCopy() {
 
         slicePatterns.forEach { pattern ->
             val view = pattern(tensor)
-            view.materialize()
+            view.copyElements()
         }
     }
 }

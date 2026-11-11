@@ -184,8 +184,19 @@ public class TensorView(
 
     // ---- element access (rule 4: decode, never a raw byte) ----
 
-    /** The decoded logical value at [indices]; `Float` for every float dtype and every packed encoding. */
+    /**
+     * The decoded logical value at [indices]; `Float` for every float dtype and every packed encoding.
+     *
+     * On a packed view one call decodes a whole block. Memory debug mode counts these calls per
+     * storage and warns when they become a pattern ([MemoryDebug.onPackedElementReads]).
+     */
     public fun get(vararg indices: Int): Float {
+        if (decoder != null && !format.isDense) MemoryDebug.recordPackedElementRead(storage.id, format.encoding.name, id)
+        return read(indices)
+    }
+
+    /** [get] without the debug-mode read count: for whole-view decodes, which are not a caller's loop. */
+    private fun read(indices: IntArray): Float {
         storage.checkAlive()
         require(indices.size == shape.rank) { "expected ${shape.rank} indices, got ${indices.size}" }
         // A decoder wins over the plain path: narrow floats are Dense(2) yet still need decoding.
@@ -293,7 +304,7 @@ public class TensorView(
         for (flat in out.indices) {
             var rem = flat
             for (d in shape.rank - 1 downTo 0) { idx[d] = rem % shape[d]; rem /= shape[d] }
-            out[flat] = get(*idx)
+            out[flat] = read(idx)
         }
         return out
     }
