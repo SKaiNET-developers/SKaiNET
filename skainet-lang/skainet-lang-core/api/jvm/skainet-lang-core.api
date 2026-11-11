@@ -4243,49 +4243,10 @@ public class sk/ainet/lang/tensor/BufferAccessorBenchmark {
 	public final fun setup ()V
 }
 
-public final class sk/ainet/lang/tensor/ContiguityAnalysis {
-	public fun <init> (ZIIDLjava/util/List;Ljava/lang/String;)V
-	public final fun component1 ()Z
-	public final fun component2 ()I
-	public final fun component3 ()I
-	public final fun component4 ()D
-	public final fun component5 ()Ljava/util/List;
-	public final fun component6 ()Ljava/lang/String;
-	public final fun copy (ZIIDLjava/util/List;Ljava/lang/String;)Lsk/ainet/lang/tensor/ContiguityAnalysis;
-	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/ContiguityAnalysis;ZIIDLjava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/tensor/ContiguityAnalysis;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getDimensionMatches ()Ljava/util/List;
-	public final fun getParentVolume ()I
-	public final fun getReason ()Ljava/lang/String;
-	public final fun getViewVolume ()I
-	public final fun getVolumeRatio ()D
-	public fun hashCode ()I
-	public final fun isContiguous ()Z
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/tensor/CopyMaterializationStrategy : sk/ainet/lang/tensor/MaterializationStrategy {
-	public fun <init> ()V
-	public fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;)Z
-	public fun estimateMemoryOverhead (Lsk/ainet/lang/tensor/TensorView;)J
-	public fun getName ()Ljava/lang/String;
-	public fun materialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-}
-
 public class sk/ainet/lang/tensor/CosineDistanceBenchmark {
 	public fun <init> ()V
 	public final fun cosineDistance ()Lsk/ainet/lang/tensor/Tensor;
 	public final fun setup ()V
-}
-
-public class sk/ainet/lang/tensor/DefaultTensorViewStrategy : sk/ainet/lang/tensor/TensorViewStrategy {
-	public fun <init> ()V
-	public fun getDecisionReason (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Ljava/lang/String;
-	public final fun getMaxStrideThreshold ()I
-	public final fun getViewSizeThreshold ()D
-	public final fun setMaxStrideThreshold (I)V
-	public final fun setViewSizeThreshold (D)V
-	public fun shouldCreateView (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Z
 }
 
 public class sk/ainet/lang/tensor/DequantizationBenchmark {
@@ -4328,12 +4289,6 @@ public final class sk/ainet/lang/tensor/GradStateKt {
 	public static final fun zero (Lsk/ainet/lang/tensor/GradState;)V
 }
 
-public abstract interface class sk/ainet/lang/tensor/IndexMapper {
-	public abstract fun getStride ()[I
-	public abstract fun isContiguous ()Z
-	public abstract fun mapToParent ([I)[I
-}
-
 public final class sk/ainet/lang/tensor/IndexOutOfRangeException : java/lang/IllegalArgumentException {
 	public fun <init> (Ljava/lang/String;)V
 }
@@ -4355,61 +4310,6 @@ public final class sk/ainet/lang/tensor/IndexTensor {
 public final class sk/ainet/lang/tensor/IndexTensorKt {
 	public static final fun asIndices (Lsk/ainet/lang/tensor/Tensor;Z)Lsk/ainet/lang/tensor/Tensor;
 	public static synthetic fun asIndices$default (Lsk/ainet/lang/tensor/Tensor;ZILjava/lang/Object;)Lsk/ainet/lang/tensor/Tensor;
-}
-
-public final class sk/ainet/lang/tensor/LazyMaterializationStrategy : sk/ainet/lang/tensor/MaterializationStrategy {
-	public fun <init> ()V
-	public fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;)Z
-	public fun estimateMemoryOverhead (Lsk/ainet/lang/tensor/TensorView;)J
-	public final fun forceMaterialize (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
-	public fun getName ()Ljava/lang/String;
-	public fun materialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-}
-
-public final class sk/ainet/lang/tensor/MaterializationExtensionsKt {
-	public static final fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;)Z
-	public static final fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/MaterializationStrategy;)Z
-	public static final fun copyMaterialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-	public static final fun estimateMaterializationCost (Lsk/ainet/lang/tensor/TensorView;)J
-	public static final fun estimateMaterializationCost (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/MaterializationStrategy;)J
-	public static final fun materialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-	public static final fun materialize (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/MaterializationStrategy;)Lsk/ainet/lang/tensor/Tensor;
-	public static final fun realizeAlias (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-}
-
-public abstract interface class sk/ainet/lang/tensor/MaterializationStrategy {
-	public abstract fun canMaterialize (Lsk/ainet/lang/tensor/TensorView;)Z
-	public abstract fun estimateMemoryOverhead (Lsk/ainet/lang/tensor/TensorView;)J
-	public abstract fun getName ()Ljava/lang/String;
-	public abstract fun materialize (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-}
-
-public final class sk/ainet/lang/tensor/MemoryAwareTensorViewStrategy : sk/ainet/lang/tensor/DefaultTensorViewStrategy {
-	public fun <init> ()V
-	public fun getDecisionReason (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Ljava/lang/String;
-	public final fun getMemoryPressureThreshold ()D
-	public final fun getPressureViewSizeThreshold ()D
-	public final fun setMemoryPressureThreshold (D)V
-	public final fun setPressureViewSizeThreshold (D)V
-	public fun shouldCreateView (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Z
-}
-
-public final class sk/ainet/lang/tensor/NCHWIndexMapper : sk/ainet/lang/tensor/IndexMapper {
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;Ljava/util/List;Lsk/ainet/lang/tensor/Shape;)V
-	public fun getStride ()[I
-	public fun isContiguous ()Z
-	public fun mapToParent ([I)[I
-}
-
-public final class sk/ainet/lang/tensor/NCHWSlicePattern : java/lang/Enum {
-	public static final field BATCH_SLICE Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static final field CHANNEL_SLICE Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static final field OTHER Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static final field SPATIAL_REGION Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static final field WIDTH_SLICE Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static fun values ()[Lsk/ainet/lang/tensor/NCHWSlicePattern;
 }
 
 public final class sk/ainet/lang/tensor/NonIntegralIndexException : java/lang/IllegalArgumentException {
@@ -4514,44 +4414,6 @@ public final class sk/ainet/lang/tensor/Slice$Step : sk/ainet/lang/tensor/Slice 
 	public final fun getStep ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
-}
-
-public final class sk/ainet/lang/tensor/SliceIndexMapper : sk/ainet/lang/tensor/IndexMapper {
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;Ljava/util/List;Lsk/ainet/lang/tensor/Shape;)V
-	public final fun canVectorize ()Z
-	public final fun getAccessPattern ()Lsk/ainet/lang/tensor/SliceIndexMapper$AccessPattern;
-	public fun getStride ()[I
-	public fun isContiguous ()Z
-	public fun mapToParent ([I)[I
-}
-
-public final class sk/ainet/lang/tensor/SliceIndexMapper$AccessPattern : java/lang/Enum {
-	public static final field CONTIGUOUS_COMPLEX Lsk/ainet/lang/tensor/SliceIndexMapper$AccessPattern;
-	public static final field CONTIGUOUS_SIMPLE Lsk/ainet/lang/tensor/SliceIndexMapper$AccessPattern;
-	public static final field NON_CONTIGUOUS Lsk/ainet/lang/tensor/SliceIndexMapper$AccessPattern;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/tensor/SliceIndexMapper$AccessPattern;
-	public static fun values ()[Lsk/ainet/lang/tensor/SliceIndexMapper$AccessPattern;
-}
-
-public final class sk/ainet/lang/tensor/SlicedTensorView : sk/ainet/lang/tensor/TensorView {
-	public fun <init> (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)V
-	public fun accumulateGrad (Lsk/ainet/lang/tensor/Tensor;)V
-	public fun getData ()Lsk/ainet/lang/tensor/data/TensorData;
-	public fun getDtype ()Lkotlin/reflect/KClass;
-	public fun getGrad ()Lsk/ainet/lang/tensor/Tensor;
-	public fun getGradState ()Lsk/ainet/lang/tensor/GradState;
-	public fun getId ()Lsk/ainet/lang/tensor/TensorId;
-	public fun getIndexMapping ()Lsk/ainet/lang/tensor/IndexMapper;
-	public fun getOps ()Lsk/ainet/lang/tensor/ops/TensorOps;
-	public fun getParentTensor ()Lsk/ainet/lang/tensor/Tensor;
-	public fun getRank ()I
-	public fun getRequiresGrad ()Z
-	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
-	public final fun getSliceOperations ()Ljava/util/List;
-	public fun getViewShape ()Lsk/ainet/lang/tensor/Shape;
-	public fun getVolume ()I
-	public fun zeroGrad ()V
 }
 
 public class sk/ainet/lang/tensor/StorageBridgeBenchmark {
@@ -4709,37 +4571,11 @@ public final class sk/ainet/lang/tensor/TensorSliceBuilder {
 }
 
 public final class sk/ainet/lang/tensor/TensorSlicingExtensionsKt {
-	public static final fun detectNCHWSlicePattern (Ljava/util/List;)Lsk/ainet/lang/tensor/NCHWSlicePattern;
-	public static final fun isContiguousSlice (Ljava/util/List;)Z
-	public static final fun slice (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Lsk/ainet/lang/tensor/TensorView;
-	public static final fun sliceAt (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/TensorView;
+	public static final fun slice (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun sliceAt (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/Tensor;
 	public static final fun sliceCopy (Lsk/ainet/lang/tensor/Tensor;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
-	public static final fun sliceRanges (Lsk/ainet/lang/tensor/Tensor;[Lkotlin/Pair;)Lsk/ainet/lang/tensor/TensorView;
-	public static final fun sliceView (Lsk/ainet/lang/tensor/Tensor;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/TensorView;
-	public static final fun sliceView (Lsk/ainet/lang/tensor/TensorView;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/TensorView;
-}
-
-public abstract interface class sk/ainet/lang/tensor/TensorView : sk/ainet/lang/tensor/Tensor {
-	public abstract fun getIndexMapping ()Lsk/ainet/lang/tensor/IndexMapper;
-	public abstract fun getParentTensor ()Lsk/ainet/lang/tensor/Tensor;
-	public fun getShape ()Lsk/ainet/lang/tensor/Shape;
-	public abstract fun getViewShape ()Lsk/ainet/lang/tensor/Shape;
-}
-
-public final class sk/ainet/lang/tensor/TensorView$DefaultImpls {
-	public static fun accumulateGrad (Lsk/ainet/lang/tensor/TensorView;Lsk/ainet/lang/tensor/Tensor;)V
-	public static fun getGrad (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Tensor;
-	public static fun getId (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/TensorId;
-	public static fun getRank (Lsk/ainet/lang/tensor/TensorView;)I
-	public static fun getRequiresGrad (Lsk/ainet/lang/tensor/TensorView;)Z
-	public static fun getShape (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/Shape;
-	public static fun getVolume (Lsk/ainet/lang/tensor/TensorView;)I
-	public static fun zeroGrad (Lsk/ainet/lang/tensor/TensorView;)V
-}
-
-public abstract interface class sk/ainet/lang/tensor/TensorViewStrategy {
-	public abstract fun getDecisionReason (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Ljava/lang/String;
-	public abstract fun shouldCreateView (Lsk/ainet/lang/tensor/Tensor;Ljava/util/List;)Z
+	public static final fun sliceRanges (Lsk/ainet/lang/tensor/Tensor;[Lkotlin/Pair;)Lsk/ainet/lang/tensor/Tensor;
+	public static final fun sliceView (Lsk/ainet/lang/tensor/Tensor;Lkotlin/jvm/functions/Function1;)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/lang/tensor/TesnorExtKt {
@@ -4775,15 +4611,6 @@ public class sk/ainet/lang/tensor/TurboQuantKvCacheBenchmark {
 	public final fun readKeys_dense_16tokens ()V
 	public final fun readKeys_turbo4bit_16tokens ()V
 	public final fun setup ()V
-}
-
-public final class sk/ainet/lang/tensor/ViewManagementExtensionsKt {
-	public static final fun analyzeContiguity (Lsk/ainet/lang/tensor/TensorView;)Lsk/ainet/lang/tensor/ContiguityAnalysis;
-	public static final fun batchMaterialize (Ljava/util/List;)Ljava/util/List;
-	public static final fun batchMaterialize (Ljava/util/List;Lsk/ainet/lang/tensor/MaterializationStrategy;)Ljava/util/List;
-	public static final fun estimateBatchMaterializationCost (Ljava/util/List;)J
-	public static final fun estimateBatchMaterializationCost (Ljava/util/List;Lsk/ainet/lang/tensor/MaterializationStrategy;)J
-	public static final fun isContiguous (Lsk/ainet/lang/tensor/TensorView;)Z
 }
 
 public final class sk/ainet/lang/tensor/VoidOpsTensor : sk/ainet/lang/tensor/Tensor, sk/ainet/lang/tensor/TensorIdBearer {

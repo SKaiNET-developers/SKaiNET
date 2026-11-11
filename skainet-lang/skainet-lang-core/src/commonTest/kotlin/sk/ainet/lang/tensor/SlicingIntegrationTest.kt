@@ -57,9 +57,6 @@ class SlicingIntegrationTest {
                 assertNotNull(zerosView.data)
                 assertNotNull(onesView.data)
 
-                assertTrue(zerosView is TensorView<FP32, Float>)
-                assertTrue(onesView is TensorView<FP32, Float>)
-
                 println("[DEBUG_LOG] Compatibility with existing tensor operations verified")
                 onesView
             }
@@ -95,7 +92,6 @@ class SlicingIntegrationTest {
                 }
 
                 assertEquals(Shape(2, 3, 2), view.shape)
-                assertTrue(view is TensorView<FP32, Float>)
 
                 // Test sliceCopy - materializes the same slice into an independent tensor (#1415)
                 val copy = tensor.sliceCopy {
@@ -239,7 +235,7 @@ class SlicingIntegrationTest {
 
                 // Test mini-batch extraction
                 val batchSize = 8
-                val batches = mutableListOf<TensorView<FP32, Float>>()
+                val batches = mutableListOf<Tensor<FP32, Float>>()
 
                 for (i in 0 until 4) {
                     val startIdx = i * batchSize
@@ -347,7 +343,7 @@ class SlicingIntegrationTest {
             // Test sliding window extraction
             val windowSize = 16
             val stride = 4
-            val windows = mutableListOf<TensorView<FP32, Float>>()
+            val windows = mutableListOf<Tensor<FP32, Float>>()
 
             // Generate overlapping windows
             var startPos = 0

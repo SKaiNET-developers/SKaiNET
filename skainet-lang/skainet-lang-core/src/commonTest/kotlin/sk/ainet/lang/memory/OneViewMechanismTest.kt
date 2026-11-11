@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // half of this test's job is to compare against the deprecated mechanisms
-
 package sk.ainet.lang.memory
 
 import sk.ainet.context.data
@@ -8,7 +6,6 @@ import sk.ainet.lang.tensor.Slice
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.dsl.tensor
 import sk.ainet.lang.tensor.slice
-import sk.ainet.lang.tensor.storage.BufferHandle
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,11 +16,10 @@ import kotlin.test.assertTrue
 /**
  * #1034 (SKEEP-003 §4.6): **one** view mechanism.
  *
- * Slicing used to be an index remapper (`SlicedTensorView`), aliasing a byte range
- * (`BufferHandle.Aliased`) and a packed transpose a byte permutation — three unrelated ways of
- * looking at someone else's bytes. This asserts that `TensorView` + `Layout` produces the same
- * answers as each of them, over the same `Storage`, and that every view operation returns the same
- * type so they compose.
+ * Slicing, aliasing a byte range and a packed transpose were once three unrelated ways of looking
+ * at someone else's bytes. This asserts that `TensorView` + `Layout` gives the same elements as
+ * the tensor-level `slice`, over the same `Storage`, that a sliced tensor exposes that view as its
+ * `data.view`, and that every view operation returns the same type so they compose.
  */
 class OneViewMechanismTest {
 
@@ -85,10 +81,10 @@ class OneViewMechanismTest {
         assertTrue(byHand.toFloatArray().contentEquals(bySlice.toFloatArray()))
     }
 
-    // --- subsumes SlicedTensorView (index remap) ----------------------------------------------
+    // --- the tensor-level slice is this view ----------------------------------------------------
 
     @Test
-    fun theViewAgreesWithTheOldSlicedTensorViewOnEverySliceKind() {
+    fun theViewAgreesWithTheTensorSliceOnEverySliceKind() {
         val t = rampTensor(4, 3, 2)
         val cases: List<Pair<String, List<Slice<FP32, Float>>>> = listOf(
             "all" to listOf(Slice.All(), Slice.All(), Slice.All()),
@@ -101,13 +97,18 @@ class OneViewMechanismTest {
             "step and range" to listOf(Slice.Step(0, 4, 3), Slice.Range(1, 3), Slice.At(1)),
         )
         for ((name, slices) in cases) {
-            val old = t.slice(slices)
-            val new = t.view().slice(slices)
-            assertEquals(old.shape, new.shape, "$name: shape")
+            val sliced = t.slice(slices)
+            val view = t.view().slice(slices)
+            assertEquals(sliced.shape, view.shape, "$name: shape")
             assertTrue(
-                valuesOf(old).toFloatArray().contentEquals(new.toFloatArray()),
-                "$name: values — old ${valuesOf(old)} vs new ${new.toFloatArray().toList()}",
+                valuesOf(sliced).toFloatArray().contentEquals(view.toFloatArray()),
+                "$name: values — tensor ${valuesOf(sliced)} vs view ${view.toFloatArray().toList()}",
             )
+            val own = sliced.view()
+            assertEquals(view.shape, own.shape, "$name: shape of the sliced tensor's own view")
+            assertEquals(view.layout.strides.toList(), own.layout.strides.toList(), "$name: strides")
+            assertEquals(view.layout.offsetElements, own.layout.offsetElements, "$name: offset")
+            assertTrue(view.toFloatArray().contentEquals(own.toFloatArray()), "$name: the sliced tensor's own view")
         }
     }
 
@@ -119,12 +120,10 @@ class OneViewMechanismTest {
         val twice = once.narrow(1, 2, 4).step(0, 2)
         assertEquals(Shape(2, 4), twice.shape)
         assertEquals(root.storage.id, twice.storage.id, "composition never copies")
-        // the same elements the old mechanism would have reached
+        // the same elements the tensor-level slice reaches
         val expected = t.slice(listOf(Slice.Step<FP32, Float>(1, 5, 2), Slice.Range<FP32, Float>(2, 6)))
         assertTrue(valuesOf(expected).toFloatArray().contentEquals(twice.toFloatArray()))
     }
-
-    // --- subsumes BufferHandle.Aliased (byte range) -------------------------------------------
 
     // --- the layout is the mechanism ----------------------------------------------------------
 

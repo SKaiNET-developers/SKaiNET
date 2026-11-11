@@ -30,7 +30,7 @@ class SlicingStressTest {
             }
 
             // Create many views to test memory management
-            val views = mutableListOf<TensorView<FP32, Float>>()
+            val views = mutableListOf<Tensor<FP32, Float>>()
 
             repeat(100) { i ->
                 val view = largeTensor.sliceView {
@@ -123,7 +123,7 @@ class SlicingStressTest {
 
             // Test rapid creation and destruction of views
             repeat(10) { round ->
-                val temporaryViews = mutableListOf<TensorView<FP32, Float>>()
+                val temporaryViews = mutableListOf<Tensor<FP32, Float>>()
 
                 // Create many views
                 repeat(20) { i ->
