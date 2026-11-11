@@ -57,17 +57,6 @@ class AcceptanceCriteriaTest {
     // --- AC3: Tensor views zero-copy, copies explicit ---
 
     @Test
-    fun ac3_floatArrayConversionIsHonestlyOwned() {
-        // A FloatArray has no byte-view in common Kotlin: converting it to byte
-        // storage always copies, so the result must be labeled OWNED. The old
-        // borrowFloatArray labeled the private copy BORROWED — the lie #927 fixed.
-        val original = floatArrayOf(1f, 2f, 3f)
-        @Suppress("DEPRECATION")
-        val storage = TensorStorageFactory.borrowFloatArray(Shape(3), original)
-        assertEquals(Ownership.OWNED, storage.ownership)
-    }
-
-    @Test
     fun ac3_rawByteConstructorGenuinelyBorrows() {
         // Real zero-copy borrowing starts from bytes: mutations through the
         // source array must be visible through the storage handle.

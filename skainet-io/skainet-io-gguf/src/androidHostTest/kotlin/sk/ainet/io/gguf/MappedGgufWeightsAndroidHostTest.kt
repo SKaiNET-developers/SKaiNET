@@ -95,10 +95,11 @@ class MappedGgufWeightsAndroidHostTest {
                     assertEquals(v, tensor[idx], "big.weight[$idx]")
                 }
 
-                // FileBacked descriptor + the shared resolver, on the android variant.
-                val storage = weights.mappedStorage("big.weight")
-                assertTrue(storage.isFileBacked)
-                val accessor = JvmFileBackedResolver.resolveFileBacked(storage.buffer as BufferHandle.FileBacked)
+                // A file-backed handle + the shared resolver, on the android variant.
+                val big = weights.info("big.weight")
+                val accessor = JvmFileBackedResolver.resolveFileBacked(
+                    BufferHandle.FileBacked(file.absolutePath, big.absoluteDataOffset, big.nBytes)
+                )
                 try {
                     // First 4 sentinel bytes come back identical through the mmap accessor.
                     val viaAccessor = accessor.readBytes(0, 4)

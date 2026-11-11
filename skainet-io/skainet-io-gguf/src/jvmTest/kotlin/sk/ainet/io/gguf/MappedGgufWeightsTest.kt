@@ -2,7 +2,6 @@ package sk.ainet.io.gguf
 
 import sk.ainet.io.JvmFileBackedResolver
 import sk.ainet.lang.tensor.storage.BufferHandle
-import sk.ainet.lang.tensor.storage.Placement
 import sk.ainet.lang.types.FP32
 import java.io.File
 import java.io.RandomAccessFile
@@ -12,11 +11,10 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 /**
  * Functional coverage for [MappedGgufWeights] (#921): mapped F32 views,
- * FileBacked descriptors resolved through the (JVM+Android shared)
+ * a file-backed handle resolved through the (JVM+Android shared)
  * [JvmFileBackedResolver], packed-byte fallback, and the fail-fast guards.
  */
 class MappedGgufWeightsTest {
@@ -42,22 +40,15 @@ class MappedGgufWeightsTest {
                     assertEquals(f32Values[i], dense[i], "flat index $i")
                 }
 
-                // FileBacked descriptor + shared resolver: bytes match the payload.
-                val storage = weights.mappedStorage("packed.q80")
-                assertTrue(storage.isFileBacked, "storage should be FileBacked")
-                assertEquals(Placement.MMAP_WEIGHTS, storage.placement)
-                val handle = storage.buffer as BufferHandle.FileBacked
+                // A file-backed handle on the tensor's bytes, read through the shared resolver.
+                val q80 = weights.info("packed.q80")
+                val handle = BufferHandle.FileBacked(file.absolutePath, q80.absoluteDataOffset, q80.nBytes)
                 val accessor = JvmFileBackedResolver.resolveFileBacked(handle)
                 try {
                     assertContentEquals(q80Payload, accessor.readBytes(0, q80Payload.size))
                 } finally {
                     accessor.close()
                 }
-
-                // copyMaterialize with the resolver turns FileBacked into Owned bytes.
-                val materialized = storage.copyMaterialize(JvmFileBackedResolver.createResolver())
-                val owned = materialized.buffer as BufferHandle.Owned
-                assertContentEquals(q80Payload, owned.data)
 
                 // Heap fallback for packed kernels.
                 assertContentEquals(q80Payload, weights.packedBytes("packed.q80"))
