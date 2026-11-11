@@ -253,7 +253,7 @@ class SlicingTest {
             }
 
             // Create multiple views - should not increase memory significantly
-            val views = mutableListOf<TensorView<FP32, Float>>()
+            val views = mutableListOf<Tensor<FP32, Float>>()
 
             repeat(100) { i ->
                 val view = tensor.sliceView {
@@ -283,8 +283,8 @@ class SlicingTest {
 
 
         // Create views and let them go out of scope
-        fun createViews(): List<TensorView<FP32, Float>> {
-            var result: List<TensorView<FP32, Float>> = emptyList()
+        fun createViews(): List<Tensor<FP32, Float>> {
+            var result: List<Tensor<FP32, Float>> = emptyList()
             data {
                 val tensor = tensor<FP32, Float> {
                     shape(100, 100) { shape ->

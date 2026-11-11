@@ -3,6 +3,7 @@ package sk.ainet.io.safetensors
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.io.openRandomAccessSource
 import sk.ainet.io.model.LoadingProgress
 import sk.ainet.io.model.LoadingStage
 import sk.ainet.io.model.ProgressReportingLoader
@@ -317,7 +318,7 @@ public class StreamingShardedSafeTensorsReader private constructor(
             val basePath = indexPath.substringBeforeLast("/")
             val resolve = { shardFilename: String -> resolveShardPath(basePath, shardFilename) }
 
-            return open(index, indexPath, allowPartial, openShard = { createRandomAccessSource(resolve(it)) }, pathOf = resolve)
+            return open(index, indexPath, allowPartial, openShard = { openRandomAccessSource(resolve(it)) }, pathOf = resolve)
         }
 
         /**
