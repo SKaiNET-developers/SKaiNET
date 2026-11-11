@@ -15,9 +15,9 @@ Origin: the stub inventory behind the operator coverage matrix (https://github.c
 
 | B1 | Lossless `repackTo`, lossy `requantizeTo` | https://github.com/SKaiNET-developers/SKaiNET/pull/1470[#1470], 0.63.0
 | A1 | `PrecisionBoundary`, `dense(dtype = …)`, `stage(id, dtype = …)`, deprecations | https://github.com/SKaiNET-developers/SKaiNET/pull/1469[#1469], 0.63.0
-| A2 | Trace and StableHLO export pinned by `MixedPrecisionExportTest`; a same-dtype boundary no longer records a cast | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492]
-| A3 | `convert` is `@Diff`; gradient check and training through a boundary in `MixedPrecisionBackwardTest` | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492]
-| A4 | Generic `dense<T>()` / `stage<T>()` overloads and the `MixedPrecision*` scaffold removed | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492]
+| A2 | Trace and StableHLO export pinned by `MixedPrecisionExportTest`; a same-dtype boundary no longer records a cast | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492], 0.64.0
+| A3 | `convert` is `@Diff`; gradient check and training through a boundary in `MixedPrecisionBackwardTest` | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492], 0.64.0
+| A4 | Generic `dense<T>()` / `stage<T>()` overloads and the `MixedPrecision*` scaffold removed | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492], 0.64.0
 |===
 
 The sections below are the proposal as accepted. Where the implementation differs, the text
