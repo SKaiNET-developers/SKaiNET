@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -13,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import sk.ainet.lang.types.FP16
 
 class BufferHandleFactoryTest {
 
@@ -101,7 +100,7 @@ class TensorStorageFactoryTest {
         val storage = TensorStorageFactory.fromFloatArray(shape, data)
 
         assertEquals(shape, storage.shape)
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(TensorEncoding.Dense(4), storage.encoding)
         assertEquals(Ownership.OWNED, storage.ownership)
         assertEquals(24L, storage.logicalBytes)
@@ -115,7 +114,7 @@ class TensorStorageFactoryTest {
         val data = intArrayOf(1, 2, 3, 4)
         val storage = TensorStorageFactory.fromIntArray(shape, data)
 
-        assertEquals(LogicalDType.INT32, storage.logicalType)
+        assertEquals(Int32, storage.dtype)
         assertEquals(Ownership.OWNED, storage.ownership)
         assertEquals(16L, storage.physicalBytes) // 4 * 4
     }
@@ -125,7 +124,7 @@ class TensorStorageFactoryTest {
         val data = ByteArray(144)
         val storage = TensorStorageFactory.fromRawBytes(
             shape = Shape(256),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             data = data
         )
@@ -141,7 +140,7 @@ class TensorStorageFactoryTest {
     fun fileBackedCreatesImmutableStorage() {
         val storage = TensorStorageFactory.fileBacked(
             shape = Shape(512, 512),
-            logicalType = LogicalDType.FLOAT16,
+            dtype = FP16,
             encoding = TensorEncoding.Dense(2),
             path = "/model.bin",
             fileOffset = 0,
@@ -159,7 +158,7 @@ class TensorStorageFactoryTest {
         val tensorData = DenseFloatArrayTensorData<FP32>(Shape(3), floatArrayOf(1f, 2f, 3f))
         val storage = TensorStorageFactory.fromTensorData(tensorData)
 
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(TensorEncoding.Dense(4), storage.encoding)
         assertEquals(3L, storage.elementCount)
         assertEquals(12L, storage.physicalBytes)
@@ -173,7 +172,7 @@ class TensorStorageFactoryTest {
         val tensorData = DenseIntArrayTensorData<Int32>(Shape(2), intArrayOf(10, 20))
         val storage = TensorStorageFactory.fromTensorData(tensorData)
 
-        assertEquals(LogicalDType.INT32, storage.logicalType)
+        assertEquals(Int32, storage.dtype)
         assertEquals(TensorEncoding.Dense(4), storage.encoding)
         assertEquals(Ownership.OWNED, storage.ownership)
     }
@@ -184,7 +183,7 @@ class TensorStorageFactoryTest {
         val tensorData = Q4_KBlockTensorData.fromRawBytes(Shape(256), packedData)
         val storage = TensorStorageFactory.fromTensorData(tensorData)
 
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(TensorEncoding.Q4_K, storage.encoding)
         assertEquals(Ownership.BORROWED, storage.ownership)
         assertEquals(144L, storage.physicalBytes)
@@ -209,7 +208,7 @@ class TensorStorageFactoryTest {
         val tensorData = Q8_0BlockTensorData.fromRawBytes(Shape(32), packedData)
         val storage = TensorStorageFactory.fromTensorData(tensorData)
 
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(TensorEncoding.Q8_0, storage.encoding)
         assertEquals(Ownership.BORROWED, storage.ownership)
         assertEquals(34L, storage.physicalBytes)
@@ -219,7 +218,7 @@ class TensorStorageFactoryTest {
     fun memoryReportFromFactory() {
         val storage = TensorStorageFactory.fromRawBytes(
             shape = Shape(256),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             data = ByteArray(144)
         )

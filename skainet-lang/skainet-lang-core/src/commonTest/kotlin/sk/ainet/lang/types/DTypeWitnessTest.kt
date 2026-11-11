@@ -1,9 +1,5 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.types
 
-import sk.ainet.lang.tensor.storage.LogicalDType
-import sk.ainet.lang.tensor.storage.toLogicalDType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -26,10 +22,6 @@ class DTypeWitnessTest {
             listOf(Ternary, Int4, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, FP16, BF16, FP32, FP64),
             DType.entries,
         )
-        // same order as LogicalDType, so the two enumerations line up index by index
-        for ((i, logical) in LogicalDType.entries.withIndex()) {
-            assertSame(DType.entries[i], logical.toDType(), "entries[$i] vs $logical")
-        }
     }
 
     @Test
@@ -69,11 +61,9 @@ class DTypeWitnessTest {
     }
 
     @Test
-    fun signednessAndByteWidthMatchTheStorageEnum() {
+    fun signednessAndByteWidth() {
         for (d in DType.entries) {
-            val logical = d.toLogicalDType()
-            assertEquals(logical.isSigned, d.isSigned, "isSigned of ${d.name}")
-            assertEquals(logical.sizeInBytes, d.sizeInBytes, "sizeInBytes of ${d.name}")
+            assertEquals((d.sizeInBits + 7) / 8, d.sizeInBytes, "sizeInBytes of ${d.name}")
         }
         assertFalse(UInt8.isSigned); assertFalse(UInt16.isSigned); assertFalse(UInt32.isSigned); assertFalse(UInt64.isSigned)
         assertTrue(Int8.isSigned); assertTrue(FP32.isSigned); assertTrue(Ternary.isSigned)

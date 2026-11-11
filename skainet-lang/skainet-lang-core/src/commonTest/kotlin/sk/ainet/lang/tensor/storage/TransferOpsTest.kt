@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -8,12 +6,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
+import sk.ainet.lang.types.FP32
 
 class TransferOpsTest {
 
     private fun ownedStorage(bytes: ByteArray = ByteArray(16) { it.toByte() }) = TensorStorage(
         shape = Shape(4),
-        logicalType = LogicalDType.FLOAT32,
+        dtype = FP32,
         encoding = TensorEncoding.Dense(4),
         buffer = BufferHandle.Owned(bytes),
         placement = Placement.CPU_HEAP
@@ -21,7 +20,7 @@ class TransferOpsTest {
 
     private fun borrowedStorage() = TensorStorage(
         shape = Shape(4),
-        logicalType = LogicalDType.FLOAT32,
+        dtype = FP32,
         encoding = TensorEncoding.Dense(4),
         buffer = BufferHandle.Borrowed(ByteArray(16) { it.toByte() }),
         placement = Placement(device = DeviceKind.CPU, domain = MemoryDomain.MMAP_FILE)
@@ -37,7 +36,7 @@ class TransferOpsTest {
 
         assertEquals(Ownership.OWNED, copy.ownership)
         assertEquals(storage.shape, copy.shape)
-        assertEquals(storage.logicalType, copy.logicalType)
+        assertEquals(storage.dtype, copy.dtype)
         assertEquals(storage.encoding, copy.encoding)
         assertEquals(MemoryDomain.HOST_HEAP, copy.placement.domain)
 
@@ -64,7 +63,7 @@ class TransferOpsTest {
         val parent = BufferHandle.Owned(parentBytes)
         val storage = TensorStorage(
             shape = Shape(4),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Aliased(parent, byteOffset = 8, sizeInBytes = 16),
             placement = Placement.CPU_HEAP
@@ -90,7 +89,7 @@ class TransferOpsTest {
         })
         val storage = TensorStorage(
             shape = Shape(4),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.FileBacked("/model.bin", 0, 16),
             placement = Placement.MMAP_WEIGHTS
@@ -106,7 +105,7 @@ class TransferOpsTest {
     fun copyMaterialize_fileBackedBuffer_withoutResolver_throwsHelpfully() {
         val storage = TensorStorage(
             shape = Shape(4),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.FileBacked("/model.bin", 0, 16),
             placement = Placement.MMAP_WEIGHTS
@@ -120,7 +119,7 @@ class TransferOpsTest {
     fun copyMaterialize_deviceResidentBuffer_throwsUnsupported() {
         val storage = TensorStorage(
             shape = Shape(4),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.DeviceResident("gpu:0", "opaque", 16, true)
         )
@@ -139,7 +138,7 @@ class TransferOpsTest {
         })
         val storage = TensorStorage(
             shape = Shape(4),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.FileBacked("/model.bin", 0, 16),
             placement = Placement.MMAP_WEIGHTS

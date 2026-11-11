@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -11,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import sk.ainet.lang.types.FP16
 
 /**
  * End-to-end acceptance criteria tests for the Memory Architecture PRD.
@@ -43,7 +42,7 @@ class AcceptanceCriteriaTest {
     fun ac2_fileBackedStoragePreservesPlacement() {
         val storage = TensorStorageFactory.fileBacked(
             shape = Shape(1024, 768),
-            logicalType = LogicalDType.FLOAT16,
+            dtype = FP16,
             encoding = TensorEncoding.Dense(2),
             path = "/model/weights.bin",
             fileOffset = 0,
@@ -74,7 +73,7 @@ class AcceptanceCriteriaTest {
         // source array must be visible through the storage handle.
         val bytes = ByteArray(12)
         val storage = TensorStorageFactory.fromRawBytes(
-            Shape(3), LogicalDType.FLOAT32, TensorEncoding.Dense(4), bytes
+            Shape(3), FP32, TensorEncoding.Dense(4), bytes
         )
         assertEquals(Ownership.BORROWED, storage.ownership)
         bytes[0] = 42
@@ -141,7 +140,7 @@ class AcceptanceCriteriaTest {
         val storage = TensorStorageFactory.fromTensorData(td)
         val report = storage.memoryReport()
 
-        assertEquals(LogicalDType.FLOAT32, report.logicalType)
+        assertEquals(FP32, report.dtype)
         assertEquals("Dense(4B)", report.encoding.name)
         assertEquals(Ownership.OWNED, report.ownership)
         assertEquals(24L, report.logicalBytes)
@@ -155,14 +154,14 @@ class AcceptanceCriteriaTest {
     fun ac5_packedQ4KReportsAllFields() {
         val storage = TensorStorage(
             shape = Shape(512),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             buffer = BufferHandle.Borrowed(ByteArray(288)), // 2 blocks
             placement = Placement.CPU_HEAP
         )
         val report = storage.memoryReport()
 
-        assertEquals(LogicalDType.FLOAT32, report.logicalType)
+        assertEquals(FP32, report.dtype)
         assertEquals("Q4_K", report.encoding.name)
         assertEquals(Ownership.BORROWED, report.ownership)
         assertEquals(DeviceKind.CPU, report.placement.device)
@@ -176,7 +175,7 @@ class AcceptanceCriteriaTest {
     fun ac5_fileBackedReportsAllFields() {
         val storage = TensorStorage(
             shape = Shape(1000),
-            logicalType = LogicalDType.FLOAT16,
+            dtype = FP16,
             encoding = TensorEncoding.Dense(2),
             buffer = BufferHandle.FileBacked("/model.bin", 4096, 2000),
             placement = Placement.MMAP_WEIGHTS
@@ -195,7 +194,7 @@ class AcceptanceCriteriaTest {
     fun ac6_weightsAreImmutableAndPersistent() {
         val weights = TensorStorage(
             shape = Shape(768, 768),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.FileBacked("/model.bin", 0, 768L * 768 * 4),
             placement = Placement.MMAP_WEIGHTS
@@ -209,7 +208,7 @@ class AcceptanceCriteriaTest {
     fun ac6_activationsAreMutableAndTransient() {
         val activations = TensorStorage(
             shape = Shape(32, 768),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Owned(ByteArray(32 * 768 * 4)),
             placement = Placement.CPU_HEAP
@@ -228,13 +227,13 @@ class AcceptanceCriteriaTest {
         // Load two tensors — one borrowed, one owned (copy)
         tracker.record("borrowed_weight", TensorStorage(
             shape = Shape(100),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Borrowed(ByteArray(400))
         ))
         tracker.record("copied_activation", TensorStorage(
             shape = Shape(100),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Owned(ByteArray(400))
         ))

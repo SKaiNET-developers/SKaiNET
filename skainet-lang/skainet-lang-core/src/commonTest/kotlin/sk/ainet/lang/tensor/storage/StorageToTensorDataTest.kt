@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -98,7 +96,7 @@ class StorageToTensorDataTest {
 
         val storage = TensorStorageFactory.fromRawBytes(
             shape = Shape(3),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             data = floatBytes
         )

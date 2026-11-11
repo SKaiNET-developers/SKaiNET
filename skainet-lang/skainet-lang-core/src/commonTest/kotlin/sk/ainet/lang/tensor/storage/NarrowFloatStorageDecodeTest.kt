@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -37,7 +35,7 @@ class NarrowFloatStorageDecodeTest {
         val bytes = packed(values, codec)
         return TensorStorage(
             shape = Shape(values.size),
-            logicalType = if (codec === Fp16Codec) LogicalDType.FLOAT16 else LogicalDType.BFLOAT16,
+            dtype = if (codec === Fp16Codec) FP16 else BF16,
             encoding = TensorEncoding.Dense(2),
             buffer = BufferHandle.Owned(bytes, 0, bytes.size.toLong()),
         )
@@ -79,14 +77,14 @@ class NarrowFloatStorageDecodeTest {
 
     @Test
     fun bf16_and_fp16_decode_differently_for_the_same_bytes() {
-        // Proves the codec is actually selected by logicalType rather than one being aliased
+        // Proves the codec is actually selected by dtype rather than one being aliased
         // to the other: the bit pattern 0x3C00 is 1.0 in fp16 but ~0.0078 in bf16.
         val bytes = byteArrayOf(0x00, 0x3C)
         val asFp16 = TensorStorageFactory.toTensorData<FP16, Float>(
-            TensorStorage(Shape(1), LogicalDType.FLOAT16, TensorEncoding.Dense(2), BufferHandle.Owned(bytes, 0, 2)),
+            TensorStorage(Shape(1), FP16, TensorEncoding.Dense(2), BufferHandle.Owned(bytes, 0, 2)),
         ).copyToFloatArray()[0]
         val asBf16 = TensorStorageFactory.toTensorData<BF16, Float>(
-            TensorStorage(Shape(1), LogicalDType.BFLOAT16, TensorEncoding.Dense(2), BufferHandle.Owned(bytes, 0, 2)),
+            TensorStorage(Shape(1), BF16, TensorEncoding.Dense(2), BufferHandle.Owned(bytes, 0, 2)),
         ).copyToFloatArray()[0]
 
         assertEquals(1.0f, asFp16)

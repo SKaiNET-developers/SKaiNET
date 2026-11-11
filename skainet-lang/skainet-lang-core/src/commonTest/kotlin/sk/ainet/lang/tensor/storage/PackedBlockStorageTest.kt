@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -8,6 +6,7 @@ import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import sk.ainet.lang.types.FP32
 
 class PackedBlockStorageTest {
 
@@ -87,7 +86,7 @@ class PackedBlockStorageTest {
         val packed = td as PackedBlockStorage
         val storage = packed.toTensorStorage()
 
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(TensorEncoding.Q4_K, storage.encoding)
         assertEquals(Ownership.BORROWED, storage.ownership)
         assertEquals(144L, storage.physicalBytes)

@@ -8,8 +8,8 @@ import kotlin.reflect.KClass
  *
  * `DType` is sealed with exactly fourteen `object` members, so it is switchable like an enum
  * (`when (dtype) { FP32 -> … }`) while each member still serves as the generic witness of
- * `Tensor<T : DType, V>` through [witness]. SKEEP-003 (decision #13): this single type replaces
- * the storage-side `LogicalDType` enum; `Format = (DType, TensorEncoding)` has exactly one dtype
+ * `Tensor<T : DType, V>` through [witness]. SKEEP-003 (decision #13): this single type replaced
+ * the storage-side `LogicalDType` enum (removed in #1502); `Format = (DType, TensorEncoding)` has exactly one dtype
  * type.
  */
 public sealed interface DType {

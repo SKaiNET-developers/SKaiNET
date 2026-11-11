@@ -12,8 +12,7 @@ import sk.ainet.lang.tensor.Shape
  */
 public data class StorageMemoryReport(
     val shape: Shape,
-    @Deprecated(message = "Use dtype (SKEEP-003 decision #13).", replaceWith = ReplaceWith("dtype"))
-    val logicalType: LogicalDType,
+    val dtype: sk.ainet.lang.types.DType,
     val encoding: TensorEncoding,
     val ownership: Ownership,
     val placement: Placement,
@@ -23,9 +22,6 @@ public data class StorageMemoryReport(
     val isAlias: Boolean,
     val isMutable: Boolean
 ) {
-    /** The [sk.ainet.lang.types.DType] of [logicalType] (SKEEP-003 Phase 0 bridge). */
-    val dtype: sk.ainet.lang.types.DType get() = logicalType.toDType()
-
     /** Compression ratio: logical / physical. >1 means the encoding is smaller than dense. */
     val compressionRatio: Double
         get() = if (physicalBytes > 0) logicalBytes.toDouble() / physicalBytes else 1.0
@@ -33,7 +29,7 @@ public data class StorageMemoryReport(
     override fun toString(): String = buildString {
         append("StorageMemoryReport(")
         append("shape=$shape, ")
-        append("logical=$logicalType, ")
+        append("logical=${dtype.name}, ")
         append("encoding=${encoding.name}, ")
         append("ownership=$ownership, ")
         append("placement=${placement.device}/${placement.domain}, ")

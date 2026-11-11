@@ -10,6 +10,10 @@
 
 - **SKEEP-003 is back at `Accepted`, with an implementation-status table** (docs, #1500): an audit at 0.64.0 found the new storage model in use and the old layer (`TensorStorage`, `BufferHandle`, `TensorData` downcasts in the ops) still in place, so three of the five acceptance criteria are open. The SKEEP now says which, and what tracks each (#932). SKEEP-003a no longer lists #1148 as open, SKEEP-002's status records the Q4_K / Q6_K mapped staging of #1190 and its device measurement, `memory-model.adoc` drops a limit that #1190 removed, and the `TensorStorage` KDoc stops telling new code to target it.
 
+### Removed
+
+- **`LogicalDType`** (`skainet-lang-core`, SKEEP-003 decision 13, #1502): the storage-side dtype enum, deprecated since 0.49.0, is removed together with `DType.toLogicalDType()`, `LogicalDType.fromDType` / `toDType`, the `logicalType` properties and the `LogicalDType` overloads of `TensorStorageFactory.fromRawBytes` / `fromRawBytesOwned` / `fileBacked` and `PackedBlockStorage.toTensorStorage`. `TensorStorage` and `StorageMemoryReport` hold a `DType` as their constructor property `dtype`; replace `logicalType = LogicalDType.FLOAT32` with `dtype = FP32`. `StorageMemoryReport.toString()` prints the dtype's name (`Float32`) where it printed the enum constant.
+
 ## [0.64.0] - 2026-11-11
 
 Headline: **every differentiable op has a backward rule, and mixed precision is finished: it trains, exports without
