@@ -165,11 +165,14 @@ public sealed class Storage : AutoCloseable {
         /** Number of array elements this storage spans. */
         public val elementCount: Int get() = (sizeBytes / elementBytes).toInt()
 
-        override fun slice(offsetBytes: Long, lengthBytes: Long): Heap {
+        override fun slice(offsetBytes: Long, lengthBytes: Long): Heap = slice(offsetBytes, lengthBytes, debugOrigin)
+
+        /** [slice] with its own [origin]: how a scope names the piece of its slab it hands out. */
+        internal fun slice(offsetBytes: Long, lengthBytes: Long, origin: TensorId?): Heap {
             checkAlive()
             require(offsetBytes >= 0 && lengthBytes >= 0 && offsetBytes + lengthBytes <= sizeBytes) { "slice [$offsetBytes, ${offsetBytes + lengthBytes}) outside $sizeBytes bytes" }
             require(offsetBytes % elementBytes == 0L && lengthBytes % elementBytes == 0L) { "slice must align to $elementBytes-byte elements" }
-            return Heap(StorageId.next(), floats, ints, bytes, arrayOffset + (offsetBytes / elementBytes).toInt(), lengthBytes, Owner.Alias(this), debugOrigin, sink, mutable)
+            return Heap(StorageId.next(), floats, ints, bytes, arrayOffset + (offsetBytes / elementBytes).toInt(), lengthBytes, Owner.Alias(this), origin, sink, mutable)
         }
 
         override fun copyInto(dest: ByteArray, destOffset: Int, offset: Long, length: Int) {

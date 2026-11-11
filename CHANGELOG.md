@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Activation ids for eager execution in debug mode** (`skainet-lang-core`, SKEEP-003 decision 10, #1503): with `SKAINET_MEMORY_DEBUG=1`, every allocation from a `ForwardScope` without an id is named `<scope>.act#step=<step>,n=<ordinal>` (the ordinal counts allocations within the step, so an op keeps its number from step to step) and recorded in the debug ledger with its allocation site. A use-after-reset error now names the activation and where it was allocated and reset; `MemoryDebug.report()` and trace events show the id, and `data.view.id` carries it. The ledger keeps one step of closed activations. Without debug mode nothing changes: eager activations stay anonymous.
 - **Guards for SKEEP-003's acceptance criteria** (build, `skainet-backend-cpu`, docs, #1501): `./gradlew checkTensorDataDowncasts` counts the downcasts to concrete `TensorData` classes outside the data package (162 in 21 files today) against `config/tensor-data-downcast-allowlist.txt`, so a new one fails the build and the list can only shrink; it runs in the `stub-markers` CI leg. `ForwardScopeFlatMemoryTest` runs 300 forward passes under a forward scope on the JVM and asserts that direct memory, the live heap and the slab stay flat. `reference/benchmark-baseline.adoc` records the JMH numbers for matmul, elementwise and reductions that a dispatch or storage change is compared against, replacing the baseline deleted in #1106.
 
 ### Changed

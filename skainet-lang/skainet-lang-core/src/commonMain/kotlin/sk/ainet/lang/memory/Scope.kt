@@ -118,6 +118,7 @@ public class ForwardScope(
     private var offset: Int = 0
     private val handedOut = ArrayList<Storage>()
     private val overflow = ArrayList<Storage>()
+    private var previousStep: List<StorageId> = emptyList()
     private var closed = false
 
     /** Floats allocated from the slab in the current step. */
@@ -136,17 +137,28 @@ public class ForwardScope(
 
     private fun checkOpen() { check(!closed) { "ForwardScope '$name' is closed" } }
 
-    /** Bump-allocate [count] floats from the slab (or an overflow storage when the slab is exhausted). */
+    /**
+     * Bump-allocate [count] floats from the slab (or an overflow storage when the slab is exhausted).
+     *
+     * In memory debug mode an allocation without an [origin] gets an activation id,
+     * `<name>.act#step=<step>,n=<ordinal>`: the step is the number of resets so far and the ordinal
+     * counts allocations within the step, so the same op gets the same ordinal every step. The id
+     * and the allocation site then show up in a use-after-reset error, in [MemoryDebug.report] and
+     * in trace events. Without debug mode eager activations stay anonymous.
+     */
     override fun allocateFloats(count: Int, origin: TensorId?): Storage.Heap {
         checkOpen(); require(count >= 0)
+        val debug = MemoryDebug.isEnabled
+        val id = origin ?: if (debug) TensorId(listOf(name), "act", "step=$steps,n=${handedOut.size + overflow.size}") else null
         if (offset + count <= slabFloats) {
-            val view = slab.slice(offset.toLong() * 4, count.toLong() * 4)
+            val view = if (id != null) slab.slice(offset.toLong() * 4, count.toLong() * 4, id) else slab.slice(offset.toLong() * 4, count.toLong() * 4)
             offset += count
             if (offset > peakFloats) peakFloats = offset
             handedOut += view
+            if (debug) MemoryDebug.recordSlabView(view.id, ScopeKind.FORWARD, view.sizeBytes, id, platformCallSite())
             return view
         }
-        val extra = Storage.Heap.floats(count, ScopeKind.FORWARD, origin, sink)
+        val extra = Storage.Heap.floats(count, ScopeKind.FORWARD, id, sink)
         overflow += extra
         return extra
     }
@@ -176,6 +188,14 @@ public class ForwardScope(
     public fun reset() {
         checkOpen()
         val before = liveBytes
+        if (MemoryDebug.isEnabled) {
+            // Keep one step of closed activations in the ledger, so a use-after-reset can still be
+            // explained, and forget the step before it, so a long run does not grow the ledger.
+            val site = platformCallSite()
+            MemoryDebug.forget(previousStep)
+            previousStep = handedOut.map { it.id }
+            for (s in handedOut) MemoryDebug.recordClose(s.id, site)
+        }
         for (s in handedOut) s.close()
         handedOut.clear()
         for (s in overflow) s.close()

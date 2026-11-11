@@ -1,5 +1,6 @@
 package sk.ainet.lang.tensor.data
 
+import sk.ainet.lang.memory.MemoryDebug
 import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.Shape
@@ -71,6 +72,7 @@ public class StorageFloatTensorData<T : DType>(
     override val view: TensorView
         get() {
             storage.checkAlive()
-            return TensorView.dense(storage, shape, FP32)
+            // In memory debug mode the view carries the storage's id (an eager activation id, decision 10).
+            return TensorView.dense(storage, shape, FP32, id = if (MemoryDebug.isEnabled) storage.debugOrigin else null)
         }
 }
