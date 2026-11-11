@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.63.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.64.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,32 +308,28 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.63.0
+## What's New in 0.64.0
 
-Block-quantized weights reach an NPU through StableHLO, and the engine gains mixed precision, explicit re-encoding,
-`convTranspose2d` and a working ONNX import path.
+Every differentiable op has a backward rule, and mixed precision is finished: it trains, exports without redundant
+casts and is checked by the compiler.
 
-- **Q8_0 / Q4_0 weights to an NPU** — `PackedConstantHandling.KEEP_PACKED` keeps a packed weight in the traced
-  graph, `BlockQuantMatmulFusionPass` folds every `x · Wᵀ` over one, and the StableHLO export emits the
-  dequantize-then-`batch_matmul` chain with `i8` / `i4` codes and `bf16` scales inline. Torq 2.3.0
-  (`--iree-input-type=stablehlo-torq`) compiles it to its `mixed_quant_matmul` kernel: the whole FunctionGemma 270M
-  decode step runs on an SL2610 NPU in one dispatch at 162 ms per step, with the same next token as the f32
-  reference. Weights from the GGUF loader (off-heap) export the same as heap ones.
-- **StableHLO and TOSA passes** — the `STABLE_HLO` phase of a target optimizer rewrites the emitted module, and
-  `DivideByBroadcastPass`, `RankTwoWeightMatmulPass` and `TosaFinish` prepare a module for StableHLO's own TOSA
-  legalization (Moonshine's streaming encoder runs on an NPU through `tosa-torq` in one dispatch). `Int4` maps to
-  `i4`.
-- **Mixed precision per layer** — `dense(64, dtype = BF16) { }` and `stage("head", dtype = FP16) { }` build a layer
-  in another dtype behind a `PrecisionBoundary` that casts in and out (inference only). The generic
-  `dense<T>()` / `stage<T>()` overloads, which could only throw, are deprecated at `ERROR` level.
-- **Re-encoding storages** — `repackTo(Dense(4))` decodes every packed encoding with a dequantizer bit-exactly, and
-  `requantizeTo` is the explicit lossy direction.
-- **New ops and layers** — `convTranspose2d` with backward and StableHLO lowering, the `GroupNormalization` forward
-  pass, `sliceCopy {}`, and precision, recall and F1 metrics with binary, macro and micro averaging.
-- **ONNX** — `LeakyRelu`, `Silu`, `Clip`, `BatchNormalization`, `Pad` and `ConvTranspose` import as executable ops,
-  and `OnnxModelReader.open` reads metadata up front and each tensor on demand.
-- **Fixes** — the JVM tokenizer's `Split` regex follows Unicode character classes, and `randn` never returns
-  `Inf` / `NaN`.
+- **Attention trains** — `scaledDotProductAttention` has its adjoint (dQ, dK, dV and the dense mask's gradient) for
+  every option: `scale`, `causal`, sliding windows, key lengths, grouped-query heads. It is checked against finite
+  differences and PyTorch autograd, and a whole Transformer block is checked parameter by parameter. The ops
+  matrix Backward column reads 60/60.
+- **Training through mixed precision** — `TensorOps.convert` is differentiable, so the layers behind
+  `dense(64, dtype = BF16) { }` and `stage("head", dtype = FP16) { }` train. The cast passes the gradient straight
+  through and rounds it to the region's format; integer casts have no gradient.
+- **Fewer casts in the export** — `CastFoldingPass`, part of the default optimization pipelines, folds casts that
+  change no value: the `bf16 -> f32 -> f16` between two adjacent boundaries exports as one `stablehlo.convert`, and
+  a same-dtype boundary exports none. A narrowing round trip is never folded.
+- **A layer's dtype is checked** — ops traced inside a boundary carry `DTypePolicy.Prefer(dtype)`, and
+  `DTypeConstraintResolutionPass` reports a region that a later pass retyped. `ComputeGraphExecutor` runs
+  `convert` nodes, so a traced mixed-precision graph executes.
+- **Removed** — the generic `dense<T>()` / `stage<T>()` overloads and the `MixedPrecision*` scaffold, deprecated in
+  0.63.0; use the `dtype =` argument.
+- **Fixes** — `concat` backward with inputs of different sizes, `squeeze` backward with no axis, and
+  `DTypeConstraintResolutionPass` no longer drops the edges of the nodes it resolves.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -358,6 +354,13 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.64.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the `scaledDotProductAttention` backward
+  with its finite-difference and Transformer-block tests, the `concat` / `squeeze` backward fixes, the rest of
+  SKEEP-008 (differentiable `convert`, export tests, `CastFoldingPass`, the checked boundary dtype, the scaffold
+  removal), and the release
 
 ### Contributors (0.63.0)
 
@@ -511,7 +514,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.63.0. MIT License},
+  note         = {Version 0.64.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
