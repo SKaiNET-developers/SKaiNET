@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // the pre-#1034 view mechanism: kept working until the next major
-
 package sk.ainet.lang.tensor.storage
 
 /**
@@ -53,7 +51,6 @@ public class DefaultBufferResolver(
         is BufferHandle.Owned -> ByteArrayAccessor(handle.data, handle.offset, handle.sizeInBytes)
         is BufferHandle.Floats -> FloatArrayByteViewAccessor(handle.data)
         is BufferHandle.Borrowed -> ByteArrayAccessor(handle.data, handle.offset, handle.sizeInBytes)
-        is BufferHandle.Aliased -> resolve(handle.parent).sliced(handle.byteOffset, handle.sizeInBytes)
         is BufferHandle.FileBacked -> {
             fileBackedResolver?.invoke(handle)
                 ?: throw UnsupportedOperationException(

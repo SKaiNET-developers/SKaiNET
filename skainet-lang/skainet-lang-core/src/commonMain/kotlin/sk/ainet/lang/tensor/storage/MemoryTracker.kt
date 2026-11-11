@@ -49,7 +49,6 @@ public class MemoryTracker {
         var totalLogical = 0L
         var totalPhysical = 0L
         var fileBackedBytes = 0L
-        var aliasedCount = 0
         var ownedCount = 0
         var borrowedCount = 0
         var fileBackedCount = 0
@@ -62,7 +61,6 @@ public class MemoryTracker {
                 fileBackedBytes += r.physicalBytes
                 fileBackedCount++
             }
-            if (r.isAlias) aliasedCount++
             when (r.ownership) {
                 Ownership.OWNED -> ownedCount++
                 Ownership.BORROWED -> borrowedCount++
@@ -77,7 +75,6 @@ public class MemoryTracker {
             fileBackedBytes = fileBackedBytes,
             ownedCount = ownedCount,
             borrowedCount = borrowedCount,
-            aliasedCount = aliasedCount,
             fileBackedCount = fileBackedCount,
             copyCount = copyCount,
             copyBytes = copyBytes,
@@ -105,7 +102,6 @@ public data class AggregateMemoryReport(
     val fileBackedBytes: Long,
     val ownedCount: Int,
     val borrowedCount: Int,
-    val aliasedCount: Int,
     val fileBackedCount: Int,
     val copyCount: Long,
     val copyBytes: Long,
@@ -121,7 +117,7 @@ public data class AggregateMemoryReport(
         appendLine("Logical:  $totalLogicalBytes bytes")
         appendLine("Physical: $totalPhysicalBytes bytes")
         appendLine("File-backed: $fileBackedCount ($fileBackedBytes bytes)")
-        appendLine("Owned: $ownedCount, Borrowed: $borrowedCount, Aliased: $aliasedCount")
+        appendLine("Owned: $ownedCount, Borrowed: $borrowedCount")
         appendLine("Copies: $copyCount ($copyBytes bytes)")
         if (copiesBySource.isNotEmpty()) {
             appendLine("--- Copies by source ---")

@@ -10,7 +10,6 @@ package sk.ainet.lang.tensor.storage
  * |-----------------|----------|----------------------|---------------------|
  * | [Owned]         | yes      | yes                  | yes                 |
  * | [Borrowed]      | no*      | no                   | no                  |
- * | [Aliased]       | no       | no (shared)          | tied to parent      |
  * | [FileBacked]    | no       | no (OS-managed)      | tied to mapping     |
  * | [DeviceResident]| varies   | backend-managed      | tied to device ctx  |
  *
@@ -75,31 +74,6 @@ public sealed interface BufferHandle {
     }
 
     /**
-     * A slice/view into another [BufferHandle]. Shares the parent's backing
-     * memory. Mutations (if the parent is mutable) are visible to both.
-     */
-    @Deprecated(
-        message = "One view mechanism (SKEEP-003 §4.6, #1034): a byte range of someone else's buffer is " +
-            "`storage.slice(offsetBytes, lengthBytes)` — a Storage with `Owner.Alias`, addressed by a Layout. " +
-            "Kept until the next major.",
-    )
-    public class Aliased(
-        public val parent: BufferHandle,
-        public val byteOffset: Long,
-        override val sizeInBytes: Long
-    ) : BufferHandle {
-        override val isMutable: Boolean get() = parent.isMutable
-        override val ownership: Ownership get() = Ownership.ALIASED
-
-        init {
-            require(byteOffset >= 0) { "byteOffset must be non-negative: $byteOffset" }
-            require(byteOffset + sizeInBytes <= parent.sizeInBytes) {
-                "Aliased region ($byteOffset + $sizeInBytes) exceeds parent (${parent.sizeInBytes})"
-            }
-        }
-    }
-
-    /**
      * Memory-mapped file region. Immutable from the runtime's perspective
      * (the OS manages paging and eviction).
      */
@@ -129,7 +103,6 @@ public sealed interface BufferHandle {
 public enum class Ownership {
     OWNED,
     BORROWED,
-    ALIASED,
     FILE_BACKED,
     DEVICE_RESIDENT
 }

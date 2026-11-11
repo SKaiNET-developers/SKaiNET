@@ -19,7 +19,6 @@ public data class StorageMemoryReport(
     val logicalBytes: Long,
     val physicalBytes: Long,
     val isFileBacked: Boolean,
-    val isAlias: Boolean,
     val isMutable: Boolean
 ) {
     /** Compression ratio: logical / physical. >1 means the encoding is smaller than dense. */
@@ -37,7 +36,6 @@ public data class StorageMemoryReport(
         append("physicalBytes=$physicalBytes, ")
         append("ratio=${((compressionRatio * 100).toLong() / 100.0)}, ")
         append("fileBacked=$isFileBacked, ")
-        append("alias=$isAlias, ")
         append("mutable=$isMutable")
         append(")")
     }

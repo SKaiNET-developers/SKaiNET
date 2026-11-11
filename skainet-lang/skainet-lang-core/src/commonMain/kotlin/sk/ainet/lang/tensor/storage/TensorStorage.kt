@@ -43,9 +43,6 @@ public data class TensorStorage(
     /** Whether this storage is backed by a memory-mapped file. */
     val isFileBacked: Boolean get() = buffer is BufferHandle.FileBacked
 
-    /** Whether this storage is an alias (view) into another buffer. */
-    val isAlias: Boolean get() = buffer is BufferHandle.Aliased
-
     /** Whether this storage is mutable. */
     val isMutable: Boolean get() = buffer.isMutable
 
@@ -65,7 +62,6 @@ public data class TensorStorage(
         logicalBytes = logicalBytes,
         physicalBytes = physicalBytes,
         isFileBacked = isFileBacked,
-        isAlias = isAlias,
         isMutable = isMutable
     )
 
@@ -75,8 +71,8 @@ public data class TensorStorage(
      * Create a new [TensorStorage] with an owned copy of this storage's data.
      * The returned storage is independent of the original buffer.
      *
-     * Handles [BufferHandle.Owned], [BufferHandle.Borrowed] and
-     * [BufferHandle.Aliased] directly. [BufferHandle.FileBacked] needs a
+     * Handles [BufferHandle.Owned] and [BufferHandle.Borrowed] directly.
+     * [BufferHandle.FileBacked] needs a
      * platform reader — use the [copyMaterialize] overload that takes a
      * [BufferResolver] with a file-backed resolver configured.
      */
@@ -85,7 +81,7 @@ public data class TensorStorage(
     /**
      * Create a new [TensorStorage] with an owned copy of this storage's data,
      * reading through [resolver] for handles that need platform support
-     * ([BufferHandle.Aliased] chains, [BufferHandle.FileBacked]).
+     * ([BufferHandle.FileBacked]).
      *
      * [BufferHandle.DeviceResident] remains unsupported until a device
      * backend exists.
@@ -98,7 +94,7 @@ public data class TensorStorage(
                 "copyMaterialize cannot read device-resident buffer '${b.deviceId}' on the host — " +
                     "no device backend exists yet"
             )
-            // Aliased and FileBacked: the resolver knows how to read them.
+            // Floats and FileBacked: the resolver knows how to read them.
             // readBytes always copies, so the result is a genuinely owned buffer.
             else -> resolver.resolve(b).use { it.readBytes(0, sizeBytes()) }
         }

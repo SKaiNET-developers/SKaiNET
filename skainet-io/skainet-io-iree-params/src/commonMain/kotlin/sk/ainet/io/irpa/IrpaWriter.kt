@@ -229,7 +229,7 @@ public class IrpaWriter {
             is BufferHandle.FileBacked -> writeFileBackedBytes(sink, handle)
             else -> throw IllegalArgumentException(
                 "IrpaWriter does not yet handle BufferHandle subclass ${handle::class.simpleName}. " +
-                    "Owned / Borrowed / FileBacked are wired. Aliased, DeviceResident, and " +
+                    "Owned / Borrowed / FileBacked are wired. DeviceResident and " +
                     "other variants are out of scope — resolve them to one of the wired " +
                     "variants before handing to the writer."
             )

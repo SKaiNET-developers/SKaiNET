@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // the pre-#1034 view mechanism: kept working until the next major
-
 package sk.ainet.lang.memory
 
 import sk.ainet.lang.tensor.Tensor
@@ -33,7 +31,6 @@ public fun TensorStorage.describe(id: sk.ainet.lang.tensor.TensorId? = null): St
             is BufferHandle.Owned -> "Owned"
             is BufferHandle.Floats -> "Floats"
             is BufferHandle.Borrowed -> "Borrowed"
-            is BufferHandle.Aliased -> "Aliased"
             is BufferHandle.FileBacked -> "Mapped"
             is BufferHandle.DeviceResident -> "Device(${b.deviceId})"
         }

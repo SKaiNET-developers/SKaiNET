@@ -88,16 +88,6 @@ class AcceptanceCriteriaTest {
         assertEquals(Ownership.OWNED, storage.ownership)
     }
 
-    @Test
-    fun ac3_aliasedSliceSharesParentBuffer() {
-        val parent = BufferHandle.Owned(ByteArray(1000))
-        val alias = BufferHandle.Aliased(parent, byteOffset = 100, sizeInBytes = 200)
-
-        assertEquals(Ownership.ALIASED, alias.ownership)
-        assertTrue(alias.isMutable) // inherits from parent
-        assertEquals(200L, alias.sizeInBytes)
-    }
-
     // --- AC4: Quantized tensors as packed layouts end-to-end ---
 
     @Test
@@ -146,7 +136,6 @@ class AcceptanceCriteriaTest {
         assertEquals(24L, report.logicalBytes)
         assertEquals(24L, report.physicalBytes)
         assertFalse(report.isFileBacked)
-        assertFalse(report.isAlias)
         assertTrue(report.isMutable)
     }
 

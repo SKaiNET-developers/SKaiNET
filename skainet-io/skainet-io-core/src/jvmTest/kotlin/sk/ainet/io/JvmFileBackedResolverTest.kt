@@ -89,20 +89,6 @@ class JvmFileBackedResolverTest {
     }
 
     @Test
-    fun resolveAliasedHandle() {
-        val data = ByteArray(100) { it.toByte() }
-        val parent = BufferHandle.Owned(data)
-        val alias = BufferHandle.Aliased(parent, byteOffset = 10, sizeInBytes = 20)
-        val resolver = JvmFileBackedResolver.createResolver()
-        val accessor = resolver.resolve(alias)
-
-        assertEquals(20L, accessor.sizeInBytes)
-        assertEquals(10.toByte(), accessor.readByte(0))
-        assertEquals(29.toByte(), accessor.readByte(19))
-        accessor.close()
-    }
-
-    @Test
     fun readAllBytesFromFileBacked() {
         val data = byteArrayOf(1, 2, 3, 4, 5)
         withTempFile(data) { file ->
