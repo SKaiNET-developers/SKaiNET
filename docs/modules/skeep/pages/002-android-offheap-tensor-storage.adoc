@@ -232,14 +232,13 @@ keeps working unchanged and the overload is purely opt-in. Expected consumers:
   (packed quant blocks) and a synthesized SafeTensors file (dense
   F32/F16/BF16) produce bit-identical tensors under either placement.
 
-== Implementation status (updated 2026-08-26, for 0.49.0)
+== Implementation status (updated 2026-11-11, at 0.64.0)
 
 Tracked by SKEEP-003's M2 slice
 https://github.com/SKaiNET-developers/SKaiNET/issues/1038[#1038]. This SKEEP stays *Draft*: the
 mechanism is in `develop` (and since 0.49.0 the loader speaks one `WeightForm` — the legacy
-`StagingPolicy`/`QuantPolicy`/`WeightOrientation` axes were removed in #1159), the acceptance
-criteria that need a physical device are not met yet, and one of them cannot be met until an
-unrelated contract is fixed.
+`StagingPolicy`/`QuantPolicy`/`WeightOrientation` axes were removed in #1159), one acceptance
+criterion has a device measurement behind it, and the others are not recorded.
 
 Landed:
 
@@ -257,20 +256,22 @@ Landed:
   `AndroidGguf.fits(context, path, ctx)` answers from the GGUF header before a byte of payload is
   read, naming the pool that runs out and what to do about it.
 
+* *Phase 4 for Q4_K and Q6_K* — `BufferPackedTensorData` keeps a packed weight in the file
+  mapping, and row-major kernels read it through a direct `ByteBuffer`
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1189[#1189], PR #1190). Measured on a Pixel 8a with the 256 MB heap cap
+  (https://github.com/SKaiNET-developers/SKaiNET/issues/1130[#1130]): Qwen2.5-1.5B Q4_K_M, 1.0 GB on disk, loads with 566 KB of
+  weights on the managed heap and decodes at 153 ms per step; before, it ran out of memory at
+  load. That is the acceptance criterion "a Q4_K model larger than the heap loads and generates".
+
 Not landed, and why:
 
-* *Packed weights still reach the managed heap.* Mapped staging serves dense F32 tensors as
-  zero-heap views, but every quantized tensor is still handed to its kernel as a `ByteArray`,
-  because the packed matmul SPI takes arrays. That is Phase 4, and it is blocked on
-  https://github.com/SKaiNET-developers/SKaiNET/issues/973[#973] — the packed-quant byte-order
-  contract — since a buffer-aware kernel first needs an unambiguous answer to *which* byte order it
-  is reading. Until then the heap ceiling is lifted for dense checkpoints, not for a Q4_K_M one,
-  which is exactly the acceptance criterion below that remains open.
-* *The device numbers.* "≤ 40 MB managed heap for SmolLM2-135M Q8_0" and "a ~600 MB Q4_K model
-  loads on a 256 MB heap" are measurements on a physical device; the repository's CI has none. They
-  belong to the `skainet-decode` sample in SKaiNET-transformers, which owns a model and a device
-  lane. `androidHostTest` covers what can be proven without hardware: the Android compilation
-  builds, maps, loads, and produces bit-identical tensors under either staging.
+* *Other packed formats still reach the managed heap.* Q8_0, Q4_0, Q5_0, Q5_1, Q5_K and the
+  ternary encodings are handed to their kernels as `ByteArray`s under mapped staging; only Q4_K
+  and Q6_K have the buffer-reading kernels.
+* *The SmolLM2-135M Q8_0 heap figure and the mapped-versus-heap throughput comparison* are not
+  recorded. Q8_0 is one of the formats above, so the "less than 40 MB" criterion cannot hold yet.
+* *Whole-file mapping only.* A file larger than 2 GB is refused instead of being mapped in
+  windows (https://github.com/SKaiNET-developers/SKaiNET/issues/1422[#1422] asks for the same in the IRPA writer).
 
 == Risks
 

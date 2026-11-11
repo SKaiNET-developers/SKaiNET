@@ -1,0 +1,77 @@
+= Benchmark baseline
+:description: Reference JMH numbers for the matmul, elementwise and reduction hot paths, to compare against when a change touches dispatch or storage.
+
+These are the numbers a change to kernel dispatch or tensor storage is compared against.
+xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003] sets the budget: matmul within noise,
+elementwise at most 3 % slower.
+
+== How to compare
+
+. Run the suite on the commit before your change and on the commit with it, on the same machine,
+  with nothing else building:
++
+[source,bash]
+----
+./gradlew :skainet-backends:benchmarks:jvm-cpu-jmh:jmh \
+  -PjmhIncludes='sk.ainet.bench.(MatmulBench|KernelMatmulBench|QuantizedMatmulBench|ElementwiseAdd1MBench|Reductions1MBench).*'
+----
++
+The results are in `skainet-backends/benchmarks/jvm-cpu-jmh/build/results/jmh/results.txt`.
+`scripts/pr-gate.sh --bench` runs the whole suite.
+. Put both tables in the pull request. The table below tells you what the numbers looked like on
+  the reference machine; numbers from another machine are only comparable with each other.
+. When a change moves a number on purpose, record a new baseline here in the same pull request.
+
+Not part of this baseline: `:skainet-lang:skainet-lang-core:jvmBenchmark` (`StorageBenchmarks`,
+`TensorBenchmarks`, `TurboQuantBenchmarks`). With the module's default iteration settings a full
+run takes hours; run it filtered per class when a change touches the storage hot paths.
+
+== Baseline of 2026-11-11
+
+* Commit: `edadc84b` (`develop`, 0.64.0)
+* Machine: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz, 12 threads, Linux 6.8.0-60, OpenJDK 21.0.13
+* Settings: JMH, fork 1, 3 warm-up and 5 measurement iterations,
+  `--enable-preview --add-modules jdk.incubator.vector`
+
+[cols="3,3,4,1,2,2,1",options="header"]
+|===
+| Benchmark | Class | Parameters | Mode | Score | ± | Unit
+
+| `add_1M_fp32` | ElementwiseAdd1MBench | vectorEnabled=true | thrpt | 2.061 | 0.023 | ops/ms
+| `add_1M_fp32` | ElementwiseAdd1MBench | vectorEnabled=false | thrpt | 1.195 | 0.019 | ops/ms
+| `mean_1M_fp32` | Reductions1MBench | vectorEnabled=true | thrpt | 1.027 | 0.004 | ops/ms
+| `mean_1M_fp32` | Reductions1MBench | vectorEnabled=false | thrpt | 1.027 | 0.003 | ops/ms
+| `sum_1M_fp32` | Reductions1MBench | vectorEnabled=true | thrpt | 1.027 | 0.006 | ops/ms
+| `sum_1M_fp32` | Reductions1MBench | vectorEnabled=false | thrpt | 1.030 | 0.005 | ops/ms
+| `matmul_fp32_square` | KernelMatmulBench | provider=scalar, size=256 | avgt | 22.468 | 0.182 | ms/op
+| `matmul_fp32_square` | KernelMatmulBench | provider=scalar, size=512 | avgt | 292.669 | 0.428 | ms/op
+| `matmul_fp32_square` | KernelMatmulBench | provider=scalar, size=1024 | avgt | 1869.206 | 13.642 | ms/op
+| `matmul_fp32_square` | KernelMatmulBench | provider=panama, size=256 | avgt | 1.257 | 0.014 | ms/op
+| `matmul_fp32_square` | KernelMatmulBench | provider=panama, size=512 | avgt | 9.881 | 0.144 | ms/op
+| `matmul_fp32_square` | KernelMatmulBench | provider=panama, size=1024 | avgt | 87.219 | 1.669 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=true, size=256, vectorEnabled=true | avgt | 8.548 | 0.072 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=true, size=256, vectorEnabled=false | avgt | 7.187 | 0.129 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=true, size=512, vectorEnabled=true | avgt | 67.587 | 0.494 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=true, size=512, vectorEnabled=false | avgt | 62.912 | 0.486 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=true, size=1024, vectorEnabled=true | avgt | 544.217 | 6.110 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=true, size=1024, vectorEnabled=false | avgt | 480.891 | 2.660 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=false, size=256, vectorEnabled=true | avgt | 1.269 | 0.015 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=false, size=256, vectorEnabled=false | avgt | 7.080 | 0.047 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=false, size=512, vectorEnabled=true | avgt | 10.382 | 0.181 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=false, size=512, vectorEnabled=false | avgt | 59.932 | 1.181 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=false, size=1024, vectorEnabled=true | avgt | 87.704 | 1.994 | ms/op
+| `matmul_fp32_square` | MatmulBench | blasEnabled=false, size=1024, vectorEnabled=false | avgt | 480.785 | 6.122 | ms/op
+| `matmul_q4k_panama` | QuantizedMatmulBench | shape=1024-1024 | avgt | 0.110 | 0.001 | ms/op
+| `matmul_q4k_panama` | QuantizedMatmulBench | shape=4096-1024 | avgt | 0.365 | 0.002 | ms/op
+| `matmul_q4k_panama` | QuantizedMatmulBench | shape=4096-4096 | avgt | 1.388 | 0.020 | ms/op
+|===
+
+`thrpt` is throughput, higher is better; `avgt` is the average time per call, lower is better.
+
+One thing the table shows that is not a storage matter: on this Linux machine `MatmulBench` with
+`blasEnabled=true` is about seven times slower than the Panama kernel at every size
+(8.5 ms against 1.3 ms at 256). BLAS routing is off by default outside macOS.
+
+The baseline recorded on 2026-08-22, before the storage migration, was removed with
+`docs/design/` (#1106); it is in the history at commit `3c0ee71d`. It was taken on the same
+machine with OpenJDK 25, so the two are not directly comparable.

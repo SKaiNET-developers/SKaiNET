@@ -8,9 +8,9 @@ import sk.ainet.lang.types.DType
 /**
  * Runtime descriptor for a tensor's backing memory.
  *
- * [TensorStorage] is the main architectural type that replaces ad-hoc
- * array passing between loaders, planners, and backends. It carries enough
- * information to handle a tensor without inspecting its bytes:
+ * [TensorStorage] describes a tensor read from a file before it becomes a
+ * tensor: the streaming GGUF and SafeTensors readers return it. It carries
+ * enough information to handle a tensor without inspecting its bytes:
  *
  * - **What** the values mean: [logicalType]
  * - **How** they are stored: [encoding]
@@ -18,9 +18,10 @@ import sk.ainet.lang.types.DType
  * - **Layout**: [shape], [byteOffset], [strides], [isContiguous]
  * - **Ownership**: via [buffer]'s [BufferHandle] subtype
  *
- * Existing [sk.ainet.lang.tensor.data.TensorData] remains as a
- * compatibility façade. New loaders, planners, and backends should target
- * [TensorStorage] directly.
+ * This is the older of two storage descriptions. The model new code targets is
+ * [sk.ainet.lang.memory.Storage] (owns bytes) with
+ * [sk.ainet.lang.memory.TensorView] (interprets them); SKEEP-003 replaces this
+ * type with a view once the readers return one (#1507).
  */
 public data class TensorStorage(
     val shape: Shape,

@@ -76,10 +76,11 @@ jobs:
           # associates with dumps (#1171 merged a stale dump exactly that way; #1174 repaired it).
           - name: api-compatibility
             tasks: apiCheck
-          # Every NotImplementedError / TODO( in production code is either @NotImplemented
-          # (so it shows in the ops coverage matrix) or listed in config/stub-allowlist.txt.
+          # Both guards scan sources only, so they share one leg: stubs are either @NotImplemented
+          # or in config/stub-allowlist.txt, and downcasts to concrete TensorData classes outside
+          # the data package (SKEEP-003) are in config/tensor-data-downcast-allowlist.txt.
           - name: stub-markers
-            tasks: checkUnmarkedStubs
+            tasks: checkUnmarkedStubs checkTensorDataDowncasts
 
     permissions:
       contents: read

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Guards for SKEEP-003's acceptance criteria** (build, `skainet-backend-cpu`, docs, #1501): `./gradlew checkTensorDataDowncasts` counts the downcasts to concrete `TensorData` classes outside the data package (162 in 21 files today) against `config/tensor-data-downcast-allowlist.txt`, so a new one fails the build and the list can only shrink; it runs in the `stub-markers` CI leg. `ForwardScopeFlatMemoryTest` runs 300 forward passes under a forward scope on the JVM and asserts that direct memory, the live heap and the slab stay flat. `reference/benchmark-baseline.adoc` records the JMH numbers for matmul, elementwise and reductions that a dispatch or storage change is compared against, replacing the baseline deleted in #1106.
+
+### Changed
+
+- **SKEEP-003 is back at `Accepted`, with an implementation-status table** (docs, #1500): an audit at 0.64.0 found the new storage model in use and the old layer (`TensorStorage`, `BufferHandle`, `TensorData` downcasts in the ops) still in place, so three of the five acceptance criteria are open. The SKEEP now says which, and what tracks each (#932). SKEEP-003a no longer lists #1148 as open, SKEEP-002's status records the Q4_K / Q6_K mapped staging of #1190 and its device measurement, `memory-model.adoc` drops a limit that #1190 removed, and the `TensorStorage` KDoc stops telling new code to target it.
+
 ## [0.64.0] - 2026-11-11
 
 Headline: **every differentiable op has a backward rule, and mixed precision is finished: it trains, exports without
