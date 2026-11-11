@@ -126,34 +126,6 @@ class OneViewMechanismTest {
 
     // --- subsumes BufferHandle.Aliased (byte range) -------------------------------------------
 
-    @Test
-    fun aByteRangeAliasIsAViewOverASlicedStorage() {
-        val floats = FloatArray(64) { it.toFloat() }
-        val parent = Storage.Heap.wrap(floats)
-        val region = parent.slice(offsetBytes = 16 * 4, lengthBytes = 16 * 4)
-        val view = TensorView.dense(region, Shape(4, 4))
-
-        assertTrue(region.owner is Owner.Alias, "an alias declares its parent, like BufferHandle.Aliased did")
-        assertEquals(16f, view.get(0, 0), "the region starts where the alias starts")
-        assertEquals(31f, view.get(3, 3))
-        assertEquals(64L * 4, parent.sizeBytes)
-        assertEquals(16L * 4, region.sizeBytes)
-
-        // shared memory, exactly as Aliased promised: a write through the parent is visible here
-        floats[16] = -1f
-        assertEquals(-1f, view.get(0, 0))
-
-        // and the same bounds contract
-        assertFailsWith<IllegalArgumentException> { parent.slice(60L * 4, 8L * 4) }
-
-        // the deprecated handle described the same region, and nothing more
-        val handle = BufferHandle.Aliased(BufferHandle.Borrowed(ByteArray(64 * 4)), 16L * 4, 16L * 4)
-        assertEquals(handle.sizeInBytes, region.sizeBytes, "the same region, described the old way")
-        assertFailsWith<IllegalArgumentException> {
-            BufferHandle.Aliased(BufferHandle.Borrowed(ByteArray(64 * 4)), 60L * 4, 8L * 4)
-        }
-    }
-
     // --- the layout is the mechanism ----------------------------------------------------------
 
     @Test

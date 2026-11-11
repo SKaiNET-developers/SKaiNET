@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // the pre-#1034 view mechanism: kept working until the next major
-
 package sk.ainet.lang.tensor.storage
 
 /**
@@ -56,8 +54,4 @@ public object BufferHandleFactory {
     /** Create a file-backed handle (metadata only — actual mapping is platform-specific). */
     public fun fileBacked(path: String, offset: Long, size: Long): BufferHandle.FileBacked =
         BufferHandle.FileBacked(path, offset, size)
-
-    /** Create an aliased slice of an existing handle. */
-    public fun slice(parent: BufferHandle, byteOffset: Long, sizeInBytes: Long): BufferHandle.Aliased =
-        BufferHandle.Aliased(parent, byteOffset, sizeInBytes)
 }

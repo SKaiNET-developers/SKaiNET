@@ -80,15 +80,6 @@ class TensorStorageContractTest {
     }
 
     @Test
-    fun aliasedBufferProperties() {
-        val parent = BufferHandle.Owned(ByteArray(100))
-        val alias = BufferHandle.Aliased(parent, byteOffset = 10, sizeInBytes = 50)
-        assertEquals(50L, alias.sizeInBytes)
-        assertTrue(alias.isMutable) // inherits parent mutability
-        assertEquals(Ownership.ALIASED, alias.ownership)
-    }
-
-    @Test
     fun fileBackedBufferProperties() {
         val handle = BufferHandle.FileBacked(path = "/model/weights.bin", fileOffset = 0, sizeInBytes = 1024)
         assertEquals(1024L, handle.sizeInBytes)
@@ -104,14 +95,6 @@ class TensorStorageContractTest {
         assertEquals(2048L, handle.sizeInBytes)
         assertTrue(handle.isMutable)
         assertEquals(Ownership.DEVICE_RESIDENT, handle.ownership)
-    }
-
-    @Test
-    fun aliasedBufferWithOffsetAndSize() {
-        val parent = BufferHandle.Owned(ByteArray(200))
-        val alias = BufferHandle.Aliased(parent, byteOffset = 100, sizeInBytes = 100)
-        assertEquals(100L, alias.sizeInBytes)
-        assertEquals(100L, alias.byteOffset)
     }
 
     // --- Placement ---
@@ -147,7 +130,6 @@ class TensorStorageContractTest {
         assertEquals(24L, storage.logicalBytes) // 6 * 4
         assertEquals(24L, storage.physicalBytes)
         assertFalse(storage.isFileBacked)
-        assertFalse(storage.isAlias)
         assertTrue(storage.isMutable)
         assertEquals(Ownership.OWNED, storage.ownership)
     }

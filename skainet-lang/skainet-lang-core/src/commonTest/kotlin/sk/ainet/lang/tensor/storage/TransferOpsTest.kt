@@ -56,30 +56,6 @@ class TransferOpsTest {
     }
 
     @Test
-    fun copyMaterialize_aliasedBuffer_producesOwnedCopyOfTheSlice() {
-        // Aliased handles are resolvable without any platform support —
-        // copyMaterialize must not throw for them (#929).
-        val parentBytes = ByteArray(32) { it.toByte() }
-        val parent = BufferHandle.Owned(parentBytes)
-        val storage = TensorStorage(
-            shape = Shape(4),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.Aliased(parent, byteOffset = 8, sizeInBytes = 16),
-            placement = Placement.CPU_HEAP
-        )
-        val copy = storage.copyMaterialize()
-
-        assertEquals(Ownership.OWNED, copy.ownership)
-        val copyData = (copy.buffer as BufferHandle.Owned).data
-        assertEquals(16, copyData.size)
-        assertEquals(8, copyData[0]) // slice starts at parent byte 8
-        // Independent of the parent after materialization.
-        parentBytes[8] = 99
-        assertEquals(8, copyData[0])
-    }
-
-    @Test
     fun copyMaterialize_fileBackedBuffer_readsThroughResolver() {
         // FileBacked is materializable when the caller supplies a resolver
         // that can read the file region — the core transfer #929 restored.

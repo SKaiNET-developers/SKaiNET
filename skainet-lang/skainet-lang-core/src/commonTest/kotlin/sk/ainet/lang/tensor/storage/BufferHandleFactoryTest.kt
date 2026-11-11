@@ -72,16 +72,6 @@ class BufferHandleFactoryTest {
     }
 
     @Test
-    fun sliceCreatesAliasedHandle() {
-        val parent = BufferHandleFactory.owned(ByteArray(100))
-        val alias = BufferHandleFactory.slice(parent, byteOffset = 20, sizeInBytes = 30)
-        assertEquals(30L, alias.sizeInBytes)
-        assertEquals(20L, alias.byteOffset)
-        assertEquals(Ownership.ALIASED, alias.ownership)
-        assertTrue(alias.isMutable) // inherits from parent
-    }
-
-    @Test
     fun fileBackedCreation() {
         val handle = BufferHandleFactory.fileBacked("/weights.bin", offset = 1024, size = 4096)
         assertEquals(4096L, handle.sizeInBytes)
