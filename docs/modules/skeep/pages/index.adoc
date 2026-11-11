@@ -116,12 +116,12 @@ Every proposal should include:
 | Off-heap tensor storage on Android
 
 | xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003]
-| Implemented
+| Accepted
 | Unifying the tensor storage model
 
 | xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a]
-| Resolved
-| Placement, eager lifetime and graph-level planning — the P7/P8 answers
+| Implemented
+| Addendum to SKEEP-003: placement, eager lifetime and graph-level planning
 
 | xref:skeep:004-virtual-tensor-layout.adoc[SKEEP-004]
 | Draft

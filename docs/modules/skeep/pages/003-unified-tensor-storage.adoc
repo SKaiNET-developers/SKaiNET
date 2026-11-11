@@ -1,11 +1,64 @@
 = SKEEP-003: Unifying the tensor storage model — one byte-owner, enforced ownership, coherent dtype/encoding
 :description: SKaiNET proposal to converge the TensorData and TensorStorage layers into one storage model with real ownership, a single view mechanism, and dtype/encoding coherence.
 
-Status: Implemented (accepted 2026-08-22; M0/M1/M2 + the P7/P8 resolution shipped in 0.49.0) +
+Status: Accepted (2026-08-22; M0/M1/M2 and the placement resolution shipped in 0.49.0; the removal of the old layer is open, see <<implementation-status,Implementation status>>) +
 Audience: SKaiNET maintainers and contributors +
 Created: 2026-08-10 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] (umbrella) → https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001 M0] · https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002 M1] · https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003 M2] +
-Implemented: the model as built is documented in xref:ROOT:explanation/memory-model.adoc[The memory model] and xref:ROOT:explanation/packed-weight-layout.adoc[Packed weight layout]; the proposal and milestone PRD that led there are in the pull requests and issues linked below (#932, #1001, #1002, #1003).
+As built: the model is documented in xref:ROOT:explanation/memory-model.adoc[The memory model] and xref:ROOT:explanation/packed-weight-layout.adoc[Packed weight layout]; the proposal and milestone PRD that led there are in the pull requests and issues linked below (#932, #1001, #1002, #1003).
+
+[#implementation-status]
+== Implementation status (audited 2026-11-11, at 0.64.0)
+
+The model is built and in use on every target: `Storage`, `TensorView`, `Format`, `Scope`, the
+memory plan, the tracer, mapped staging. The old layer it was meant to replace is still in the
+code, so this proposal is back at `Accepted` until the open rows below are closed. The umbrella
+https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
+
+[cols="3,1,3",options="header"]
+|===
+| Acceptance criterion | State | Where it stands
+
+| One abstraction owns bytes, ownership enforced
+| Partly
+| Enforcement is tested (`StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest`). `TensorStorage` and `BufferHandle` still exist beside `Storage`, and the streaming readers' `loadTensorStorage*` return the old type (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502], https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
+
+| One view mechanism
+| Partly
+| `OneViewMechanismTest` covers slice, transpose and unsqueeze on the new view. The public `slice()` family still returns the deprecated `SlicedTensorView` (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]).
+
+| A packed tensor reports FP32 and its encoding; no dispatch site downcasts to a concrete `TensorData` class outside the data package
+| Not met
+| The first half holds (`FormatTest`). About 130 downcasts remain in the CPU, Accelerate and wasm ops, and matmul reaches `KernelKey` dispatch only as its last fallback (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501] for the guard, https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507] for the migration).
+
+| No kernel regression against a baseline
+| Partly
+| The benchmarks exist; the recorded baseline was deleted with `docs/design/` in #1106 (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501]).
+
+| Flat direct memory under a forward scope on the JVM
+| No test
+| Slab reuse is tested (`ScopedOpOutputsTest`), direct memory only under the GC arena (`MemSegArenaLeakTest`) (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501]).
+|===
+
+Decisions 1, 2 (naming and package), 6, 9, 11, 12 and 13 are delivered; `LogicalDType` is
+deprecated and its removal is https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]. The rest:
+
+[cols="1,4,3",options="header"]
+|===
+| # | Open part | Tracked by
+
+| 1 | Façades: only `StorageFloatTensorData` sits on a `Storage`; the other `TensorData` classes own their bytes and wrap a view around them on each read | https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]
+| 2 | `sk.ainet.lang.graph.Layout` is not deprecated; `BlockOrderLayout` implements it now | SKEEP-004, which owns the compile-side layout
+| 3 | `get()` on a packed view decodes; the debug-mode warning on hot paths does not exist | https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]
+| 4 | The `(head, tail)` pair and its gather fallback exist (`WindowedKV`); only the reference attention consumes them | https://github.com/SKaiNET-developers/SKaiNET/issues/1504[#1504], outside this SKEEP
+| 5 | `BlockSpec.activation` drives the eager dispatcher; the StableHLO export does not read it | https://github.com/SKaiNET-developers/SKaiNET/issues/1505[#1505], outside this SKEEP
+| 7 | `SuspendingRandomAccessSource` exists in `skainet-io-core`; there is no remote module | https://github.com/SKaiNET-developers/SKaiNET/issues/1506[#1506], outside this SKEEP
+| 8 | Axis labels on `Shape` | https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]
+| 10 | Activation ids exist when tracing, not in eager debug mode | https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]
+|===
+
+Compiled parity (P7 below) was closed as superseded: IREE validation lives in the IREE-tools and
+conformity repositories (#1148), and this repository has no eager-versus-compiled parity test.
 
 == Decision (2026-08-22)
 

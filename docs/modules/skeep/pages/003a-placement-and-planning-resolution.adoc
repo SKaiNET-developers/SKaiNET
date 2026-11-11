@@ -98,9 +98,9 @@ The carry work landed as the #1178/#1179/#1180 arc (0.49.0): `TensorRef` carries
 encoding and block order; `TensorSpec` metadata accessors follow the untyped precedent; the
 structural `skainet.tensor_layouts` module attribute and `ExternalParameterRef.blockOrder` declare
 the facts to the consumer; and `LayoutAssignmentPass` runs on the production path via
-`HloGenerator.generate(target = …)`, populating the pre-built `ResolvedComputeGraph` seams. Until
-the conformity pipeline exists (#1148, the future IREE-validation SKEEP), the carriage tests are
-the metadata's reader.
+`HloGenerator.generate(target = …)`, populating the pre-built `ResolvedComputeGraph` seams. The
+conformity pipeline that reads the metadata lives outside this repository (#1148 was closed as
+superseded); here, the carriage tests are the metadata's reader.
 
 == Where everything landed
 
@@ -113,7 +113,7 @@ the metadata's reader.
 | `memoryScope` wired into creation | #1145 | PR #1156
 | Op outputs through the scope + offset-aware SIMD | #1146, #1173 | landed (PRs #1168/#1175)
 | Layout/placement carriage to StableHLO | #1147 (#1178/#1179/#1180) | landed (PRs #1182/#1183/#1184)
-| `.vmfb` parity acceptance run | #1148 | open (follow-up)
+| `.vmfb` parity acceptance run | #1148 | closed as superseded 2026-09-02: IREE validation lives in the IREE-tools and conformity repositories; no eager-versus-compiled parity test in this repository
 |===
 
 The SKEEP-003 items "`StorageSpec`, `MemoryPlanner` and the annotations are deleted unless wired"
