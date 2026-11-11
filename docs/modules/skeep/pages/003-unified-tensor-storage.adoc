@@ -40,8 +40,11 @@ https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
 | Slab reuse is tested (`ScopedOpOutputsTest`), direct memory only under the GC arena (`MemSegArenaLeakTest`) (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501]).
 |===
 
-Decisions 1, 2 (naming and package), 6, 9, 11, 12 and 13 are delivered; `LogicalDType` is
-removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). The rest:
+Decisions 1, 2 (naming and package), 3, 6, 8, 9, 10, 11, 12 and 13 are delivered; `LogicalDType` is
+removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). Decisions 3, 8 and 10
+came with https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]: the debug-mode warning
+for element reads of a packed view, optional axis labels on `Shape`, and activation ids for eager
+execution in debug mode. The rest:
 
 [cols="1,4,3",options="header"]
 |===
@@ -49,12 +52,9 @@ removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). The 
 
 | 1 | Façades: only `StorageFloatTensorData` sits on a `Storage`; the other `TensorData` classes own their bytes and wrap a view around them on each read | https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]
 | 2 | `sk.ainet.lang.graph.Layout` is not deprecated; `BlockOrderLayout` implements it now | SKEEP-004, which owns the compile-side layout
-| 3 | `get()` on a packed view decodes; the debug-mode warning on hot paths does not exist | https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]
 | 4 | The `(head, tail)` pair and its gather fallback exist (`WindowedKV`); only the reference attention consumes them | https://github.com/SKaiNET-developers/SKaiNET/issues/1504[#1504], outside this SKEEP
 | 5 | `BlockSpec.activation` drives the eager dispatcher; the StableHLO export does not read it | https://github.com/SKaiNET-developers/SKaiNET/issues/1505[#1505], outside this SKEEP
 | 7 | `SuspendingRandomAccessSource` exists in `skainet-io-core`; there is no remote module | https://github.com/SKaiNET-developers/SKaiNET/issues/1506[#1506], outside this SKEEP
-| 8 | Axis labels on `Shape` | https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]
-| 10 | Activation ids exist when tracing, not in eager debug mode | https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]
 |===
 
 Compiled parity (P7 below) was closed as superseded: IREE validation lives in the IREE-tools and
