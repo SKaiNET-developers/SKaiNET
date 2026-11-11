@@ -3,7 +3,6 @@ package sk.ainet.io.gguf
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.MmapFloatTensorData
 import sk.ainet.lang.tensor.data.MmapTensorSource
-import sk.ainet.lang.tensor.storage.TensorStorage
 import sk.ainet.lang.types.DType
 import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
@@ -14,7 +13,7 @@ import java.nio.channels.FileChannel
  * Since #1037 this is the **per-tensor** face of `WeightResidency.MAPPED`: to load a whole model
  * from mapped pages, pass `WeightForm(residency = WeightResidency.MAPPED)` to [StreamingGgufParametersLoader] and
  * get the same file-backed tensors through the ordinary loader. This class stays for callers that
- * want to reach individual tensors (or their `TensorStorage` descriptors) without loading a model.
+ * want to reach individual tensors without loading a model.
  *
  * On Android every heap array counts against the hard ART cap (256 MB
  * default, 512 MB with `largeHeap`), which limits practical model size no
@@ -28,10 +27,6 @@ import java.nio.channels.FileChannel
  * Per-tensor access:
  * - [mappedFloatTensor] — dense F32 tensors as zero-heap mapped views
  *   (wrap into a `Tensor` with `ctx.fromData`).
- * - [mappedStorage] — any tensor as a [TensorStorage] descriptor with
- *   [sk.ainet.lang.tensor.storage.BufferHandle.FileBacked] bytes; resolve
- *   with `JvmFileBackedResolver.createResolver()` (shared with Android) or
- *   materialize via `copyMaterialize(resolver)`.
  * - [packedBytes] — the raw packed payload on the heap, for quantized
  *   tensors that existing kernels consume as `ByteArray` (their transient
  *   load cost is already streamed per tensor, see #782).
@@ -69,27 +64,17 @@ public class MappedGgufWeights private constructor(
      * allocated on the managed heap beyond the small view object.
      *
      * @throws IllegalArgumentException if the tensor is not F32; use
-     *   [packedBytes] (quantized) or [mappedStorage] (descriptor) instead.
+     *   [packedBytes] for quantized payloads instead.
      */
     public fun <T : DType> mappedFloatTensor(name: String): MmapFloatTensorData<T> {
         val t = info(name)
         require(t.tensorType == GGMLQuantizationType.F32) {
             "Tensor '$name' is ${t.tensorType}, not F32 — mappedFloatTensor serves dense " +
-                "float tensors only. Use packedBytes() for quantized payloads or " +
-                "mappedStorage() for a FileBacked descriptor."
+                "float tensors only. Use packedBytes() for quantized payloads."
         }
         val shape = Shape(*t.shape.map { it.toInt() }.toIntArray())
         return mmap.floatTensorAt(t.absoluteDataOffset, shape)
     }
-
-    /**
-     * Any tensor as a [TensorStorage] descriptor whose buffer is
-     * [sk.ainet.lang.tensor.storage.BufferHandle.FileBacked] — the
-     * placement-aware entry point (see SKEEP-003). Bytes are read only when
-     * the handle is resolved.
-     */
-    public fun mappedStorage(name: String): TensorStorage =
-        reader.loadTensorStorageMapped(info(name), filePath)
 
     /**
      * The raw packed payload of a tensor as a heap `ByteArray` — for

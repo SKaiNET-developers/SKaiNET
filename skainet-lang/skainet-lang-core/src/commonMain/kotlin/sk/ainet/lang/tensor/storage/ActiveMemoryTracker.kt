@@ -6,7 +6,7 @@ import kotlin.concurrent.Volatile
  * Global hook for the active [MemoryTracker].
  *
  * Set [current] to a tracker instance to automatically capture copy events
- * from instrumented copy paths (e.g. CopyMaterializationStrategy,
+ * from instrumented copy paths (e.g. `sliceCopy`,
  * DenseTensorDataFactory.from*Array). Set to `null` to disable tracking.
  *
  * Thread-safety: [current] is `@Volatile`, so installing or clearing a

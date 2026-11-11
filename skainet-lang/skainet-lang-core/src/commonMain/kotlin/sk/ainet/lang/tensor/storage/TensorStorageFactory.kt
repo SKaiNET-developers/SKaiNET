@@ -44,27 +44,6 @@ public object TensorStorageFactory {
         )
 
     /**
-     * Convert a FloatArray to dense FLOAT32 storage.
-     *
-     * Despite the historical name, this CANNOT borrow: a `FloatArray` has no
-     * byte-view in common Kotlin, so the floats are re-encoded into a fresh
-     * little-endian `ByteArray`. The result is therefore an [BufferHandle.Owned]
-     * buffer — labeling the private copy `Borrowed` (as this method previously
-     * did) misrepresented ownership to every consumer of
-     * [TensorStorage.ownership] and to [MemoryTracker] reports.
-     *
-     * For genuine zero-copy borrowing, start from bytes: [fromRawBytes] borrows
-     * the given `ByteArray` without copying.
-     */
-    @Deprecated(
-        message = "A FloatArray cannot be borrowed as byte storage; this method always copies. " +
-            "Use fromFloatArray (same behavior, honest name) or fromRawBytes for real borrowing.",
-        replaceWith = ReplaceWith("fromFloatArray(shape, data)"),
-    )
-    public fun borrowFloatArray(shape: Shape, data: FloatArray): TensorStorage =
-        fromFloatArray(shape, data)
-
-    /**
      * Wrap an IntArray as owned dense INT32 storage (copies the array).
      */
     public fun fromIntArray(shape: Shape, data: IntArray): TensorStorage =

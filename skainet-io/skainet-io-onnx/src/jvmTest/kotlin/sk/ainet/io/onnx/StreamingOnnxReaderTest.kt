@@ -220,7 +220,7 @@ class StreamingOnnxReaderTest {
         tempFile.deleteOnExit()
         tempFile.writeBytes(modelBytes)
 
-        val source = createOnnxRandomAccessSource(tempFile.absolutePath)
+        val source = sk.ainet.io.openRandomAccessSource(tempFile.absolutePath)
         assertNotNull(source)
         source.use {
             assertTrue(it.size > 0)
