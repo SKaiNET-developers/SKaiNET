@@ -1,0 +1,34 @@
+# Downcasts to concrete TensorData classes outside the data package. Checked by
+# `./gradlew checkTensorDataDowncasts`.
+#
+# SKEEP-003 acceptance criterion: no dispatch site downcasts to a concrete `TensorData` class
+# outside the storage/data package itself; a kernel is chosen from the view's
+# Format(dtype, encoding). These are the sites that still do. The goal is an empty file.
+#
+# Format: path|count|issue or reason
+#   count = exact number of `is` / `!is` / `as` / `as?` whose target is a `…TensorData` class
+#   or a storage marker (PackedBlockStorage, RowDequantSource, MemorySegmentBackedData,
+#   Q4/Q8MemorySegmentMarker). Removing a downcast means lowering the count (or deleting the
+#   line). Do not raise a count: dispatch on the format instead.
+
+skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/HloCompiler.kt|1|#1507
+skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/TensorConversionPipeline.kt|1|#1507
+skainet-apps/skainet-tensor-tools/src/main/kotlin/sk/ainet/apps/tool/quantize/QuantizeCli.kt|3|#1507
+skainet-backends/skainet-backend-cpu/src/appleMain/kotlin/sk/ainet/exec/tensor/ops/AccelerateCpuOps.kt|18|#1507
+skainet-backends/skainet-backend-cpu/src/commonMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOps.kt|51|#1507
+skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOpsJvm.kt|48|#1507
+skainet-backends/skainet-backend-wasm-simd/src/wasmJsMain/kotlin/sk/ainet/exec/wasm/WasmCpuOps.kt|10|#1507
+skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/trace/TraceToGraphBuilder.kt|3|#1507
+skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/BlockQuantMatmulConverter.kt|1|#1507
+skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/ConstantOperationsConverter.kt|1|#1507
+skainet-compile/skainet-compile-opt/src/commonMain/kotlin/sk/ainet/compile/opt/passes/BlockQuantMatmulFusionPass.kt|1|#1507
+skainet-io/skainet-io-gguf/src/commonMain/kotlin/sk/ainet/io/gguf/StreamingGgufParametersLoader.kt|2|#1507
+skainet-io/skainet-io-gguf/src/commonMain/kotlin/sk/ainet/io/gguf/export/GGUFWriter.kt|2|#1507
+skainet-io/skainet-io-safetensors/src/commonMain/kotlin/sk/ainet/io/safetensors/SafeTensorsMaterializer.kt|1|#1507
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/IndexTensor.kt|1|#1507
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/QuantizedMatmul.kt|9|#1507
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TensorSpecEncoding.kt|1|#1507
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TernaryMatmul.kt|3|#1507
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/trace/TraceSession.kt|1|#1507
+skainet-lang/skainet-lang-core/src/jvmMain/kotlin/sk/ainet/lang/tensor/StorageBenchmarks.kt|3|#1507
+skainet-test/skainet-test-groundtruth/src/commonMain/kotlin/sk/ainet/test/groundtruth/TensorAssertions.kt|1|#1507

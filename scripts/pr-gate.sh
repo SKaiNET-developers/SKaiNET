@@ -68,7 +68,7 @@ step "Android host tests"
 "${GRADLE[@]}" testAndroidHostTest
 
 if [[ "$mode" == "--bench" ]]; then
-  step "benchmarks (compare against the committed baseline before/after)"
+  step "benchmarks (compare with docs/modules/ROOT/pages/reference/benchmark-baseline.adoc)"
   "${GRADLE[@]}" :skainet-lang:skainet-lang-core:jvmBenchmark
   "${GRADLE[@]}" :skainet-backends:benchmarks:jvm-cpu-jmh:jmh
 fi

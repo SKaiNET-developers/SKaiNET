@@ -57,6 +57,22 @@ class DocumentationPlugin : Plugin<Project> {
             }
         })
 
+        // Guard (SKEEP-003): ops choose kernels from a view's Format, not by downcasting to a
+        // concrete TensorData class. Today's sites are allowlisted; the list may only shrink.
+        project.tasks.register("checkTensorDataDowncasts", CheckTensorDataDowncastsTask::class.java, object : Action<CheckTensorDataDowncastsTask> {
+            override fun execute(task: CheckTensorDataDowncastsTask) {
+                task.group = "verification"
+                task.description = "Fail on downcasts to concrete TensorData classes that are not in the allowlist"
+                val root = project.rootProject.layout.projectDirectory
+                project.rootProject.allprojects.forEach { p ->
+                    task.sources.from(p.fileTree("src") { include("**/*.kt") })
+                }
+                task.rootDirectory.set(root)
+                task.allowlistFile.set(root.file("config/tensor-data-downcast-allowlist.txt"))
+                task.reportFile.set(project.layout.buildDirectory.file("reports/downcasts/tensor-data-downcasts.txt"))
+            }
+        })
+
         // Register schema validation task in plugin (migrated from skainet-lang-export-ops)
         val validateTaskProvider = project.tasks.register("validateOperatorSchema", SchemaValidationTask::class.java, object : Action<SchemaValidationTask> {
             override fun execute(task: SchemaValidationTask) {
