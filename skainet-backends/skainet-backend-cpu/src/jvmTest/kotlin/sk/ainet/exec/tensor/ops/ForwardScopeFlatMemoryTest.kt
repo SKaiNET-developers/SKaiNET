@@ -22,6 +22,7 @@ import sk.ainet.lang.types.FP32
  * The loop is a decode step in miniature — weights outside the scope, activations inside it,
  * `reset()` at the step boundary — at a size where a leak is unmistakable: one step produces
  * about 3 MB of activations, so 300 steps would be about 900 MB if anything accumulated.
+ * Asserted: the direct buffer pool, the live heap after a collection, and the slab's peak.
  */
 class ForwardScopeFlatMemoryTest {
 
@@ -31,6 +32,13 @@ class ForwardScopeFlatMemoryTest {
 
     private val directPool: BufferPoolMXBean =
         ManagementFactory.getPlatformMXBeans(BufferPoolMXBean::class.java).first { it.name == "direct" }
+
+    /** Live heap after a collection: what the loop still holds, not what it has churned through. */
+    private fun liveHeap(): Long {
+        val rt = Runtime.getRuntime()
+        repeat(3) { System.gc(); Thread.sleep(50) }
+        return rt.totalMemory() - rt.freeMemory()
+    }
 
     private fun mb(bytes: Long): String = "%.1f MB".format(bytes / (1024.0 * 1024.0))
 
@@ -55,6 +63,7 @@ class ForwardScopeFlatMemoryTest {
         base.forwardScope(slabFloats = 8 * n * n) { scoped, scope ->
             var directAfterWarmup = 0L
             var rssAfterWarmup: Long? = null
+            var heapAfterWarmup = 0L
             var peakAfterWarmup = 0
             var directPeak = 0L
 
@@ -70,6 +79,7 @@ class ForwardScopeFlatMemoryTest {
                 if (stepNo == warmup) {
                     directAfterWarmup = direct
                     rssAfterWarmup = MemoryProbe.rssBytes()
+                    heapAfterWarmup = liveHeap()
                     peakAfterWarmup = scope.peakFloats
                 }
                 if (stepNo > warmup) {
@@ -79,20 +89,21 @@ class ForwardScopeFlatMemoryTest {
             }
 
             val directGrowth = directPeak - directAfterWarmup
+            val heapGrowth = liveHeap() - heapAfterWarmup
             val rssGrowth = rssAfterWarmup?.let { before -> MemoryProbe.rssBytes()?.minus(before) }
             println(
                 "[forward-scope] ${steps - warmup} steady steps of ${mb(stepBytes)}: direct pool ${mb(directAfterWarmup)} -> peak ${mb(directPeak)}, " +
-                    "rss growth ${rssGrowth?.let(::mb) ?: "n/a"}, slab peak ${scope.peakFloats} floats",
+                    "live heap growth ${mb(heapGrowth)}, rss growth ${rssGrowth?.let(::mb) ?: "n/a"}, slab peak ${scope.peakFloats} floats",
             )
 
             // Flat: less than one step's worth of direct memory appears over 280 steps.
             assertTrue(directGrowth < stepBytes, "direct memory grew by ${mb(directGrowth)} over ${steps - warmup} steps")
-            // A leak of every activation would be about 840 MB here; allow a tenth of that for the
-            // JIT, the collector and allocator noise in a shared test JVM.
-            if (rssGrowth != null) {
-                val leakIfEverythingStayed = stepBytes * (steps - warmup)
-                assertTrue(rssGrowth < leakIfEverythingStayed / 10, "RSS grew by ${mb(rssGrowth)} over ${steps - warmup} steps")
-            }
+            // A leak of every activation would be about 840 MB here. Live heap after a collection
+            // is what the loop still holds; allow a tenth of the leak for whatever else the test
+            // JVM keeps. RSS is printed, not asserted: a JVM grows its committed heap lazily, so
+            // RSS moves with garbage that is already dead (seen on a CI runner).
+            val leakIfEverythingStayed = stepBytes * (steps - warmup)
+            assertTrue(heapGrowth < leakIfEverythingStayed / 10, "live heap grew by ${mb(heapGrowth)} over ${steps - warmup} steps")
         }
     }
 }

@@ -4,7 +4,7 @@
 
 ### Added
 
-- **Guards for SKEEP-003's acceptance criteria** (build, `skainet-backend-cpu`, docs, #1501): `./gradlew checkTensorDataDowncasts` counts the downcasts to concrete `TensorData` classes outside the data package (162 in 21 files today) against `config/tensor-data-downcast-allowlist.txt`, so a new one fails the build and the list can only shrink; it runs in the `stub-markers` CI leg. `ForwardScopeFlatMemoryTest` runs 300 forward passes under a forward scope on the JVM and asserts that direct memory, RSS and the slab stay flat. `reference/benchmark-baseline.adoc` records the JMH numbers for matmul, elementwise and reductions that a dispatch or storage change is compared against, replacing the baseline deleted in #1106.
+- **Guards for SKEEP-003's acceptance criteria** (build, `skainet-backend-cpu`, docs, #1501): `./gradlew checkTensorDataDowncasts` counts the downcasts to concrete `TensorData` classes outside the data package (162 in 21 files today) against `config/tensor-data-downcast-allowlist.txt`, so a new one fails the build and the list can only shrink; it runs in the `stub-markers` CI leg. `ForwardScopeFlatMemoryTest` runs 300 forward passes under a forward scope on the JVM and asserts that direct memory, the live heap and the slab stay flat. `reference/benchmark-baseline.adoc` records the JMH numbers for matmul, elementwise and reductions that a dispatch or storage change is compared against, replacing the baseline deleted in #1106.
 
 ### Changed
 
