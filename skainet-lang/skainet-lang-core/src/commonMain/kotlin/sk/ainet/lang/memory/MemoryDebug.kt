@@ -5,7 +5,8 @@ import sk.ainet.lang.tensor.TensorId
 /**
  * Debug mode for the memory model (SKEEP-003 §4.7, §8 item 4, PRD M1-F9): the switch that turns
  * `SKAINET_MEMORY_DEBUG=1` (or `-Dskainet.memory.debug=true`) into allocation-site tagging,
- * use-after-close reporting with the closing site, adapter logging and per-scope high-water marks.
+ * use-after-close reporting with the closing site, adapter logging, per-scope high-water marks and
+ * a warning when element-wise `get()` keeps decoding a packed view.
  *
  * *The tool that would have found #782 in one run.* Off by default and costing one boolean read
  * per allocation; on, it keeps a bounded ledger of live storages plus hooks a debugger or a test
@@ -52,6 +53,32 @@ public object MemoryDebug {
     /** Called when a `Forward` scope is reset with storages still referenced from outside — a leak. */
     public var onLeak: ((List<Entry>) -> Unit)? = null
 
+    /**
+     * Element-wise reads of one packed storage through `TensorView.get` (SKEEP-003 decision 3).
+     * Each such read decodes a whole block to return one value, so thousands of them mean a loop
+     * that should take the packed kernel or `materialize()` once.
+     */
+    public data class PackedElementReads(
+        val storageId: StorageId,
+        val origin: TensorId?,
+        val encoding: String,
+        val reads: Long,
+        val site: String?,
+    )
+
+    /** Reads of one packed storage before the first warning; each later warning needs twice as many. */
+    public var packedReadWarnThreshold: Long = 1024
+
+    /**
+     * Called when element-wise reads of a packed storage reach [packedReadWarnThreshold], and again
+     * each time the count doubles. While it is `null` the warning is printed.
+     */
+    public var onPackedElementReads: ((PackedElementReads) -> Unit)? = null
+
+    private class ReadCounter(var reads: Long, var nextWarnAt: Long, var site: String?, val origin: TensorId?, val encoding: String)
+
+    private val packedReads = LinkedHashMap<Long, ReadCounter>()
+
     // --- recording (called by Storage / Scope / the dispatcher; no-ops when disabled) ---
 
     internal fun recordAllocation(id: StorageId, scope: ScopeKind, bytes: Long, origin: TensorId?, site: String?) {
@@ -71,6 +98,27 @@ public object MemoryDebug {
         e.closed = true; e.closingSite = site
         liveByScope[e.scope] = ((liveByScope[e.scope] ?: 0L) - e.bytes).coerceAtLeast(0L)
         onClose?.invoke(e)
+    }
+
+    /** One element of a packed view was decoded through `get()`; warns when it becomes a pattern. */
+    internal fun recordPackedElementRead(id: StorageId, encoding: String, origin: TensorId?) {
+        if (!isEnabled) return
+        val c = packedReads.getOrPut(id.value) { ReadCounter(0L, packedReadWarnThreshold.coerceAtLeast(1L), null, origin, encoding) }
+        c.reads++
+        if (c.reads < c.nextWarnAt) return
+        c.nextWarnAt = c.reads * 2
+        c.site = platformCallSite()
+        val reads = PackedElementReads(id, c.origin, c.encoding, c.reads, c.site)
+        val hook = onPackedElementReads
+        if (hook != null) hook(reads) else println(describePackedReads(reads))
+    }
+
+    private fun describePackedReads(r: PackedElementReads): String = buildString {
+        append("SKaiNET memory debug: "); append(r.reads); append(" element reads of ")
+        append(r.encoding); append(" storage "); append(r.storageId)
+        r.origin?.let { append(" ("); append(it.canonical); append(')') }
+        append(" through get(); each one decodes a whole block. Use the packed kernel or materialize() once")
+        r.site?.let { append("\n  last read from "); append(it) }
     }
 
     /** Report an adapter insertion (kind, bytes, target) — the "silent dequant budget" of #782. */
@@ -133,11 +181,18 @@ public object MemoryDebug {
             append('\n')
         }
         if (liveEntries().size > MAX_REPORTED) { append("  … "); append(liveEntries().size - MAX_REPORTED); append(" more\n") }
+        for ((id, c) in packedReads) {
+            if (c.reads < packedReadWarnThreshold) continue
+            append("  slow "); append(StorageId(id)); append(' '); append(c.origin?.canonical ?: "—"); append(' ')
+            append(c.reads); append(" element reads of "); append(c.encoding); append(" through get()")
+            c.site?.let { append(" @ "); append(it) }
+            append('\n')
+        }
     }
 
     /** Forget everything (between tests, or between models). */
     public fun reset() {
-        ledger.clear(); peakByScope.clear(); liveByScope.clear()
+        ledger.clear(); peakByScope.clear(); liveByScope.clear(); packedReads.clear()
     }
 
     private const val MAX_REPORTED: Int = 20

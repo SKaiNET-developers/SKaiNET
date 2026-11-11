@@ -1,6 +1,9 @@
 package sk.ainet.lang.memory
 
+import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.TensorId
+import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
+import sk.ainet.lang.types.FP32
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -18,6 +21,7 @@ class MemoryDebugTest {
 
     @AfterTest fun off() {
         MemoryDebug.onAllocate = null; MemoryDebug.onClose = null; MemoryDebug.onAdapter = null; MemoryDebug.onLeak = null
+        MemoryDebug.onPackedElementReads = null; MemoryDebug.packedReadWarnThreshold = 1024
         MemoryDebug.reset(); MemoryDebug.overrideEnabled = null
     }
 
@@ -104,5 +108,57 @@ class MemoryDebugTest {
         MemoryDebug.reset()
         assertEquals(0L, MemoryDebug.peakBytes(ScopeKind.MODEL))
         assertNull(MemoryDebug.entry(StorageId(1)))
+    }
+
+    // --- decision 3: element-wise get() on a packed view ---
+
+    /** Two rows of two Q8_0 blocks: a half-float scale and 32 codes per block. */
+    private fun packedView(): TensorView {
+        val bytes = ByteArray(4 * 34) { if (it % 34 == 1) 0x3C else (it % 7).toByte() }
+        return Q8_0BlockTensorData(Shape(2, 64), bytes).packedView
+    }
+
+    @Test
+    fun repeatedElementReadsOfAPackedViewWarnOnceAtTheThresholdThenWhenTheCountDoubles() {
+        val seen = ArrayList<MemoryDebug.PackedElementReads>()
+        MemoryDebug.onPackedElementReads = { seen += it }
+        MemoryDebug.packedReadWarnThreshold = 8
+        val v = packedView()
+
+        repeat(7) { v.get(0, it) }
+        assertTrue(seen.isEmpty(), "a few reads are not a hot path")
+
+        v.get(0, 7)
+        assertEquals(1, seen.size)
+        assertEquals(8L, seen.single().reads)
+        assertEquals(v.storage.id, seen.single().storageId)
+        assertEquals("Q8_0", seen.single().encoding)
+
+        repeat(7) { v.get(1, it) }
+        assertEquals(1, seen.size, "rate-limited: nothing between 8 and 16 reads")
+        v.get(1, 7)
+        assertEquals(listOf(8L, 16L), seen.map { it.reads })
+
+        assertTrue(MemoryDebug.report().contains("16 element reads of Q8_0 through get()"), MemoryDebug.report())
+    }
+
+    @Test
+    fun denseReadsWholeViewDecodesAndDisabledDebugModeNeverWarn() {
+        val seen = ArrayList<MemoryDebug.PackedElementReads>()
+        MemoryDebug.onPackedElementReads = { seen += it }
+        MemoryDebug.packedReadWarnThreshold = 2
+
+        val dense = TensorView.dense(Storage.Heap.floats(8), Shape(8), FP32)
+        repeat(8) { dense.get(it) }
+        assertTrue(seen.isEmpty(), "a dense read costs nothing worth a warning")
+
+        val v = packedView()
+        v.toFloatArray()
+        v.materialize()
+        assertTrue(seen.isEmpty(), "decoding a whole view is the fix, not the pattern")
+
+        MemoryDebug.overrideEnabled = false
+        repeat(8) { v.get(0, it) }
+        assertTrue(seen.isEmpty(), "nothing is counted while debug mode is off")
     }
 }
