@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.io.gguf
 
 import org.junit.Test
@@ -109,7 +107,7 @@ class StorageIntegrationTest {
 
                 // F32 tensor
                 val f32Storage = reader.loadTensorStorage("weight_f32")
-                assertEquals(LogicalDType.FLOAT32, f32Storage.logicalType)
+                assertEquals(FP32, f32Storage.dtype)
                 assertSame(FP32, f32Storage.dtype)
                 assertEquals(TensorEncoding.Dense(4), f32Storage.encoding)
                 assertEquals(Ownership.BORROWED, f32Storage.ownership)
@@ -119,7 +117,7 @@ class StorageIntegrationTest {
 
                 // Q8_0 tensor
                 val q80Storage = reader.loadTensorStorage("weight_q80")
-                assertEquals(LogicalDType.FLOAT32, q80Storage.logicalType) // packed weights are logically FP32
+                assertEquals(FP32, q80Storage.dtype) // packed weights are logically FP32
                 assertSame(FP32, q80Storage.dtype)
                 assertEquals(TensorEncoding.Q8_0, q80Storage.encoding)
                 assertEquals(Ownership.BORROWED, q80Storage.ownership)

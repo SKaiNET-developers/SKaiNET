@@ -127,24 +127,15 @@ public interface PackedBlockStorage {
         return result
     }
 
-    /**
-     * Convert this packed storage to a [TensorStorage] descriptor.
-     */
-    @Deprecated(message = "Use toTensorStorage(dtype, placement) (SKEEP-003 decision #13).", replaceWith = ReplaceWith("toTensorStorage(dtype, placement)"))
+    /** Convert this packed storage to a [TensorStorage] descriptor (packed weights are logically FP32). */
     public fun toTensorStorage(
-        logicalType: LogicalDType = LogicalDType.FLOAT32,
+        dtype: sk.ainet.lang.types.DType = sk.ainet.lang.types.FP32,
         placement: Placement = Placement.CPU_HEAP
     ): TensorStorage = TensorStorage(
         shape = shape,
-        logicalType = logicalType,
+        dtype = dtype,
         encoding = encoding,
         buffer = BufferHandle.Borrowed(packedData, isMutable = false),
         placement = placement
     )
-
-    /** Convert this packed storage to a [TensorStorage] descriptor, dtype-first (packed weights are logically [FP32]). */
-    public fun toTensorStorage(
-        dtype: sk.ainet.lang.types.DType,
-        placement: Placement = Placement.CPU_HEAP
-    ): TensorStorage = toTensorStorage(dtype.toLogicalDType(), placement)
 }

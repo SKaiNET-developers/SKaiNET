@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // keeps the LogicalDType primary constructor working until the next major
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -12,7 +10,7 @@ import sk.ainet.lang.types.DType
  * tensor: the streaming GGUF and SafeTensors readers return it. It carries
  * enough information to handle a tensor without inspecting its bytes:
  *
- * - **What** the values mean: [logicalType]
+ * - **What** the values mean: [dtype]
  * - **How** they are stored: [encoding]
  * - **Where** the bytes live: [buffer] + [placement]
  * - **Layout**: [shape], [byteOffset], [strides], [isContiguous]
@@ -25,11 +23,7 @@ import sk.ainet.lang.types.DType
  */
 public data class TensorStorage(
     val shape: Shape,
-    @Deprecated(
-        message = "Use dtype (SKEEP-003 decision #13); the LogicalDType view stays until the next major.",
-        replaceWith = ReplaceWith("dtype"),
-    )
-    val logicalType: LogicalDType,
+    val dtype: DType,
     val encoding: TensorEncoding,
     val buffer: BufferHandle,
     val placement: Placement = Placement.CPU_HEAP,
@@ -37,29 +31,11 @@ public data class TensorStorage(
     val strides: LongArray? = null,
     val isContiguous: Boolean = true
 ) {
-    /**
-     * Construct from a [DType] (SKEEP-003 Phase 0): the dtype-first form every new call site uses;
-     * the [LogicalDType] primary constructor stays for source compatibility until the next major.
-     */
-    public constructor(
-        shape: Shape,
-        dtype: DType,
-        encoding: TensorEncoding,
-        buffer: BufferHandle,
-        placement: Placement = Placement.CPU_HEAP,
-        byteOffset: Long = 0,
-        strides: LongArray? = null,
-        isContiguous: Boolean = true,
-    ) : this(shape, dtype.toLogicalDType(), encoding, buffer, placement, byteOffset, strides, isContiguous)
-
-    /** The [DType] of this storage — what the values mean (SKEEP-003 Phase 0 bridge over [logicalType]). */
-    val dtype: DType get() = logicalType.toDType()
-
     /** Number of logical elements in this tensor. */
     val elementCount: Long get() = shape.volume.toLong()
 
     /** Logical size: number of elements x logical element size. */
-    val logicalBytes: Long get() = elementCount * logicalType.sizeInBytes
+    val logicalBytes: Long get() = elementCount * dtype.sizeInBytes
 
     /** Physical size: actual bytes consumed in the buffer for this tensor. */
     val physicalBytes: Long get() = encoding.physicalBytes(elementCount) ?: buffer.sizeInBytes
@@ -82,7 +58,7 @@ public data class TensorStorage(
      */
     public fun memoryReport(): StorageMemoryReport = StorageMemoryReport(
         shape = shape,
-        logicalType = logicalType,
+        dtype = dtype,
         encoding = encoding,
         ownership = ownership,
         placement = placement,
@@ -199,7 +175,7 @@ public data class TensorStorage(
      * first, then quantized. The target encoding and shape are validated before the buffer is
      * read, with the loader's messages.
      *
-     * The result is owned packed host storage; [logicalType], shape and placement device are
+     * The result is owned packed host storage; [dtype], shape and placement device are
      * kept. [BufferHandle.FileBacked] sources need the overload that takes a [BufferResolver].
      */
     public fun requantizeTo(targetEncoding: TensorEncoding): TensorStorage =
@@ -216,7 +192,7 @@ public data class TensorStorage(
         )
         return TensorStorage(
             shape = shape,
-            logicalType = logicalType,
+            dtype = dtype,
             encoding = targetEncoding,
             buffer = BufferHandleFactory.owned(packed.packedData),
             placement = placement.copy(domain = MemoryDomain.HOST_HEAP),
@@ -242,7 +218,7 @@ public data class TensorStorage(
         if (this === other) return true
         if (other !is TensorStorage) return false
         return shape == other.shape &&
-            logicalType == other.logicalType &&
+            dtype == other.dtype &&
             encoding == other.encoding &&
             buffer == other.buffer &&
             placement == other.placement &&
@@ -253,7 +229,7 @@ public data class TensorStorage(
 
     override fun hashCode(): Int {
         var result = shape.hashCode()
-        result = 31 * result + logicalType.hashCode()
+        result = 31 * result + dtype.hashCode()
         result = 31 * result + encoding.hashCode()
         result = 31 * result + buffer.hashCode()
         result = 31 * result + placement.hashCode()

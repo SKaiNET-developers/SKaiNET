@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -11,35 +9,24 @@ import kotlin.test.assertTrue
 
 class TensorStorageContractTest {
 
-    // --- LogicalDType ---
+    // --- DType as the storage type ---
 
     @Test
-    fun logicalDTypeFromDTypeRoundTrips() {
-        assertEquals(LogicalDType.FLOAT32, LogicalDType.fromDType(FP32))
-        assertEquals(LogicalDType.FLOAT16, LogicalDType.fromDType(FP16))
-        assertEquals(LogicalDType.BFLOAT16, LogicalDType.fromDType(BF16))
-        assertEquals(LogicalDType.INT32, LogicalDType.fromDType(Int32))
-        assertEquals(LogicalDType.INT4, LogicalDType.fromDType(Int4))
-        assertEquals(LogicalDType.TERNARY, LogicalDType.fromDType(Ternary))
-        assertEquals(LogicalDType.UINT8, LogicalDType.fromDType(UInt8))
+    fun dtypeSizeInBytes() {
+        assertEquals(4, FP32.sizeInBytes)
+        assertEquals(2, FP16.sizeInBytes)
+        assertEquals(2, BF16.sizeInBytes)
+        assertEquals(4, Int32.sizeInBytes)
+        assertEquals(1, Int8.sizeInBytes)
+        assertEquals(1, Int4.sizeInBytes) // 4 bits rounds up to 1 byte
     }
 
     @Test
-    fun logicalDTypeSizeInBytes() {
-        assertEquals(4, LogicalDType.FLOAT32.sizeInBytes)
-        assertEquals(2, LogicalDType.FLOAT16.sizeInBytes)
-        assertEquals(2, LogicalDType.BFLOAT16.sizeInBytes)
-        assertEquals(4, LogicalDType.INT32.sizeInBytes)
-        assertEquals(1, LogicalDType.INT8.sizeInBytes)
-        assertEquals(1, LogicalDType.INT4.sizeInBytes) // 4 bits rounds up to 1 byte
-    }
-
-    @Test
-    fun logicalDTypeProperties() {
-        assertTrue(LogicalDType.FLOAT32.isFloatingPoint)
-        assertTrue(LogicalDType.FLOAT32.isSigned)
-        assertFalse(LogicalDType.UINT8.isSigned)
-        assertFalse(LogicalDType.INT32.isFloatingPoint)
+    fun dtypeProperties() {
+        assertTrue(FP32.isFloatingPoint())
+        assertTrue(FP32.isSigned)
+        assertFalse(UInt8.isSigned)
+        assertFalse(Int32.isFloatingPoint())
     }
 
     // --- TensorEncoding ---
@@ -152,7 +139,7 @@ class TensorStorageContractTest {
         val data = ByteArray(24) // 6 elements * 4 bytes
         val storage = TensorStorage(
             shape = shape,
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Owned(data)
         )
@@ -171,7 +158,7 @@ class TensorStorageContractTest {
         val data = ByteArray(144) // 1 Q4_K block
         val storage = TensorStorage(
             shape = shape,
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             buffer = BufferHandle.Borrowed(data)
         )
@@ -187,7 +174,7 @@ class TensorStorageContractTest {
         val shape = Shape(1024, 768)
         val storage = TensorStorage(
             shape = shape,
-            logicalType = LogicalDType.FLOAT16,
+            dtype = FP16,
             encoding = TensorEncoding.Dense(2),
             buffer = BufferHandle.FileBacked("/model.bin", fileOffset = 4096, sizeInBytes = 1024L * 768 * 2),
             placement = Placement.MMAP_WEIGHTS
@@ -204,12 +191,12 @@ class TensorStorageContractTest {
         val shape = Shape(256)
         val storage = TensorStorage(
             shape = shape,
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             buffer = BufferHandle.Borrowed(ByteArray(144))
         )
         val report = storage.memoryReport()
-        assertEquals(LogicalDType.FLOAT32, report.logicalType)
+        assertEquals(FP32, report.dtype)
         assertEquals("Q4_K", report.encoding.name)
         assertEquals(Ownership.BORROWED, report.ownership)
         assertEquals(1024L, report.logicalBytes)
@@ -225,15 +212,15 @@ class TensorStorageContractTest {
     fun dtypeConstructorEqualsLogicalTypeConstructor() {
         val shape = Shape(2, 3)
         val buffer = BufferHandle.Borrowed(ByteArray(24)) // one instance: BufferHandle equality is identity
-        val viaLogical = TensorStorage(shape, LogicalDType.FLOAT32, TensorEncoding.Dense(4), buffer)
+        val viaLogical = TensorStorage(shape, FP32, TensorEncoding.Dense(4), buffer)
         val viaDType = TensorStorage(shape, FP32, TensorEncoding.Dense(4), buffer)
         assertEquals(viaLogical, viaDType)
         assertEquals(FP32, viaDType.dtype)
-        assertEquals(LogicalDType.FLOAT32, viaDType.logicalType)
+        assertEquals(FP32, viaDType.dtype)
         assertEquals(viaLogical.memoryReport(), viaDType.memoryReport())
 
         val bf16 = TensorStorage(shape, BF16, TensorEncoding.Dense(2), BufferHandle.Borrowed(ByteArray(12)), Placement.CPU_HEAP)
-        assertEquals(LogicalDType.BFLOAT16, bf16.logicalType)
+        assertEquals(BF16, bf16.dtype)
         assertEquals(12L, bf16.logicalBytes)
     }
 
@@ -242,17 +229,17 @@ class TensorStorageContractTest {
         val shape = Shape(4)
         val bytes = ByteArray(16)
         // BufferHandle subclasses have identity equality, so compare the descriptor fields.
-        fun sig(s: TensorStorage) = listOf(s.shape, s.logicalType, s.dtype, s.encoding, s.ownership, s.placement, s.physicalBytes)
+        fun sig(s: TensorStorage) = listOf(s.shape, s.dtype, s.dtype, s.encoding, s.ownership, s.placement, s.physicalBytes)
         assertEquals(
-            sig(TensorStorageFactory.fromRawBytes(shape, LogicalDType.INT32, TensorEncoding.Dense(4), bytes)),
+            sig(TensorStorageFactory.fromRawBytes(shape, Int32, TensorEncoding.Dense(4), bytes)),
             sig(TensorStorageFactory.fromRawBytes(shape, Int32, TensorEncoding.Dense(4), bytes)),
         )
         assertEquals(
-            sig(TensorStorageFactory.fromRawBytesOwned(shape, LogicalDType.FLOAT16, TensorEncoding.Dense(2), ByteArray(8))),
+            sig(TensorStorageFactory.fromRawBytesOwned(shape, FP16, TensorEncoding.Dense(2), ByteArray(8))),
             sig(TensorStorageFactory.fromRawBytesOwned(shape, FP16, TensorEncoding.Dense(2), ByteArray(8))),
         )
         assertEquals(
-            sig(TensorStorageFactory.fileBacked(shape, LogicalDType.FLOAT32, TensorEncoding.Dense(4), "/m.gguf", 128L, 16L)),
+            sig(TensorStorageFactory.fileBacked(shape, FP32, TensorEncoding.Dense(4), "/m.gguf", 128L, 16L)),
             sig(TensorStorageFactory.fileBacked(shape, FP32, TensorEncoding.Dense(4), "/m.gguf", 128L, 16L)),
         )
         assertEquals(FP32, TensorStorageFactory.fromFloatArray(shape, FloatArray(4)).dtype)

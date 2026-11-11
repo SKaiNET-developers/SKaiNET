@@ -4,7 +4,7 @@ package sk.ainet.lang.tensor.storage
  * Physical storage encoding — how tensor data is laid out in memory.
  *
  * A [TensorEncoding] describes the byte-level format of a buffer, independent
- * of the logical numeric type ([LogicalDType]). For example, a FLOAT32 tensor
+ * of the logical numeric type ([sk.ainet.lang.types.DType]). For example, a FLOAT32 tensor
  * may be stored as [Dense] (4 bytes per element) or as [Q4_K] (packed 4-bit
  * blocks with per-block scales).
  *

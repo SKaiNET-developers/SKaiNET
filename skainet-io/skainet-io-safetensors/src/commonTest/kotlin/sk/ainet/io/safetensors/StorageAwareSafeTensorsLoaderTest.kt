@@ -1,9 +1,6 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.io.safetensors
 
 import sk.ainet.io.RandomAccessSource
-import sk.ainet.lang.tensor.storage.LogicalDType
 import sk.ainet.lang.tensor.storage.MemoryDomain
 import sk.ainet.lang.tensor.storage.Ownership
 import kotlin.test.Test
@@ -11,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import sk.ainet.lang.types.FP32
 
 /**
  * Tests for [StorageAwareSafeTensorsLoader].
@@ -105,7 +103,7 @@ class StorageAwareSafeTensorsLoaderTest {
         assertTrue(tensors.containsKey("weight"))
 
         val storage = tensors["weight"]!!
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(Ownership.BORROWED, storage.ownership)
         assertFalse(storage.isFileBacked)
         assertEquals(6L, storage.elementCount) // 2 * 3

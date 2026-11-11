@@ -1,11 +1,10 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import sk.ainet.lang.types.FP32
 
 /**
  * Tests for [CompressedKvAttention] — the bridge between KvCacheStore and SDPA.
@@ -72,11 +71,11 @@ class CompressedKvAttentionTest {
         bridge.storeKeyValue(0, FloatArray(8), FloatArray(8))
 
         val keyStorage = bridge.loadKeyStorageRaw(0)
-        assertEquals(LogicalDType.FLOAT32, keyStorage.logicalType)
+        assertEquals(FP32, keyStorage.dtype)
         assertEquals(Ownership.OWNED, keyStorage.ownership)
 
         val valueStorage = bridge.loadValueStorageRaw(0)
-        assertEquals(LogicalDType.FLOAT32, valueStorage.logicalType)
+        assertEquals(FP32, valueStorage.dtype)
     }
 
     @Test

@@ -1,11 +1,10 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import sk.ainet.lang.types.FP32
 
 /**
  * Tests for [KvCacheStore] contract and [DefaultKvCacheStore] implementation.
@@ -123,7 +122,7 @@ class KvCacheStoreTest {
         store.appendToken(0, FloatArray(8) { it.toFloat() }, FloatArray(8))
 
         val storage = store.readKeyStorage(0)
-        assertEquals(LogicalDType.FLOAT32, storage.logicalType)
+        assertEquals(FP32, storage.dtype)
         assertEquals(Ownership.OWNED, storage.ownership)
         assertTrue(storage.isMutable)
     }

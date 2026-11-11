@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // the LogicalDType overloads stay as delegating shims until the next major
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -81,85 +79,54 @@ public object TensorStorageFactory {
      * Create storage from raw bytes with explicit encoding.
      * The byte array is borrowed (not copied).
      */
-    @Deprecated(message = "Use the DType overload (SKEEP-003 decision #13).", replaceWith = ReplaceWith("fromRawBytes(shape, dtype, encoding, …)"))
     public fun fromRawBytes(
         shape: Shape,
-        logicalType: LogicalDType,
+        dtype: DType,
         encoding: TensorEncoding,
         data: ByteArray,
         placement: Placement = Placement.CPU_HEAP
     ): TensorStorage = TensorStorage(
         shape = shape,
-        logicalType = logicalType,
+        dtype = dtype,
         encoding = encoding,
         buffer = BufferHandleFactory.borrow(data),
         placement = placement
     )
 
-    /** Create storage from raw bytes with explicit encoding, dtype-first (the byte array is borrowed). */
-    public fun fromRawBytes(
+    /**
+     * Create storage from raw bytes with explicit encoding (owned copy).
+     */
+    public fun fromRawBytesOwned(
         shape: Shape,
         dtype: DType,
         encoding: TensorEncoding,
         data: ByteArray,
         placement: Placement = Placement.CPU_HEAP
-    ): TensorStorage = fromRawBytes(shape, dtype.toLogicalDType(), encoding, data, placement)
-
-    /**
-     * Create storage from raw bytes with explicit encoding (owned copy).
-     */
-    @Deprecated(message = "Use the DType overload (SKEEP-003 decision #13).", replaceWith = ReplaceWith("fromRawBytesOwned(shape, dtype, encoding, …)"))
-    public fun fromRawBytesOwned(
-        shape: Shape,
-        logicalType: LogicalDType,
-        encoding: TensorEncoding,
-        data: ByteArray,
-        placement: Placement = Placement.CPU_HEAP
     ): TensorStorage = TensorStorage(
         shape = shape,
-        logicalType = logicalType,
+        dtype = dtype,
         encoding = encoding,
         buffer = BufferHandleFactory.owned(data),
         placement = placement
     )
 
-    /** Create storage from raw bytes with explicit encoding (owned copy), dtype-first. */
-    public fun fromRawBytesOwned(
-        shape: Shape,
-        dtype: DType,
-        encoding: TensorEncoding,
-        data: ByteArray,
-        placement: Placement = Placement.CPU_HEAP
-    ): TensorStorage = fromRawBytesOwned(shape, dtype.toLogicalDType(), encoding, data, placement)
-
     /**
      * Create file-backed storage (for memory-mapped model weights).
      */
-    @Deprecated(message = "Use the DType overload (SKEEP-003 decision #13).", replaceWith = ReplaceWith("fileBacked(shape, dtype, encoding, …)"))
     public fun fileBacked(
         shape: Shape,
-        logicalType: LogicalDType,
+        dtype: DType,
         encoding: TensorEncoding,
         path: String,
         fileOffset: Long,
         sizeInBytes: Long
     ): TensorStorage = TensorStorage(
         shape = shape,
-        logicalType = logicalType,
+        dtype = dtype,
         encoding = encoding,
         buffer = BufferHandleFactory.fileBacked(path, fileOffset, sizeInBytes),
         placement = Placement.MMAP_WEIGHTS
     )
-
-    /** Create file-backed storage (for memory-mapped model weights), dtype-first. */
-    public fun fileBacked(
-        shape: Shape,
-        dtype: DType,
-        encoding: TensorEncoding,
-        path: String,
-        fileOffset: Long,
-        sizeInBytes: Long
-    ): TensorStorage = fileBacked(shape, dtype.toLogicalDType(), encoding, path, fileOffset, sizeInBytes)
 
     /**
      * Bridge: create a [TensorStorage] descriptor from an existing [TensorData].
@@ -183,25 +150,25 @@ public object TensorStorageFactory {
         return when (data) {
             is FloatArrayTensorData<*> -> TensorStorage(
                 shape = data.shape,
-                logicalType = LogicalDType.FLOAT32,
+                dtype = FP32,
                 encoding = TensorEncoding.Dense(bytesPerElement = 4),
                 buffer = BufferHandleFactory.owned(data.buffer)
             )
             is IntArrayTensorData<*> -> TensorStorage(
                 shape = data.shape,
-                logicalType = LogicalDType.INT32,
+                dtype = Int32,
                 encoding = TensorEncoding.Dense(bytesPerElement = 4),
                 buffer = BufferHandleFactory.owned(data.buffer)
             )
             is Q4_KTensorData -> TensorStorage(
                 shape = data.shape,
-                logicalType = LogicalDType.FLOAT32,
+                dtype = FP32,
                 encoding = TensorEncoding.Q4_K,
                 buffer = BufferHandleFactory.borrow(data.packedData)
             )
             is Q8_0TensorData -> TensorStorage(
                 shape = data.shape,
-                logicalType = LogicalDType.FLOAT32,
+                dtype = FP32,
                 encoding = TensorEncoding.Q8_0,
                 buffer = BufferHandleFactory.borrow(data.packedData)
             )

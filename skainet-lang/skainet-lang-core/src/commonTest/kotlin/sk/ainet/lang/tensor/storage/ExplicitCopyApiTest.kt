@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
@@ -83,7 +81,7 @@ class ExplicitCopyApiTest {
         val rawData = ByteArray(144) // Q4_K block
         val storage = TensorStorageFactory.fromRawBytes(
             shape = Shape(256),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             data = rawData
         )
@@ -95,7 +93,7 @@ class ExplicitCopyApiTest {
         val rawData = ByteArray(144)
         val storage = TensorStorageFactory.fromRawBytesOwned(
             shape = Shape(256),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             data = rawData
         )

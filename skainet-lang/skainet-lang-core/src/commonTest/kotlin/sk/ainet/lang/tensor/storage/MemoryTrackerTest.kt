@@ -1,10 +1,10 @@
-@file:Suppress("DEPRECATION") // LogicalDType legacy path kept under test until removal (SKEEP-003 #1014)
-
 package sk.ainet.lang.tensor.storage
 
 import sk.ainet.lang.tensor.Shape
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import sk.ainet.lang.types.FP16
+import sk.ainet.lang.types.FP32
 
 class MemoryTrackerTest {
 
@@ -14,13 +14,13 @@ class MemoryTrackerTest {
 
         val s1 = TensorStorage(
             shape = Shape(100),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Owned(ByteArray(400))
         )
         val s2 = TensorStorage(
             shape = Shape(256),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Q4_K,
             buffer = BufferHandle.Borrowed(ByteArray(144))
         )
@@ -52,7 +52,7 @@ class MemoryTrackerTest {
         val tracker = MemoryTracker()
         tracker.record("x", TensorStorage(
             shape = Shape(10),
-            logicalType = LogicalDType.FLOAT32,
+            dtype = FP32,
             encoding = TensorEncoding.Dense(4),
             buffer = BufferHandle.Owned(ByteArray(40))
         ))
@@ -69,7 +69,7 @@ class MemoryTrackerTest {
         val tracker = MemoryTracker()
         tracker.record("mmap_weight", TensorStorage(
             shape = Shape(1000),
-            logicalType = LogicalDType.FLOAT16,
+            dtype = FP16,
             encoding = TensorEncoding.Dense(2),
             buffer = BufferHandle.FileBacked("/model.bin", 0, 2000),
             placement = Placement.MMAP_WEIGHTS
