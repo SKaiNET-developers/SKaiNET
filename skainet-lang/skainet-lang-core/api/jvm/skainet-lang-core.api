@@ -4364,11 +4364,15 @@ public final class sk/ainet/lang/tensor/SegmentBuilder {
 public final class sk/ainet/lang/tensor/Shape {
 	public static final field Companion Lsk/ainet/lang/tensor/Shape$Companion;
 	public fun <init> ([I)V
+	public final fun axisOf (Ljava/lang/String;)I
+	public final fun axisOfOrNull (Ljava/lang/String;)Ljava/lang/Integer;
 	public final fun component1 ()[I
 	public final fun copy ([I)Lsk/ainet/lang/tensor/Shape;
 	public static synthetic fun copy$default (Lsk/ainet/lang/tensor/Shape;[IILjava/lang/Object;)Lsk/ainet/lang/tensor/Shape;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun get (I)I
+	public final fun get (Ljava/lang/String;)I
+	public final fun getAxisLabels ()Ljava/util/List;
 	public final fun getDimensions ()[I
 	public final fun getDynamicAxes ()Ljava/util/List;
 	public final fun getRank ()I
@@ -4378,10 +4382,12 @@ public final class sk/ainet/lang/tensor/Shape {
 	public final fun index ([I)I
 	public final fun isDynamic (I)Z
 	public fun toString ()Ljava/lang/String;
+	public final fun withAxisLabels ([Ljava/lang/String;)Lsk/ainet/lang/tensor/Shape;
 }
 
 public final class sk/ainet/lang/tensor/Shape$Companion {
 	public final fun invoke ([I)Lsk/ainet/lang/tensor/Shape;
+	public final fun labeled ([Lkotlin/Pair;)Lsk/ainet/lang/tensor/Shape;
 }
 
 public abstract class sk/ainet/lang/tensor/Slice {
