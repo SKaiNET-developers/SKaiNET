@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Debug-mode warning for element-wise reads of packed tensors** (`skainet-lang-core`, SKEEP-003 decision 3, #1503): with `SKAINET_MEMORY_DEBUG=1`, `TensorView.get()` on a packed view counts its reads per storage. At 1,024 reads (`MemoryDebug.packedReadWarnThreshold`), and again each time the count doubles, it prints a warning with the tensor id, the encoding and the calling site, or calls `MemoryDebug.onPackedElementReads` if set. Each such read decodes a whole block; the warning points at loops that should use a packed kernel or `materialize()` once. `MemoryDebug.report()` lists the storages. Off by default.
 - **Guards for SKEEP-003's acceptance criteria** (build, `skainet-backend-cpu`, docs, #1501): `./gradlew checkTensorDataDowncasts` counts the downcasts to concrete `TensorData` classes outside the data package (162 in 21 files today) against `config/tensor-data-downcast-allowlist.txt`, so a new one fails the build and the list can only shrink; it runs in the `stub-markers` CI leg. `ForwardScopeFlatMemoryTest` runs 300 forward passes under a forward scope on the JVM and asserts that direct memory, the live heap and the slab stay flat. `reference/benchmark-baseline.adoc` records the JMH numbers for matmul, elementwise and reductions that a dispatch or storage change is compared against, replacing the baseline deleted in #1106.
 
 ### Changed

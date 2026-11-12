@@ -194,7 +194,10 @@ linear memory and the bytes the kernel sidecar holds for resident weights and ac
 fault counters stay `null`.
 
 `SKAINET_MEMORY_DEBUG=1` adds allocation-site tags, use-after-close reporting with the closing
-stack, and a leak check at every forward-scope reset.
+stack, and a leak check at every forward-scope reset. It also warns when code keeps reading a
+packed tensor one element at a time through `TensorView.get()`: each such read decodes a whole
+block, so the warning (at 1,024 reads of one storage, then each time the count doubles) names the
+tensor and the calling site that should use a packed kernel or `materialize()` once.
 
 == Where it stands
 

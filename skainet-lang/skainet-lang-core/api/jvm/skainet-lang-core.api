@@ -1059,7 +1059,9 @@ public final class sk/ainet/lang/memory/MemoryDebug {
 	public final fun getOnAllocate ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnClose ()Lkotlin/jvm/functions/Function1;
 	public final fun getOnLeak ()Lkotlin/jvm/functions/Function1;
+	public final fun getOnPackedElementReads ()Lkotlin/jvm/functions/Function1;
 	public final fun getOverrideEnabled ()Ljava/lang/Boolean;
+	public final fun getPackedReadWarnThreshold ()J
 	public final fun isEnabled ()Z
 	public final fun liveBytes (Lsk/ainet/lang/memory/ScopeKind;)J
 	public final fun liveEntries ()Ljava/util/List;
@@ -1073,7 +1075,9 @@ public final class sk/ainet/lang/memory/MemoryDebug {
 	public final fun setOnAllocate (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOnClose (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOnLeak (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOnPackedElementReads (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOverrideEnabled (Ljava/lang/Boolean;)V
+	public final fun setPackedReadWarnThreshold (J)V
 }
 
 public final class sk/ainet/lang/memory/MemoryDebug$Entry {
@@ -1099,6 +1103,25 @@ public final class sk/ainet/lang/memory/MemoryDebug$Entry {
 	public fun hashCode ()I
 	public final fun setClosed (Z)V
 	public final fun setClosingSite (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/lang/memory/MemoryDebug$PackedElementReads {
+	public synthetic fun <init> (JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;JLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-TPZW6QE ()J
+	public final fun component2 ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy-lF_vRDg (JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;JLjava/lang/String;)Lsk/ainet/lang/memory/MemoryDebug$PackedElementReads;
+	public static synthetic fun copy-lF_vRDg$default (Lsk/ainet/lang/memory/MemoryDebug$PackedElementReads;JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;JLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/memory/MemoryDebug$PackedElementReads;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEncoding ()Ljava/lang/String;
+	public final fun getOrigin ()Lsk/ainet/lang/tensor/TensorId;
+	public final fun getReads ()J
+	public final fun getSite ()Ljava/lang/String;
+	public final fun getStorageId-TPZW6QE ()J
+	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
