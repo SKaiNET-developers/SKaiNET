@@ -199,6 +199,12 @@ packed tensor one element at a time through `TensorView.get()`: each such read d
 block, so the warning (at 1,024 reads of one storage, then each time the count doubles) names the
 tensor and the calling site that should use a packed kernel or `materialize()` once.
 
+In debug mode eager activations also get ids. Tracing for compile always names its tensors; eager
+execution normally does not. With the switch on, each allocation from a forward scope is named
+`<scope>.act#step=<step>,n=<ordinal>`, where the ordinal counts allocations within the step, so
+the same op has the same number in every step. A read of an activation after its step was reset
+then fails with the activation's id, where it was allocated and where the scope was reset.
+
 == Where it stands
 
 The model is implemented across every KMP target and exercised on each of them, plus on an

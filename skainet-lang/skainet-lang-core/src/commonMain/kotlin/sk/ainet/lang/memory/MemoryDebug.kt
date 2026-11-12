@@ -36,6 +36,9 @@ public object MemoryDebug {
     )
 
     private val ledger = LinkedHashMap<Long, Entry>()
+
+    /** Ledger entries for pieces of a slab: named and sited, but their bytes are the slab's. */
+    private val slabViews = HashSet<Long>()
     private val peakByScope = HashMap<ScopeKind, Long>()
     private val liveByScope = HashMap<ScopeKind, Long>()
 
@@ -96,8 +99,26 @@ public object MemoryDebug {
         val e = ledger[id.value] ?: return
         if (e.closed) return
         e.closed = true; e.closingSite = site
-        liveByScope[e.scope] = ((liveByScope[e.scope] ?: 0L) - e.bytes).coerceAtLeast(0L)
+        if (id.value !in slabViews) liveByScope[e.scope] = ((liveByScope[e.scope] ?: 0L) - e.bytes).coerceAtLeast(0L)
         onClose?.invoke(e)
+    }
+
+    /**
+     * A piece of a scope's slab was handed out (a forward-scope activation, SKEEP-003 decision 10).
+     * It gets a ledger entry, so a use-after-reset names the activation and both sites, but it adds
+     * nothing to the live and peak bytes: the slab is already counted.
+     */
+    internal fun recordSlabView(id: StorageId, scope: ScopeKind, bytes: Long, origin: TensorId?, site: String?) {
+        if (!isEnabled) return
+        val e = Entry(id, scope, bytes, origin, site)
+        ledger[id.value] = e
+        slabViews += id.value
+        onAllocate?.invoke(e)
+    }
+
+    /** Drop ledger entries that can no longer be asked about (activations two resets old). */
+    internal fun forget(ids: List<StorageId>) {
+        for (id in ids) { ledger.remove(id.value); slabViews.remove(id.value) }
     }
 
     /** One element of a packed view was decoded through `get()`; warns when it becomes a pattern. */
@@ -192,7 +213,7 @@ public object MemoryDebug {
 
     /** Forget everything (between tests, or between models). */
     public fun reset() {
-        ledger.clear(); peakByScope.clear(); liveByScope.clear(); packedReads.clear()
+        ledger.clear(); slabViews.clear(); peakByScope.clear(); liveByScope.clear(); packedReads.clear()
     }
 
     private const val MAX_REPORTED: Int = 20
