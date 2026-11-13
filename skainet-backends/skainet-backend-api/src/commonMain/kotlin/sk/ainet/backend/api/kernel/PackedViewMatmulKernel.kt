@@ -29,15 +29,27 @@ public class PackedViewMatmulKernel(
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
     ) -> Unit,
+) : ViewKernel {
+
     /** The schedule-aware entry of the same kernel, when the SPI has one (SKEEP-005). */
-    private val scheduledMatmul: ((
+    private var scheduledMatmul: ((
         input: FloatArray, inputOffset: Int,
         weight: ByteArray, weightByteOffset: Int,
         inputDim: Int, outputDim: Int,
         output: FloatArray, outputOffset: Int,
         schedule: sk.ainet.context.schedule.Schedule,
-    ) -> Unit)? = null,
-) : ViewKernel {
+    ) -> Unit)? = null
+
+    /** A kernel whose SPI also has a schedule-aware entry, [scheduledMatmul] (SKEEP-005). */
+    public constructor(
+        providerName: String,
+        encodingName: String,
+        key: KernelKey,
+        matmul: (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit,
+        scheduledMatmul: ((FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int, sk.ainet.context.schedule.Schedule) -> Unit)?,
+    ) : this(providerName, encodingName, key, matmul) {
+        this.scheduledMatmul = scheduledMatmul
+    }
 
     override val name: String = "$providerName-$encodingName"
 
