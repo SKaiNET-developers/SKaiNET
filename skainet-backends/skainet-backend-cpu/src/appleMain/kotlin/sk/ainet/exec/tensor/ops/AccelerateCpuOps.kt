@@ -17,7 +17,6 @@ import platform.Accelerate.vDSP_mtrans
 import platform.Accelerate.vDSP_vthres
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.types.DType
@@ -50,11 +49,11 @@ public class AccelerateCpuOps(
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         if (a.rank == 2 && b.rank == 2
             && a.dtype == FP32::class
-            && a.data is FloatArrayTensorData<*>
-            && b.data is FloatArrayTensorData<*>
+            && floatsFromZero(a.data) != null
+            && floatsFromZero(b.data) != null
         ) {
-            val aBuf = (a.data as FloatArrayTensorData<*>).buffer
-            val bBuf = (b.data as FloatArrayTensorData<*>).buffer
+            val aBuf = floatsFromZero(a.data)!!
+            val bBuf = floatsFromZero(b.data)!!
             val m = a.shape[0]
             val k = a.shape[1]
             val n = b.shape[1]
@@ -115,9 +114,9 @@ public class AccelerateCpuOps(
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
         if (dim == null
             && tensor.dtype == FP32::class
-            && tensor.data is FloatArrayTensorData<*>
+            && floatsFromZero(tensor.data) != null
         ) {
-            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+            val buf = floatsFromZero(tensor.data)!!
             val n = buf.size
             if (n > 0) {
                 val result = FloatArray(1)
@@ -138,9 +137,9 @@ public class AccelerateCpuOps(
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
         if (dim == null
             && tensor.dtype == FP32::class
-            && tensor.data is FloatArrayTensorData<*>
+            && floatsFromZero(tensor.data) != null
         ) {
-            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+            val buf = floatsFromZero(tensor.data)!!
             val n = buf.size
             if (n > 0) {
                 val result = FloatArray(1)
@@ -161,8 +160,8 @@ public class AccelerateCpuOps(
     // ── activations ─────────────────────────────────────────────────────
 
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
-        if (tensor.dtype == FP32::class && tensor.data is FloatArrayTensorData<*>) {
-            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+        if (tensor.dtype == FP32::class && floatsFromZero(tensor.data) != null) {
+            val buf = floatsFromZero(tensor.data)!!
             val n = buf.size
             val out = FloatArray(n)
             buf.usePinned { pin ->
@@ -182,8 +181,8 @@ public class AccelerateCpuOps(
     }
 
     override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> {
-        if (tensor.dtype == FP32::class && tensor.data is FloatArrayTensorData<*>) {
-            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+        if (tensor.dtype == FP32::class && floatsFromZero(tensor.data) != null) {
+            val buf = floatsFromZero(tensor.data)!!
             val n = buf.size
             val out = FloatArray(n)
             for (i in 0 until n) {
@@ -203,9 +202,9 @@ public class AccelerateCpuOps(
     override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
         if (tensor.rank == 2
             && tensor.dtype == FP32::class
-            && tensor.data is FloatArrayTensorData<*>
+            && floatsFromZero(tensor.data) != null
         ) {
-            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+            val buf = floatsFromZero(tensor.data)!!
             val rows = tensor.shape[0]
             val cols = tensor.shape[1]
             val out = FloatArray(rows * cols)
@@ -239,10 +238,10 @@ public class AccelerateCpuOps(
         op: (FloatArray, FloatArray, FloatArray, Int) -> Unit,
     ): Tensor<T, V>? {
         if (a.dtype != FP32::class) return null
-        if (a.data !is FloatArrayTensorData<*> || b.data !is FloatArrayTensorData<*>) return null
+        if (floatsFromZero(a.data) == null || floatsFromZero(b.data) == null) return null
 
-        val aBuf = (a.data as FloatArrayTensorData<*>).buffer
-        val bBuf = (b.data as FloatArrayTensorData<*>).buffer
+        val aBuf = floatsFromZero(a.data)!!
+        val bBuf = floatsFromZero(b.data)!!
 
         // Same shape: straightforward vectorized op
         if (a.shape == b.shape) {

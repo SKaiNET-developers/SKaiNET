@@ -322,6 +322,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/context/sched
 	public fun expm1 (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun flatten (Lsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun floatResult (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F[Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	protected final fun floatsFromZero (Lsk/ainet/lang/tensor/data/TensorData;)[F
 	public fun gather (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;I)Lsk/ainet/lang/tensor/Tensor;
 	public fun ge (Lsk/ainet/lang/tensor/Tensor;F)Lsk/ainet/lang/tensor/Tensor;
 	public fun gelu (Lsk/ainet/lang/tensor/Tensor;Z)Lsk/ainet/lang/tensor/Tensor;
