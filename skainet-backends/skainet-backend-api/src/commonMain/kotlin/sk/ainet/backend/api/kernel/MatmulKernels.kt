@@ -26,6 +26,17 @@ public interface ViewKernel {
      */
     public fun run(inputs: List<TensorView>, out: TensorView, sink: sk.ainet.lang.memory.trace.TraceSink): Unit =
         run(inputs, out)
+    /**
+     * Run under [schedule] (SKEEP-005): a kernel that splits its work across tasks takes the split
+     * from the ops instance that called it, not from the hardware default. The default ignores the
+     * schedule, so a kernel without a parallel section is unaffected.
+     */
+    public fun run(
+        inputs: List<TensorView>,
+        out: TensorView,
+        sink: sk.ainet.lang.memory.trace.TraceSink,
+        schedule: sk.ainet.context.schedule.Schedule,
+    ): Unit = run(inputs, out, sink)
 }
 
 /**

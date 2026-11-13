@@ -565,6 +565,21 @@ public open class DefaultCpuOpsBase(
         }
     }
 
+    /**
+     * Whether a packed weight goes to the feed-order kernels (one cached relayout per weight) before
+     * a kernel that reads it in file order. `false` here: the row-major packs decode the weight
+     * where it lies. The JVM tier answers `true`, because its vectorised feed-order kernels are the
+     * faster path there (#1096).
+     */
+    protected open fun preferFeedOrderPackedKernels(): Boolean = false
+
+    /** `x · Wᵀ` through the feed-order kernel of [wView]'s format, relayouting once per weight; `null` when there is none. */
+    private fun <T : DType, V> matmulPackedFeedOrder(x: Tensor<T, V>, wView: TensorView, weight: Tensor<T, V>): Tensor<T, V>? {
+        if (!feedOrderKernelRegistered(wView)) return null
+        val feedOrder = cachedFeedOrderView(wView) ?: return null
+        return matmulPackedExact(x, feedOrder, weight)
+    }
+
     /** `true` when a feed-order kernel is registered for [wView]'s format and a dense FP32 activation. */
     private fun feedOrderKernelRegistered(wView: TensorView): Boolean {
         ensurePackedKernelsInstalled()
@@ -604,7 +619,7 @@ public open class DefaultCpuOpsBase(
         }
         val outArray = FloatArray(rows * n)
         val outView = TensorView.dense(Storage.Heap.wrap(outArray), Shape(rows, n), FP32)
-        if (!KernelDispatch.matmulExact(aView, wView, outView)) return null
+        if (!KernelDispatch.matmulExact(aView, wView, outView, schedule = schedule)) return null
         val outShape = if (x.shape.rank == 2) Shape(rows, n) else Shape(*(x.shape.dimensions.copyOf(x.shape.rank - 1) + n))
         val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, outArray) as TensorData<T, V>
         return newTensor(outData, x.dtype, x, weight)
@@ -1037,14 +1052,14 @@ public open class DefaultCpuOpsBase(
         //     registered for this encoding — the scalar packed kernels every target carries;
         //  3. the decoding reference kernel through views — correct for any encoding, ~1000× slower,
         //     and the last resort rather than the default.
+        // A tier whose feed-order kernels are its fastest ([preferFeedOrderPackedKernels], the JVM)
+        // takes step 2 before step 1.
         val wView = weight.data.view
         if (wView != null) {
+            val feedOrderFirst = preferFeedOrderPackedKernels()
+            if (feedOrderFirst) matmulPackedFeedOrder(x, wView, weight)?.let { return it }
             matmulPackedExact(x, wView, weight)?.let { return it }
-            if (feedOrderKernelRegistered(wView)) {
-                cachedFeedOrderView(wView)?.let { feedOrder ->
-                    matmulPackedExact(x, feedOrder, weight)?.let { return it }
-                }
-            }
+            if (!feedOrderFirst) matmulPackedFeedOrder(x, wView, weight)?.let { return it }
         }
         matmulWeightTransposedViaViews(x, weight)?.let { return it }
         return matmulGeneric(x, transpose(weight))
@@ -1172,30 +1187,6 @@ public open class DefaultCpuOpsBase(
             ?: throw UnsupportedOperationException(
                 "no packed relayout for ${weight.data::class.simpleName}",
             )
-
-    /**
-     * A weight already stored in kernel feed order, relabelled as the `[in, out]` tensor the packed
-     * kernels take — **sharing the same bytes** (#1120).
-     *
-     * This is the payoff of letting packed storage declare its order. `transposePackedWeight` is an
-     * O(bytes) permutation run once per weight and cached; when the loader already produced feed
-     * order there is nothing to permute, and all that is needed is the other shape label over the
-     * same array. `null` when [tensor] is not a feed-order packed weight.
-     */
-    @Suppress("UNCHECKED_CAST")
-    protected fun <T : DType, V> rewrapFeedOrderWeight(tensor: Tensor<T, V>): Tensor<T, V>? {
-        if (tensor.shape.rank != 2) return null
-        val view = tensor.data.view ?: return null
-        if (!view.layout.blocked || view.layout.blockOrder != BlockOrder.INPUT_BLOCK_MAJOR) return null
-        if (view.layout.shape.rank != 2 || view.layout.blockAxis != 1) return null
-        val bytes = wholeHeapBytes(view) ?: return null
-        // The label says what it is: feed-order bytes whose blocks run along axis 0 (#1507).
-        val relabelled = packedBlockTensorData(
-            view.format.encoding, Shape(tensor.shape[1], tensor.shape[0]), bytes,
-            BlockOrder.INPUT_BLOCK_MAJOR, blockAxis = 0,
-        ) ?: return null
-        return newTensor(relabelled as TensorData<T, V>, tensor.dtype, tensor)
-    }
 
     /**
      * The canonical packed [tensor] permuted into kernel feed order, as the `[in, out]` label the

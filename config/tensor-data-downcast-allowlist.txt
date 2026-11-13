@@ -16,7 +16,7 @@ skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/Tenso
 skainet-apps/skainet-tensor-tools/src/main/kotlin/sk/ainet/apps/tool/quantize/QuantizeCli.kt|3|#1507
 skainet-backends/skainet-backend-cpu/src/appleMain/kotlin/sk/ainet/exec/tensor/ops/AccelerateCpuOps.kt|18|#1507
 skainet-backends/skainet-backend-cpu/src/commonMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOps.kt|20|#1507
-skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOpsJvm.kt|48|#1507
+skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOpsJvm.kt|37|#1507
 skainet-backends/skainet-backend-wasm-simd/src/wasmJsMain/kotlin/sk/ainet/exec/wasm/WasmCpuOps.kt|10|#1507
 skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/trace/TraceToGraphBuilder.kt|3|#1507
 skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/BlockQuantMatmulConverter.kt|1|#1507

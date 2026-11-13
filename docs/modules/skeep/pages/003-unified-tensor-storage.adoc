@@ -29,7 +29,7 @@ https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
 
 | A packed tensor reports FP32 and its encoding; no dispatch site downcasts to a concrete `TensorData` class outside the data package
 | Not met
-| The first half holds (`FormatTest`). The common packed matmul (`matmul` with a packed right-hand operand, `matmulWeightTransposed`, the relayout) chooses its kernel by `KernelKey` from the views; `DefaultCpuOps.kt` went from 51 downcasts to 20. About 100 remain: the JVM matmul tier, the dense fast paths, conv, elementwise, layout and index ops, Accelerate and wasm (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501] for the guard, https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507] for the migration).
+| The first half holds (`FormatTest`). The common packed matmul (`matmul` with a packed right-hand operand, `matmulWeightTransposed`, the relayout) chooses its kernel by `KernelKey` from the views; on the JVM tier too; `DefaultCpuOps.kt` went from 51 downcasts to 20 and `DefaultCpuOpsJvm.kt` from 48 to 37. About 90 remain: narrow floats and the MemorySegment weights in the JVM matmul, the dense fast paths, conv, elementwise, layout and index ops, Accelerate and wasm (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501] for the guard, https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507] for the migration).
 
 | No kernel regression against a baseline
 | Partly

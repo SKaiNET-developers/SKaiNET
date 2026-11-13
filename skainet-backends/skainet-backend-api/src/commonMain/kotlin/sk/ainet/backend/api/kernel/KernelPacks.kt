@@ -46,8 +46,8 @@ public object KernelPacks {
             if (KernelDispatch.find(PackedViewMatmulKernel.keyFor(encoding)) != null) continue
             for (p in KernelRegistry.providers()) {
                 if (!p.isAvailable()) continue
-                val kernel = accessor(p) ?: continue
-                KernelDispatch.register(PackedViewMatmulKernel(p.name, encoding.name, PackedViewMatmulKernel.keyFor(encoding), kernel))
+                val entry = accessor(p) ?: continue
+                KernelDispatch.register(viewKernel(p, encoding, entry))
                 break
             }
         }
@@ -78,22 +78,40 @@ public object KernelPacks {
      */
     public fun installPacked(provider: KernelProvider) {
         for ((encoding, accessor) in packedAccessors) {
-            val kernel = accessor(provider) ?: continue
-            KernelDispatch.register(
-                PackedViewMatmulKernel(provider.name, encoding.name, PackedViewMatmulKernel.keyFor(encoding), kernel),
-            )
+            val entry = accessor(provider) ?: continue
+            KernelDispatch.register(viewKernel(provider, encoding, entry))
         }
     }
 
+    /** A provider's feed-order kernel for one format: the plain entry and, where the SPI has one, the scheduled entry. */
+    private class PackedEntry(val plain: PackedMatmulFn, val scheduled: ScheduledPackedMatmulFn? = null)
+
+    private fun viewKernel(provider: KernelProvider, encoding: TensorEncoding, entry: PackedEntry): PackedViewMatmulKernel =
+        PackedViewMatmulKernel(provider.name, encoding.name, PackedViewMatmulKernel.keyFor(encoding), entry.plain, entry.scheduled)
+
     /** Each packed format with the way to ask a provider for its feed-order kernel. */
-    private val packedAccessors: List<Pair<TensorEncoding, (KernelProvider) -> PackedMatmulFn?>> = listOf(
-        TensorEncoding.Q4_0 to { p -> p.matmulQ4_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
-        TensorEncoding.Q5_0 to { p -> p.matmulQ5_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
-        TensorEncoding.Q5_1 to { p -> p.matmulQ5_1()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
-        TensorEncoding.Q8_0 to { p -> p.matmulQ8_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
-        TensorEncoding.Q4_K to { p -> p.matmulQ4K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
-        TensorEncoding.Q5_K to { p -> p.matmulQ5K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
-        TensorEncoding.Q6_K to { p -> p.matmulQ6K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+    private val packedAccessors: List<Pair<TensorEncoding, (KernelProvider) -> PackedEntry?>> = listOf(
+        TensorEncoding.Q4_0 to { p -> p.matmulQ4_0()?.let { k -> PackedEntry({ i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) }) } },
+        TensorEncoding.Q5_0 to { p -> p.matmulQ5_0()?.let { k -> PackedEntry({ i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) }) } },
+        TensorEncoding.Q5_1 to { p -> p.matmulQ5_1()?.let { k -> PackedEntry({ i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) }) } },
+        TensorEncoding.Q8_0 to { p -> p.matmulQ8_0()?.let { k -> PackedEntry({ i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) }) } },
+        TensorEncoding.Q4_K to { p ->
+            p.matmulQ4K()?.let { k ->
+                PackedEntry(
+                    { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) },
+                    { i, io, w, wo, id, od, o, oo, s -> k.matmul(i, io, w, wo, id, od, o, oo, s) },
+                )
+            }
+        },
+        TensorEncoding.Q5_K to { p ->
+            p.matmulQ5K()?.let { k ->
+                PackedEntry(
+                    { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) },
+                    { i, io, w, wo, id, od, o, oo, s -> k.matmul(i, io, w, wo, id, od, o, oo, s) },
+                )
+            }
+        },
+        TensorEncoding.Q6_K to { p -> p.matmulQ6K()?.let { k -> PackedEntry({ i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) }) } },
     )
 
     /** The reference matmul for dense FP32 — always available, so a key is never unserved. */
@@ -105,6 +123,9 @@ public object KernelPacks {
 
 /** The signature the packed SPI matmul kernels share. */
 private typealias PackedMatmulFn = (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit
+
+/** The same with the schedule the kernel splits its work under. */
+private typealias ScheduledPackedMatmulFn = (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int, sk.ainet.context.schedule.Schedule) -> Unit
 
 /**
  * A [ViewKernel] over an SPI [Fp32MatmulKernel]: both operands dense FP32 and contiguous, weight

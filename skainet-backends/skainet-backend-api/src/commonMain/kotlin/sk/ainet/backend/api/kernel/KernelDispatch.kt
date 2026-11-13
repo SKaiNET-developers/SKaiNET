@@ -139,10 +139,17 @@ public object KernelDispatch {
      * say whether it ran. No adapter and no reference fallback: the caller decides what a miss
      * means. This is the lookup an ops implementation uses in place of a class ladder (#1507).
      */
-    public fun matmulExact(a: TensorView, b: TensorView, out: TensorView, sink: TraceSink = defaultSink): Boolean {
+    public fun matmulExact(
+        a: TensorView,
+        b: TensorView,
+        out: TensorView,
+        sink: TraceSink = defaultSink,
+        /** The schedule a kernel with a parallel section splits its work under; `null` leaves it to the kernel. */
+        schedule: sk.ainet.context.schedule.Schedule? = null,
+    ): Boolean {
         ensureInstalled()
         val exact = find(KernelKey.matmul(a, b)) ?: return false
-        runTraced(exact, listOf(a, b), out, sink)
+        runTraced(exact, listOf(a, b), out, sink, schedule)
         return true
     }
 
@@ -264,8 +271,17 @@ public object KernelDispatch {
         return dense
     }
 
-    private fun runTraced(kernel: ViewKernel, inputs: List<TensorView>, out: TensorView, sink: TraceSink) {
-        if (!sink.isEnabled) { kernel.run(inputs, out); return }
+    private fun runTraced(
+        kernel: ViewKernel,
+        inputs: List<TensorView>,
+        out: TensorView,
+        sink: TraceSink,
+        schedule: sk.ainet.context.schedule.Schedule? = null,
+    ) {
+        if (!sink.isEnabled) {
+            if (schedule != null) kernel.run(inputs, out, sink, schedule) else kernel.run(inputs, out)
+            return
+        }
         sink.traceKernel(
             op = kernel.key.op,
             kernel = kernel.name,
@@ -273,7 +289,7 @@ public object KernelDispatch {
             output = out.id,
             bytesRead = inputs.sumOf { it.elementCount * it.format.dtype.sizeInBytes },
             bytesWritten = out.elementCount * out.format.dtype.sizeInBytes,
-        ) { kernel.run(inputs, out, sink) }
+        ) { if (schedule != null) kernel.run(inputs, out, sink, schedule) else kernel.run(inputs, out, sink) }
     }
 }
 

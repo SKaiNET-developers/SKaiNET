@@ -154,4 +154,57 @@ class KernelPacksTest {
         assertEquals(false, KernelDispatch.matmulExact(a, strided, untouched))
         assertEquals(-1f, untouched.get(0, 0))
     }
+
+    /** A Q4_K provider that records which of its two entries ran. */
+    private class Q4KRecorder : KernelProvider {
+        val calls = mutableListOf<String>()
+        override val name: String = "recorder"
+        override val priority: Int = 10
+        override fun isAvailable(): Boolean = true
+        override fun matmulFp32(): Fp32MatmulKernel? = null
+        override fun matmulQ4K(): Q4KMatmulKernel = object : Q4KMatmulKernel {
+            override fun matmul(
+                input: FloatArray, inputOffset: Int,
+                weight: ByteArray, weightByteOffset: Int,
+                inputDim: Int, outputDim: Int,
+                output: FloatArray, outputOffset: Int,
+            ) { calls += "plain" }
+
+            override fun matmul(
+                input: FloatArray, inputOffset: Int,
+                weight: ByteArray, weightByteOffset: Int,
+                inputDim: Int, outputDim: Int,
+                output: FloatArray, outputOffset: Int,
+                schedule: sk.ainet.context.schedule.Schedule,
+            ) { calls += "scheduled:${schedule === sk.ainet.context.schedule.Schedule.Sequential}" }
+        }
+    }
+
+    @Test
+    fun aPackedKernelRunsUnderTheCallersSchedule() {
+        val provider = Q4KRecorder()
+        KernelRegistry.register(provider)
+        KernelPacks.installMissingPacked()
+
+        val encoding = sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K
+        val bytes = ByteArray(2 * 144)
+        val decoder = object : sk.ainet.lang.memory.BlockDecoder {
+            override val blockSize: Int = 256
+            override val bytesPerBlock: Int = 144
+            override fun decodeBlock(storage: Storage, blockIndex: Long, out: FloatArray, outOffset: Int) {}
+        }
+        val w = TensorView.packed(
+            Storage.Heap.wrap(bytes, mutable = false), Shape(2, 256), encoding, decoder,
+            blockOrder = sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR,
+        )
+        val a = view(Shape(3, 256), FloatArray(3 * 256))
+        val out = view(Shape(3, 2), FloatArray(6))
+
+        assertTrue(KernelDispatch.matmulExact(a, w, out))
+        assertEquals(listOf("plain", "plain", "plain"), provider.calls, "no schedule: the plain entry, once per row")
+
+        provider.calls.clear()
+        assertTrue(KernelDispatch.matmulExact(a, w, out, schedule = sk.ainet.context.schedule.Schedule.Sequential))
+        assertEquals(List(3) { "scheduled:true" }, provider.calls, "the caller's schedule reaches the kernel")
+    }
 }

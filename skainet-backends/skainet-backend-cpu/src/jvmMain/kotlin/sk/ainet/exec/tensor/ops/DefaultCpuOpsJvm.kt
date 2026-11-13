@@ -91,40 +91,6 @@ internal class DefaultCpuOpsJvm(
     }
 
     /**
-     * Q4_K kernel resolved via [KernelRegistry], lazily initialized on
-     * first quantized matmul call. Auto-installs ServiceLoader-discovered
-     * providers when the registry is empty. Returns `null` if no
-     * provider carries a Q4_K kernel — caller falls back to
-     * [JvmQuantizedVectorKernels.matmulQ4_KVec], so this PR introduces
-     * zero functional regression even when the SPI doesn't resolve.
-     */
-    private val q4kMatmulKernel: Q4KMatmulKernel? by lazy {
-        if (KernelRegistry.providers().isEmpty()) {
-            KernelServiceLoader.installAll()
-        }
-        KernelRegistry.providers()
-            .firstOrNull { it.isAvailable() && it.matmulQ4K() != null }
-            ?.matmulQ4K()
-    }
-
-    /**
-     * Q8_0 kernel resolved via [KernelRegistry], lazily initialized on
-     * first quantized matmul call. Mirrors [q4kMatmulKernel] — auto-
-     * installs ServiceLoader-discovered providers when the registry is
-     * empty, returns `null` if no provider carries a Q8_0 kernel.
-     * Caller falls back to [JvmQuantizedVectorKernels.matmulQ8_0Vec],
-     * preserving the legacy code path when the SPI doesn't resolve.
-     */
-    private val q8_0MatmulKernel: Q8_0MatmulKernel? by lazy {
-        if (KernelRegistry.providers().isEmpty()) {
-            KernelServiceLoader.installAll()
-        }
-        KernelRegistry.providers()
-            .firstOrNull { it.isAvailable() && it.matmulQ8_0() != null }
-            ?.matmulQ8_0()
-    }
-
-    /**
      * BF16 matmul kernel resolved via [KernelRegistry]. Unlike the Q4_K
      * and Q8_0 lookups (nullable, with legacy `JvmQuantizedVectorKernels`
      * fallbacks), BF16 has no pre-SPI implementation in this codebase —
@@ -155,24 +121,6 @@ internal class DefaultCpuOpsJvm(
             ?: ScalarFp16MatmulKernel
     }
 
-    /**
-     * Q4_0 matmul kernel resolved via [KernelRegistry]. Mirrors
-     * [bf16MatmulKernel]: non-null, picks the highest-priority provider
-     * that carries a Q4_0 kernel (native FFM at 100, Panama Vector at
-     * 50), falling back to [ScalarQ4_0MatmulKernel] — the scalar SPI
-     * kernel is the floor (every `KernelProvider` carries one), so Q4_0
-     * has no pre-SPI legacy fallback to thread through.
-     */
-    private val q4_0MatmulKernel: Q4_0MatmulKernel by lazy {
-        if (KernelRegistry.providers().isEmpty()) {
-            KernelServiceLoader.installAll()
-        }
-        KernelRegistry.providers()
-            .firstOrNull { it.isAvailable() && it.matmulQ4_0() != null }
-            ?.matmulQ4_0()
-            ?: ScalarQ4_0MatmulKernel
-    }
-
     override fun <T : DType, V> add(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         vectorFloatBinary(a, b, { x, y -> x.add(y) }) { x, y -> x + y }?.let { return it }
         return super.add(a, b)
@@ -194,15 +142,6 @@ internal class DefaultCpuOpsJvm(
     }
 
     /**
-     * `x · Wᵀ` with the weight relayouted once into the order this backend's packed kernels read
-     * (#1096), which is the fast path the common implementation cannot take.
-     *
-     * `DefaultCpuOpsBase` decodes the weight where it lies instead, because it has no kernel that
-     * addresses `packedData` in feed order and relayouting for one that does not exist produced a
-     * tensor nothing could decode correctly (#1124). Here the kernels do exist, so the relayout
-     * pays: once per weight, cached by the identity of its bytes.
-     */
-    /**
      * The common row-dot is not this tier's direct path: a dense weight goes to the native `x · Wᵀ`
      * kernel ([matmulDenseWeightTransposedNative]) when the FFM provider is loaded, and to the cached
      * transpose plus the vectorised `[k, n]` kernels otherwise (SKEEP-007 §T0.2).
@@ -211,36 +150,22 @@ internal class DefaultCpuOpsJvm(
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
-        if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) {
-            // Dense FP32 `[out, in]` weight with a native direct kernel: multiplied in place, no
-            // transposed copy made or cached (the weight is made resident off-heap once instead).
+        // A dense FP32 `[out, in]` weight with a native direct kernel is multiplied in place, no
+        // transposed copy made or cached (the weight is made resident off-heap once instead).
+        if (weight.data.view?.layout?.blocked != true) {
             matmulDenseWeightTransposedNative(x, weight)?.let { return it }
-            // Packed weights OUTSIDE the JVM relayout list (the ternary formats, #1136) go to the
-            // common views→KernelDispatch path — whose kernels and reference are commonMain and
-            // cannot read a MemorySegment-backed activation (SKEEP-004 forbids element access over
-            // SegmentStorage by design). On this tier the bridge is trivial: bulk-copy the
-            // activation to the heap once per call — decode-step activations are k floats, not
-            // weights — and hand the common path heap views.
-            // Dense weights need this bridge just as much as packed ones. The vectorized FP32
-            // kernels take heap `FloatArray` operands only, so a segment-backed activation sends
-            // the whole projection to the decoding reference kernel — and a decode-step activation
-            // is k floats, so the copy is trivial beside the matmul it unlocks.
-            segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
-            return super.matmulWeightTransposed(x, weight)
         }
-        // Already in feed order — the loader produced it that way (#1120). Nothing to permute and
-        // nothing to cache: the kernels want the other shape label over the same bytes, which costs
-        // an object rather than a copy of the weight.
-        rewrapFeedOrderWeight(weight)?.let { return matmul(x, it) }
-        val packed = weight.data as sk.ainet.lang.tensor.storage.PackedBlockStorage
-        val source = packed.packedData
-        val cached = prepackedWeightsJvm.firstOrNull { it.first === source }?.second
-        val kernelOrder = cached ?: relayoutPackedWeightForKernels(weight).also { relayouted ->
-            if (prepackedWeightsJvm.size >= PREPACK_CACHE_LIMIT_JVM) prepackedWeightsJvm.removeAt(0)
-            prepackedWeightsJvm.add(Pair(source, relayouted as Tensor<*, *>))
-        }
-        return matmul(x, kernelOrder as Tensor<T, V>)
+        // Everything else is the common path, which looks the kernel up by the key of the two
+        // views (SKEEP-003, #1507). Its kernels and its reference are commonMain and cannot read a
+        // MemorySegment-backed activation (SKEEP-004 forbids element access over SegmentStorage by
+        // design), so such an activation is bulk-copied to the heap once per call first: a
+        // decode-step activation is k floats, and the copy is trivial beside the matmul it unlocks.
+        segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
+        return super.matmulWeightTransposed(x, weight)
     }
+
+    /** The vectorised feed-order kernels are this tier's fast path for a packed weight (#1096). */
+    override fun preferFeedOrderPackedKernels(): Boolean = true
 
     /**
      * A heap FP32 copy of an activation whose bytes live off-heap, or null when [x] is not that
@@ -275,8 +200,6 @@ internal class DefaultCpuOpsJvm(
     }
 
     /** Relayouted weights keyed by the identity of the bytes they came from (#1096). */
-    private val prepackedWeightsJvm: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
-    private val PREPACK_CACHE_LIMIT_JVM: Int = 64
 
     /**
      * The direct `x · Wᵀ` kernel over an off-heap weight (`skainet_fp32_matmul_wt` through FFM), from
@@ -579,13 +502,6 @@ internal class DefaultCpuOpsJvm(
      * BLAS is on: the call, and on the heap faces the staging copies, cost more than the arithmetic.
      */
     private val BLAS_MIN_WORK: Long = 1L shl 18
-
-    /** The heap packed types whose JVM kernels read input-block-major bytes. */
-    private fun isHeapPackedWeightForJvm(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
-        data is sk.ainet.lang.tensor.data.Q4_KTensorData || data is sk.ainet.lang.tensor.data.Q5_KTensorData ||
-            data is sk.ainet.lang.tensor.data.Q6_KTensorData || data is sk.ainet.lang.tensor.data.Q5_1TensorData ||
-            data is sk.ainet.lang.tensor.data.Q5_0TensorData || data is sk.ainet.lang.tensor.data.Q8_0TensorData ||
-            data is sk.ainet.lang.tensor.data.Q4_0TensorData
 
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
         // `x · Wᵀ` written as two steps (#1108) — before everything, including the strictness check
@@ -910,6 +826,10 @@ internal class DefaultCpuOpsJvm(
         if (a.dtype != FP32::class) return null
         if (b.shape.rank != 2) return null
         if (a.shape.rank < 1) return null
+        // The heap block formats: the kernel registered for the weight's format, looked up by key
+        // in the common code (SKEEP-003, #1507). What is left below is narrow floats and the
+        // MemorySegment weights, which do not have a view yet.
+        chooseQuantizedMatmulHeap(a, b)?.let { return it }
         if (a.shape.rank == 2) return chooseQuantizedMatmul2D(a, b)
 
         // Defensive: attention linear projections can in principle pass `[..., in]` (see
@@ -963,77 +883,6 @@ internal class DefaultCpuOpsJvm(
         }
 
         return when (bData) {
-            is Q8_0TensorData -> {
-                val outBuffer = FloatArray(batchSize * outputDim)
-                val spiKernel = q8_0MatmulKernel
-                for (batch in 0 until batchSize) {
-                    val batchInput = if (batchSize == 1) inputBuffer
-                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    if (spiKernel != null) {
-                        spiKernel.matmul(
-                            batchInput, 0,
-                            bData.packedData, 0,
-                            inputDim, outputDim,
-                            outBuffer, batch * outputDim,
-                        )
-                    } else {
-                        JvmQuantizedVectorKernels.matmulQ8_0Vec(
-                            batchInput,
-                            bData.packedData,
-                            inputDim,
-                            outputDim,
-                            outBuffer,
-                            batch * outputDim,
-                            schedule,
-                        )
-                    }
-                }
-                floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
-            }
-            is Q4_0TensorData -> {
-                val outBuffer = FloatArray(batchSize * outputDim)
-                for (batch in 0 until batchSize) {
-                    val batchInput = if (batchSize == 1) inputBuffer
-                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    q4_0MatmulKernel.matmul(
-                        batchInput, 0,
-                        bData.packedData, 0,
-                        inputDim, outputDim,
-                        outBuffer, batch * outputDim,
-                    )
-                }
-                floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
-            }
-            // Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
-            // registry (block-major, shared with Native); not intercepted here.
-            is Q4_KTensorData -> {
-                val outBuffer = FloatArray(batchSize * outputDim)
-                val spiKernel = q4kMatmulKernel
-                for (batch in 0 until batchSize) {
-                    val batchInput = if (batchSize == 1) inputBuffer
-                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    if (spiKernel != null) {
-                        spiKernel.matmul(
-                            batchInput, 0,
-                            bData.packedData, 0,
-                            inputDim, outputDim,
-                            outBuffer, batch * outputDim,
-                            schedule,
-                        )
-                    } else {
-                        JvmQuantizedVectorKernels.matmulQ4_KVec(
-                            batchInput,
-                            bData.packedData,
-                            inputDim,
-                            outputDim,
-                            outBuffer,
-                            batch * outputDim,
-                            schedule,
-                        )
-                    }
-                }
-                floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
-            }
             is NarrowFloatTensorData -> {
                 // Narrow floats are dense (not block-quantized) and the kernel SPI is a
                 // full SGEMM with `(m, n, k)` strides — no per-batch loop needed,

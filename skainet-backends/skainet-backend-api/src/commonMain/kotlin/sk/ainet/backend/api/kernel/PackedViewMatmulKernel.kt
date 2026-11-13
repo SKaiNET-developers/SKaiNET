@@ -31,12 +31,47 @@ public class PackedViewMatmulKernel(
     ) -> Unit,
 ) : ViewKernel {
 
+    /** The schedule-aware entry of the same kernel, when the SPI has one (SKEEP-005). */
+    private var scheduledMatmul: ((
+        input: FloatArray, inputOffset: Int,
+        weight: ByteArray, weightByteOffset: Int,
+        inputDim: Int, outputDim: Int,
+        output: FloatArray, outputOffset: Int,
+        schedule: sk.ainet.context.schedule.Schedule,
+    ) -> Unit)? = null
+
+    /** A kernel whose SPI also has a schedule-aware entry, [scheduledMatmul] (SKEEP-005). */
+    public constructor(
+        providerName: String,
+        encodingName: String,
+        key: KernelKey,
+        matmul: (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit,
+        scheduledMatmul: ((FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int, sk.ainet.context.schedule.Schedule) -> Unit)?,
+    ) : this(providerName, encodingName, key, matmul) {
+        this.scheduledMatmul = scheduledMatmul
+    }
+
     override val name: String = "$providerName-$encodingName"
 
     override fun run(inputs: List<TensorView>, out: TensorView): Unit =
         run(inputs, out, sk.ainet.lang.memory.trace.NoopTraceSink)
 
-    override fun run(inputs: List<TensorView>, out: TensorView, sink: sk.ainet.lang.memory.trace.TraceSink) {
+    override fun run(inputs: List<TensorView>, out: TensorView, sink: sk.ainet.lang.memory.trace.TraceSink): Unit =
+        runWith(inputs, out, sink, null)
+
+    override fun run(
+        inputs: List<TensorView>,
+        out: TensorView,
+        sink: sk.ainet.lang.memory.trace.TraceSink,
+        schedule: sk.ainet.context.schedule.Schedule,
+    ): Unit = runWith(inputs, out, sink, schedule)
+
+    private fun runWith(
+        inputs: List<TensorView>,
+        out: TensorView,
+        sink: sk.ainet.lang.memory.trace.TraceSink,
+        schedule: sk.ainet.context.schedule.Schedule?,
+    ) {
         require(inputs.size == 2) { "matmul takes two operands" }
         val a = inputs[0]
         val w = inputs[1]
@@ -60,13 +95,15 @@ public class PackedViewMatmulKernel(
         if (!a.isContiguous) return fallback(inputs, out, sink, "strided activation")
 
         val weightOffset = wHeap.arrayOffset + (w.layout.offsetElements * w.layout.elementBytes).toInt()
+        val scheduled = if (schedule != null) scheduledMatmul else null
         for (r in 0 until rows) {
-            matmul(
-                activation, aHeap.arrayOffset + (a.layout.offsetElements + r.toLong() * k).toInt(),
-                weight, weightOffset,
-                k, n,
-                output, oHeap.arrayOffset + (out.layout.offsetElements + r.toLong() * n).toInt(),
-            )
+            val aOffset = aHeap.arrayOffset + (a.layout.offsetElements + r.toLong() * k).toInt()
+            val oOffset = oHeap.arrayOffset + (out.layout.offsetElements + r.toLong() * n).toInt()
+            if (scheduled != null) {
+                scheduled(activation, aOffset, weight, weightOffset, k, n, output, oOffset, schedule!!)
+            } else {
+                matmul(activation, aOffset, weight, weightOffset, k, n, output, oOffset)
+            }
         }
     }
 
