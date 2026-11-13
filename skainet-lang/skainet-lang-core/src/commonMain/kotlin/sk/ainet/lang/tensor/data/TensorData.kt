@@ -94,6 +94,21 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
     public val view: sk.ainet.lang.memory.TensorView? get() = null
 
     /**
+     * The array behind this data when it is dense FP32 floats on the heap in row-major order, with
+     * element 0 at [heapFloatsOffset]; `null` for everything else.
+     *
+     * It is the answer [view] gives — format dense FP32, gap-free layout, heap float storage — as
+     * two plain reads, for the op fast paths that run on every small tensor of a decode step.
+     * Building the view there costs more than the arithmetic (about 100 ns against 50 ns for a
+     * 16-element `relu`, #1507). The two must agree; an implementation that overrides one keeps the
+     * other in step. A caller that gets `null` asks [view].
+     */
+    public val heapFloats: FloatArray? get() = null
+
+    /** The index of element 0 in [heapFloats]; meaningful only when that is not `null`. */
+    public val heapFloatsOffset: Int get() = 0
+
+    /**
      * Copies all tensor data to a FloatArray.
      *
      * This method provides efficient bulk data transfer from tensor storage to a FloatArray.
@@ -132,6 +147,8 @@ public interface FloatArrayTensorData<T : DType> : TensorData<T, Float> {
     public val buffer: FloatArray
 
     override fun copyToFloatArray(): FloatArray = buffer.copyOf()
+
+    override val heapFloats: FloatArray? get() = buffer
 
     /** A dense FP32 view borrowing [buffer] — zero-copy, the same bytes this data reads and writes. */
     override val view: sk.ainet.lang.memory.TensorView

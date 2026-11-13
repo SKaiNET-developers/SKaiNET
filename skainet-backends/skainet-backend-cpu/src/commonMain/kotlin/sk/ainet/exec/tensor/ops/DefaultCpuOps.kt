@@ -204,26 +204,43 @@ public open class DefaultCpuOpsBase(
     // `inline` is load-bearing: a non-inlined `(Float, Float) -> Float` lambda
     // would box through `Function2` and reintroduce the very churn removed.
 
-    private fun <T : DType, V> floatBufferOf(t: Tensor<T, V>): FloatArray? = when (val d = t.data) {
-        is FloatArrayTensorData<*> -> d.buffer
-        // Slab-backed data (#1145/#1146) has a nonzero base offset, so it cannot hand out its raw
-        // array — but its exact logical window as one copy still beats the boxed generic path by
-        // orders of magnitude (#949). The zero-copy path for the hot trio is [floatWindowOf].
-        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> d.copyToFloatArray()
-        else -> null
+    /**
+     * A dense FP32 tensor as one whole array from index 0: its own array when the view covers it
+     * exactly, one copy of its window otherwise (a slab-backed activation, #1145/#1146). The copy
+     * still beats the boxed generic path by orders of magnitude (#949); the zero-copy path for the
+     * hot trio is [floatWindowOf].
+     */
+    private fun <T : DType, V> floatBufferOf(t: Tensor<T, V>): FloatArray? {
+        val win = heapFloatWindow(t.data) ?: return null
+        val n = t.shape.volume
+        return if (win.off == 0 && win.arr.size == n) win.arr else win.arr.copyOfRange(win.off, win.off + n)
     }
 
     /** Zero-copy dense-FP32 window: the backing array plus the base offset of element 0 (#1146). */
-    private class FloatWindow(val arr: FloatArray, val off: Int)
+    protected class FloatWindow(@kotlin.jvm.JvmField public val arr: FloatArray, @kotlin.jvm.JvmField public val off: Int)
 
-    private fun <T : DType, V> floatWindowOf(t: Tensor<T, V>): FloatWindow? = when (val d = t.data) {
-        is FloatArrayTensorData<*> -> FloatWindow(d.buffer, 0)
-        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> {
-            val s = d.storage
-            s.checkAlive()
-            FloatWindow(s.floats!!, s.arrayOffset)
-        }
-        else -> null
+    private fun <T : DType, V> floatWindowOf(t: Tensor<T, V>): FloatWindow? = heapFloatWindow(t.data)
+
+    /**
+     * The floats behind [data] when it is dense FP32, gap-free and on the heap; `null` otherwise.
+     * Read off what the data says about itself — [TensorData.heapFloats], or the format, layout
+     * and storage of its view — not off its class (SKEEP-003, #1507), so any data that describes
+     * itself this way gets the fast paths: an array, a slab window, a contiguous slice.
+     */
+    protected fun heapFloatWindow(data: TensorData<*, *>): FloatWindow? {
+        // The data's own two-read answer first: building a view per call costs more than a small
+        // op's arithmetic. It is the same answer the view gives. Kept this small on purpose, with
+        // the view path in its own function, so the JIT inlines it into the op loops.
+        val floats = data.heapFloats
+        return if (floats != null) FloatWindow(floats, data.heapFloatsOffset) else heapFloatWindowOfView(data)
+    }
+
+    private fun heapFloatWindowOfView(data: TensorData<*, *>): FloatWindow? {
+        val view = data.view ?: return null
+        if (view.format != DENSE_FP32 || !view.isContiguous) return null
+        val heap = view.storage as? Storage.Heap ?: return null
+        val floats = heap.floats ?: return null
+        return FloatWindow(floats, heap.arrayOffset + view.layout.offsetElements.toInt())
     }
 
     /**
@@ -496,7 +513,7 @@ public open class DefaultCpuOpsBase(
 
     private var packedKernelsInstalled = false
 
-    private val DENSE_FP32: Format = Format.dense(FP32)
+    protected val DENSE_FP32: Format = Format.dense(FP32)
     private val DENSE_FP32_OPERAND: OperandKey = OperandKey.contiguous(DENSE_FP32)
 
     /**
@@ -541,6 +558,9 @@ public open class DefaultCpuOpsBase(
      * build such tensors by hand. It is the one place where bytes are read against their label.
      */
     private fun feedOrderViewOfRightOperand(b: Tensor<*, *>): TensorView? {
+        // Every dense matmul passes here first: dense heap floats are not packed, and saying so
+        // must not cost a view.
+        if (b.data.heapFloats != null) return null
         val bView = b.data.view ?: return null
         if (!bView.layout.blocked) return null
         return try {
@@ -1163,7 +1183,7 @@ public open class DefaultCpuOpsBase(
      * @return the relayouted weight, or `null` for a data type with no packed relayout
      */
     /** The heap packed data types whose kernels read input-block-major bytes. */
-    private fun isHeapPackedWeight(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
+    protected fun isHeapPackedWeight(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
         // Any block-packed weight, read off the view's layout rather than off the class (#1507), and
         // not an enumeration of formats (#1136 physiology: kernels are selected by the weight's
         // storage format, and so is the Wᵀ-marker path that reaches them). A hardcoded Q-list
@@ -1172,7 +1192,8 @@ public open class DefaultCpuOpsBase(
         // (isHeapPackedWeightForJvm) for the formats its relayout-and-cache kernels actually read;
         // everything else lands in matmulWeightTransposedViaViews, which serves any encoding
         // through KernelDispatch.
-        data.view?.layout?.blocked == true
+        // Dense heap floats say so in two reads; only other data pays for the view.
+        data.heapFloats == null && data.view?.layout?.blocked == true
 
     /**
      * The block relayout by its own name (#973/#1096) — what `transpose` used to do to a packed

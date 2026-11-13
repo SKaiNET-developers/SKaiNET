@@ -68,6 +68,14 @@ public class StorageFloatTensorData<T : DType>(
         return storage.floats!!.copyOfRange(off, off + shape.volume)
     }
 
+    override val heapFloats: FloatArray?
+        get() {
+            storage.checkAlive()
+            return storage.floats
+        }
+
+    override val heapFloatsOffset: Int get() = storage.arrayOffset
+
     /** A dense view over the same region — the storage carries the offset, nothing is copied. */
     override val view: TensorView
         get() {

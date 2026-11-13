@@ -152,7 +152,7 @@ internal class DefaultCpuOpsJvm(
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         // A dense FP32 `[out, in]` weight with a native direct kernel is multiplied in place, no
         // transposed copy made or cached (the weight is made resident off-heap once instead).
-        if (weight.data.view?.layout?.blocked != true) {
+        if (!isHeapPackedWeight(weight.data)) {
             matmulDenseWeightTransposedNative(x, weight)?.let { return it }
         }
         // Everything else is the common path, which looks the kernel up by the key of the two
@@ -176,21 +176,9 @@ internal class DefaultCpuOpsJvm(
     private fun <T : DType, V> segmentActivationToHeap(x: Tensor<T, V>): Tensor<T, V>? {
         if (x.dtype != FP32::class) return null
         val count = x.shape.volume
+        val seg = segmentFloatWindow(x.data) ?: return null
         val arr = FloatArray(count)
-        val src = x.data as? MemorySegmentBackedData
-        if (src != null) {
-            java.lang.foreign.MemorySegment.copy(
-                src.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, src.segmentByteOffset, arr, 0, count,
-            )
-        } else {
-            val view = x.data.view ?: return null
-            if (!view.isContiguous) return null
-            val seg = view.storage as? sk.ainet.lang.memory.SegmentStorage ?: return null
-            java.lang.foreign.MemorySegment.copy(
-                seg.segment(), java.lang.foreign.ValueLayout.JAVA_FLOAT,
-                view.layout.offsetElements * java.lang.Float.BYTES.toLong(), arr, 0, count,
-            )
-        }
+        java.lang.foreign.MemorySegment.copy(seg.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, seg.byteOffset, arr, 0, count)
         // NOT dataFactory.adoptFloatArray: this JVM factory adopts float arrays back INTO
         // MemorySegments — the round-trip that defeats the whole copy. The base heap class is
         // what the common dispatch path can read.
@@ -283,15 +271,28 @@ internal class DefaultCpuOpsJvm(
      * copied (it is `m × k`, small). `MemorySegmentTensorData` specifically, not the marker
      * interface: the Q4/Q8 segment types implement that too and hold packed bytes, not floats.
      */
-    private fun heapActivation(x: Tensor<*, *>): Pair<FloatArray, Int>? = when (val d = x.data) {
-        is FloatArrayTensorData<*> -> d.buffer to 0
-        is MemorySegmentTensorData<*> -> {
-            val count = x.shape.volume
-            val arr = FloatArray(count)
-            java.lang.foreign.MemorySegment.copy(d.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, d.segmentByteOffset, arr, 0, count)
-            arr to 0
-        }
-        else -> null
+    private fun heapActivation(x: Tensor<*, *>): Pair<FloatArray, Int>? {
+        heapFloatWindow(x.data)?.let { return it.arr to it.off }
+        val seg = segmentFloatWindow(x.data) ?: return null
+        val count = x.shape.volume
+        val arr = FloatArray(count)
+        java.lang.foreign.MemorySegment.copy(seg.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, seg.byteOffset, arr, 0, count)
+        return arr to 0
+    }
+
+    /** A dense FP32 segment and the byte offset of element 0. */
+    private class SegmentWindow(@JvmField val segment: java.lang.foreign.MemorySegment, @JvmField val byteOffset: Long)
+
+    /**
+     * The off-heap floats behind [data] when its view is dense FP32, gap-free and over a
+     * [sk.ainet.lang.memory.SegmentStorage]; `null` otherwise. Read off the view, not the class
+     * (SKEEP-003, #1507): the packed Q4/Q8 segment types are not dense and so never match.
+     */
+    private fun segmentFloatWindow(data: sk.ainet.lang.tensor.data.TensorData<*, *>): SegmentWindow? {
+        val view = data.view ?: return null
+        if (view.format != DENSE_FP32 || !view.isContiguous) return null
+        val storage = view.storage as? sk.ainet.lang.memory.SegmentStorage ?: return null
+        return SegmentWindow(storage.segment(), view.layout.offsetElements * java.lang.Float.BYTES.toLong())
     }
 
     /**
@@ -336,25 +337,23 @@ internal class DefaultCpuOpsJvm(
     /** The weight's `floats` floats as an off-heap segment and byte offset: its own segment, or the resident copy of its heap array. */
     private fun residentDenseWeight(weight: Tensor<*, *>, floats: Long): Pair<java.lang.foreign.MemorySegment, Long>? {
         val bytes = floats * java.lang.Float.BYTES
-        when (val d = weight.data) {
-            is MemorySegmentTensorData<*> -> {
-                if (d.segmentByteOffset + bytes > d.segment.byteSize()) return null
-                return d.segment to d.segmentByteOffset
+        segmentFloatWindow(weight.data)?.let { seg ->
+            if (seg.byteOffset + bytes > seg.segment.byteSize()) return null
+            return seg.segment to seg.byteOffset
+        }
+        // A heap weight is copied off-heap once and kept, keyed by the identity of its array.
+        val win = heapFloatWindow(weight.data) ?: return null
+        if (win.off != 0 || win.arr.size.toLong() < floats) return null
+        val source = win.arr
+        synchronized(residentDenseWeights) {
+            residentDenseWeights.firstOrNull { it.first === source }?.let { return it.second to 0L }
+            val seg = Arena.ofAuto().allocate(maxOf(bytes, 4L), 64L)
+            if (floats > 0) {
+                java.lang.foreign.MemorySegment.copy(source, 0, seg, java.lang.foreign.ValueLayout.JAVA_FLOAT, 0L, floats.toInt())
             }
-            is FloatArrayTensorData<*> -> {
-                if (d.buffer.size.toLong() < floats) return null
-                synchronized(residentDenseWeights) {
-                    residentDenseWeights.firstOrNull { it.first === d }?.let { return it.second to 0L }
-                    val seg = Arena.ofAuto().allocate(maxOf(bytes, 4L), 64L)
-                    if (floats > 0) {
-                        java.lang.foreign.MemorySegment.copy(d.buffer, 0, seg, java.lang.foreign.ValueLayout.JAVA_FLOAT, 0L, floats.toInt())
-                    }
-                    if (residentDenseWeights.size >= RESIDENT_DENSE_CACHE_LIMIT) residentDenseWeights.removeAt(0)
-                    residentDenseWeights.add(Pair(d, seg))
-                    return seg to 0L
-                }
-            }
-            else -> return null
+            if (residentDenseWeights.size >= RESIDENT_DENSE_CACHE_LIMIT) residentDenseWeights.removeAt(0)
+            residentDenseWeights.add(Pair(source, seg))
+            return seg to 0L
         }
     }
 
@@ -377,21 +376,13 @@ internal class DefaultCpuOpsJvm(
     private val FUSED_MIN_ELEMENTS: Int = 1024
 
     /** A dense FP32 tensor's floats and the offset of element 0: the array itself, a slab window, or a copy of a segment. */
-    private fun denseWindow(t: Tensor<*, *>): Pair<FloatArray, Int>? = when (val d = t.data) {
-        is FloatArrayTensorData<*> -> d.buffer to 0
-        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> {
-            val s = d.storage
-            s.checkAlive()
-            s.floats!! to s.arrayOffset
-        }
-        is MemorySegmentTensorData<*> -> heapActivation(t)
-        else -> null
-    }
+    private fun denseWindow(t: Tensor<*, *>): Pair<FloatArray, Int>? = heapActivation(t)
 
     /** A dense FP32 tensor as one whole array from index 0 — its own buffer when it is one, a copy otherwise. */
-    private fun wholeFloats(t: Tensor<*, *>): FloatArray = when (val d = t.data) {
-        is FloatArrayTensorData<*> -> if (d.buffer.size == t.shape.volume) d.buffer else d.buffer.copyOf(t.shape.volume)
-        else -> t.data.copyToFloatArray()
+    private fun wholeFloats(t: Tensor<*, *>): FloatArray {
+        val win = heapFloatWindow(t.data) ?: return t.data.copyToFloatArray()
+        val n = t.shape.volume
+        return if (win.off == 0 && win.arr.size == n) win.arr else win.arr.copyOfRange(win.off, win.off + n)
     }
 
     private fun <T : DType, V> softmaxNative(tensor: Tensor<T, V>, dim: Int, log: Boolean): Tensor<T, V>? {
@@ -1172,17 +1163,7 @@ internal class DefaultCpuOpsJvm(
     }
 
     /** Dense-FP32 window (array + base offset): plain array data at 0, slab-backed data (#1173) at its arrayOffset. */
-    private class FloatWin(@JvmField val arr: FloatArray, @JvmField val off: Int)
-
-    private fun floatWinOf(d: sk.ainet.lang.tensor.data.TensorData<*, *>): FloatWin? = when (d) {
-        is FloatArrayTensorData<*> -> FloatWin(d.buffer, 0)
-        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> {
-            val st = d.storage
-            st.checkAlive()
-            FloatWin(st.floats!!, st.arrayOffset)
-        }
-        else -> null
-    }
+    private fun floatWinOf(d: sk.ainet.lang.tensor.data.TensorData<*, *>): FloatWindow? = heapFloatWindow(d)
 
     private fun <T : DType> supportsFloatOps(a: Tensor<T, *>, b: Tensor<T, *>): Boolean {
         return supportsFloatOps(a) &&
@@ -1200,6 +1181,52 @@ internal class DefaultCpuOpsJvm(
         return dtype == FP32::class || dtype == FP16::class || dtype == BF16::class
     }
 
+    /** `a · b` for two dense FP32 operands that both live in memory segments; `null` when either does not. */
+    private fun <T : DType, V> chooseMatmulSegments(a: Tensor<T, V>, b: Tensor<T, V>, m: Int, n: Int, k: Int): Tensor<T, V>? {
+        val aMemSeg = segmentFloatWindow(a.data)
+        val bMemSeg = segmentFloatWindow(b.data)
+        if (aMemSeg != null && bMemSeg != null) {
+            // Same fix as the transpose path above: use Arena.ofAuto so the
+            // matmul output segment is GC-reclaimable. Per-call ofConfined()
+            // leaks ~tens of MB per matmul, which over a 35-layer Gemma 4
+            // forward pass exhausts the JVM direct-memory cap.
+            val arena = Arena.ofAuto()
+            val result = MemorySegmentTensorData<T>(Shape(m, n), arena)
+            // Both operands already off-heap: the platform BLAS reads them in place, no staging.
+            if (blasWanted(m.toLong() * n * k) &&
+                JvmBlas.sgemm(
+                    false, false, m, n, k,
+                    aMemSeg.segment, aMemSeg.byteOffset, k,
+                    bMemSeg.segment, bMemSeg.byteOffset, n,
+                    result.segment, result.segmentByteOffset, n,
+                )
+            ) {
+                @Suppress("UNCHECKED_CAST")
+                return CpuTensor(result as TensorData<T, V>, this, a.dtype)
+            }
+            val blockedThresholdMS = 16 * 16
+            if (m >= blockedThresholdMS || n >= blockedThresholdMS || k >= blockedThresholdMS) {
+                JvmVectorKernels.matmulFloatBlockedMemSeg(
+                    m, k, n,
+                    aMemSeg.segment, aMemSeg.byteOffset,
+                    bMemSeg.segment, bMemSeg.byteOffset,
+                    result.segment, result.segmentByteOffset,
+                    schedule = schedule,
+                )
+            } else {
+                JvmVectorKernels.matmulFloatMemSeg(
+                    m, k, n,
+                    aMemSeg.segment, aMemSeg.byteOffset,
+                    bMemSeg.segment, bMemSeg.byteOffset,
+                    result.segment, result.segmentByteOffset,
+                )
+            }
+            @Suppress("UNCHECKED_CAST")
+            return CpuTensor(result as TensorData<T, V>, this, a.dtype)
+        }
+        return null
+    }
+
     private fun <T : DType, V> chooseMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         if (!supportsFloatOps(a) || !supportsFloatOps(b)) return null
         if (a.dtype != b.dtype) return null
@@ -1215,52 +1242,12 @@ internal class DefaultCpuOpsJvm(
         val n = bCols
         val k = aCols
 
-        // ---- MemorySegment fast path ----
-        val aMemSeg = a.data as? MemorySegmentBackedData
-        val bMemSeg = b.data as? MemorySegmentBackedData
-        if (aMemSeg != null && bMemSeg != null) {
-            // Same fix as the transpose path above: use Arena.ofAuto so the
-            // matmul output segment is GC-reclaimable. Per-call ofConfined()
-            // leaks ~tens of MB per matmul, which over a 35-layer Gemma 4
-            // forward pass exhausts the JVM direct-memory cap.
-            val arena = Arena.ofAuto()
-            val result = MemorySegmentTensorData<T>(Shape(m, n), arena)
-            // Both operands already off-heap: the platform BLAS reads them in place, no staging.
-            if (blasWanted(m.toLong() * n * k) &&
-                JvmBlas.sgemm(
-                    false, false, m, n, k,
-                    aMemSeg.segment, aMemSeg.segmentByteOffset, k,
-                    bMemSeg.segment, bMemSeg.segmentByteOffset, n,
-                    result.segment, result.segmentByteOffset, n,
-                )
-            ) {
-                @Suppress("UNCHECKED_CAST")
-                return CpuTensor(result as TensorData<T, V>, this, a.dtype)
-            }
-            val blockedThresholdMS = 16 * 16
-            if (m >= blockedThresholdMS || n >= blockedThresholdMS || k >= blockedThresholdMS) {
-                JvmVectorKernels.matmulFloatBlockedMemSeg(
-                    m, k, n,
-                    aMemSeg.segment, aMemSeg.segmentByteOffset,
-                    bMemSeg.segment, bMemSeg.segmentByteOffset,
-                    result.segment, result.segmentByteOffset,
-                    schedule = schedule,
-                )
-            } else {
-                JvmVectorKernels.matmulFloatMemSeg(
-                    m, k, n,
-                    aMemSeg.segment, aMemSeg.segmentByteOffset,
-                    bMemSeg.segment, bMemSeg.segmentByteOffset,
-                    result.segment, result.segmentByteOffset,
-                )
-            }
-            @Suppress("UNCHECKED_CAST")
-            return CpuTensor(result as TensorData<T, V>, this, a.dtype)
-        }
-
         // ---- FloatArray path (plain arrays at offset 0, slab windows at their base — #1173) ----
-        val aWin = floatWinOf(a.data) ?: return null
-        val bWin = floatWinOf(b.data) ?: return null
+        // Heap data answers without building a view, so it is asked first; only operands that are
+        // not heap floats go on to the segment path, which reads their views.
+        val aWin = floatWinOf(a.data)
+        val bWin = floatWinOf(b.data)
+        if (aWin == null || bWin == null) return chooseMatmulSegments(a, b, m, n, k)
 
         val work = m.toLong() * n.toLong() * k.toLong()
         val outBuffer = FloatArray(m * n)
