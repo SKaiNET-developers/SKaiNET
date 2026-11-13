@@ -43,6 +43,11 @@ public class Q5_0BlockTensorData(
      * every GGUF-shaped producer writes — unless this weight was relayouted for the packed kernels.
      */
     override val blockOrder: sk.ainet.lang.memory.BlockOrder = sk.ainet.lang.memory.BlockOrder.ROW_MAJOR,
+    /**
+     * The axis the blocks run along ([PackedBlockStorage.blockAxis]): the last one, unless this is
+     * the `[in, out]` label over a relayouted weight, where it is `0`.
+     */
+    override val blockAxis: Int = initialShape.rank - 1,
 ) : Q5_0TensorData, PackedBlockStorage {
 
     /** The façade over the packed bytes (SKEEP-003 §4.1): see [PackedBlockStorage.packedView]. */

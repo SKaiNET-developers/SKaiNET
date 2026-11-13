@@ -135,6 +135,24 @@ public object KernelDispatch {
     private var warnedReferenceFallback: Boolean = false
 
     /**
+     * Run `matmul(a, b)` into [out] when a kernel is registered for exactly this operand pair, and
+     * say whether it ran. No adapter and no reference fallback: the caller decides what a miss
+     * means. This is the lookup an ops implementation uses in place of a class ladder (#1507).
+     */
+    public fun matmulExact(a: TensorView, b: TensorView, out: TensorView, sink: TraceSink = defaultSink): Boolean {
+        ensureInstalled()
+        val exact = find(KernelKey.matmul(a, b)) ?: return false
+        runTraced(exact, listOf(a, b), out, sink)
+        return true
+    }
+
+    /** Whether a kernel is registered for exactly [key]; installs the platform kernels first. */
+    public fun hasKernel(key: KernelKey): Boolean {
+        ensureInstalled()
+        return find(key) != null
+    }
+
+    /**
      * Select and run `matmul(a, b)`, writing into [out]. [scope] owns any adapter the selection
      * needs; [sink] sees the kernel run and every adapter.
      *

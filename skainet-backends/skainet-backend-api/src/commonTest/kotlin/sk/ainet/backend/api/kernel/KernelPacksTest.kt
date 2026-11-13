@@ -98,4 +98,60 @@ class KernelPacksTest {
         assertTrue(plain != neon, "capabilities are part of the key")
         assertEquals("matmul(Float32/Dense(4B) contiguous × Float32/Dense(4B) contiguous) @host [dotprod,vector]", neon.toString())
     }
+
+    /** A provider that carries only a Q8_0 kernel, which writes [marker] into the first output. */
+    private class Q8Only(override val name: String, override val priority: Int, val marker: Float) : KernelProvider {
+        override fun isAvailable(): Boolean = true
+        override fun matmulFp32(): Fp32MatmulKernel? = null
+        override fun matmulQ8_0(): Q8_0MatmulKernel = object : Q8_0MatmulKernel {
+            override fun matmul(
+                input: FloatArray, inputOffset: Int,
+                weight: ByteArray, weightByteOffset: Int,
+                inputDim: Int, outputDim: Int,
+                output: FloatArray, outputOffset: Int,
+            ) { output[outputOffset] = marker }
+        }
+    }
+
+    @Test
+    fun aPackedFormatTheBestProviderLacksComesFromTheNextOne() {
+        // The best provider has an FP32 kernel and nothing packed; a lower one carries Q8_0.
+        KernelRegistry.register(FakeProvider(priority = 100))
+        KernelRegistry.register(Q8Only("low", priority = 10, marker = 1f))
+        KernelPacks.install()
+
+        val q8 = KernelDispatch.find(PackedViewMatmulKernel.keyFor(sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0))
+        assertEquals("low-Q8_0", q8?.name)
+        assertEquals(null, KernelDispatch.find(PackedViewMatmulKernel.keyFor(sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K)))
+    }
+
+    @Test
+    fun installMissingPackedPrefersTheBestProviderAndKeepsWhatIsRegistered() {
+        KernelRegistry.register(Q8Only("low", priority = 10, marker = 1f))
+        KernelRegistry.register(Q8Only("high", priority = 90, marker = 2f))
+        KernelPacks.installMissingPacked()
+        val key = PackedViewMatmulKernel.keyFor(sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0)
+        assertEquals("high-Q8_0", KernelDispatch.find(key)?.name)
+
+        // A provider that arrives later does not displace a registered kernel.
+        KernelRegistry.register(Q8Only("later", priority = 100, marker = 3f))
+        KernelPacks.installMissingPacked()
+        assertEquals("high-Q8_0", KernelDispatch.find(key)?.name)
+    }
+
+    @Test
+    fun matmulExactRunsOnlyARegisteredKernel() {
+        KernelPacks.installReference()
+        val a = view(Shape(1, 2), floatArrayOf(1f, 2f))
+        val w = view(Shape(1, 2), floatArrayOf(3f, 4f))
+        val out = view(Shape(1, 1), FloatArray(1))
+        assertTrue(KernelDispatch.matmulExact(a, w, out), "dense × dense has the reference kernel")
+        assertEquals(11f, out.get(0, 0))
+
+        // A strided weight has no kernel here: nothing runs and nothing is written.
+        val strided = view(Shape(2, 2), floatArrayOf(1f, 2f, 3f, 4f)).transpose()
+        val untouched = view(Shape(1, 2), floatArrayOf(-1f, -1f))
+        assertEquals(false, KernelDispatch.matmulExact(a, strided, untouched))
+        assertEquals(-1f, untouched.get(0, 0))
+    }
 }

@@ -200,8 +200,6 @@ dispatcher prints what it could not match and how to install a pack. It fires on
 `KernelDispatch.defaultSink`:: set a real `TraceSink` to see every kernel run and adapter.
 Production call sites (`DefaultCpuOps`) do not thread a sink through, so this global is how you
 observe them.
-`DispatchMode.useRegistry()`:: `-Dskainet.dispatch.registry=false` forces the legacy generic
-fallback, which is useful for bisecting a suspected dispatch problem.
 
 == Adding a backend
 
