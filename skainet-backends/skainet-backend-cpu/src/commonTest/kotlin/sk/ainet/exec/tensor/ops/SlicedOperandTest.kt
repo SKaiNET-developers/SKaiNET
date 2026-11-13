@@ -1,13 +1,11 @@
 package sk.ainet.exec.tensor.ops
 
-import sk.ainet.backend.api.kernel.DispatchMode
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.sliceView
 import sk.ainet.lang.types.FP32
 import kotlin.math.abs
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -16,11 +14,9 @@ import kotlin.test.assertTrue
 /**
  * A sliced tensor exposes a strided, offset `TensorView` of its source (SKEEP-003 §4.6), so the
  * view-based kernel paths now see it. Every op must give the same numbers on the slice as on a
- * dense tensor holding the same elements, with the kernel registry on and off.
+ * dense tensor holding the same elements.
  */
 class SlicedOperandTest {
-
-    @AfterTest fun reset() { DispatchMode.overrideEnabled = null }
 
     private val ctx = DirectCpuExecutionContext()
 
@@ -56,12 +52,7 @@ class SlicedOperandTest {
         segment { range(2, 6) }
     }
 
-    private fun bothModes(block: (String) -> Unit) {
-        for (mode in listOf(null, true, false)) {
-            DispatchMode.overrideEnabled = mode
-            block("registry=$mode")
-        }
-    }
+    private fun bothModes(block: (String) -> Unit) = block("sliced")
 
     @Test
     fun theSliceIsAStridedView() {

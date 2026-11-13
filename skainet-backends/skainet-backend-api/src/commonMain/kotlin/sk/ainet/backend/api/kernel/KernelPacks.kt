@@ -26,10 +26,35 @@ public object KernelPacks {
     public const val CAPABILITY_VECTOR: String = "vector"
 
     /**
-     * Install the kernels of [provider] (default: the best available one) into [KernelDispatch],
-     * plus the always-present reference kernel for dense FP32. Idempotent per provider name.
+     * Install the kernels of the best available provider into [KernelDispatch], the packed kernels
+     * of every available provider (the best one that carries a format serves it), and the
+     * always-present reference kernel for dense FP32. Idempotent per provider name.
      */
-    public fun install(provider: KernelProvider? = KernelRegistry.bestAvailable()) {
+    public fun install() {
+        install(KernelRegistry.bestAvailable())
+        installMissingPacked()
+    }
+
+    /**
+     * For each packed format that has no feed-order kernel in [KernelDispatch] yet, register the one
+     * of the best available provider that carries it. Asking only the best provider left a format
+     * it lacks without a kernel although a lower provider has one (#1507). Never replaces a
+     * registered kernel, so it is safe to call after providers were added.
+     */
+    public fun installMissingPacked() {
+        for ((encoding, accessor) in packedAccessors) {
+            if (KernelDispatch.find(PackedViewMatmulKernel.keyFor(encoding)) != null) continue
+            for (p in KernelRegistry.providers()) {
+                if (!p.isAvailable()) continue
+                val kernel = accessor(p) ?: continue
+                KernelDispatch.register(PackedViewMatmulKernel(p.name, encoding.name, PackedViewMatmulKernel.keyFor(encoding), kernel))
+                break
+            }
+        }
+    }
+
+    /** Install the kernels of [provider] only, plus the reference kernel for dense FP32. */
+    public fun install(provider: KernelProvider?) {
         installReference()
         val p = provider ?: return
         if (!p.isAvailable()) return
@@ -52,20 +77,24 @@ public object KernelPacks {
      * decoding reference kernel keeps serving that format, as it does today.
      */
     public fun installPacked(provider: KernelProvider) {
-        fun register(encoding: TensorEncoding, kernel: ((FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit)?) {
-            if (kernel == null) return
+        for ((encoding, accessor) in packedAccessors) {
+            val kernel = accessor(provider) ?: continue
             KernelDispatch.register(
                 PackedViewMatmulKernel(provider.name, encoding.name, PackedViewMatmulKernel.keyFor(encoding), kernel),
             )
         }
-        register(TensorEncoding.Q4_0, provider.matmulQ4_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
-        register(TensorEncoding.Q5_0, provider.matmulQ5_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
-        register(TensorEncoding.Q5_1, provider.matmulQ5_1()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
-        register(TensorEncoding.Q8_0, provider.matmulQ8_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
-        register(TensorEncoding.Q4_K, provider.matmulQ4K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
-        register(TensorEncoding.Q5_K, provider.matmulQ5K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
-        register(TensorEncoding.Q6_K, provider.matmulQ6K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } })
     }
+
+    /** Each packed format with the way to ask a provider for its feed-order kernel. */
+    private val packedAccessors: List<Pair<TensorEncoding, (KernelProvider) -> PackedMatmulFn?>> = listOf(
+        TensorEncoding.Q4_0 to { p -> p.matmulQ4_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+        TensorEncoding.Q5_0 to { p -> p.matmulQ5_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+        TensorEncoding.Q5_1 to { p -> p.matmulQ5_1()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+        TensorEncoding.Q8_0 to { p -> p.matmulQ8_0()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+        TensorEncoding.Q4_K to { p -> p.matmulQ4K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+        TensorEncoding.Q5_K to { p -> p.matmulQ5K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+        TensorEncoding.Q6_K to { p -> p.matmulQ6K()?.let { k -> { i, io, w, wo, id, od, o, oo -> k.matmul(i, io, w, wo, id, od, o, oo) } } },
+    )
 
     /** The reference matmul for dense FP32 — always available, so a key is never unserved. */
     public fun installReference() {
@@ -73,6 +102,9 @@ public object KernelPacks {
         KernelDispatch.register(ReferenceMatmulKernel(KernelKey("matmul", listOf(dense, dense))))
     }
 }
+
+/** The signature the packed SPI matmul kernels share. */
+private typealias PackedMatmulFn = (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit
 
 /**
  * A [ViewKernel] over an SPI [Fp32MatmulKernel]: both operands dense FP32 and contiguous, weight

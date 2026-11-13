@@ -63,6 +63,19 @@ public interface PackedBlockStorage {
     public val blockOrder: sk.ainet.lang.memory.BlockOrder
         get() = sk.ainet.lang.memory.BlockOrder.ROW_MAJOR
 
+    /**
+     * The axis of [shape] the blocks run along — the weight's *input* dimension.
+     *
+     * The last axis for every weight as loaded (`[out, in]`). It is `0` for the `[in, out]` label
+     * the packed matmul kernels take as a right-hand operand: the same feed-order bytes
+     * ([blockOrder] is then [sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR]) under the other
+     * shape. Before this existed such a label claimed blocks along its *output* dimension, so its
+     * [packedView] and [toFloatArray] decoded the wrong blocks (SKEEP-003, #1507). Only `rank - 1`
+     * and, for a rank-2 feed-order weight, `0` are meaningful.
+     */
+    public val blockAxis: Int
+        get() = shape.rank - 1
+
     /** Physical byte size of the packed data. */
     public val physicalBytes: Long get() = packedData.size.toLong()
 
@@ -93,16 +106,44 @@ public interface PackedBlockStorage {
      * unlike this data's own `get`, which stays as it is for source compatibility.
      */
     public val packedView: sk.ainet.lang.memory.TensorView
-        get() = sk.ainet.lang.memory.TensorView.packed(
-            storage = packedStorage,
-            shape = shape,
-            encoding = encoding,
-            decoder = sk.ainet.lang.memory.PackedBlockDecoder(this),
-            blockOrder = blockOrder,
-        )
+        get() {
+            if (shape.rank == 2 && blockAxis == 0) {
+                // The `[in, out]` label: the weight's own `[out, in]` view, transposed. The block
+                // axis travels with its extent, so the view decodes this data's logical matrix.
+                return sk.ainet.lang.memory.TensorView.packed(
+                    storage = packedStorage,
+                    shape = Shape(shape[1], shape[0]),
+                    encoding = encoding,
+                    decoder = sk.ainet.lang.memory.PackedBlockDecoder(this),
+                    blockOrder = blockOrder,
+                ).transpose()
+            }
+            return sk.ainet.lang.memory.TensorView.packed(
+                storage = packedStorage,
+                shape = shape,
+                encoding = encoding,
+                decoder = sk.ainet.lang.memory.PackedBlockDecoder(this),
+                blockOrder = blockOrder,
+            )
+        }
 
     public fun toFloatArray(): FloatArray {
         val result = FloatArray(shape.volume)
+        if (shape.rank == 2 && blockAxis == 0) {
+            // `[in, out]` label: block (o, b) of the weight holds elements (b * blockSize + j, o)
+            // of this matrix. Decode each block once and scatter it down its column.
+            val outDim = shape[1]
+            val blocksPerRow = shape[0] / blockSize
+            val block = FloatArray(blockSize)
+            val feedOrder = blockOrder == sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR
+            for (o in 0 until outDim) {
+                for (b in 0 until blocksPerRow) {
+                    dequantizeBlock(if (feedOrder) b * outDim + o else o * blocksPerRow + b, block, 0)
+                    for (j in 0 until blockSize) result[(b * blockSize + j) * outDim + o] = block[j]
+                }
+            }
+            return result
+        }
         if (blockOrder == sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR && shape.rank == 2) {
             // Feed-order bytes hold block `(o, b)` at physical index `b * rows + o`, so decoding
             // them in physical sequence would emit the matrix transposed-in-blocks. Walk the

@@ -4726,6 +4726,7 @@ public final class sk/ainet/lang/tensor/data/BitNetB158TensorData : sk/ainet/lan
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockSize ()I
@@ -4757,6 +4758,7 @@ public final class sk/ainet/lang/tensor/data/BitNetPlanesTensorData : sk/ainet/l
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Float;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockSize ()I
@@ -4788,6 +4790,7 @@ public final class sk/ainet/lang/tensor/data/BufferPackedTensorData : sk/ainet/l
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Float;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockSize ()I
@@ -5074,6 +5077,11 @@ public final class sk/ainet/lang/tensor/data/NarrowFloatTensorDataKt {
 	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/NarrowFloatTensorData;)[F
 }
 
+public final class sk/ainet/lang/tensor/data/PackedBlockTensorDataKt {
+	public static final fun packedBlockTensorData (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)Lsk/ainet/lang/tensor/data/TensorData;
+	public static synthetic fun packedBlockTensorData$default (Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILjava/lang/Object;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
 public final class sk/ainet/lang/tensor/data/PprintKt {
 	public static final fun pprint (Lsk/ainet/lang/tensor/data/TensorData;)Ljava/lang/String;
 }
@@ -5110,12 +5118,13 @@ public final class sk/ainet/lang/tensor/data/Q4MemorySegmentTensorData$Companion
 
 public final class sk/ainet/lang/tensor/data/Q4_0BlockTensorData : sk/ainet/lang/tensor/data/Q4_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q4_0BlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockScale (I)F
@@ -5172,12 +5181,13 @@ public final class sk/ainet/lang/tensor/data/Q4_0TensorDataKt {
 
 public final class sk/ainet/lang/tensor/data/Q4_KBlockTensorData : sk/ainet/lang/tensor/data/Q4_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q4_KBlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockD (I)F
 	public fun getBlockDMin (I)F
@@ -5238,12 +5248,13 @@ public final class sk/ainet/lang/tensor/data/Q4_KTensorDataKt {
 
 public final class sk/ainet/lang/tensor/data/Q5_0BlockTensorData : sk/ainet/lang/tensor/data/Q5_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_0BlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockSize ()I
@@ -5286,12 +5297,13 @@ public final class sk/ainet/lang/tensor/data/Q5_0TensorData$DefaultImpls {
 
 public final class sk/ainet/lang/tensor/data/Q5_1BlockTensorData : sk/ainet/lang/tensor/data/Q5_1TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_1BlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockSize ()I
@@ -5334,12 +5346,13 @@ public final class sk/ainet/lang/tensor/data/Q5_1TensorData$DefaultImpls {
 
 public final class sk/ainet/lang/tensor/data/Q5_KBlockTensorData : sk/ainet/lang/tensor/data/Q5_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q5_KBlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockD (I)F
 	public fun getBlockDMin (I)F
@@ -5404,12 +5417,13 @@ public final class sk/ainet/lang/tensor/data/Q5_KTensorDataKt {
 
 public final class sk/ainet/lang/tensor/data/Q6_KBlockTensorData : sk/ainet/lang/tensor/data/Q6_KTensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q6_KBlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockD (I)F
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
@@ -5496,12 +5510,13 @@ public final class sk/ainet/lang/tensor/data/Q8MemorySegmentTensorData$Companion
 
 public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang/tensor/data/Q8_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q8_0BlockTensorData$Companion;
-	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;)V
-	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
+	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockScale (I)F
@@ -5665,6 +5680,7 @@ public final class sk/ainet/lang/tensor/data/Ternary2BitTensorData : sk/ainet/la
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
+	public fun getBlockAxis ()I
 	public fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public fun getBlockSize ()I
@@ -7501,6 +7517,7 @@ public final class sk/ainet/lang/tensor/storage/Ownership : java/lang/Enum {
 public abstract interface class sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public abstract fun dequantizeBlock (I[FI)V
 	public static synthetic fun dequantizeBlock$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;I[FIILjava/lang/Object;)V
+	public fun getBlockAxis ()I
 	public abstract fun getBlockCount ()I
 	public fun getBlockOrder ()Lsk/ainet/lang/memory/BlockOrder;
 	public abstract fun getBlockSize ()I
@@ -7518,6 +7535,7 @@ public abstract interface class sk/ainet/lang/tensor/storage/PackedBlockStorage 
 
 public final class sk/ainet/lang/tensor/storage/PackedBlockStorage$DefaultImpls {
 	public static synthetic fun dequantizeBlock$default (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;I[FIILjava/lang/Object;)V
+	public static fun getBlockAxis (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)I
 	public static fun getBlockOrder (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)Lsk/ainet/lang/memory/BlockOrder;
 	public static fun getElementCount (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)J
 	public static fun getPackedStorage (Lsk/ainet/lang/tensor/storage/PackedBlockStorage;)Lsk/ainet/lang/memory/Storage;

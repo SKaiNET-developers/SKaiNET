@@ -62,9 +62,27 @@ count, so the conversion appears in the trace with its price;
 
 It is a *conversion*, and it is named as one. It is not `transpose`: a true transpose of a
 block-quantized weight would need runs of quantized values along the other axis, i.e.
-requantization. `ops.transpose` therefore refuses a heap packed weight and names
-`ops.matmulWeightTransposed(x, weight)` — `x · Wᵀ` with the weight left as `[out, in]`, which is
-the primitive ggml (`mul_mat`) and BLAS (`op(B)`) actually have.
+requantization. `ops.transpose` therefore returns an unmaterialized `Wᵀ` marker for a packed
+weight, and `matmul` turns that into `ops.matmulWeightTransposed(x, weight)` — `x · Wᵀ` with the
+weight left as `[out, in]`, which is the primitive ggml (`mul_mat`) and BLAS (`op(B)`) actually
+have.
+
+== The `[in, out]` label
+
+The packed kernels take the weight as the right-hand operand of `matmul`, shaped `[in, out]`, over
+feed-order bytes. `ops.relayoutPackedWeightForKernels(weight)` returns that tensor. It describes
+itself: `blockOrder` is `INPUT_BLOCK_MAJOR` and `PackedBlockStorage.blockAxis` is `0`, because the
+blocks run along the input dimension, which is the first axis of this shape. Its view is the
+transposed view of the `[out, in]` feed-order weight, so `view.get(i, o)` and `toFloatArray()`
+return the transposed weight.
+
+`matmul` chooses the kernel from that description. It transposes the view back to `[out, in]` and
+looks up the `KernelKey` of the two operands; no code asks which class the weight is.
+
+A packed right-hand operand built by hand, with no block axis set, is still read as feed-order
+bytes. That has been the contract of this operand position since the kernels existed, and it is
+the one place where bytes are read against their label. New code should pass the weight as
+`[out, in]` to `matmulWeightTransposed` and not build the label at all.
 
 == Orientation at the load boundary
 

@@ -1,6 +1,5 @@
 package sk.ainet.exec.tensor.ops
 
-import sk.ainet.backend.api.kernel.DispatchMode
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
@@ -8,7 +7,6 @@ import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.FP32
 import kotlin.math.abs
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -17,11 +15,9 @@ import kotlin.test.assertTrue
  * The two crash classes this replaces are #993 (a rank-1 decode-step activation reaching a kernel
  * written for rank 2, then `matmulGeneric` reading a packed weight's raw byte) and #991 (an
  * activation whose `TensorData` subtype the fast path did not accept). Both must produce correct,
- * finite numbers — and the registry path and the legacy path must agree.
+ * finite numbers — and the relayouted operand and the `x · Wᵀ` primitive must agree.
  */
 class RegistryMatmulDispatchTest {
-
-    @AfterTest fun reset() { DispatchMode.overrideEnabled = null }
 
     private val ctx = DirectCpuExecutionContext()
 
@@ -68,19 +64,17 @@ class RegistryMatmulDispatchTest {
     }
 
     @Test
-    fun registryAndLegacyPathsAgreeOnAPackedWeight() {
+    fun relayoutedOperandAndWeightTransposedAgreeOnAPackedWeight() {
         val (w, _) = packedWeight(3)
         val x = ctx.fromFloatArray<FP32, Float>(Shape(2, 32), FP32::class, FloatArray(64) { (it % 5) * 0.25f })
         val wt = ctx.ops.relayoutPackedWeightForKernels(w)
 
-        DispatchMode.overrideEnabled = true
         val viaRegistry = ctx.ops.matmul(x, wt).data.copyToFloatArray()
-        DispatchMode.overrideEnabled = false
-        val viaLegacy = ctx.ops.matmul(x, wt).data.copyToFloatArray()
+        val viaLegacy = ctx.ops.matmulWeightTransposed(x, w).data.copyToFloatArray()
 
         for (i in viaRegistry.indices) {
             assertTrue(viaRegistry[i].isFinite() && viaLegacy[i].isFinite())
-            assertTrue(abs(viaRegistry[i] - viaLegacy[i]) < 1e-3f, "element $i: registry ${viaRegistry[i]} vs legacy ${viaLegacy[i]}")
+            assertTrue(abs(viaRegistry[i] - viaLegacy[i]) < 1e-3f, "element $i: relayouted ${viaRegistry[i]} vs primitive ${viaLegacy[i]}")
         }
     }
 

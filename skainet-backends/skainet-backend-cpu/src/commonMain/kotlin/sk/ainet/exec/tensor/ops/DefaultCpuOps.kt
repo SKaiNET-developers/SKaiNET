@@ -7,27 +7,22 @@ import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.TensorOp
-import sk.ainet.backend.api.kernel.KernelProvider
-import sk.ainet.backend.api.kernel.KernelRegistry
+import sk.ainet.backend.api.kernel.KernelDispatch
+import sk.ainet.backend.api.kernel.KernelKey
+import sk.ainet.backend.api.kernel.KernelPacks
+import sk.ainet.backend.api.kernel.LayoutClass
+import sk.ainet.backend.api.kernel.OperandKey
+import sk.ainet.backend.api.kernel.reshapeContiguous
+import sk.ainet.lang.memory.BlockOrder
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.tensor.data.packedBlockTensorData
 import sk.ainet.lang.tensor.data.RowDequantSource
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.IntArrayTensorData
 import sk.ainet.lang.tensor.data.NarrowFloatInputMajorTensorData
 import sk.ainet.lang.tensor.data.TransposedWeightTensorData
-import sk.ainet.lang.tensor.data.Q4_0TensorData
-import sk.ainet.lang.tensor.data.Q8_0TensorData
-import sk.ainet.lang.tensor.data.Q4_KTensorData
-import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
-import sk.ainet.lang.tensor.data.Q6_KTensorData
-import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
-import sk.ainet.lang.tensor.data.Q5_KTensorData
-import sk.ainet.lang.tensor.data.Q5_KBlockTensorData
-import sk.ainet.lang.tensor.data.Q5_1TensorData
-import sk.ainet.lang.tensor.data.Q5_1BlockTensorData
-import sk.ainet.lang.tensor.data.Q5_0TensorData
-import sk.ainet.lang.tensor.data.Q5_0BlockTensorData
-import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
-import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.UpsampleMode
@@ -499,147 +494,120 @@ public open class DefaultCpuOpsBase(
      */
     protected open fun ensureKernelProviders() {}
 
-    private fun resolveProvider(test: (KernelProvider) -> Boolean): KernelProvider? {
+    private var packedKernelsInstalled = false
+
+    private val DENSE_FP32: Format = Format.dense(FP32)
+    private val DENSE_FP32_OPERAND: OperandKey = OperandKey.contiguous(DENSE_FP32)
+
+    /**
+     * Make sure [KernelDispatch] holds the packed kernels of the registered providers. The
+     * dispatcher installs itself once per process; providers registered after that (a platform
+     * factory, the JVM service loader behind [ensureKernelProviders]) are added here.
+     */
+    private fun ensurePackedKernelsInstalled() {
+        if (packedKernelsInstalled) return
         ensureKernelProviders()
-        return KernelRegistry.providers().firstOrNull { it.isAvailable() && test(it) }
-    }
-
-    private val q8_0Kernel by lazy { resolveProvider { it.matmulQ8_0() != null }?.matmulQ8_0() }
-    private val q4_0Kernel by lazy { resolveProvider { it.matmulQ4_0() != null }?.matmulQ4_0() }
-    private val q4kKernel by lazy { resolveProvider { it.matmulQ4K() != null }?.matmulQ4K() }
-    private val q6kKernel by lazy { resolveProvider { it.matmulQ6K() != null }?.matmulQ6K() }
-    private val q5kKernel by lazy { resolveProvider { it.matmulQ5K() != null }?.matmulQ5K() }
-    private val q5_1Kernel by lazy { resolveProvider { it.matmulQ5_1() != null }?.matmulQ5_1() }
-    private val q5_0Kernel by lazy { resolveProvider { it.matmulQ5_0() != null }?.matmulQ5_0() }
-
-    /**
-     * `cols / blockSize`, i.e. the number of quantization blocks per output row —
-     * validated so a misaligned packed tensor fails loudly here rather than
-     * silently truncating a partial trailing block during [transposePackedBlocks].
-     */
-    private fun requirePackedBlockAligned(cols: Int, blockSize: Int, formatName: String): Int {
-        require(cols % blockSize == 0) {
-            "$formatName transpose: inputDim $cols is not a multiple of the block size $blockSize " +
-                "— packed weight is not row-block-aligned, cannot compute a physical block-grid transpose"
-        }
-        return cols / blockSize
+        KernelDispatch.ensureInstalled()
+        KernelPacks.installMissingPacked()
+        packedKernelsInstalled = true
     }
 
     /**
-     * Physically transposes a packed weight's block grid from *row-major*
-     * (canonical) order into the *input-block-major* order the packed-quant
-     * matmul kernels require.
+     * Platform-neutral packed-quant matmul: `FP32 input × packed-quant weight` with the weight as
+     * the `[in, out]` right-hand operand. The kernel is looked up in [KernelDispatch] by the key of
+     * the two views (scalar on Native/JS/WASM, Panama/native-FFM on JVM). Returns `null` when the
+     * weight is not block-packed or no kernel is registered for it, so callers fall through. The
+     * JVM ops intercept Q4_K/Q6_K/Q8_0/Q4_0 (+ MemSeg) before this runs; Q5_1/Q5_0 (and the whole
+     * set on non-JVM) resolve here.
      *
-     * Canonical storage — what a fresh `[outputDim, inputDim]`-shaped packed
-     * tensor has, whether loaded verbatim from GGUF or built any other
-     * row-major way — groups blocks per output row: for row `o`, its
-     * `blocksPerInputDim` blocks are contiguous, then row `o + 1`. Flat block
-     * index = `o * blocksPerInputDim + blockIdx`.
-     *
-     * Every packed-quant native/Panama/scalar matmul kernel instead reads
-     * `weight + (blockIdx * outputDim + o) * bytesPerBlock` — see e.g. the
-     * `Per-block packed weight layout` header comment in `q5_0_matmul.c` /
-     * `q4k_matmul.c` / etc. — because for a FIXED input block, all `outputDim`
-     * rows' corresponding block bytes are consecutive, letting the kernel's
-     * block-outer/row-inner loop read weight memory sequentially instead of
-     * striding `outputDim * bytesPerBlock` per input block.
-     *
-     * These two orderings are literal transposes of the `(outputDim,
-     * blocksPerInputDim)` block grid (treating each `bytesPerBlock`-sized
-     * block as an atomic item) and coincide only when `blocksPerInputDim == 1`.
-     * For every wider weight — i.e. essentially every real model, since
-     * `inputDim` is almost always many multiples of the 32/256-element block
-     * size — reordering the *shape* without reordering the *bytes* hands the
-     * kernel physically wrong data: it silently reads block `bI` of row `o`
-     * from where block `o`'s row `bI`-th chunk actually lives. This is the
-     * root cause of the SKaiNET-transformers#307 all-zero Q5_0/Q5_1 matmul
-     * report (general to every packed format the native tier serves, not
-     * Q5-specific — see `NativeLazyTransposeGroundTruthReproTest`).
-     */
-    private fun transposePackedBlocks(
-        packed: ByteArray,
-        outputDim: Int,
-        blocksPerInputDim: Int,
-        bytesPerBlock: Int,
-    ): ByteArray {
-        val out = ByteArray(packed.size)
-        for (o in 0 until outputDim) {
-            for (blockIdx in 0 until blocksPerInputDim) {
-                val srcOff = (o * blocksPerInputDim + blockIdx) * bytesPerBlock
-                val dstOff = (blockIdx * outputDim + o) * bytesPerBlock
-                packed.copyInto(out, dstOff, srcOff, srcOff + bytesPerBlock)
-            }
-        }
-        return out
-    }
-
-    /**
-     * Platform-neutral packed-quant matmul: `FP32 input × packed-quant weight`,
-     * resolving the kernel via [KernelRegistry] (scalar on Native/JS/WASM, Panama/
-     * native-FFM on JVM). Returns `null` when the weight isn't a heap-packed quant
-     * type or no provider carries a kernel, so callers fall through. The JVM ops
-     * intercept Q4_K/Q6_K/Q8_0/Q4_0 (+ MemSeg) before this runs; Q5_1/Q5_0 (and the
-     * whole set on non-JVM) resolve here.
+     * Activations of any rank are served: attention projections pass `[..., in]` and an
+     * incremental decode step passes `[in]`; the leading dimensions are flattened to one batch
+     * dimension for the kernel and restored on the result (#991, #993).
      */
     protected fun <T : DType, V> chooseQuantizedMatmulHeap(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         if (a.dtype != FP32::class || b.shape.rank != 2 || a.shape.rank < 1) return null
-        if (a.shape.rank == 2) return chooseQuantizedMatmulHeap2D(a, b)
-
-        // Attention linear projections legitimately pass `[..., in]` (see linearProject's kdoc) —
-        // flatten the leading batch/sequence dims into one so the specialized quant kernels below
-        // (which only understand `[batch, in]`) still get used, instead of silently falling
-        // through to matmulGeneric, which has no packed-quant handling at all (see SKaiNET#991).
-        // Also covers rank-1 activations (a single-token hidden-state vector during incremental
-        // decode, once the KV cache is warm and a matmul no longer runs against a batched
-        // prefill) — `leading` is then empty and `flatBatch` is 1, i.e. `[in]` promotes to
-        // `[1, in]` and the result squeezes back down to `[out]`, the same as `rank > 2`
-        // already did; previously this rank guard sent every post-prefill decode step straight
-        // to matmulGeneric's untyped per-element `TensorData.get()` path, which — for a
-        // packed-quant (or pre-transposed-marker-wrapped, e.g. PreTransposedQ4_K) weight —
-        // returns the raw packed byte, not a dequantized Float.
-        val leading = a.shape.dimensions.copyOf(a.shape.rank - 1)
-        val flatBatch = leading.fold(1) { acc, d -> acc * d }
-        val inputDim = a.shape.dimensions.last()
-        val a2d = reshape(a, Shape(intArrayOf(flatBatch, inputDim)))
-        val result2d = chooseQuantizedMatmulHeap2D(a2d, b) ?: return null
-        val outputDim = result2d.shape.dimensions.last()
-        return reshape(result2d, Shape(leading + outputDim))
+        if (a.shape.dimensions.last() != b.shape[0]) return null
+        val wView = feedOrderViewOfRightOperand(b) ?: return null
+        return matmulPackedExact(a, wView, b)
     }
 
-    private fun <T : DType, V> chooseQuantizedMatmulHeap2D(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
-        if (a.shape[1] != b.shape[0]) return null
-        // Any TensorData exposes copyToFloatArray() (FloatArrayTensorData overrides it with a cheap
-        // buffer.copyOf(); everything else — e.g. MemorySegmentTensorData — uses the generic
-        // row-major default). The previous strict `as? FloatArrayTensorData` cast meant activations
-        // backed by anything else (e.g. MemorySegment-backed FP32, as SKaiNET-transformers' attention
-        // path produces) silently declined here, falling through to the unguarded matmulGeneric
-        // fallback for quant types routed to this function (Q6_K, Q5_1, Q5_0) — see SKaiNET#991.
-        val inputBuffer = a.data.copyToFloatArray()
-        val batchSize = a.shape[0]
-        val inputDim = a.shape[1]
-        val outputDim = b.shape[1]
-
-        fun run(packed: ByteArray, kernel: (FloatArray, Int, ByteArray, Int, Int, Int, FloatArray, Int) -> Unit): Tensor<T, V> {
-            val out = FloatArray(batchSize * outputDim)
-            for (batch in 0 until batchSize) {
-                val bi = if (batchSize == 1) inputBuffer else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                kernel(bi, 0, packed, 0, inputDim, outputDim, out, batch * outputDim)
+    /**
+     * The `[out, in]` weight view behind a packed right-hand `matmul` operand [b] (`[in, out]`).
+     *
+     * A label that says what it is — blocks along axis 0, as [rewrapFeedOrderWeight] and
+     * [relayoutPackedWeightForKernels] produce — is simply transposed. A packed operand that does
+     * not say so is read as feed-order bytes all the same: that has been the contract of a packed
+     * right-hand operand since the kernels existed (#973), and callers outside this repository
+     * build such tensors by hand. It is the one place where bytes are read against their label.
+     */
+    private fun feedOrderViewOfRightOperand(b: Tensor<*, *>): TensorView? {
+        val bView = b.data.view ?: return null
+        if (!bView.layout.blocked) return null
+        return try {
+            if (bView.layout.shape.rank == 2 && bView.layout.blockAxis == 0) {
+                bView.transpose()
+            } else {
+                if (bView.layout.offsetElements != 0L) return null
+                val decoder = bView.decoderOrNull() ?: return null
+                TensorView.packed(
+                    storage = bView.storage,
+                    shape = Shape(b.shape[1], b.shape[0]),
+                    encoding = bView.format.encoding,
+                    decoder = decoder,
+                    dtype = bView.format.dtype,
+                    blockOrder = BlockOrder.INPUT_BLOCK_MAJOR,
+                )
             }
-            @Suppress("UNCHECKED_CAST")
-            val outData = dataFactory.adoptFloatArray<T, Float>(Shape(batchSize, outputDim), a.dtype, out) as TensorData<T, V>
-            return newTensor(outData, a.dtype, a, b)
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: IllegalStateException) {
+            null
         }
+    }
 
-        return when (val bd = b.data) {
-            is Q5_1TensorData -> q5_1Kernel?.let { k -> run(bd.packedData, k::matmul) }
-            is Q5_0TensorData -> q5_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
-            is Q4_KTensorData -> q4kKernel?.let { k -> run(bd.packedData, k::matmul) }
-            is Q5_KTensorData -> q5kKernel?.let { k -> run(bd.packedData, k::matmul) }
-            is Q6_KTensorData -> q6kKernel?.let { k -> run(bd.packedData, k::matmul) }
-            is Q8_0TensorData -> q8_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
-            is Q4_0TensorData -> q4_0Kernel?.let { k -> run(bd.packedData, k::matmul) }
-            else -> null
+    /** `true` when a feed-order kernel is registered for [wView]'s format and a dense FP32 activation. */
+    private fun feedOrderKernelRegistered(wView: TensorView): Boolean {
+        ensurePackedKernelsInstalled()
+        return KernelDispatch.hasKernel(
+            KernelKey("matmul", listOf(DENSE_FP32_OPERAND, OperandKey(wView.format, LayoutClass.BLOCKED_INPUT_MAJOR))),
+        )
+    }
+
+    /**
+     * `x · Wᵀ` for a packed `[out, in]` weight view [wView], run by the kernel registered for
+     * exactly this pair of views; `null` when there is none. [weight] is only the gradient parent.
+     *
+     * The feed-order kernels take a heap `FloatArray` activation, so for a feed-order weight an
+     * activation that is anything else is copied to the heap first (#991). A weight in file order
+     * is offered the activation as it lies, because the row-major packs read off-heap operands.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> matmulPackedExact(x: Tensor<T, V>, wView: TensorView, weight: Tensor<T, V>): Tensor<T, V>? {
+        if (x.dtype != FP32::class || x.shape.rank < 1 || wView.shape.rank != 2) return null
+        val k = x.shape.dimensions.last()
+        if (k != wView.shape[1]) return null
+        val n = wView.shape[0]
+        val rows = if (k == 0) 0 else x.shape.volume / k
+        ensurePackedKernelsInstalled()
+        val feedOrder = wView.layout.blockOrder == BlockOrder.INPUT_BLOCK_MAJOR
+        val xView = x.data.view
+        val asItLies = xView != null && xView.isContiguous && xView.format == DENSE_FP32 &&
+            (!feedOrder || (xView.storage as? Storage.Heap)?.floats != null)
+        // Look the kernel up before copying anything: a miss must cost nothing.
+        val probe = if (asItLies) xView!! else null
+        val key = if (probe != null) KernelKey.matmul(probe, wView) else KernelKey("matmul", listOf(DENSE_FP32_OPERAND, OperandKey.of(wView)))
+        if (!KernelDispatch.hasKernel(key)) return null
+        val aView = when {
+            probe == null -> TensorView.dense(Storage.Heap.wrap(x.data.copyToFloatArray()), Shape(rows, k), FP32)
+            probe.shape.rank == 2 -> probe
+            else -> probe.reshapeContiguous(Shape(rows, k))
         }
+        val outArray = FloatArray(rows * n)
+        val outView = TensorView.dense(Storage.Heap.wrap(outArray), Shape(rows, n), FP32)
+        if (!KernelDispatch.matmulExact(aView, wView, outView)) return null
+        val outShape = if (x.shape.rank == 2) Shape(rows, n) else Shape(*(x.shape.dimensions.copyOf(x.shape.rank - 1) + n))
+        val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, outArray) as TensorData<T, V>
+        return newTensor(outData, x.dtype, x, weight)
     }
 
     override fun <T : DType, V> matmul(
@@ -702,8 +670,8 @@ public open class DefaultCpuOpsBase(
         // Everything else: the kernel registry first (SKEEP-003 §5.1) — rank is normalised once as
         // views and packed operands are read through decoding get(), so a rank-1 decode step against
         // a packed weight is correct by construction rather than a ClassCastException (#993). The
-        // legacy per-element fallback stays one flag away (skainet.dispatch.registry=false) until the
-        // migration is complete.
+        // per-element loop below is only for what the dispatcher cannot express (integer dtypes,
+        // operands without a view).
         return KernelProfile.timeGeneric {
             dispatchMatmulViaRegistry(a, b) ?: run {
                 // Fail-fast point shared by every tier: the legacy per-element path is the silent
@@ -723,7 +691,6 @@ public open class DefaultCpuOpsBase(
      */
     @Suppress("UNCHECKED_CAST")
     private fun <T : DType, V> dispatchMatmulViaRegistry(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
-        if (!sk.ainet.backend.api.kernel.DispatchMode.useRegistry()) return null
         if (a.dtype != FP32::class) return null
         if (b.shape.rank != 2) return null
         val aView = a.data.view ?: return null
@@ -1024,7 +991,7 @@ public open class DefaultCpuOpsBase(
     /** Big enough for a deep model's dense projections (Gemma 4 E2B has 70) without unbounded growth. */
     private val TRANSPOSED_DENSE_CACHE_LIMIT: Int = 256
 
-    private val prepackedWeights: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
+    private val prepackedWeights: MutableList<Pair<ByteArray, TensorView>> = mutableListOf()
 
     /** How many relayouted weights to keep; beyond this the oldest is dropped and reconverted on demand. */
     private val PREPACK_CACHE_LIMIT: Int = 64
@@ -1061,39 +1028,26 @@ public open class DefaultCpuOpsBase(
             }
             return matmul(x, transposedDenseWeight(weight) ?: transpose(weight))
         }
-        // Packed weight (SKEEP-007 §T0.1), in order of preference:
-        //  1. a kernel registered for the canonical row-major view — the JVM FFM, Android JNI and
-        //     browser packs read that order natively (#1124: decode the weight where it lies);
-        //  2. the one-time, cached relayout into kernel feed order, which the scalar packed kernels
-        //     every target carries can read — this is what [prepackedWeights] was declared for;
+        // Packed weight (SKEEP-007 §T0.1). The kernel is looked up by the key of the two views —
+        // their formats and layouts — never by the weight's class (SKEEP-003, #1507). In order:
+        //  1. a kernel registered for the weight as it lies: the JVM FFM, Android JNI and browser
+        //     packs read the canonical row-major order natively (#1124), and a weight the loader
+        //     already stored in feed order (#1120) is an exact hit for the packed kernels;
+        //  2. the one-time, cached relayout into kernel feed order, when a feed-order kernel is
+        //     registered for this encoding — the scalar packed kernels every target carries;
         //  3. the decoding reference kernel through views — correct for any encoding, ~1000× slower,
         //     and the last resort rather than the default.
-        // Before this ordering a canonical GGUF weight on a target without a row-major pack (every
-        // non-JVM target) took path 3 on every call.
-        if (hasExactKernelForCanonical(x, weight)) {
-            matmulWeightTransposedViaViews(x, weight)?.let { return it }
-        }
-        // Relayout only when a feed-order kernel will consume the relaid bytes: the relabelled
-        // `[in, out]` tensor is meaningless to anything that decodes it by shape (#1124), so with an
-        // empty registry the canonical view goes to the decoding reference kernel instead.
-        if (feedOrderKernelAvailable(weight.data)) {
-            rewrapFeedOrderWeight(weight)?.let { return matmul(x, it) }
-            cachedKernelOrderWeight(weight)?.let { return matmul(x, it) }
+        val wView = weight.data.view
+        if (wView != null) {
+            matmulPackedExact(x, wView, weight)?.let { return it }
+            if (feedOrderKernelRegistered(wView)) {
+                cachedFeedOrderView(wView)?.let { feedOrder ->
+                    matmulPackedExact(x, feedOrder, weight)?.let { return it }
+                }
+            }
         }
         matmulWeightTransposedViaViews(x, weight)?.let { return it }
         return matmulGeneric(x, transpose(weight))
-    }
-
-    /** `true` when [KernelRegistry] supplies a feed-order kernel for this packed format (what `chooseQuantizedMatmulHeap` dispatches to). */
-    private fun feedOrderKernelAvailable(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean = when (data) {
-        is Q5_1TensorData -> q5_1Kernel != null
-        is Q5_0TensorData -> q5_0Kernel != null
-        is Q4_KTensorData -> q4kKernel != null
-        is Q5_KTensorData -> q5kKernel != null
-        is Q6_KTensorData -> q6kKernel != null
-        is Q8_0TensorData -> q8_0Kernel != null
-        is Q4_0TensorData -> q4_0Kernel != null
-        else -> false
     }
 
     /**
@@ -1103,35 +1057,17 @@ public open class DefaultCpuOpsBase(
      */
     protected open fun preferDirectWeightTransposed(): Boolean = true
 
-    /** `true` when [KernelDispatch] holds an exact kernel for [x] × the canonical view of [weight]. */
-    private fun hasExactKernelForCanonical(x: Tensor<*, *>, weight: Tensor<*, *>): Boolean {
-        if (!sk.ainet.backend.api.kernel.DispatchMode.useRegistry()) return false
-        if (x.dtype != FP32::class) return false
-        val xView = x.data.view ?: return false
-        val wView = weight.data.view ?: return false
-        val xNorm = try {
-            sk.ainet.backend.api.kernel.KernelDispatch.normalizeActivation(xView).first
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
-        sk.ainet.backend.api.kernel.KernelDispatch.ensureInstalled()
-        return sk.ainet.backend.api.kernel.KernelDispatch.find(
-            sk.ainet.backend.api.kernel.KernelKey.matmul(xNorm, wView),
-        ) != null
-    }
-
     /**
-     * The feed-order relayout of a canonical packed [weight], computed once and cached by the
-     * identity of its bytes ([prepackedWeights]); `null` for an encoding without a relayout.
+     * [wView] in kernel feed order, permuted once and cached by the identity of its bytes
+     * ([prepackedWeights]); `null` when the bytes are not a whole heap array.
      */
-    @Suppress("UNCHECKED_CAST")
-    private fun <T : DType, V> cachedKernelOrderWeight(weight: Tensor<T, V>): Tensor<T, V>? {
-        val packed = weight.data as? sk.ainet.lang.tensor.storage.PackedBlockStorage ?: return null
-        val source = packed.packedData
-        prepackedWeights.firstOrNull { it.first === source }?.let { return it.second as Tensor<T, V> }
-        val relayouted = transposePackedWeight(weight) ?: return null
+    private fun cachedFeedOrderView(wView: TensorView): TensorView? {
+        if (wView.layout.blockOrder == BlockOrder.INPUT_BLOCK_MAJOR) return wView
+        val source = wholeHeapBytes(wView) ?: return null
+        prepackedWeights.firstOrNull { it.first === source }?.let { return it.second }
+        val relayouted = prepackFeedOrder(wView) ?: return null
         if (prepackedWeights.size >= PREPACK_CACHE_LIMIT) prepackedWeights.removeAt(0)
-        prepackedWeights.add(Pair(source, relayouted as Tensor<*, *>))
+        prepackedWeights.add(Pair(source, relayouted))
         return relayouted
     }
 
@@ -1169,7 +1105,6 @@ public open class DefaultCpuOpsBase(
      */
     @Suppress("UNCHECKED_CAST")
     protected fun <T : DType, V> matmulWeightTransposedViaViews(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V>? {
-        if (!sk.ainet.backend.api.kernel.DispatchMode.useRegistry()) return null
         if (x.dtype != FP32::class) return null
         val xView = x.data.view ?: return null
         val wView = weight.data.view ?: return null
@@ -1214,15 +1149,15 @@ public open class DefaultCpuOpsBase(
      */
     /** The heap packed data types whose kernels read input-block-major bytes. */
     private fun isHeapPackedWeight(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
-        // Any packed block storage, not an enumeration of formats (#1136 physiology: kernels are
-        // selected by the weight's storage format, and so is the Wᵀ-marker path that reaches them).
-        // The hardcoded Q-list this replaces silently excluded the ternary types
-        // (BitNetB158TensorData, BitNetPlanesTensorData), so `transpose` dense-copied them through
-        // a decoding get() that returns CODES, not values — a ClassCastException at best. The JVM
-        // tier keeps its own narrower list (isHeapPackedWeightForJvm) for the formats its
-        // relayout-and-cache kernels actually read; everything else lands in
-        // matmulWeightTransposedViaViews, which serves any encoding through KernelDispatch.
-        data is sk.ainet.lang.tensor.storage.PackedBlockStorage
+        // Any block-packed weight, read off the view's layout rather than off the class (#1507), and
+        // not an enumeration of formats (#1136 physiology: kernels are selected by the weight's
+        // storage format, and so is the Wᵀ-marker path that reaches them). A hardcoded Q-list
+        // silently excluded the ternary types, so `transpose` dense-copied them through a decoding
+        // get() that returns CODES, not values. The JVM tier keeps its own narrower list
+        // (isHeapPackedWeightForJvm) for the formats its relayout-and-cache kernels actually read;
+        // everything else lands in matmulWeightTransposedViaViews, which serves any encoding
+        // through KernelDispatch.
+        data.view?.layout?.blocked == true
 
     /**
      * The block relayout by its own name (#973/#1096) — what `transpose` used to do to a packed
@@ -1250,75 +1185,60 @@ public open class DefaultCpuOpsBase(
     @Suppress("UNCHECKED_CAST")
     protected fun <T : DType, V> rewrapFeedOrderWeight(tensor: Tensor<T, V>): Tensor<T, V>? {
         if (tensor.shape.rank != 2) return null
-        val packed = tensor.data as? sk.ainet.lang.tensor.storage.PackedBlockStorage ?: return null
-        if (packed.blockOrder != sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR) return null
-        val swapped = Shape(tensor.shape[1], tensor.shape[0])
-        val bytes = packed.packedData
-        val relabelled: TensorData<T, V> = when (tensor.data) {
-            is Q4_KTensorData -> Q4_KBlockTensorData(swapped, bytes) as TensorData<T, V>
-            is Q5_KTensorData -> Q5_KBlockTensorData(swapped, bytes) as TensorData<T, V>
-            is Q6_KTensorData -> Q6_KBlockTensorData(swapped, bytes) as TensorData<T, V>
-            is Q5_1TensorData -> Q5_1BlockTensorData(swapped, bytes) as TensorData<T, V>
-            is Q5_0TensorData -> Q5_0BlockTensorData(swapped, bytes) as TensorData<T, V>
-            is Q8_0TensorData -> Q8_0BlockTensorData(swapped, bytes) as TensorData<T, V>
-            is Q4_0TensorData -> Q4_0BlockTensorData(swapped, bytes) as TensorData<T, V>
-            else -> return null
-        }
-        return newTensor(relabelled, tensor.dtype, tensor)
+        val view = tensor.data.view ?: return null
+        if (!view.layout.blocked || view.layout.blockOrder != BlockOrder.INPUT_BLOCK_MAJOR) return null
+        if (view.layout.shape.rank != 2 || view.layout.blockAxis != 1) return null
+        val bytes = wholeHeapBytes(view) ?: return null
+        // The label says what it is: feed-order bytes whose blocks run along axis 0 (#1507).
+        val relabelled = packedBlockTensorData(
+            view.format.encoding, Shape(tensor.shape[1], tensor.shape[0]), bytes,
+            BlockOrder.INPUT_BLOCK_MAJOR, blockAxis = 0,
+        ) ?: return null
+        return newTensor(relabelled as TensorData<T, V>, tensor.dtype, tensor)
     }
 
+    /**
+     * The canonical packed [tensor] permuted into kernel feed order, as the `[in, out]` label the
+     * kernels take; `null` when [tensor] is not a heap block-packed weight with a block class.
+     */
     @Suppress("UNCHECKED_CAST")
     private fun <T : DType, V> transposePackedWeight(tensor: Tensor<T, V>): Tensor<T, V>? {
-        val rank = tensor.shape.rank
-        val rows = tensor.shape[rank - 2]
-        val cols = tensor.shape[rank - 1]
-            @Suppress("UNCHECKED_CAST")
-            when (val d = tensor.data) {
-                is Q4_KTensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q4_KTensorData.BLOCK_SIZE, "Q4_K")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q4_KTensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q4_KBlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                is Q5_KTensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q5_KTensorData.BLOCK_SIZE, "Q5_K")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q5_KTensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q5_KBlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                is Q6_KTensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q6_KTensorData.BLOCK_SIZE, "Q6_K")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q6_KTensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q6_KBlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                is Q5_1TensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q5_1TensorData.BLOCK_SIZE, "Q5_1")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q5_1TensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q5_1BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                is Q5_0TensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q5_0TensorData.BLOCK_SIZE, "Q5_0")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q5_0TensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q5_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                // Q8_0 / Q4_0: same physical block-grid transpose as the arms above —
-                // this `when` covers every quant type chooseQuantizedMatmulHeap
-                // dispatches, i.e. every packed type that can be a matmul weight
-                // (originally retrofitted for the Byte→Float ClassCastException gap,
-                // see transformers #178; the shape-swap-only version of these arms
-                // carried the same block-order bug as Q5_0/Q5_1 above).
-                is Q8_0TensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q8_0TensorData.BLOCK_SIZE, "Q8_0")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q8_0TensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q8_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                is Q4_0TensorData -> {
-                    val blocksPerInputDim = requirePackedBlockAligned(cols, Q4_0TensorData.BLOCK_SIZE, "Q4_0")
-                    val reordered = transposePackedBlocks(d.packedData, rows, blocksPerInputDim, Q4_0TensorData.BYTES_PER_BLOCK)
-                    return newTensor(Q4_0BlockTensorData(Shape(cols, rows), reordered) as TensorData<T, V>, tensor.dtype, tensor)
-                }
-                else -> {}
-            }
+        if (tensor.shape.rank != 2) return null
+        val view = tensor.data.view ?: return null
+        if (!view.layout.blocked) return null
+        val feedOrder = prepackFeedOrder(view) ?: return null
+        val bytes = wholeHeapBytes(feedOrder) ?: return null
+        val relabelled = packedBlockTensorData(
+            view.format.encoding, Shape(tensor.shape[1], tensor.shape[0]), bytes,
+            BlockOrder.INPUT_BLOCK_MAJOR, blockAxis = 0,
+        ) ?: return null
+        return newTensor(relabelled as TensorData<T, V>, tensor.dtype, tensor)
+    }
 
-        return null
+    /** The byte array behind [view] when the view covers the whole of a heap array, else `null`. */
+    private fun wholeHeapBytes(view: TensorView): ByteArray? {
+        val heap = view.storage as? Storage.Heap ?: return null
+        val bytes = heap.bytes ?: return null
+        if (heap.arrayOffset != 0 || view.layout.offsetElements != 0L) return null
+        return bytes
+    }
+
+    /**
+     * [view] with its blocks in kernel feed order: the view itself when it already is, a permuted
+     * copy otherwise. `null` when the bytes are not on the heap.
+     *
+     * @throws IllegalArgumentException when the weight's rows are not whole blocks
+     */
+    private fun prepackFeedOrder(view: TensorView): TensorView? {
+        if (view.shape.rank != 2) return null
+        if (view.storage !is Storage.Heap) return null
+        val blockSize = view.decoderOrNull()?.blockSize ?: return null
+        val cols = view.shape[1]
+        require(cols % blockSize == 0) {
+            "${view.format.encoding.name} transpose: inputDim $cols is not a multiple of the block size $blockSize " +
+                "— packed weight is not row-block-aligned, cannot compute a physical block-grid transpose"
+        }
+        return view.prepack(BlockOrder.INPUT_BLOCK_MAJOR)
     }
 
     @TensorOp()
