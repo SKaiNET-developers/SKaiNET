@@ -55,13 +55,19 @@ public class MemorySegmentTensorData<T : DType> private constructor(
      * `SegmentStorage.segment()`.
      */
     override val view: sk.ainet.lang.memory.TensorView
-        get() = sk.ainet.lang.memory.TensorView.dense(
+        get() = cachedView ?: sk.ainet.lang.memory.TensorView.dense(
             sk.ainet.lang.memory.SegmentStorage.borrow(
                 if (segmentByteOffset == 0L) segment else segment.asSlice(segmentByteOffset),
             ),
             shape,
             sk.ainet.lang.types.FP32,
-        )
+        ).also { cachedView = it }
+
+    /**
+     * The view, built on first use: the segment, offset and shape never change, and the ops read
+     * the view on every call (#1507). A race builds it twice, which is harmless.
+     */
+    private var cachedView: sk.ainet.lang.memory.TensorView? = null
 
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
