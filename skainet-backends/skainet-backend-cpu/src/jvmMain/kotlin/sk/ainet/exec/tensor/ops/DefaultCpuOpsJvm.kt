@@ -615,9 +615,10 @@ internal class DefaultCpuOpsJvm(
     ): Tensor<T, V>? {
         if (input.dtype != FP32::class) return null
 
-        val inputData = input.data as? FloatArrayTensorData<*> ?: return null
-        val weightData = weight.data as? FloatArrayTensorData<*> ?: return null
-        val biasData = bias?.data as? FloatArrayTensorData<*>
+        val inputFloats = floatsFromZero(input.data) ?: return null
+        val weightFloats = floatsFromZero(weight.data) ?: return null
+        // A bias the kernel cannot read sends the whole call to the generic path; it used to be dropped.
+        val biasFloats = if (bias == null) null else floatsFromZero(bias.data) ?: return null
 
         val n = input.shape[0]
         val cIn = input.shape[1]
@@ -638,13 +639,13 @@ internal class DefaultCpuOpsJvm(
         if (outH <= 0 || outW <= 0) return null
 
         val outBuffer = FloatArray(n * cOut * outH * outW)
-        val biasBuffer = biasData?.buffer
+        val biasBuffer = biasFloats
 
         when {
             // Grouped convolution (includes depthwise when groups == cIn == cOut)
             groups > 1 -> {
                 JvmVectorKernels.conv2dGrouped(
-                    inputData.buffer, weightData.buffer, biasBuffer,
+                    inputFloats, weightFloats, biasBuffer,
                     n, cIn, inH, inW,
                     cOut, kH, kW,
                     sH, sW, pH, pW, dH, dW,
@@ -656,7 +657,7 @@ internal class DefaultCpuOpsJvm(
             // 1x1 convolution without dilation - use optimized kernel
             kH == 1 && kW == 1 && sH == 1 && sW == 1 && pH == 0 && pW == 0 && dH == 1 && dW == 1 -> {
                 JvmVectorKernels.conv2d1x1Optimized(
-                    inputData.buffer, weightData.buffer, biasBuffer,
+                    inputFloats, weightFloats, biasBuffer,
                     n, cIn, inH, inW, cOut,
                     outBuffer
                 )
@@ -664,7 +665,7 @@ internal class DefaultCpuOpsJvm(
             // Standard convolution with dilation
             dH != 1 || dW != 1 -> {
                 JvmVectorKernels.conv2dIm2ColDilated(
-                    inputData.buffer, weightData.buffer, biasBuffer,
+                    inputFloats, weightFloats, biasBuffer,
                     n, cIn, inH, inW,
                     cOut, kH, kW,
                     sH, sW, pH, pW, dH, dW,
@@ -675,7 +676,7 @@ internal class DefaultCpuOpsJvm(
             // Standard convolution without dilation
             else -> {
                 JvmVectorKernels.conv2dIm2Col(
-                    inputData.buffer, weightData.buffer, biasBuffer,
+                    inputFloats, weightFloats, biasBuffer,
                     n, cIn, inH, inW,
                     cOut, kH, kW,
                     sH, sW, pH, pW,
@@ -713,9 +714,10 @@ internal class DefaultCpuOpsJvm(
         if (input.dtype != FP32::class) return null
         if (groups != 1) return null  // TODO: Add grouped conv1d support
 
-        val inputData = input.data as? FloatArrayTensorData<*> ?: return null
-        val weightData = weight.data as? FloatArrayTensorData<*> ?: return null
-        val biasData = bias?.data as? FloatArrayTensorData<*>
+        val inputFloats = floatsFromZero(input.data) ?: return null
+        val weightFloats = floatsFromZero(weight.data) ?: return null
+        // A bias the kernel cannot read sends the whole call to the generic path; it used to be dropped.
+        val biasFloats = if (bias == null) null else floatsFromZero(bias.data) ?: return null
 
         val n = input.shape[0]
         val cIn = input.shape[1]
@@ -730,7 +732,7 @@ internal class DefaultCpuOpsJvm(
         val outBuffer = FloatArray(n * cOut * outL)
 
         JvmVectorKernels.conv1dIm2Col(
-            inputData.buffer, weightData.buffer, biasData?.buffer,
+            inputFloats, weightFloats, biasFloats,
             n, cIn, inL,
             cOut, kL,
             stride, padding, dilation,
@@ -766,9 +768,10 @@ internal class DefaultCpuOpsJvm(
         if (input.dtype != FP32::class) return null
         if (groups != 1) return null  // TODO: Add grouped conv3d support
 
-        val inputData = input.data as? FloatArrayTensorData<*> ?: return null
-        val weightData = weight.data as? FloatArrayTensorData<*> ?: return null
-        val biasData = bias?.data as? FloatArrayTensorData<*>
+        val inputFloats = floatsFromZero(input.data) ?: return null
+        val weightFloats = floatsFromZero(weight.data) ?: return null
+        // A bias the kernel cannot read sends the whole call to the generic path; it used to be dropped.
+        val biasFloats = if (bias == null) null else floatsFromZero(bias.data) ?: return null
 
         val n = input.shape[0]
         val cIn = input.shape[1]
@@ -794,7 +797,7 @@ internal class DefaultCpuOpsJvm(
         val outBuffer = FloatArray(n * cOut * outD * outH * outW)
 
         JvmVectorKernels.conv3dIm2Col(
-            inputData.buffer, weightData.buffer, biasData?.buffer,
+            inputFloats, weightFloats, biasFloats,
             n, cIn, inD, inH, inW,
             cOut, kD, kH, kW,
             sD, sH, sW,
@@ -859,19 +862,15 @@ internal class DefaultCpuOpsJvm(
             return chooseQ8MemSegInputMatmul(aData, bData, batchSize, inputDim, outputDim, a)
         }
 
-        // Get input as FloatArray — works for both FloatArrayTensorData and MemorySegmentTensorData
-        val inputBuffer: FloatArray = when (aData) {
-            is FloatArrayTensorData<*> -> aData.buffer
-            is MemorySegmentBackedData -> aData.copyToFloatArray()
-            // Any other *dense* FP32 activation — a slab-backed StorageFloatTensorData from a
-            // ScopedExecutionContext forward (#1145/#1146), a view-only wrapper — copies out
-            // through its own (offset-aware) copyToFloatArray. Bailing out here instead used to
-            // drop these activations to matmulGeneric, whose per-element get() on a quantized
-            // weight returns raw codes, not values — silently wrong logits, the #993 class of bug.
-            // A packed/encoded *activation* (encoding != null) still bails: this chooser's
-            // kernels want dense FP32 input.
-            else -> if (aData.encoding == null) aData.copyToFloatArray() else return null
-        }
+        // The activation as one FloatArray: its own array when it is heap floats from index 0,
+        // otherwise a copy. Any other *dense* FP32 activation — segment-backed, a slab window from
+        // a ScopedExecutionContext forward (#1145/#1146), a view-only wrapper — copies out through
+        // its own (offset-aware) copyToFloatArray. Bailing out here instead used to drop these
+        // activations to matmulGeneric, whose per-element get() on a quantized weight returns raw
+        // codes, not values — silently wrong logits, the #993 class of bug. A packed/encoded
+        // *activation* (encoding != null) still bails: this chooser's kernels want dense FP32 input.
+        val inputBuffer: FloatArray = floatsFromZero(aData)
+            ?: if (aData.encoding == null) aData.copyToFloatArray() else return null
 
         return when (bData) {
             is NarrowFloatTensorData -> {
@@ -1059,8 +1058,8 @@ internal class DefaultCpuOpsJvm(
             vectorFloatReduceAllSum<T, V>(tensor)?.let { reduced ->
                 val out = reduced as CpuTensor<T, V>
                 @Suppress("UNCHECKED_CAST")
-                val floatData = out.data as DenseFloatArrayTensorData<T>
-                floatData.buffer[0] = floatData.buffer[0] / volume.toFloat()
+                val sum = heapFloatWindow(out.data) ?: return super.mean(tensor, dim)
+                sum.arr[sum.off] = sum.arr[sum.off] / volume.toFloat()
                 return reduced
             }
         }

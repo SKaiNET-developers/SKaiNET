@@ -235,6 +235,15 @@ public open class DefaultCpuOpsBase(
         return if (floats != null) FloatWindow(floats, data.heapFloatsOffset) else heapFloatWindowOfView(data)
     }
 
+    /**
+     * The whole array of dense FP32 heap data — element 0 at index 0, as long as the tensor — or
+     * `null`. For kernels that take an array without an offset (the conv kernels, Accelerate).
+     */
+    protected fun floatsFromZero(data: TensorData<*, *>): FloatArray? {
+        val floats = data.heapFloats ?: return null
+        return if (data.heapFloatsOffset == 0 && floats.size == data.shape.volume) floats else null
+    }
+
     private fun heapFloatWindowOfView(data: TensorData<*, *>): FloatWindow? {
         val view = data.view ?: return null
         if (view.format != DENSE_FP32 || !view.isContiguous) return null
