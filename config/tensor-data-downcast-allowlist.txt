@@ -14,7 +14,7 @@
 skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/HloCompiler.kt|1|#1507
 skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/TensorConversionPipeline.kt|1|#1507
 skainet-apps/skainet-tensor-tools/src/main/kotlin/sk/ainet/apps/tool/quantize/QuantizeCli.kt|3|#1507
-skainet-backends/skainet-backend-cpu/src/commonMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOps.kt|16|#1507
+skainet-backends/skainet-backend-cpu/src/commonMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOps.kt|4|#1507: the transposed-weight marker (2), the narrow-float transpose (1) and the RowDequantSource contract in gather (1) have no view-only form before G6
 skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOpsJvm.kt|12|#1507
 skainet-backends/skainet-backend-wasm-simd/src/wasmJsMain/kotlin/sk/ainet/exec/wasm/WasmCpuOps.kt|10|#1507
 skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/trace/TraceToGraphBuilder.kt|3|#1507
