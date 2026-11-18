@@ -52,7 +52,7 @@ class Q8_0RowDequantTest {
         assertRowsMatchFullDequant(rows = 3, cols = 50)
 
     @Test
-    fun `out-of-range rows, non-tables and relayouted weights are refused`() {
+    fun `out of range rows and non tables and relayouted weights are refused`() {
         val data = table(4, 32)
         assertFailsWith<IllegalArgumentException> { data.dequantRow(4) }
         assertFailsWith<IllegalArgumentException> { data.dequantRow(-1) }
