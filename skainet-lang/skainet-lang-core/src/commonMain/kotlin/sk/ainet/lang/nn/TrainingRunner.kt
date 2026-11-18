@@ -10,6 +10,9 @@ import sk.ainet.lang.types.DType
 /**
  * Perform a single training step: forward, backward, optimizer step, and zero grad.
  *
+ * The step ends with [TrainingExecutionContext.endStep], so the context does not keep the step's
+ * intermediate tensors alive and a loop over this function does not grow in memory.
+ *
  * @param model The neural network module to train.
  * @param loss The loss function to minimize.
  * @param optimizer The optimizer used to update model parameters.
@@ -50,6 +53,9 @@ public fun <T : DType, V> trainStep(
     // 3. Optimizer step & zero grad
     optimizer.step()
     optimizer.zeroGrad()
+
+    // 4. Release what the context recorded for this step (#1527)
+    ctx.endStep()
 
     return lossValue
 }

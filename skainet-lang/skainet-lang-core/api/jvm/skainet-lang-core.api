@@ -484,11 +484,13 @@ public final class sk/ainet/context/ScopedExecutionContextKt {
 
 public abstract interface class sk/ainet/context/TrainingExecutionContext : sk/ainet/context/ExecutionContext {
 	public abstract fun backward (Ljava/util/List;Ljava/util/List;)V
+	public fun endStep ()V
 	public abstract fun startRecording ()V
 	public abstract fun stopRecording ()Ljava/lang/Object;
 }
 
 public final class sk/ainet/context/TrainingExecutionContext$DefaultImpls {
+	public static fun endStep (Lsk/ainet/context/TrainingExecutionContext;)V
 	public static fun fromByteArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun fromData (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun fromFloatArray (Lsk/ainet/context/TrainingExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -8062,6 +8064,7 @@ public final class sk/ainet/lang/trace/TensorRef {
 public class sk/ainet/lang/trace/TraceSession {
 	public fun <init> ()V
 	public final fun clear ()V
+	public final fun getTrackedTensorCount ()I
 	public fun identify (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/TensorId;)V
 	public fun refOf (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/trace/TensorRef;
 	public final fun refsOf (Ljava/util/List;)Ljava/util/List;

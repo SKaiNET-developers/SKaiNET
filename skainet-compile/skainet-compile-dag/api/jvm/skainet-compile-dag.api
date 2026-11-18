@@ -173,6 +173,7 @@ public final class sk/ainet/lang/graph/DefaultGraphExecutionContext : sk/ainet/l
 	public fun backward (Ljava/util/List;Ljava/util/List;)V
 	public final fun clearSession ()V
 	public fun collectGarbage ()V
+	public fun endStep ()V
 	public fun fromByteArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public fun fromData (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public fun fromFloatArray (Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;
@@ -467,6 +468,7 @@ public abstract interface class sk/ainet/lang/graph/exec/GraphExecutionContext :
 }
 
 public final class sk/ainet/lang/graph/exec/GraphExecutionContext$DefaultImpls {
+	public static fun endStep (Lsk/ainet/lang/graph/exec/GraphExecutionContext;)V
 	public static fun fromByteArray (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[B)Lsk/ainet/lang/tensor/Tensor;
 	public static fun fromData (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun fromFloatArray (Lsk/ainet/lang/graph/exec/GraphExecutionContext;Lsk/ainet/lang/tensor/Shape;Lkotlin/reflect/KClass;[F)Lsk/ainet/lang/tensor/Tensor;

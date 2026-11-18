@@ -119,6 +119,15 @@ public class DefaultGraphExecutionContext(
         )
     }
 
+    /**
+     * Releases the finished step's tape and the session's tensor references (#1527). Without
+     * this, every tensor of every step stays reachable and a training loop runs out of memory.
+     */
+    override fun endStep() {
+        lastTape = null
+        clearSession()
+    }
+
     override fun collectGarbage() { /* no-op */
     }
 
@@ -153,7 +162,8 @@ public class DefaultGraphExecutionContext(
 
     /**
      * Clear cached tensor references from the trace session.
-     * Call between training batches to prevent memory accumulation.
+     * `trainStep` does this through [endStep]; call it yourself between batches only when you
+     * drive `startRecording` / `backward` by hand.
      */
     public fun clearSession() {
         if (::_session.isInitialized) {

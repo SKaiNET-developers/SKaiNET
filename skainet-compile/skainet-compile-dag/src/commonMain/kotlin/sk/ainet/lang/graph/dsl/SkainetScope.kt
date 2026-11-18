@@ -64,7 +64,10 @@ public class SkainetScope(
         // Grad is zeroed by the optimizer internally if implemented that way,
         // but let's keep it here to be explicit as per previous requirement.
         optimizer.zeroGrad()
-        
+
+        // Release what the context recorded for this step (#1527).
+        ctx.endStep()
+
         return loss
     }
 }
