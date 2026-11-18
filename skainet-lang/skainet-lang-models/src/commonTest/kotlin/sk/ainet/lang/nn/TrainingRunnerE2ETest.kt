@@ -14,6 +14,7 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TrainingRunnerE2ETest {
@@ -122,5 +123,46 @@ class TrainingRunnerE2ETest {
         
         println("DSL - Initial loss: $initialLoss, Final loss: $finalLoss")
         assertTrue(finalLoss < initialLoss, "Loss should decrease after training loop")
+    }
+
+    /**
+     * #1527: `trainStep` never cleared the trace session, so every tensor of every step stayed
+     * reachable and a training loop ran out of memory.
+     */
+    @Test
+    fun test_training_loop_does_not_accumulate_session_tensors() {
+        val ctx = createTrainCtx()
+
+        val wTensor = ctx.full<FP32, Float>(Shape(1, 1), FP32::class, 10f)
+        wTensor.gradState.requiresGrad = true
+        val w = ModuleParameter.WeightParameter<FP32, Float>("w", wTensor, true)
+
+        val myModel = object : Module<FP32, Float>() {
+            override val name: String = "simple"
+            override val modules: List<Module<FP32, Float>> = emptyList()
+            override val params: List<ModuleParameter<FP32, Float>> = listOf(w)
+            override fun forward(input: Tensor<FP32, Float>, ctx: sk.ainet.context.ExecutionContext): Tensor<FP32, Float> =
+                ctx.ops.matmul(input, w.value.bind(ctx)) as Tensor<FP32, Float>
+        }
+
+        val runner = training<FP32, Float> {
+            model { myModel }
+            loss { MSELoss() }
+            optimizer { sgd(lr = 0.01).apply { addParameter(w) } }
+        }
+
+        val x = ctx.full<FP32, Float>(Shape(1, 1), FP32::class, 1.0f)
+        val y = ctx.full<FP32, Float>(Shape(1, 1), FP32::class, 5.0f)
+
+        val first = runner.step(ctx, x, y).data.get() as Float
+        repeat(9) { runner.step(ctx, x, y) }
+        val afterTen = ctx.session.trackedTensorCount
+        var last = first
+        repeat(190) { last = runner.step(ctx, x, y).data.get() as Float }
+        val afterTwoHundred = ctx.session.trackedTensorCount
+
+        assertEquals(afterTen, afterTwoHundred, "the session must not grow from step 10 to step 200")
+        assertEquals(0, afterTwoHundred, "a finished step leaves no tensor references behind")
+        assertTrue(last < first, "training still converges with the session cleared each step ($first -> $last)")
     }
 }

@@ -89,6 +89,12 @@ public open class TraceSession {
     }
 
     /**
+     * Number of tensors this session currently keeps a reference for. Each one is held strongly,
+     * so a count that grows from one training step to the next is a leak (#1527).
+     */
+    public val trackedTensorCount: Int get() = tensorToRef.size
+
+    /**
      * Clear all cached tensor references. Call between training batches
      * to prevent memory accumulation from intermediate tensors.
      * Tensors will be re-registered on the next forward pass.
