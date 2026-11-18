@@ -403,7 +403,16 @@ public class TransposeOperation<T : DType, V>(
     override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
         require(inputs.size == 1) { "Transpose operation requires exactly 1 input" }
         val inputShape = inputs[0].shape
-        val outputShape = inputShape?.reversed()
+        // `TensorOps.transpose` swaps the last two dimensions and keeps the leading ones (#1528).
+        // An importer whose source format reverses all dimensions by default (ONNX `Transpose`
+        // without `perm`) says so with [REVERSE_AXES].
+        val outputShape = inputShape?.let { shape ->
+            when {
+                parameters[REVERSE_AXES] == true -> shape.reversed()
+                shape.size < 2 -> shape
+                else -> shape.dropLast(2) + shape[shape.size - 1] + shape[shape.size - 2]
+            }
+        }
         return listOf(
             TensorSpec(
                 name = "transpose_output",
@@ -415,6 +424,14 @@ public class TransposeOperation<T : DType, V>(
     }
     
     override fun clone(newParameters: Map<String, Any>): Operation = TransposeOperation<T, V>(newParameters)
+
+    public companion object {
+        /**
+         * Parameter key: `true` when a transpose without an explicit permutation reverses all
+         * dimensions instead of swapping the last two.
+         */
+        public const val REVERSE_AXES: String = "reverseAxes"
+    }
 }
 
 /**

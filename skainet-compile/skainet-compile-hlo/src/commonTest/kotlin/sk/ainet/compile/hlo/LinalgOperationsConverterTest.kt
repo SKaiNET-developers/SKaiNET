@@ -113,6 +113,63 @@ class LinalgOperationsConverterTest {
     }
 
     @Test
+    fun testTransposeOfRank3SwapsTheLastTwoAxes() {
+        // #1528: without an explicit permutation the converter reversed all axes, so a rank-3
+        // transpose came out as dims = [2, 1, 0] and contradicted its own result type.
+        val graph = DefaultComputeGraph()
+
+        val input = GraphNode(
+            id = "a",
+            operation = InputOperation<DType, Any>(),
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("a", listOf(2, 3, 4), "FP32"))
+        )
+        val transpose = createTransposeNode("transpose1",
+            listOf(TensorSpec("a", listOf(2, 3, 4), "FP32")),
+            TensorSpec("b", listOf(2, 4, 3), "FP32"),
+            null)
+
+        graph.addNode(input)
+        graph.addNode(transpose)
+        graph.addEdge(GraphEdge("e1", input, transpose, 0, 0, input.outputs[0]))
+
+        val module = StableHloConverterFactory.createBasic().convert(graph, "test_transpose_rank3")
+
+        assertTrue(module.content.contains("dims = [0, 2, 1]"), module.content)
+        assertTrue(module.content.contains("(tensor<2x3x4xf32>) -> tensor<2x4x3xf32>"), module.content)
+    }
+
+    @Test
+    fun testTransposeMarkedReverseAxesReversesAllAxes() {
+        // An ONNX `Transpose` without `perm` reverses all dimensions; the importer marks it.
+        val graph = DefaultComputeGraph()
+
+        val input = GraphNode(
+            id = "a",
+            operation = InputOperation<DType, Any>(),
+            inputs = emptyList(),
+            outputs = listOf(TensorSpec("a", listOf(2, 3, 4), "FP32"))
+        )
+        val transpose = GraphNode(
+            id = "transpose1",
+            operation = sk.ainet.lang.tensor.ops.TransposeOperation<DType, Any>(
+                mapOf(sk.ainet.lang.tensor.ops.TransposeOperation.REVERSE_AXES to true)
+            ),
+            inputs = listOf(TensorSpec("a", listOf(2, 3, 4), "FP32")),
+            outputs = listOf(TensorSpec("b", listOf(4, 3, 2), "FP32"))
+        )
+
+        graph.addNode(input)
+        graph.addNode(transpose)
+        graph.addEdge(GraphEdge("e1", input, transpose, 0, 0, input.outputs[0]))
+
+        val module = StableHloConverterFactory.createBasic().convert(graph, "test_transpose_reverse")
+
+        assertTrue(module.content.contains("dims = [2, 1, 0]"), module.content)
+        assertTrue(module.content.contains("(tensor<2x3x4xf32>) -> tensor<4x3x2xf32>"), module.content)
+    }
+
+    @Test
     fun testTransposeWithCustomPermutation() {
         // Test transpose with custom dimension permutation
         val graph = DefaultComputeGraph()

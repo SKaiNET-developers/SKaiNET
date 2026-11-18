@@ -4,6 +4,7 @@ import sk.ainet.compile.hlo.ConversionContext
 import sk.ainet.compile.hlo.ConversionResult
 import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.graph.GraphNode
+import sk.ainet.lang.tensor.ops.TransposeOperation
 
 /**
  * Converter for linear algebra operations.
@@ -126,12 +127,14 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
      * Convert transpose operation to stablehlo.transpose.
      * 
      * Handles arbitrary dimension permutations. The permutation can be specified
-     * in the operation parameters, or defaults to reversing all dimensions.
+     * in the operation parameters, or defaults to swapping the last two dimensions,
+     * as `TensorOps.transpose` does. A node that carries
+     * [TransposeOperation.REVERSE_AXES] reverses all dimensions instead.
      * 
      * For example:
-     * - 2D transpose: [0, 1] -> [1, 0]
-     * - 3D transpose: [0, 1, 2] -> [2, 1, 0] (default)
-     * - Custom: [0, 1, 2] -> [0, 2, 1] (transpose last two dims)
+     * - 2D transpose: [0, 1] -> [1, 0] (default)
+     * - 3D transpose: [0, 1, 2] -> [0, 2, 1] (default)
+     * - Custom: [0, 1, 2] -> [2, 1, 0] (a `permute` with explicit axes)
      */
     private fun convertTranspose(
         node: GraphNode,
@@ -161,10 +164,28 @@ public class LinalgOperationsConverter : StableHloOperationConverter {
             // Use provided permutation
             permutation.joinToString(", ")
         } else {
-            // Default: reverse all dimensions
-            // For 2D: [1, 0], for 3D: [2, 1, 0], etc.
+            // Default: swap the last two dimensions, which is what `TensorOps.transpose` does
+            // on every backend and what the traced result shape says (#1528).
+            // For 2D: [1, 0], for 3D: [0, 2, 1], etc.
             val rank = inputSpec?.shape?.size ?: 2
-            (rank - 1 downTo 0).joinToString(", ")
+            if (rank < 2) {
+                return ConversionResult.Failure(
+                    "Transpose requires at least 2 dimensions, got rank $rank",
+                    "Unsupported transpose rank for node ${node.id}"
+                )
+            }
+            if (node.operation.parameters[TransposeOperation.REVERSE_AXES] == true) {
+                // An imported transpose whose source format reverses all dimensions by default.
+                (rank - 1 downTo 0).joinToString(", ")
+            } else {
+                (0 until rank).map { axis ->
+                    when (axis) {
+                        rank - 2 -> rank - 1
+                        rank - 1 -> rank - 2
+                        else -> axis
+                    }
+                }.joinToString(", ")
+            }
         }
 
         val resultValue = context.nextTempValue()
