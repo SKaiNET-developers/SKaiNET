@@ -62,7 +62,7 @@ public class Q8_0BlockTensorData(
      * the `[in, out]` label over a relayouted weight, where it is `0`.
      */
     override val blockAxis: Int = initialShape.rank - 1,
-) : Q8_0TensorData, PackedBlockStorage {
+) : Q8_0TensorData, PackedBlockStorage, RowDequantSource {
 
     /** The façade over the packed bytes (SKEEP-003 §4.1): see [PackedBlockStorage.packedView]. */
     override val view: sk.ainet.lang.memory.TensorView get() = packedView
@@ -86,6 +86,37 @@ public class Q8_0BlockTensorData(
             if (outIdx >= output.size) return
             output[outIdx] = getCode(blockIdx, i).toFloat() * scale
         }
+    }
+
+    /**
+     * Dequantise one row of a 2-D table (`code * blockScale`), so an embedding lookup
+     * (`ops.gather`) can read a packed Q8_0 table without expanding it. Blocks may straddle
+     * rows; only the blocks the row touches are decoded. Requires the canonical layout
+     * (row-major blocks along the last axis), i.e. a weight that was not relayouted for the
+     * packed matmul kernels.
+     */
+    override fun dequantRow(rowIdx: Int): FloatArray {
+        require(shape.rank == 2) { "dequantRow needs a 2-D table, got shape $shape" }
+        require(blockOrder == sk.ainet.lang.memory.BlockOrder.ROW_MAJOR && blockAxis == 1) {
+            "dequantRow needs row-major blocks along the last axis, got $blockOrder on axis $blockAxis"
+        }
+        val rows = shape.dimensions[0]
+        val cols = shape.dimensions[1]
+        require(rowIdx in 0 until rows) { "Row index $rowIdx out of bounds (0..$rows)" }
+        val out = FloatArray(cols)
+        var flat = rowIdx * cols
+        var filled = 0
+        while (filled < cols) {
+            val blockIdx = flat / Q8_0TensorData.BLOCK_SIZE
+            val elementIdx = flat % Q8_0TensorData.BLOCK_SIZE
+            val count = minOf(Q8_0TensorData.BLOCK_SIZE - elementIdx, cols - filled)
+            val scale = getBlockScale(blockIdx)
+            val base = blockIdx * Q8_0TensorData.BYTES_PER_BLOCK + 2 + elementIdx
+            for (i in 0 until count) out[filled + i] = data[base + i].toFloat() * scale
+            filled += count
+            flat += count
+        }
+        return out
     }
 
     init {

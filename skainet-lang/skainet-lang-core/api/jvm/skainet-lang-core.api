@@ -5569,11 +5569,12 @@ public final class sk/ainet/lang/tensor/data/Q8MemorySegmentTensorData$Companion
 	public static synthetic fun fromRawBytes$default (Lsk/ainet/lang/tensor/data/Q8MemorySegmentTensorData$Companion;Lsk/ainet/lang/tensor/Shape;[BLjava/lang/foreign/Arena;JILjava/lang/Object;)Lsk/ainet/lang/tensor/data/Q8MemorySegmentTensorData;
 }
 
-public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang/tensor/data/Q8_0TensorData, sk/ainet/lang/tensor/storage/PackedBlockStorage {
+public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData : sk/ainet/lang/tensor/data/Q8_0TensorData, sk/ainet/lang/tensor/data/RowDequantSource, sk/ainet/lang/tensor/storage/PackedBlockStorage {
 	public static final field Companion Lsk/ainet/lang/tensor/data/Q8_0BlockTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;I)V
 	public synthetic fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/memory/BlockOrder;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun copyToFloatArray ()[F
+	public fun dequantRow (I)[F
 	public fun dequantizeBlock (I[FI)V
 	public fun get ([I)Ljava/lang/Byte;
 	public synthetic fun get ([I)Ljava/lang/Object;
