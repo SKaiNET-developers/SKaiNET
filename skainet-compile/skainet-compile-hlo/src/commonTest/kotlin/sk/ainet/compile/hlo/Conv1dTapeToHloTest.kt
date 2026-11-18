@@ -365,4 +365,35 @@ class Conv1dTapeToHloTest {
         assertFalse(module.content.contains("Unsupported"),
             "LayerNorm-style pattern must not have any Unsupported ops. Actual MLIR printed above.")
     }
+
+    /**
+     * #1528: a traced rank-3 `transpose` swaps the last two axes, and the emitted
+     * `stablehlo.transpose` must say so. It used to be written with all axes reversed.
+     */
+    @Test
+    fun traced_rank3_transpose_swaps_the_last_two_axes() {
+        val ctx = DefaultGraphExecutionContext.tape(baseOps = VoidTensorOps())
+
+        val input = ctx.fromFloatArray<FP32, Float>(
+            shape = Shape(2, 3, 4), dtype = FP32::class,
+            data = FloatArray(2 * 3 * 4)
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val inputRefId = ctx.session.refOf(input as sk.ainet.lang.tensor.Tensor<*, *>).id
+
+        val (tape, _) = ctx.record {
+            ctx.ops.transpose(input)
+        }
+
+        val graph = tape!!.toComputeGraph(
+            synthesizeExternalInputs = true,
+            inputTensorIds = setOf(inputRefId)
+        )
+
+        val module = StableHloConverterFactory.createExtended().convert(graph, "transpose_rank3")
+
+        assertContains(module.content, "dims = [0, 2, 1]", message = module.content)
+        assertContains(module.content, "(tensor<2x3x4xf32>) -> tensor<2x4x3xf32>", message = module.content)
+    }
 }

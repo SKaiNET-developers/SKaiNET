@@ -371,7 +371,10 @@ public class OnnxToComputeGraphImporter {
                 parameters = attrInts("shape")?.let { mapOf("newShape" to it) } ?: emptyMap()
             )
             "TRANSPOSE" -> TransposeOperation<DType, Any>(
-                parameters = attrInts("perm")?.let { mapOf("perm" to it) } ?: emptyMap()
+                // ONNX reverses all dimensions when `perm` is absent; SKaiNET's own transpose
+                // swaps the last two, so the import states the ONNX default explicitly.
+                parameters = attrInts("perm")?.let { mapOf("perm" to it) }
+                    ?: mapOf(TransposeOperation.REVERSE_AXES to true)
             )
             "BATCHNORMALIZATION" -> OnnxMappedOperation(
                 opName = "batchNorm",
