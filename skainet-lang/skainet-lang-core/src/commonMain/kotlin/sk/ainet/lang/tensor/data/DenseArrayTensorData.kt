@@ -41,6 +41,16 @@ public class DenseIntArrayTensorData<T : DType>(
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = this.shape.computeStrides()
 
+    private var cachedView: sk.ainet.lang.memory.TensorView? = null
+
+    /**
+     * Built once and kept: `gather` and `indexSelect` ask for it on every lookup, and building it
+     * costs about as much as reading one index row (#1507). Two threads may each build one; the
+     * views are equal and borrow the same array, so either may win.
+     */
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = cachedView ?: super.view.also { cachedView = it }
+
     override fun get(vararg indices: Int): Int =
         buffer[calcFlatIndex(shape, strides, indices)]
 

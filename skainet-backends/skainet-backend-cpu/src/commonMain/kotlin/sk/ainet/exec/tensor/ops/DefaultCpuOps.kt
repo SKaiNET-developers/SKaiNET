@@ -19,8 +19,6 @@ import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.data.packedBlockTensorData
 import sk.ainet.lang.tensor.data.RowDequantSource
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
-import sk.ainet.lang.tensor.data.IntArrayTensorData
 import sk.ainet.lang.tensor.data.NarrowFloatInputMajorTensorData
 import sk.ainet.lang.tensor.data.TransposedWeightTensorData
 import sk.ainet.lang.tensor.data.TensorData
@@ -105,33 +103,38 @@ public open class DefaultCpuOpsBase(
         return indices
     }
 
+    /** The values of [tensor] as floats, in row-major order, in a new array. */
     private fun <T : DType, V> copyTensorValuesAsFloatArray(tensor: Tensor<T, V>): FloatArray {
         val data = tensor.data
-        return when (data) {
-            is FloatArrayTensorData<*> -> data.buffer.copyOf()
-            is IntArrayTensorData<*> -> FloatArray(data.buffer.size) { data.buffer[it].toFloat() }
-            else -> {
-                val strides = rowMajorStrides(tensor.shape)
-                FloatArray(tensor.shape.volume) { flatIndex ->
-                    val indices = flatIndexToIndices(flatIndex, strides)
-                    (data.get(*indices) as Number).toFloat()
-                }
-            }
+        val count = tensor.shape.volume
+        val floats = heapFloatWindow(data)
+        if (floats != null) return floats.arr.copyOfRange(floats.off, floats.off + count)
+        val ints = heapIntWindow(data)
+        if (ints != null) return FloatArray(count) { ints.arr[ints.off + it].toFloat() }
+        val strides = rowMajorStrides(tensor.shape)
+        return FloatArray(count) { flatIndex ->
+            val indices = flatIndexToIndices(flatIndex, strides)
+            (data.get(*indices) as Number).toFloat()
         }
     }
 
-    private fun <T : DType, V> copyTensorValuesAsIntArray(tensor: Tensor<T, V>): IntArray {
+    /**
+     * The values of [tensor] as ints, in row-major order, in a new array. Floats are truncated.
+     *
+     * Also how `gather` and `indexSelect` read their indices: the element accessor takes one
+     * coordinate per dimension, so a flat `data[i]` throws for indices of rank 2 and more.
+     */
+    private fun copyTensorValuesAsIntArray(tensor: Tensor<*, *>): IntArray {
         val data = tensor.data
-        return when (data) {
-            is IntArrayTensorData<*> -> data.buffer.copyOf()
-            is FloatArrayTensorData<*> -> IntArray(data.buffer.size) { data.buffer[it].toInt() }
-            else -> {
-                val strides = rowMajorStrides(tensor.shape)
-                IntArray(tensor.shape.volume) { flatIndex ->
-                    val indices = flatIndexToIndices(flatIndex, strides)
-                    (data.get(*indices) as Number).toInt()
-                }
-            }
+        val count = tensor.shape.volume
+        val ints = heapIntWindow(data)
+        if (ints != null) return ints.arr.copyOfRange(ints.off, ints.off + count)
+        val floats = heapFloatWindow(data)
+        if (floats != null) return IntArray(count) { floats.arr[floats.off + it].toInt() }
+        val strides = rowMajorStrides(tensor.shape)
+        return IntArray(count) { flatIndex ->
+            val indices = flatIndexToIndices(flatIndex, strides)
+            (data.get(*indices) as Number).toInt()
         }
     }
 
@@ -242,6 +245,21 @@ public open class DefaultCpuOpsBase(
     protected fun floatsFromZero(data: TensorData<*, *>): FloatArray? {
         val floats = data.heapFloats ?: return null
         return if (data.heapFloatsOffset == 0 && floats.size == data.shape.volume) floats else null
+    }
+
+    private class IntWindow(val arr: IntArray, val off: Int)
+
+    /**
+     * The heap `IntArray` behind dense, gap-free data and the index of its element 0, or `null`.
+     * Asked of the view: no per-element op reads ints, so one view per call is cheap enough here.
+     */
+    private fun heapIntWindow(data: TensorData<*, *>): IntWindow? {
+        if (data.heapFloats != null) return null
+        val view = data.view ?: return null
+        if (view.format.encoding != null || !view.isContiguous) return null
+        val heap = view.storage as? Storage.Heap ?: return null
+        val ints = heap.ints ?: return null
+        return IntWindow(ints, heap.arrayOffset + view.layout.offsetElements.toInt())
     }
 
     private fun heapFloatWindowOfView(data: TensorData<*, *>): FloatWindow? {
@@ -662,7 +680,7 @@ public open class DefaultCpuOpsBase(
         require(a.dtype == b.dtype) { "DType mismatch: ${a.dtype} vs ${b.dtype}" }
 
         // `x · Wᵀ` written as two steps (#1108). Must be first: below this line the weight would be
-        // probed with `is PackedBlockStorage` and friends, and the marker deliberately answers no
+        // probed for packed storage, and the marker deliberately answers no
         // to all of them, so it would fall through to a dense path and read a packed payload as
         // floats. Routing it here is what makes `x.matmul(w.t())` mean the same thing whatever the
         // weight is stored as.
@@ -1262,6 +1280,16 @@ public open class DefaultCpuOpsBase(
         return view.prepack(BlockOrder.INPUT_BLOCK_MAJOR)
     }
 
+    /** Writes the transpose of the `[rows, cols]` matrix that starts at [base] in [src] to [out]. */
+    private fun transposeRows(src: FloatArray, base: Int, rows: Int, cols: Int, out: FloatArray) {
+        for (r in 0 until rows) {
+            val rowStart = base + r * cols
+            for (c in 0 until cols) {
+                out[c * rows + r] = src[rowStart + c]
+            }
+        }
+    }
+
     @TensorOp()
     override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
         val rank = tensor.shape.rank
@@ -1308,14 +1336,10 @@ public open class DefaultCpuOpsBase(
         }
 
         // Fast path: 2D float tensor — direct buffer swap
-        if (rank == 2 && tensor.data is FloatArrayTensorData<*>) {
-            val buf = (tensor.data as FloatArrayTensorData<*>).buffer
+        val window = if (rank == 2) heapFloatWindow(tensor.data) else null
+        if (window != null) {
             val out = FloatArray(rows * cols)
-            for (r in 0 until rows) {
-                for (c in 0 until cols) {
-                    out[c * rows + r] = buf[r * cols + c]
-                }
-            }
+            transposeRows(window.arr, window.off, rows, cols, out)
             @Suppress("UNCHECKED_CAST")
             val outData = dataFactory.adoptFloatArray<T, Float>(Shape(cols, rows), tensor.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
             return newTensor(outData, tensor.dtype, tensor)
@@ -1372,8 +1396,10 @@ public open class DefaultCpuOpsBase(
         // Fast path: source is a contiguous FloatArray. Iterate the output
         // linearly, decompose each flat index to its multi-index, permute
         // to source coords, recompose to source flat index, copy.
-        if (tensor.data is FloatArrayTensorData<*>) {
-            val srcBuf = (tensor.data as FloatArrayTensorData<*>).buffer
+        val window = heapFloatWindow(tensor.data)
+        if (window != null) {
+            val srcBuf = window.arr
+            val base = window.off
             val total = outShape.volume
             val out = FloatArray(total)
             val outIdx = IntArray(rank)
@@ -1386,7 +1412,7 @@ public open class DefaultCpuOpsBase(
                 }
                 var flatIn = 0
                 for (i in 0 until rank) flatIn += outIdx[i] * inStrides[axes[i]]
-                out[flatOut] = srcBuf[flatIn]
+                out[flatOut] = srcBuf[base + flatIn]
             }
             @Suppress("UNCHECKED_CAST")
             val outData = dataFactory.adoptFloatArray<T, Float>(outShape, tensor.dtype, out)
@@ -3723,27 +3749,7 @@ public open class DefaultCpuOpsBase(
         // Input: [vocabSize, embeddingDim], Indices: [L] or [N, L]
         // Output: [L, embeddingDim] or [N, L, embeddingDim]
         val numIndices = indices.volume
-        // Read the indices in row-major order. The vararg element accessor
-        // requires one coordinate per dimension, so a flat `data[i]` throws for
-        // rank >= 2 indices — read the contiguous buffer when present, otherwise
-        // unravel the flat position into a coordinate.
-        val idxData = indices.data
-        val indexList = when (idxData) {
-            is IntArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it] }
-            is FloatArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it].toInt() }
-            else -> {
-                val dims = indices.shape.dimensions
-                IntArray(numIndices) { flat ->
-                    val coord = IntArray(dims.size)
-                    var rem = flat
-                    for (d in dims.indices.reversed()) {
-                        coord[d] = rem % dims[d]
-                        rem /= dims[d]
-                    }
-                    (idxData.get(*coord) as Number).toInt()
-                }
-            }
-        }
+        val indexList = copyTensorValuesAsIntArray(indices)
 
         if (input.rank == 2) {
             val embDim = input.shape[1]
@@ -3791,26 +3797,7 @@ public open class DefaultCpuOpsBase(
     override fun <T : DType, V> indexSelect(input: Tensor<T, V>, indices: Tensor<DType, *>, dim: Int): Tensor<T, V> {
         require(dim in 0 until input.rank) { "indexSelect: dim=$dim out of range for rank ${input.rank}" }
         val numIndices = indices.volume
-        // The vararg element accessor requires one coordinate per dimension, so a flat
-        // `data[i]` throws for rank >= 2 indices — read the contiguous buffer when present,
-        // otherwise unravel the flat position into a coordinate (mirrors gather() above).
-        val idxData = indices.data
-        val indexList = when (idxData) {
-            is IntArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it] }
-            is FloatArrayTensorData<*> -> IntArray(numIndices) { idxData.buffer[it].toInt() }
-            else -> {
-                val dims = indices.shape.dimensions
-                IntArray(numIndices) { flat ->
-                    val coord = IntArray(dims.size)
-                    var rem = flat
-                    for (d in dims.indices.reversed()) {
-                        coord[d] = rem % dims[d]
-                        rem /= dims[d]
-                    }
-                    (idxData.get(*coord) as Number).toInt()
-                }
-            }
-        }
+        val indexList = copyTensorValuesAsIntArray(indices)
 
         val resultDims = input.shape.dimensions.copyOf()
         resultDims[dim] = numIndices
