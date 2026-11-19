@@ -3,8 +3,11 @@ package sk.ainet.exec.tensor.ops
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.RowDequantSource
 import sk.ainet.lang.tensor.data.TensorData
+import sk.ainet.lang.tensor.data.toFloatArray
 import sk.ainet.lang.types.FP32
 import sk.ainet.lang.types.Int32
 import kotlin.test.Test
@@ -39,6 +42,38 @@ class GatherRowDequantTest {
         assertEquals(listOf(3, 3), out.shape.dimensions.toList())
         assertContentEquals(
             floatArrayOf(20f, 21f, 22f, /* row 2 */ 0f, 1f, 2f, /* row 0 */ 30f, 31f, 32f /* row 3 */),
+            out.data.copyToFloatArray(),
+        )
+    }
+
+    @Test
+    fun gatherReadsPackedQ8_0EmbeddingTable() {
+        // A Q8_0 embedding table (e.g. GGUF `token_embd.weight`) stays packed: the lookup must
+        // decode `code * scale` for the touched rows, not read raw Byte codes as Float.
+        val rows = 6
+        val cols = 64
+        val blocks = rows * cols / Q8_0TensorData.BLOCK_SIZE
+        val bytes = ByteArray(blocks * Q8_0TensorData.BYTES_PER_BLOCK)
+        for (b in 0 until blocks) {
+            val offset = b * Q8_0TensorData.BYTES_PER_BLOCK
+            bytes[offset + 1] = if (b % 2 == 0) 0x38 else 0x3C // f16 scale 0.5 / 1.0
+            for (i in 0 until Q8_0TensorData.BLOCK_SIZE) bytes[offset + 2 + i] = (b * 5 + i - 16).toByte()
+        }
+        val packed = Q8_0BlockTensorData(Shape(rows, cols), bytes)
+        val expected = packed.toFloatArray()
+
+        val ctx = DirectCpuExecutionContext.create()
+        @Suppress("UNCHECKED_CAST")
+        val table = ctx.fromData<FP32, Float>(packed as TensorData<FP32, Float>, FP32::class)
+        val ids = ctx.fromIntArray<Int32, Int>(Shape(3), Int32::class, intArrayOf(4, 0, 5))
+
+        @Suppress("UNCHECKED_CAST")
+        val out = ctx.ops.gather(table, ids as Tensor<sk.ainet.lang.types.DType, *>, dim = 0)
+
+        assertEquals(listOf(3, cols), out.shape.dimensions.toList())
+        assertContentEquals(
+            expected.copyOfRange(4 * cols, 5 * cols) + expected.copyOfRange(0, cols) +
+                expected.copyOfRange(5 * cols, 6 * cols),
             out.data.copyToFloatArray(),
         )
     }
