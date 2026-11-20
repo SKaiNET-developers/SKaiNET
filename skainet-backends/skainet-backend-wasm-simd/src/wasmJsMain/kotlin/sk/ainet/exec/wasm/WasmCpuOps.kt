@@ -6,8 +6,6 @@ import sk.ainet.lang.memory.Scope
 import sk.ainet.lang.memory.ScopeKind
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
-import sk.ainet.lang.tensor.data.StorageFloatTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
 import sk.ainet.lang.tensor.ops.FusedNormOps
@@ -62,21 +60,42 @@ public class WasmCpuOps(
     /** A sidecar address for an operand: a resident tensor's own, or a staged copy freed after the call. */
     private class Operand(val ptr: Int, val temp: Boolean)
 
-    private fun isResident(t: Tensor<*, *>): Boolean = (t.data as? WasmLinearTensorData<*>)?.isResident == true
+    /**
+     * [t]'s data when its bytes were handed out in the sidecar, else `null`.
+     *
+     * The one place this file asks for a class (SKEEP-003, #1507). The view cannot answer yet: a
+     * sidecar tensor's view is its heap mirror, so asking it would download the tensor. Every
+     * caller asks this first for the same reason — `heapFloats` on such data is the mirror too.
+     */
+    private fun sidecarData(t: Tensor<*, *>): WasmLinearTensorData<*>? = t.data as? WasmLinearTensorData<*>
+
+    private fun isResident(t: Tensor<*, *>): Boolean = sidecarData(t)?.isResident == true
 
     /** Dense FP32 the sidecar can take: resident, a heap array, or a slab window. */
     private fun isSidecarFloat(t: Tensor<*, *>): Boolean =
-        t.dtype == FP32::class && (t.data is WasmLinearTensorData<*> || t.data is FloatArrayTensorData<*> || t.data is StorageFloatTensorData<*>)
+        t.dtype == FP32::class && (sidecarData(t) != null || t.data.heapFloats != null)
 
-    private fun operand(t: Tensor<*, *>): Operand? = when (val d = t.data) {
-        is WasmLinearTensorData<*> -> if (d.isResident) Operand(d.pointer(), false) else null
-        is FloatArrayTensorData<*> -> stage(d.buffer, 0, t.shape.volume)
-        is StorageFloatTensorData<*> -> {
-            val s = d.storage
-            s.checkAlive()
-            stage(s.floats!!, s.arrayOffset, t.shape.volume)
+    private fun operand(t: Tensor<*, *>): Operand? {
+        val resident = sidecarData(t)
+        if (resident != null) return if (resident.isResident) Operand(resident.pointer(), false) else null
+        val floats = t.data.heapFloats ?: return null
+        return stage(floats, t.data.heapFloatsOffset, t.shape.volume)
+    }
+
+    /**
+     * A sidecar address for a weight. A heap weight in an array of its own is a parameter: it is
+     * uploaded once and stays (re-uploading it per call made single-token decode run at copy
+     * speed). A resident weight is read where it is. A window of a larger array, and anything a
+     * forward scope owns, is staged for the call: the upload is kept by the array's identity, and
+     * a forward slab holds other values after its next reset.
+     */
+    private fun weightOperand(t: Tensor<*, *>): Operand? {
+        if (sidecarData(t) != null) return operand(t)
+        val floats = floatsFromZero(t.data)
+        if (floats != null && t.data.view?.storage?.scope != ScopeKind.FORWARD) {
+            return Operand(WasmKernels.denseWeightHandle(floats), false)
         }
-        else -> null
+        return operand(t)
     }
 
     private fun stage(src: FloatArray, offset: Int, count: Int): Operand {
@@ -193,13 +212,7 @@ public class WasmCpuOps(
                     var wo: Operand? = null
                     try {
                         xo = operand(x) ?: return super.matmulWeightTransposed(x, weight)
-                        // A heap weight is a parameter: resident after its first call (re-uploading it
-                        // per call made single-token decode run at copy speed). Resident and slab
-                        // weights are read where they are.
-                        wo = when (val wd = weight.data) {
-                            is FloatArrayTensorData<*> -> Operand(WasmKernels.denseWeightHandle(wd.buffer), false)
-                            else -> operand(weight) ?: return super.matmulWeightTransposed(x, weight)
-                        }
+                        wo = weightOperand(weight) ?: return super.matmulWeightTransposed(x, weight)
                         val xPtr = xo.ptr
                         val wPtr = wo.ptr
                         val outShape = if (x.rank == 1) Shape(n) else Shape(*(x.shape.dimensions.copyOf(x.rank - 1) + n))
@@ -535,11 +548,7 @@ public class WasmCpuOps(
         var geoPtr = 0
         try {
             io = operand(input) ?: return null
-            wo = when (val wd = weight.data) {
-                is WasmLinearTensorData<*> -> operand(weight) ?: return null
-                is FloatArrayTensorData<*> -> Operand(WasmKernels.denseWeightHandle(wd.buffer), false)
-                else -> operand(weight) ?: return null
-            }
+            wo = weightOperand(weight) ?: return null
             bo = bias?.let { operand(it) ?: return null }
             colPtr = WasmKernels.alloc(colBytes.toInt())
             geoPtr = WasmKernels.alloc(geo.size * 4)

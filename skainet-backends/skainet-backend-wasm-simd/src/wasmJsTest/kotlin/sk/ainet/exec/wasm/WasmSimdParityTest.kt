@@ -42,6 +42,7 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q4_0Quantizer
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0Quantizer
+import sk.ainet.lang.tensor.data.StorageFloatTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.matmulWeightTransposed
 import sk.ainet.lang.types.DType
@@ -644,6 +645,73 @@ class WasmSimdParityTest {
         assertEquals(expected[7], gd.get(1, 2))
         assertTrue(gd.isMirrored)
         assertClose(expected, ctx.ops.transpose(ctx.ops.transpose(g)).data.copyToFloatArray(), "common op on a resident tensor")
+    }
+
+    /**
+     * Where a weight's sidecar copy comes from is decided by what the data says, not by its class
+     * (SKEEP-003, #1507): a resident weight is read in place, a heap array of its own is uploaded
+     * once, a window of a larger array and anything a forward scope owns is staged per call.
+     */
+    @Test
+    fun `a weight is read in place, uploaded once or staged by what its data says`() = runTest {
+        val scalar = DirectCpuExecutionContext()
+        val m = 3; val n = 7; val k = 9
+        val x = pseudo(m * k, 21)
+        val w = pseudo(n * k, 23)
+        val ref = scalar.ops.matmulWeightTransposed(
+            scalar.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, x),
+            scalar.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, w),
+        ).data.copyToFloatArray()
+
+        WasmSimd.install()
+        val ctx = DirectCpuExecutionContext()
+        val ops = assertIs<WasmCpuOps>(ctx.ops)
+        val xf = ctx.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, x)
+
+        // Resident: no heap mirror is downloaded and nothing is uploaded a second time.
+        val resident = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, w.copyOf()))
+        val rd = assertIs<WasmLinearTensorData<*>>(resident.data)
+        var held = WasmKernels.residentWeightBytes()
+        assertClose(ref, ops.matmulWeightTransposed(xf, resident).data.copyToFloatArray(), "resident weight")
+        assertTrue(!rd.isMirrored, "a resident weight is read where it is")
+        assertEquals(held, WasmKernels.residentWeightBytes(), "and not uploaded again")
+
+        // A heap array of its own: uploaded once, kept.
+        val own = w.copyOf()
+        val heapWeight = ctx.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, own)
+        assertClose(ref, ops.matmulWeightTransposed(xf, heapWeight).data.copyToFloatArray(), "heap weight")
+        assertEquals(held + n * k * 4, WasmKernels.residentWeightBytes(), "uploaded")
+        assertClose(ref, ops.matmulWeightTransposed(xf, heapWeight).data.copyToFloatArray(), "heap weight again")
+        assertEquals(held + n * k * 4, WasmKernels.residentWeightBytes(), "once")
+        held = WasmKernels.residentWeightBytes()
+
+        // A window of a larger array, for both operands: staged from its offset, nothing kept.
+        val slab = FloatArray(4 + n * k + m * k + 5) { 999f }
+        w.copyInto(slab, 4)
+        x.copyInto(slab, 4 + n * k)
+        val heap = Storage.Heap.wrap(slab)
+        @Suppress("UNCHECKED_CAST")
+        val windowW = ctx.fromData(
+            StorageFloatTensorData<FP32>(Shape(n, k), heap.slice(4L * 4, n * k * 4L)) as TensorData<FP32, Float>, FP32::class,
+        )
+        @Suppress("UNCHECKED_CAST")
+        val windowX = ctx.fromData(
+            StorageFloatTensorData<FP32>(Shape(m, k), heap.slice((4L + n * k) * 4, m * k * 4L)) as TensorData<FP32, Float>, FP32::class,
+        )
+        assertClose(ref, ops.matmulWeightTransposed(windowX, windowW).data.copyToFloatArray(), "windowed operands")
+        assertEquals(held, WasmKernels.residentWeightBytes(), "a window is staged, not kept")
+
+        // A whole array that a forward scope owns: staged, because the scope reuses the array.
+        val scoped = Storage.Heap.floats(n * k, sk.ainet.lang.memory.ScopeKind.FORWARD)
+        w.copyInto(checkNotNull(scoped.floats))
+        @Suppress("UNCHECKED_CAST")
+        val scopedW = ctx.fromData(StorageFloatTensorData<FP32>(Shape(n, k), scoped) as TensorData<FP32, Float>, FP32::class)
+        assertClose(ref, ops.matmulWeightTransposed(xf, scopedW).data.copyToFloatArray(), "forward-scoped weight")
+        assertEquals(held, WasmKernels.residentWeightBytes(), "a forward-scoped array is not kept")
+        // ... so the next step's values in the same array are the ones that are read.
+        for (i in 0 until n * k) scoped.floats!![i] = 2f * w[i]
+        assertClose(FloatArray(ref.size) { 2f * ref[it] }, ops.matmulWeightTransposed(xf, scopedW).data.copyToFloatArray(), "after the array was reused")
+        WasmKernels.release(own)
     }
 
     @Test
