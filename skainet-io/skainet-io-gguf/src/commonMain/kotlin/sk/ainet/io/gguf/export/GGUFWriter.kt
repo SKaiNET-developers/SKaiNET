@@ -441,20 +441,8 @@ private class SinkWriter(private val sink: Sink) : BinaryWriter {
 
 private object TensorFlatten {
     fun flattenFloats(tensor: Tensor<*, *>): FloatArray {
-        val data = tensor.data
-        if (data is sk.ainet.lang.tensor.data.FloatArrayTensorData<*>) {
-            return data.buffer.copyOf()
-        }
-        val dims = tensor.shape.dimensions
-        val volume = tensor.shape.volume
-        val out = FloatArray(volume)
-        val idx = IntArray(dims.size)
-        for (i in 0 until volume) {
-            @Suppress("UNCHECKED_CAST")
-            out[i] = (data.get(*idx) as Number).toFloat()
-            bump(idx, dims)
-        }
-        return out
+        // The data's own bulk copy: an array copy for array-backed data, element reads otherwise.
+        return tensor.data.copyToFloatArray()
     }
 
     fun flattenDoubles(tensor: Tensor<*, *>): DoubleArray {
@@ -472,8 +460,13 @@ private object TensorFlatten {
 
     fun flattenInts(tensor: Tensor<*, *>): IntArray {
         val data = tensor.data
-        if (data is sk.ainet.lang.tensor.data.IntArrayTensorData<*>) {
-            return data.buffer.copyOf()
+        // Dense heap ints, found through the view (SKEEP-003): one array copy from the offset.
+        val view = data.view
+        val heap = view?.storage as? sk.ainet.lang.memory.Storage.Heap
+        val ints = heap?.ints
+        if (view != null && heap != null && ints != null && view.format.encoding == null && view.isContiguous) {
+            val start = heap.arrayOffset + view.layout.offsetElements.toInt()
+            return ints.copyOfRange(start, start + tensor.shape.volume)
         }
         val dims = tensor.shape.dimensions
         val volume = tensor.shape.volume

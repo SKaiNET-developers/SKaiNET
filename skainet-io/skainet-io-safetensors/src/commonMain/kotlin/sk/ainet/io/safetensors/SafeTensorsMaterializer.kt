@@ -14,7 +14,6 @@ import sk.ainet.lang.tensor.data.Bf16DenseTensorData
 import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Requantizers
-import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.tensor.data.Fp16DenseTensorData
 import sk.ainet.lang.tensor.data.TensorData
@@ -112,13 +111,15 @@ internal object SafeTensorsMaterializer {
 
     /** Relayout freshly quantized row-major blocks into kernel feed order, for the formats that have one. */
     private fun feedOrdered(data: TensorData<*, *>): TensorData<*, *> {
-        val packed = data as? PackedBlockStorage ?: return data
-        if (packed.blockOrder != BlockOrder.ROW_MAJOR) return data
-        val shape = packed.shape
-        if (shape.rank != 2 || shape[1] % packed.blockSize != 0) return data
-        val prepacked = packed.packedView.prepack(BlockOrder.INPUT_BLOCK_MAJOR)
+        // Read from the view (SKEEP-003): is it blocked, in which order, with what block size.
+        val view = data.view ?: return data
+        if (!view.layout.blocked || view.layout.blockOrder != BlockOrder.ROW_MAJOR) return data
+        val blockSize = view.decoderOrNull()?.blockSize ?: return data
+        val shape = data.shape
+        if (shape.rank != 2 || shape[1] % blockSize != 0) return data
+        val prepacked = view.prepack(BlockOrder.INPUT_BLOCK_MAJOR)
         val bytes = (prepacked.storage as? Storage.Heap)?.bytes ?: return data
-        return when (packed.encoding) {
+        return when (view.format.encoding) {
             TensorEncoding.Q8_0 -> Q8_0BlockTensorData(shape, bytes, BlockOrder.INPUT_BLOCK_MAJOR)
             TensorEncoding.Q4_0 -> Q4_0BlockTensorData(shape, bytes, BlockOrder.INPUT_BLOCK_MAJOR)
             else -> data

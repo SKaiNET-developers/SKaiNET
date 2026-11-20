@@ -176,12 +176,9 @@ public class StreamingGgufParametersLoader(
         var data = sk.ainet.lang.tensor.data.Requantizers.quantize(target, values, shape)
         // Freshly quantized blocks are row-major; honour KERNEL_FEED for the formats that define it.
         if (form.order == WeightByteOrder.KERNEL_FEED) {
-            val packed = data as? sk.ainet.lang.tensor.storage.PackedBlockStorage
-            if (packed != null && packed.blockOrder == sk.ainet.lang.memory.BlockOrder.ROW_MAJOR) {
-                data = feedOrderedByEncoding(packed)
-            }
+            data = feedOrderedByEncoding(data)
         }
-        val packedBytes = (data as? sk.ainet.lang.tensor.storage.PackedBlockStorage)?.packedData?.size?.toLong() ?: -1L
+        val packedBytes = data.view?.takeIf { it.layout.blocked }?.storage?.sizeBytes ?: -1L
         traceConversion(
             kind = "requantize-${target.name.lowercase()}",
             tensorName = tensorName,
@@ -194,14 +191,17 @@ public class StreamingGgufParametersLoader(
     }
 
     /** [feedOrdered] keyed by the encoding of freshly quantized storage rather than the file's tensor type. */
-    private fun feedOrderedByEncoding(packed: sk.ainet.lang.tensor.storage.PackedBlockStorage): sk.ainet.lang.tensor.data.TensorData<*, *> {
-        val asData = packed as sk.ainet.lang.tensor.data.TensorData<*, *>
-        val shape = packed.shape
-        if (shape.rank != 2 || shape[1] % packed.blockSize != 0) return asData
-        val prepacked = packed.packedView.prepack(sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR, sink = traceSink)
+    private fun feedOrderedByEncoding(asData: sk.ainet.lang.tensor.data.TensorData<*, *>): sk.ainet.lang.tensor.data.TensorData<*, *> {
+        // Read from the view (SKEEP-003): is it blocked, in which order, with what block size.
+        val view = asData.view ?: return asData
+        if (!view.layout.blocked || view.layout.blockOrder != sk.ainet.lang.memory.BlockOrder.ROW_MAJOR) return asData
+        val blockSize = view.decoderOrNull()?.blockSize ?: return asData
+        val shape = asData.shape
+        if (shape.rank != 2 || shape[1] % blockSize != 0) return asData
+        val prepacked = view.prepack(sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR, sink = traceSink)
         val bytes = (prepacked.storage as? sk.ainet.lang.memory.Storage.Heap)?.bytes ?: return asData
         val order = sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR
-        return when (packed.encoding) {
+        return when (view.format.encoding) {
             sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0 -> Q8_0BlockTensorData(shape, bytes, order)
             sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0 -> Q4_0BlockTensorData(shape, bytes, order)
             else -> asData

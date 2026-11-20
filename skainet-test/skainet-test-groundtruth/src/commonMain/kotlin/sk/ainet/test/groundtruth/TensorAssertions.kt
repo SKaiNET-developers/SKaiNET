@@ -2,7 +2,6 @@ package sk.ainet.test.groundtruth
 
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.DType
 import kotlin.math.abs
 import kotlin.math.max
@@ -321,9 +320,11 @@ public object TensorAssertions {
     public fun <T : DType, V> extractFloatData(tensor: Tensor<T, V>): FloatArray {
         val data = tensor.data
 
-        // Try direct buffer access for FP32 tensors
-        if (data is FloatArrayTensorData<*>) {
-            return data.buffer.copyOf()
+        // Dense heap floats, by what the data says: one array copy from its offset.
+        val floats = data.heapFloats
+        if (floats != null) {
+            val start = data.heapFloatsOffset
+            return floats.copyOfRange(start, start + tensor.shape.volume)
         }
 
         // Fallback: iterate through all elements

@@ -3,7 +3,6 @@ package sk.ainet.lang.tensor.ops
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TernaryTensorData
@@ -231,26 +230,11 @@ public object QuantizedMatmul {
         }
     }
 
+    /** The values in row-major order: the data's own array when it is one from element 0, else a copy. */
     private fun getFloatBuffer(data: sk.ainet.lang.tensor.data.TensorData<*, *>): FloatArray {
-        return when (data) {
-            is FloatArrayTensorData<*> -> data.buffer
-            else -> {
-                val shape = data.shape
-                val volume = shape.volume
-                val dims = shape.dimensions
-                FloatArray(volume) { flatIdx ->
-                    val indices = IntArray(dims.size)
-                    var remaining = flatIdx
-                    for (d in dims.size - 1 downTo 0) {
-                        indices[d] = remaining % dims[d]
-                        remaining /= dims[d]
-                    }
-                    @Suppress("UNCHECKED_CAST")
-                    val value = (data as sk.ainet.lang.tensor.data.TensorData<*, Float>).get(*indices)
-                    value
-                }
-            }
-        }
+        val floats = data.heapFloats
+        return if (floats != null && data.heapFloatsOffset == 0 && floats.size == data.shape.volume) floats
+        else data.copyToFloatArray()
     }
 }
 

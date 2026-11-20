@@ -4,7 +4,6 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.nn.Module
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 
@@ -222,8 +221,8 @@ public class TensorConversionPipeline {
         tensor: Tensor<FP16, Float>,
         context: ExecutionContext
     ): Tensor<FP32, Float> {
-        // Extract the float array from the tensor data
-        val floatData = (tensor.data as FloatArrayTensorData<FP16>).buffer
+        // The values as floats, whatever the data keeps them in.
+        val floatData = tensor.data.copyToFloatArray()
         
         // Create a new FP32 tensor with the same shape and data
         return context.fromFloatArray<FP32, Float>(

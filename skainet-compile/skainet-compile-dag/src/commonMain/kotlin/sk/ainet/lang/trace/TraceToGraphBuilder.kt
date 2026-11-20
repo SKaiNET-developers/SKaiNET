@@ -414,7 +414,12 @@ public class TraceToGraphBuilder(
 
     private fun extractFloatArray(tensor: sk.ainet.lang.tensor.Tensor<*, *>): FloatArray? {
         val data = tensor.data
-        if (data is sk.ainet.lang.tensor.data.FloatArrayTensorData) {
+        // Dense FP32 in a heap array of its own, asked of the data and not of its class. A window
+        // of a larger array is not such a constant: it has no array to alias.
+        val floats = data.heapFloats
+        if (floats != null && data.heapFloatsOffset == 0 &&
+            (tensor.shape.hasDynamic() || floats.size == tensor.shape.volume)
+        ) {
             // ALIASED, not copied (#1247): the graph constant shares the live
             // weight buffer. Copying doubled residency of every model weight —
             // the module tree and TraceSession keep the original alive for the
@@ -422,7 +427,7 @@ public class TraceToGraphBuilder(
             // Contract: consumers of "initial_value"/"weights" parameters are
             // read-only (the HLO ConstantByteSerializer and inline emitters);
             // never mutate the array behind these parameters.
-            return data.buffer
+            return floats
         }
 
         // Narrow floats (BF16/FP16 dense) widen to one FP32 copy — this is a
