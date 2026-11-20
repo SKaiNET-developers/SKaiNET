@@ -183,8 +183,11 @@ public class HloCompiler {
         tensor: Tensor<FP16, Float>,
         context: ExecutionContext
     ): Tensor<FP32, Float> {
-        // The values as floats, whatever the data keeps them in.
-        val floatData = tensor.data.copyToFloatArray()
+        // The tensor's own array when it is one whole heap array (no copy), else its values copied once.
+        val data = tensor.data
+        val own = data.heapFloats
+        val floatData = if (own != null && data.heapFloatsOffset == 0 && own.size == tensor.shape.volume) own
+        else data.copyToFloatArray()
         
         // Create a new FP32 tensor with the same shape and data
         return context.fromFloatArray<FP32, Float>(
