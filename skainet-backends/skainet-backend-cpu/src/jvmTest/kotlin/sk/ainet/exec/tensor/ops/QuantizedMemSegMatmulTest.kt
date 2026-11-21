@@ -8,17 +8,21 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
-import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
 import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KTensorData
-import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
+import sk.ainet.lang.tensor.data.TransposedWeightTensorData
 import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
+import sk.ainet.lang.memory.BlockOrder
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.SegmentStorage
+import sk.ainet.lang.tensor.storage.TensorEncoding
+import kotlin.test.assertNotNull
 import java.lang.foreign.Arena
 
 /**
@@ -103,7 +107,7 @@ class QuantizedMemSegMatmulTest {
     // ── Transpose Tests ─────────────────────────────────────────────────────
 
     @Test
-    fun `Q4 lazy transpose swaps shape dimensions`() {
+    fun `Q4 transpose is the marker with swapped dimensions`() {
         val arena = Arena.ofConfined()
         val block1 = encodeQ4_0Block(FloatArray(32) { 0.1f * it })
         val block2 = encodeQ4_0Block(FloatArray(32) { -0.1f * it })
@@ -112,13 +116,16 @@ class QuantizedMemSegMatmulTest {
 
         val transposed = ops.transpose(t)
         assertEquals(Shape(32, 2), transposed.shape)
-        assertTrue(transposed.data is Q4MemorySegmentMarker,
-            "Transpose should preserve Q4 MemorySegment data type")
+        // The transpose of a packed weight is the `Wᵀ` marker, for a segment weight as for a heap
+        // one (#1507): no tensor exists whose label disagrees with its bytes.
+        assertTrue(transposed.data is TransposedWeightTensorData<*, *>,
+            "transpose of a packed segment weight is the marker, got ${transposed.data::class.simpleName}")
+        assertTrue(ops.transpose(transposed).data === t.data, "transposing back gives the weight")
         arena.close()
     }
 
     @Test
-    fun `Q8 lazy transpose swaps shape dimensions`() {
+    fun `Q8 transpose is the marker with swapped dimensions`() {
         val arena = Arena.ofConfined()
         val block1 = encodeQ8_0Block(FloatArray(32) { 0.05f * it })
         val block2 = encodeQ8_0Block(FloatArray(32) { -0.05f * it })
@@ -127,8 +134,11 @@ class QuantizedMemSegMatmulTest {
 
         val transposed = ops.transpose(t)
         assertEquals(Shape(32, 2), transposed.shape)
-        assertTrue(transposed.data is Q8MemorySegmentMarker,
-            "Transpose should preserve Q8 MemorySegment data type")
+        // The transpose of a packed weight is the `Wᵀ` marker, for a segment weight as for a heap
+        // one (#1507): no tensor exists whose label disagrees with its bytes.
+        assertTrue(transposed.data is TransposedWeightTensorData<*, *>,
+            "transpose of a packed segment weight is the marker, got ${transposed.data::class.simpleName}")
+        assertTrue(ops.transpose(transposed).data === t.data, "transposing back gives the weight")
         arena.close()
     }
 
@@ -192,6 +202,89 @@ class QuantizedMemSegMatmulTest {
             transposedPacked.contentEquals(bytes),
             "Q6_K transpose must preserve block content for a single-block-per-row weight",
         )
+    }
+
+    // ── Views (SKEEP-003, #1507) ────────────────────────────────────────────
+
+    private fun wideRows(outputDim: Int, inputDim: Int): Array<FloatArray> = Array(outputDim) { row ->
+        FloatArray(inputDim) { col -> 0.25f * (row + 1) * (((col * 7 + row) % 9) - 4) / 9f }
+    }
+
+    @Test
+    fun `segment weights have a packed file-order view over the same segment`() {
+        Arena.ofConfined().use { arena ->
+            val outputDim = 3
+            val inputDim = 64
+            val rows = wideRows(outputDim, inputDim)
+            var q4Bytes = ByteArray(0)
+            var q8Bytes = ByteArray(0)
+            for (row in rows) for (blk in 0 until inputDim / 32) {
+                q4Bytes += encodeQ4_0Block(row.copyOfRange(blk * 32, (blk + 1) * 32))
+                q8Bytes += encodeQ8_0Block(row.copyOfRange(blk * 32, (blk + 1) * 32))
+            }
+            val cases = listOf(
+                q4Tensor(Shape(outputDim, inputDim), q4Bytes, arena) to TensorEncoding.Q4_0,
+                q8Tensor(Shape(outputDim, inputDim), q8Bytes, arena) to TensorEncoding.Q8_0,
+            )
+            for ((tensor, encoding) in cases) {
+                val view = assertNotNull(tensor.data.view, "$encoding has a view")
+                assertEquals(Format(FP32, encoding), view.format)
+                assertTrue(view.layout.blocked && view.layout.blockOrder == BlockOrder.ROW_MAJOR)
+                assertTrue(view.storage is SegmentStorage, "the view borrows the segment")
+                assertEquals(Shape(outputDim, inputDim), view.shape)
+                val decoded = tensor.data.copyToFloatArray()
+                for (r in 0 until outputDim) for (c in 0 until inputDim) {
+                    assertEquals(decoded[r * inputDim + c], view.get(r, c), 0f, "$encoding [$r, $c]")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a weight two blocks wide gives the same product by every route`() {
+        Arena.ofConfined().use { arena ->
+            val outputDim = 3
+            val inputDim = 64
+            val rows = wideRows(outputDim, inputDim)
+            var q4Bytes = ByteArray(0)
+            var q8Bytes = ByteArray(0)
+            for (row in rows) for (blk in 0 until inputDim / 32) {
+                q4Bytes += encodeQ4_0Block(row.copyOfRange(blk * 32, (blk + 1) * 32))
+                q8Bytes += encodeQ8_0Block(row.copyOfRange(blk * 32, (blk + 1) * 32))
+            }
+            val batch = 2
+            val inputValues = FloatArray(batch * inputDim) { ((it * 5) % 11 - 5) / 11f }
+            for (weight in listOf(
+                q4Tensor(Shape(outputDim, inputDim), q4Bytes, arena),
+                q8Tensor(Shape(outputDim, inputDim), q8Bytes, arena),
+            )) {
+                val name = weight.data.encoding!!.name
+                val dequantized = weight.data.copyToFloatArray()
+                val expected = FloatArray(batch * outputDim) { i ->
+                    val b = i / outputDim
+                    val o = i % outputDim
+                    var sum = 0f
+                    for (k in 0 until inputDim) sum += inputValues[b * inputDim + k] * dequantized[o * inputDim + k]
+                    sum
+                }
+                val x = fpTensor(Shape(batch, inputDim), inputValues)
+                val direct = ops.matmulWeightTransposed(x, weight)
+                val byMarker = ops.matmul(x, ops.transpose(weight))
+                assertEquals(Shape(batch, outputDim), direct.shape)
+                assertEquals(Shape(batch, outputDim), byMarker.shape)
+                val d = direct.data.copyToFloatArray()
+                val m = byMarker.data.copyToFloatArray()
+                for (i in expected.indices) {
+                    assertEquals(expected[i], d[i], 1e-3f, "$name matmulWeightTransposed [$i]")
+                    assertEquals(d[i], m[i], 0f, "$name matmul(x, transpose(w)) [$i]")
+                }
+                // A rank-1 activation (one decode step) keeps its rank.
+                val one = ops.matmulWeightTransposed(fpTensor(Shape(inputDim), inputValues.copyOf(inputDim)), weight)
+                assertEquals(Shape(outputDim), one.shape)
+                val o1 = one.data.copyToFloatArray()
+                for (i in 0 until outputDim) assertEquals(d[i], o1[i], 0f, "$name rank-1 [$i]")
+            }
+        }
     }
 
     // ── Q4_0 Matmul Tests ───────────────────────────────────────────────────
