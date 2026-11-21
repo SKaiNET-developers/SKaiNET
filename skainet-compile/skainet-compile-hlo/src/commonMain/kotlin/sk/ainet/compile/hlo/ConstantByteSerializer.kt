@@ -164,7 +164,7 @@ internal fun checkedIntElements(elementCount: Long): Int {
         throw ConstantTooLargeException(
             "Constant of $elementCount elements exceeds the single-array serialization " +
                 "ceiling. Use ConstantMaterializationPolicy.ExternalAlways with FP32 values — " +
-                "the external path carries a FloatArray (BufferHandle.Floats) without byte " +
+                "the external path carries a FloatArray (ConstantSource.Floats) without byte " +
                 "serialization (issue #1247)."
         )
     }
@@ -179,7 +179,7 @@ private fun requireSerializableByteCount(count: Int, bytesPerElement: Long, dtyp
         throw ConstantTooLargeException(
             "Constant of $count $dtype elements needs $byteCount bytes; single-buffer " +
                 "serialization caps at 2 GiB - 1. Use ConstantMaterializationPolicy.ExternalAlways " +
-                "with FP32 values — the external path carries a FloatArray (BufferHandle.Floats) " +
+                "with FP32 values — the external path carries a FloatArray (ConstantSource.Floats) " +
                 "without any byte serialization (issue #1247)."
         )
     }

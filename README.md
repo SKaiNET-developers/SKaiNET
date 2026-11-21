@@ -447,7 +447,7 @@ Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNE
 
 - **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the billion-parameter
   export arc: allocation-free void tracing, aliased constant extraction, strict StableHLO
-  conversion, the array-free `BufferHandle.Floats` path, and the sharded SafeTensors loader
+  conversion, the array-free `ConstantSource.Floats` path, and the sharded SafeTensors loader
 
 ### Contributors (0.52.0)
 

@@ -2,7 +2,7 @@ package sk.ainet.io.irpa
 
 import kotlinx.io.Sink
 import kotlinx.io.write
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.compile.hlo.ConstantSource
 import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
 
@@ -15,7 +15,7 @@ import java.nio.channels.FileChannel
  * set) because this module does not yet configure a hierarchical
  * source-set template.
  */
-internal actual fun writeFileBackedBytes(sink: Sink, handle: BufferHandle.FileBacked) {
+internal actual fun writeFileRangeBytes(sink: Sink, handle: ConstantSource.FileRange) {
     require(handle.sizeInBytes <= Int.MAX_VALUE.toLong()) {
         "FileBacked region of ${handle.sizeInBytes} bytes exceeds Int.MAX_VALUE; " +
             "multi-window mmap is not yet implemented (see issue #523 PR E follow-up). " +

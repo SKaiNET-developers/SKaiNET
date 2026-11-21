@@ -7,7 +7,6 @@ import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.ops.Operation
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.ValidationResult
-import sk.ainet.lang.tensor.storage.BufferHandle
 import sk.ainet.lang.types.DType
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,7 +21,7 @@ import kotlin.test.assertTrue
  * registry miss), oversized single-buffer serialization refuses with an
  * actionable message instead of throwing array-size garbage, and the
  * external FP32 path hands the aliased FloatArray to the packager as
- * [BufferHandle.Floats] with no byte serialization at all.
+ * [ConstantSource.Floats] with no byte serialization at all.
  */
 class BigConstantMaterializationTest {
 
@@ -61,7 +60,7 @@ class BigConstantMaterializationTest {
 
         val ref = module.externalParameters.single()
         val source = ref.source
-        assertTrue(source is BufferHandle.Floats, "FP32 external constant must ride BufferHandle.Floats, got $source")
+        assertTrue(source is ConstantSource.Floats, "FP32 external constant must ride ConstantSource.Floats, got $source")
         assertSame(weights, source.data, "the handle must alias the input array — zero copies end-to-end")
         assertEquals(48L, source.sizeInBytes)
         assertTrue(module.content.contains("util.global.load"), "external constant must load from a util.global")

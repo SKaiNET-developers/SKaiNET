@@ -120,8 +120,8 @@ The seam inventory, live path vs designed path, as of `cc2ecc5e`:
 
 | `ExternalParameterRef(scope, key, encoding, source)` → `IrpaWriter`
 | `ConstantMaterialization.kt:91-96`, `skainet-io-iree-params`
-| **Live** — blits quantized bytes verbatim; carries no layout; uses legacy
-  `BufferHandle`, not `Storage`
+| **Live** — blits quantized bytes verbatim; carries the block order as a string; its bytes travel
+  as the compiler's own `ConstantSource` (arrays or a file range), not `Storage`
 
 | `GraphOptimizationPass` + `GraphOptimizationPipeline` +
   `TargetOptimizers.registerDagPasses`
@@ -250,8 +250,8 @@ deprecated-when-replacement-lands; this is that replacement.)
 6. **Layout on external weights.** Add `layout: Layout?` (at minimum
    `blockOrder`) to `ExternalParameterRef` so `IrpaWriter` can blit a
    kernel-feed-order weight verbatim with its order declared in the MLIR
-   reference. Longer term, migrate its `source` from legacy `BufferHandle`
-   to `Storage` (that is SKEEP-003 P7/P8 territory).
+   reference. Its `source` is the compiler's own `ConstantSource` since #1507; it does not
+   become a `Storage`, because `skainet-compile` does not import the storage model (SKEEP-003a).
 7. **Target, for real.** Thread `target` into
    `StableHloConverterFactory.createExtended/createFast/createCustom` (only
    `createBasic` accepts it today), add `--target` to `HloGeneratorMain`
