@@ -66,13 +66,13 @@ public open class DequantizationBenchmark {
     }
 
     @Benchmark
-    public fun dequantQ4K(): FloatArray = (q4kData as PackedBlockStorage).toFloatArray()
+    public fun dequantQ4K(): FloatArray = q4kData.toFloatArray()
 
     @Benchmark
-    public fun dequantQ8_0(): FloatArray = (q80Data as PackedBlockStorage).toFloatArray()
+    public fun dequantQ8_0(): FloatArray = q80Data.toFloatArray()
 
     @Benchmark
-    public fun dequantTernary(): FloatArray = (ternaryData as PackedBlockStorage).toFloatArray()
+    public fun dequantTernary(): FloatArray = ternaryData.toFloatArray()
 }
 
 // --- BufferAccessor read performance ---

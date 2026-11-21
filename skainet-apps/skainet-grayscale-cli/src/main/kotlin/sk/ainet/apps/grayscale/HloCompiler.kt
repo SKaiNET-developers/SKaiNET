@@ -8,7 +8,6 @@ import sk.ainet.lang.graph.DefaultExecutionTape
 import sk.ainet.lang.graph.DefaultGraphExecutionContext
 import sk.ainet.lang.model.Model
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.ops.VoidTensorOps
 import sk.ainet.lang.tape.toComputeGraph
 import sk.ainet.lang.types.FP16
@@ -184,8 +183,11 @@ public class HloCompiler {
         tensor: Tensor<FP16, Float>,
         context: ExecutionContext
     ): Tensor<FP32, Float> {
-        // Extract the float array from the tensor data
-        val floatData = (tensor.data as FloatArrayTensorData<FP16>).buffer
+        // The tensor's own array when it is one whole heap array (no copy), else its values copied once.
+        val data = tensor.data
+        val own = data.heapFloats
+        val floatData = if (own != null && data.heapFloatsOffset == 0 && own.size == tensor.shape.volume) own
+        else data.copyToFloatArray()
         
         // Create a new FP32 tensor with the same shape and data
         return context.fromFloatArray<FP32, Float>(

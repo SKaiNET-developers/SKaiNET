@@ -15,15 +15,16 @@ import sk.ainet.io.gguf.export.GgufTensorEntry
 import sk.ainet.io.gguf.export.GgufWriteRequest
 import sk.ainet.io.safetensors.NarrowFloatLoadPolicy
 import sk.ainet.io.safetensors.SafeTensorsParametersLoader
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.memory.plan.EncodingRequest
 import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.memory.plan.WeightShapeOrientation
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.data.Bf16DenseTensorData
-import sk.ainet.lang.tensor.data.Fp16DenseTensorData
 import sk.ainet.lang.tensor.data.Requantizers
-import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
+import sk.ainet.lang.types.BF16
+import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
 import java.nio.file.Files
 
@@ -112,20 +113,27 @@ public fun quantizeSafeTensorsToGguf(
     val keptNames = ArrayList<String>()
     val entries = loaded.map { (name, tensor) ->
         val dims = tensor.shape.dimensions.toList()
-        when (val data = tensor.data) {
-            is PackedBlockStorage -> {
+        // What to write is read from the view's format (SKEEP-003): block-packed bytes go out as
+        // they are, kept 16-bit floats too, everything else is written from its values.
+        val view = tensor.data.view
+        val raw = view?.let { wholeHeapBytes(it) }
+        val narrow = view != null && raw != null && !view.layout.blocked &&
+            view.format.encoding == TensorEncoding.Dense(2) && view.isContiguous
+        when {
+            view != null && view.layout.blocked -> {
                 quantized += name
-                GgufTensorEntry(ggufName = name, quantization = ggmlTypeOf(data.encoding), shape = dims, rawBytes = data.packedData)
+                val bytes = raw ?: error("tensor '$name': packed ${view.format.encoding?.name} bytes are not one whole heap array")
+                GgufTensorEntry(ggufName = name, quantization = ggmlTypeOf(checkNotNull(view.format.encoding)), shape = dims, rawBytes = bytes)
             }
-            is Fp16DenseTensorData -> {
+            narrow && view!!.format.dtype == FP16 -> {
                 keptNames += name
                 if (keepAsF32) GgufTensorEntry(ggufName = name, tensor = tensor, quantization = GGMLQuantizationType.F32, shape = dims)
-                else GgufTensorEntry(ggufName = name, quantization = GGMLQuantizationType.F16, shape = dims, rawBytes = data.packedData)
+                else GgufTensorEntry(ggufName = name, quantization = GGMLQuantizationType.F16, shape = dims, rawBytes = raw)
             }
-            is Bf16DenseTensorData -> {
+            narrow && view!!.format.dtype == BF16 -> {
                 keptNames += name
                 if (keepAsF32) GgufTensorEntry(ggufName = name, tensor = tensor, quantization = GGMLQuantizationType.F32, shape = dims)
-                else GgufTensorEntry(ggufName = name, quantization = GGMLQuantizationType.BF16, shape = dims, rawBytes = data.packedData)
+                else GgufTensorEntry(ggufName = name, quantization = GGMLQuantizationType.BF16, shape = dims, rawBytes = raw)
             }
             else -> {
                 keptNames += name
@@ -155,4 +163,12 @@ private fun ggmlTypeOf(encoding: TensorEncoding): GGMLQuantizationType = when (e
     TensorEncoding.Q8_0 -> GGMLQuantizationType.Q8_0
     TensorEncoding.Q4_0 -> GGMLQuantizationType.Q4_0
     else -> throw IllegalArgumentException("${encoding.name} has no GGUF tensor type")
+}
+
+/** The byte array behind [view] when the view starts at its first byte and the array holds nothing else. */
+private fun wholeHeapBytes(view: TensorView): ByteArray? {
+    val heap = view.storage as? Storage.Heap ?: return null
+    val bytes = heap.bytes ?: return null
+    if (heap.arrayOffset != 0 || view.layout.offsetElements != 0L || heap.sizeBytes != bytes.size.toLong()) return null
+    return bytes
 }

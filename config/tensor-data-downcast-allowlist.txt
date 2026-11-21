@@ -11,23 +11,14 @@
 #   Q4/Q8MemorySegmentMarker). Removing a downcast means lowering the count (or deleting the
 #   line). Do not raise a count: dispatch on the format instead.
 
-skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/HloCompiler.kt|1|#1507
-skainet-apps/skainet-grayscale-cli/src/main/kotlin/sk/ainet/apps/grayscale/TensorConversionPipeline.kt|1|#1507
-skainet-apps/skainet-tensor-tools/src/main/kotlin/sk/ainet/apps/tool/quantize/QuantizeCli.kt|3|#1507
 skainet-backends/skainet-backend-cpu/src/commonMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOps.kt|4|#1507: the transposed-weight marker (2), the narrow-float transpose (1) and the RowDequantSource contract in gather (1) have no view-only form before G6
 skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOpsJvm.kt|12|#1507
 skainet-backends/skainet-backend-wasm-simd/src/wasmJsMain/kotlin/sk/ainet/exec/wasm/WasmCpuOps.kt|1|#1507: sidecar-resident data is found by class until its view is zero-copy over the sidecar storage (G6)
-skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/trace/TraceToGraphBuilder.kt|3|#1507
-skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/BlockQuantMatmulConverter.kt|1|#1507
-skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/ConstantOperationsConverter.kt|1|#1507
-skainet-compile/skainet-compile-opt/src/commonMain/kotlin/sk/ainet/compile/opt/passes/BlockQuantMatmulFusionPass.kt|1|#1507
-skainet-io/skainet-io-gguf/src/commonMain/kotlin/sk/ainet/io/gguf/StreamingGgufParametersLoader.kt|2|#1507
-skainet-io/skainet-io-gguf/src/commonMain/kotlin/sk/ainet/io/gguf/export/GGUFWriter.kt|2|#1507
-skainet-io/skainet-io-safetensors/src/commonMain/kotlin/sk/ainet/io/safetensors/SafeTensorsMaterializer.kt|1|#1507
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/IndexTensor.kt|1|#1507
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/QuantizedMatmul.kt|9|#1507
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TensorSpecEncoding.kt|1|#1507
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TernaryMatmul.kt|3|#1507
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/trace/TraceSession.kt|1|#1507
-skainet-lang/skainet-lang-core/src/jvmMain/kotlin/sk/ainet/lang/tensor/StorageBenchmarks.kt|3|#1507
-skainet-test/skainet-test-groundtruth/src/commonMain/kotlin/sk/ainet/test/groundtruth/TensorAssertions.kt|1|#1507
+skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/trace/TraceToGraphBuilder.kt|2|#1507: packed and narrow-float constants; skainet-compile may not import the view types (SKEEP-003a), so these wait for a TensorData-level form (G6)
+skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/BlockQuantMatmulConverter.kt|1|#1507: reads a packed weight out of the untyped operation-parameter map; skainet-compile may not import the view types (SKEEP-003a)
+skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/ConstantOperationsConverter.kt|1|#1507: as BlockQuantMatmulConverter.kt
+skainet-compile/skainet-compile-opt/src/commonMain/kotlin/sk/ainet/compile/opt/passes/BlockQuantMatmulFusionPass.kt|1|#1507: as BlockQuantMatmulConverter.kt
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/QuantizedMatmul.kt|8|#1507: the scalar helpers are typed on the Q8_0/Q4_K/ternary data interfaces in their public signatures; they go with those types (G6)
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TensorSpecEncoding.kt|1|#1507: the one data-to-encoding mapping for traces; TensorData.encoding answers differently for narrow floats and the transposed-weight marker, so it changes with the facades (G6)
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TernaryMatmul.kt|2|#1507: as QuantizedMatmul.kt, typed on TernaryTensorData in its public signature (G6)
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/trace/TraceSession.kt|1|#1507: block order of a traced tensor; asking the view would build one per traced tensor and download sidecar data (G6)

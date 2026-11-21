@@ -1,6 +1,5 @@
 package sk.ainet.lang.tensor
 
-import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
 import sk.ainet.lang.types.FP32
@@ -45,11 +44,13 @@ public fun <T : DType, V> Tensor<T, V>.asIndices(strict: Boolean = true): IndexT
     if (strict && dtypeInstance.isFloatType()) {
         // fast path for direct FloatArray-backed tensor data
         val data = this.data
-        when (data) {
-            is FloatArrayTensorData<*> -> {
-                val buf = data.buffer
-                for (i in buf.indices) {
-                    val f = buf[i]
+        val heapFloats = data.heapFloats
+        when {
+            heapFloats != null -> {
+                val buf = heapFloats
+                val start = data.heapFloatsOffset
+                for (i in 0 until this.volume) {
+                    val f = buf[start + i]
                     val fi = f.toInt()
                     if (fi.toFloat() != f) {
                         throw NonIntegralIndexException("Non-integral index value at flat position $i: $f. Use integer tensors or call asIndices(strict=false) if intentional.")

@@ -441,20 +441,12 @@ private class SinkWriter(private val sink: Sink) : BinaryWriter {
 
 private object TensorFlatten {
     fun flattenFloats(tensor: Tensor<*, *>): FloatArray {
+        // The writer only reads the result, so a tensor that is one whole heap array is handed
+        // out as it is: no second copy of a weight during export. Anything else is copied once.
         val data = tensor.data
-        if (data is sk.ainet.lang.tensor.data.FloatArrayTensorData<*>) {
-            return data.buffer.copyOf()
-        }
-        val dims = tensor.shape.dimensions
-        val volume = tensor.shape.volume
-        val out = FloatArray(volume)
-        val idx = IntArray(dims.size)
-        for (i in 0 until volume) {
-            @Suppress("UNCHECKED_CAST")
-            out[i] = (data.get(*idx) as Number).toFloat()
-            bump(idx, dims)
-        }
-        return out
+        val floats = data.heapFloats
+        if (floats != null && data.heapFloatsOffset == 0 && floats.size == tensor.shape.volume) return floats
+        return data.copyToFloatArray()
     }
 
     fun flattenDoubles(tensor: Tensor<*, *>): DoubleArray {
@@ -472,8 +464,15 @@ private object TensorFlatten {
 
     fun flattenInts(tensor: Tensor<*, *>): IntArray {
         val data = tensor.data
-        if (data is sk.ainet.lang.tensor.data.IntArrayTensorData<*>) {
-            return data.buffer.copyOf()
+        // Dense heap ints, found through the view (SKEEP-003). Read-only use, as in flattenFloats:
+        // the whole array as it is, a window as one array copy from its offset.
+        val view = data.view
+        val heap = view?.storage as? sk.ainet.lang.memory.Storage.Heap
+        val ints = heap?.ints
+        if (view != null && heap != null && ints != null && view.format.encoding == null && view.isContiguous) {
+            val start = heap.arrayOffset + view.layout.offsetElements.toInt()
+            if (start == 0 && ints.size == tensor.shape.volume) return ints
+            return ints.copyOfRange(start, start + tensor.shape.volume)
         }
         val dims = tensor.shape.dimensions
         val volume = tensor.shape.volume
