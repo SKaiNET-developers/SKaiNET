@@ -8,6 +8,7 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -79,10 +80,10 @@ class StreamingGGUFReaderEncodingTest {
         val file = createGgufFile()
         try {
             StreamingGGUFReader.open(JvmRandomAccessSource.open(file)).use { reader ->
-                val storage = reader.loadTensorStorage("w_q40")
-                assertEquals(TensorEncoding.Q4_0, storage.encoding)
-                assertEquals(18L, storage.physicalBytes)
-                assertEquals(128L, storage.logicalBytes) // 32 * 4 (logical FP32)
+                val view = reader.loadTensorView("w_q40")
+                assertEquals(TensorEncoding.Q4_0, view.format.encoding)
+                assertEquals(18L, view.storage.sizeBytes)
+                assertEquals(128L, view.elementCount * view.format.dtype.sizeInBytes) // 32 * 4 (logical FP32)
             }
         } finally {
             file.delete()
@@ -94,13 +95,16 @@ class StreamingGGUFReaderEncodingTest {
         val file = createGgufFile()
         try {
             StreamingGGUFReader.open(JvmRandomAccessSource.open(file)).use { reader ->
-                val storage = reader.loadTensorStorage("w_q81")
-                val encoding = storage.encoding
+                val tensor = reader.tensors.first { it.name == "w_q81" }
+                val encoding = reader.formatOf(tensor).encoding
                 assertTrue(encoding is TensorEncoding.Opaque, "Q8_1 should map to Opaque, got $encoding")
                 assertEquals("Q8_1", encoding.name)
                 assertEquals(40L, encoding.rawBytes) // 32 elems: 4+4+32 bytes per block
                 // The point of #928: physicalBytes must not report 0.
-                assertEquals(40L, storage.physicalBytes)
+                assertEquals(40L, reader.formatOf(tensor).physicalBytes(32))
+                // No decoder reads Q8_1, so it has a format and raw bytes but no view.
+                assertFailsWith<UnsupportedOperationException> { reader.loadTensorView(tensor) }
+                assertEquals(40, reader.loadTensorData(tensor).size)
             }
         } finally {
             file.delete()
@@ -108,15 +112,19 @@ class StreamingGGUFReaderEncodingTest {
     }
 
     @Test
-    fun `mapped storage reports the same encodings`() {
+    fun `a mapped view reports the same encoding`() {
         val file = createGgufFile()
         try {
             StreamingGGUFReader.open(JvmRandomAccessSource.open(file)).use { reader ->
-                val q40 = reader.loadTensorStorageMapped(
+                val q40 = reader.loadTensorViewMapped(
                     reader.tensors.first { it.name == "w_q40" }, file.absolutePath
                 )
-                assertEquals(TensorEncoding.Q4_0, q40.encoding)
-                assertEquals(18L, q40.physicalBytes)
+                try {
+                    assertEquals(TensorEncoding.Q4_0, q40.format.encoding)
+                    assertEquals(18L, q40.storage.sizeBytes)
+                } finally {
+                    q40.storage.close()
+                }
             }
         } finally {
             file.delete()

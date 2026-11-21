@@ -1,6 +1,7 @@
 package sk.ainet.io.gguf
 
 import sk.ainet.io.RandomAccessSource
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -109,7 +110,7 @@ class LargeTensorNBytesOverflowTest {
     }
 
     @Test
-    fun loadTensorStorageMappedWorksForLargeTensor() {
+    fun aLargeTensorHasItsFormatAndByteRangeWithoutBeingLoaded() {
         val largeTensorGguf = buildLargeTensorGguf(
             tensorName = "huge_weight",
             dims = listOf(524288UL, 10752UL),
@@ -120,11 +121,12 @@ class LargeTensorNBytesOverflowTest {
         val reader = StreamingGGUFReader.open(source)
         val tensor = reader.tensors[0]
 
-        // loadTensorStorageMapped should work — it creates a FileBacked handle
-        // without loading data into heap
-        val storage = reader.loadTensorStorageMapped(tensor, "/fake/path.gguf")
-        assertTrue(storage.isFileBacked)
-        assertEquals(tensor.nBytes, storage.buffer.sizeInBytes)
+        // What loadTensorViewMapped needs for a tensor above 2 GB is all here without a
+        // heap array: the format, and a byte range that is a Long. (Mapping itself needs a
+        // real file of that size, which a unit test does not create.)
+        assertEquals(TensorEncoding.Q4_K, reader.formatOf(tensor).encoding)
+        assertTrue(tensor.nBytes > Int.MAX_VALUE.toLong())
+        assertTrue(tensor.absoluteDataOffset > 0L)
     }
 
     @Test

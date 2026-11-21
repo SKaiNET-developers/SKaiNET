@@ -413,11 +413,16 @@ public class TernaryBlockDecoder private constructor(
     )
 
     override fun decodeBlock(storage: Storage, blockIndex: Long, out: FloatArray, outOffset: Int) {
-        val heap = storage as? Storage.Heap
-            ?: throw UnsupportedOperationException("ternary views need heap storage in this milestone")
-        val bytes = heap.bytes ?: throw UnsupportedOperationException("ternary views need byte storage")
-        val off = heap.arrayOffset + (blockIndex * bytesPerBlock).toInt()
-        TernaryCodec.decode(encoding, bytes, blockSize, off).copyInto(out, outOffset)
+        val heapBytes = (storage as? Storage.Heap)?.bytes
+        if (heapBytes != null) {
+            val off = storage.arrayOffset + (blockIndex * bytesPerBlock).toInt()
+            TernaryCodec.decode(encoding, heapBytes, blockSize, off).copyInto(out, outOffset)
+            return
+        }
+        // Off-heap, mapped or device storage: one block through copyInto, which every kind has.
+        val block = ByteArray(bytesPerBlock)
+        storage.copyInto(block, 0, blockIndex * bytesPerBlock, bytesPerBlock)
+        TernaryCodec.decode(encoding, block, blockSize, 0).copyInto(out, outOffset)
     }
 
     private companion object {

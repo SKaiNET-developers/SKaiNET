@@ -67,9 +67,15 @@ fun readLargeModel(filePath: String) {
         // Load specific tensor on demand
         val weights = reader.loadTensor("token_embd.weight")
 
-        // Or get a TensorStorage descriptor with metadata
-        val storage = reader.loadTensorStorage("token_embd.weight")
-        println("Encoding: ${storage.encoding.name}, Physical: ${storage.physicalBytes} bytes")
+        // Or get a view over the tensor's bytes. Nothing is decoded or copied after the read:
+        // the format says what the bytes are, and get() decodes on read.
+        val view = reader.loadTensorView("token_embd.weight")
+        println("Encoding: ${view.format.encoding.name}, Physical: ${view.storage.sizeBytes} bytes")
+
+        // Or map the tensor's byte range of the file, with no heap array (works above 2 GB).
+        // The caller closes the mapping.
+        val mapped = reader.loadTensorViewMapped(reader.tensors.first(), filePath)
+        try { println(mapped.get(0, 0)) } finally { mapped.storage.close() }
     }
 }
 ----
@@ -466,7 +472,7 @@ loader.load(ctx, FP32::class) { name, tensor -> model.bind(name, tensor) }
 ----
 
 The same two forms exist on `StreamingShardedSafeTensorsReader` (`openFromIndexContent`,
-`openFromParsedIndex`). Mapped loading (`loadTensorStorageMapped`) needs file-backed shards and
+`openFromParsedIndex`). Mapped loading (`loadTensorViewMapped`) needs file-backed shards and
 throws for Blobs.
 
 === What each target can do
@@ -481,7 +487,7 @@ differences and their reasons:
 | `openRandomAccessSource(path)`, path-based loaders (`StreamingGgufParametersLoader(path)`, `SafeTensorsParametersLoader { JvmRandomAccessSource.open(path) }`, `ShardedSafeTensorsParametersLoader(indexPath)`) | yes | yes | returns `null` / unavailable | No file system in a browser. Use `JsBlobRandomAccessSource` (a `Blob`) or `ByteArrayRandomAccessSource` (fetched bytes) with the source-based constructors; sharded checkpoints through the `(indexJson, shardSource)` form.
 | Blocking reads from a `RandomAccessSource` | yes | yes | preloaded window; whole Blob inside a Web Worker | `FileReaderSync` exists on worker threads only. The suspending `read()` works everywhere.
 | Sources and reads over 2 GB | yes | yes | yes | `Long` positions throughout; one read is bounded by the 2 GB `ByteArray`, the planner splits above that (`ByteArrayRandomAccessSource` takes chunks).
-| Memory-mapped weights (`WeightResidency.MAPPED`, `PlatformStorage.mapFile`, `loadTensorStorageMapped`) | yes | yes | no | No `mmap` in a browser. The counterpart is a weight resident in the kernel sidecar's linear memory (`WasmSimd.install()`), which the kernel support matrix lists as *Resident serving*.
+| Memory-mapped weights (`WeightResidency.MAPPED`, `PlatformStorage.mapFile`, `loadTensorViewMapped`) | yes | yes | no | No `mmap` in a browser. The counterpart is a weight resident in the kernel sidecar's linear memory (`WasmSimd.install()`), which the kernel support matrix lists as *Resident serving*.
 | Off-heap storage (`MemoryDomain.HOST_OFFHEAP`) | FFM / direct buffers | native heap | the sidecar's linear memory once `WasmSimd.install()` ran, else the heap | `StorageCapabilities.current()` reports which; the planner records the fallback.
 | Writing files by path (GGUF writer, JSON export, IRPA `FileBacked`) | yes | yes | no | No file system; the `Sink`- and bytes-returning variants of the writers exist on every target — hand the bytes to a `Blob` and a download link.
 | `MemoryProbe` | RSS and page faults from `/proc` (Linux) | RSS | JS heap in use (Chromium), the module's linear memory and the sidecar's held bytes; no page faults | A tab has no process counters; the probe sums what the engine reports.

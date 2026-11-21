@@ -1,14 +1,18 @@
 package sk.ainet.io.gguf
 
 import org.junit.Test
-import sk.ainet.io.JvmFileBackedResolver
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.lang.types.FP32
-import sk.ainet.lang.tensor.storage.*
+import sk.ainet.lang.memory.Owner
+import sk.ainet.lang.memory.ScopeKind
+import sk.ainet.lang.tensor.storage.MemoryDomain
+import sk.ainet.lang.tensor.storage.MemoryTracker
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertFalse
@@ -16,7 +20,7 @@ import kotlin.test.assertTrue
 
 /**
  * Integration tests that exercise the full storage pipeline:
- * GGUF file → StreamingGGUFReader → TensorStorage → BufferAccessor
+ * GGUF file → StreamingGGUFReader → TensorView over heap or mapped storage
  *
  * Uses a synthetically constructed minimal GGUF file with:
  * - 1 F32 tensor (4 elements, 16 bytes)
@@ -98,7 +102,7 @@ class StorageIntegrationTest {
     }
 
     @Test
-    fun `streaming reader loads TensorStorage with correct metadata`() {
+    fun `streaming reader loads views with correct metadata`() {
         val file = createTestGgufFile()
         try {
             JvmRandomAccessSource.open(file).use { source ->
@@ -106,23 +110,26 @@ class StorageIntegrationTest {
                 assertEquals(2, reader.tensors.size.toInt())
 
                 // F32 tensor
-                val f32Storage = reader.loadTensorStorage("weight_f32")
-                assertEquals(FP32, f32Storage.dtype)
-                assertSame(FP32, f32Storage.dtype)
-                assertEquals(TensorEncoding.Dense(4), f32Storage.encoding)
-                assertEquals(Ownership.BORROWED, f32Storage.ownership)
-                assertEquals(16L, f32Storage.physicalBytes)
-                assertEquals(4L, f32Storage.elementCount)
-                assertFalse(f32Storage.isFileBacked)
+                val f32 = reader.loadTensorView("weight_f32")
+                assertSame(FP32, f32.format.dtype)
+                assertEquals(TensorEncoding.Dense(4), f32.format.encoding)
+                assertTrue(f32.storage.owner is Owner.Borrowed)
+                assertEquals(MemoryDomain.HOST_HEAP, f32.storage.domain)
+                assertEquals(16L, f32.storage.sizeBytes)
+                assertEquals(4L, f32.elementCount)
+                assertFalse(f32.isMutable)
+                // The view holds the file's little-endian bytes and decodes them on read.
+                assertContentEquals(floatArrayOf(1f, 2f, 3f, 4f), f32.toFloatArray())
 
                 // Q8_0 tensor
-                val q80Storage = reader.loadTensorStorage("weight_q80")
-                assertEquals(FP32, q80Storage.dtype) // packed weights are logically FP32
-                assertSame(FP32, q80Storage.dtype)
-                assertEquals(TensorEncoding.Q8_0, q80Storage.encoding)
-                assertEquals(Ownership.BORROWED, q80Storage.ownership)
-                assertEquals(34L, q80Storage.physicalBytes)
-                assertEquals(32L, q80Storage.elementCount)
+                val q80 = reader.loadTensorView("weight_q80")
+                assertSame(FP32, q80.format.dtype) // packed weights are logically FP32
+                assertEquals(TensorEncoding.Q8_0, q80.format.encoding)
+                assertTrue(q80.layout.blocked)
+                assertEquals(34L, q80.storage.sizeBytes)
+                assertEquals(32L, q80.elementCount)
+                // scale 1.0, codes 1..32
+                assertContentEquals(FloatArray(32) { (it + 1).toFloat() }, q80.toFloatArray())
             }
         } finally {
             file.delete()
@@ -130,37 +137,26 @@ class StorageIntegrationTest {
     }
 
     @Test
-    fun `file-backed storage resolves through mmap`() {
+    fun `a mapped view reads the file without a heap copy`() {
         val file = createTestGgufFile()
         try {
             JvmRandomAccessSource.open(file).use { source ->
                 val reader = StreamingGGUFReader.open(source)
 
-                // Get file-backed storage
-                val storage = reader.loadTensorStorageMapped(
+                val view = reader.loadTensorViewMapped(
                     reader.tensors.first { it.name == "weight_f32" },
                     file.absolutePath
                 )
-
-                assertTrue(storage.isFileBacked)
-                assertEquals(Ownership.FILE_BACKED, storage.ownership)
-                assertEquals(Placement.MMAP_WEIGHTS, storage.placement)
-                assertFalse(storage.isMutable)
-
-                // Resolve through mmap and read actual bytes
-                val resolver = JvmFileBackedResolver.createResolver()
-                val accessor = resolver.resolve(storage.buffer)
-                assertEquals(16L, accessor.sizeInBytes)
-
-                // Read F32 values: should be 1.0, 2.0, 3.0, 4.0
-                val bytes = accessor.readAllBytes()
-                val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-                assertEquals(1.0f, bb.getFloat(0))
-                assertEquals(2.0f, bb.getFloat(4))
-                assertEquals(3.0f, bb.getFloat(8))
-                assertEquals(4.0f, bb.getFloat(12))
-
-                accessor.close()
+                try {
+                    assertEquals(MemoryDomain.MMAP_FILE, view.storage.domain)
+                    assertEquals(ScopeKind.MODEL, view.storage.scope)
+                    assertFalse(view.isMutable)
+                    assertEquals(16L, view.storage.sizeBytes)
+                    assertContentEquals(floatArrayOf(1f, 2f, 3f, 4f), view.toFloatArray())
+                } finally {
+                    view.storage.close()
+                }
+                assertFalse(view.storage.isAlive)
             }
         } finally {
             file.delete()
@@ -168,32 +164,35 @@ class StorageIntegrationTest {
     }
 
     @Test
-    fun `Q8_0 file-backed storage reads packed block data correctly`() {
+    fun `a mapped Q8_0 view holds the packed blocks and decodes them`() {
         val file = createTestGgufFile()
         try {
             JvmRandomAccessSource.open(file).use { source ->
                 val reader = StreamingGGUFReader.open(source)
 
-                val storage = reader.loadTensorStorageMapped(
+                val view = reader.loadTensorViewMapped(
                     reader.tensors.first { it.name == "weight_q80" },
                     file.absolutePath
                 )
+                try {
+                    assertEquals(MemoryDomain.MMAP_FILE, view.storage.domain)
+                    assertEquals(TensorEncoding.Q8_0, view.format.encoding)
+                    assertEquals(34L, view.storage.sizeBytes)
 
-                assertTrue(storage.isFileBacked)
-                assertEquals(TensorEncoding.Q8_0, storage.encoding)
+                    val raw = ByteArray(34)
+                    view.storage.copyInto(raw)
+                    // First 2 bytes: f16 scale (1.0 = 0x3C00)
+                    assertEquals(0x00.toByte(), raw[0])
+                    assertEquals(0x3C.toByte(), raw[1])
+                    // Code bytes: 1, 2, 3...
+                    assertEquals(1.toByte(), raw[2])
+                    assertEquals(32.toByte(), raw[33])
 
-                val resolver = JvmFileBackedResolver.createResolver()
-                val accessor = resolver.resolve(storage.buffer)
-                assertEquals(34L, accessor.sizeInBytes)
-
-                // First 2 bytes: f16 scale (1.0 = 0x3C00)
-                assertEquals(0x00.toByte(), accessor.readByte(0))
-                assertEquals(0x3C.toByte(), accessor.readByte(1))
-                // Code bytes: 1, 2, 3...
-                assertEquals(1.toByte(), accessor.readByte(2))
-                assertEquals(32.toByte(), accessor.readByte(33))
-
-                accessor.close()
+                    // The same decoder reads a mapped file and a heap array.
+                    assertContentEquals(reader.loadTensorView("weight_q80").toFloatArray(), view.toFloatArray())
+                } finally {
+                    view.storage.close()
+                }
             }
         } finally {
             file.delete()
@@ -209,8 +208,7 @@ class StorageIntegrationTest {
                 val tracker = MemoryTracker()
 
                 for (tensor in reader.tensors) {
-                    val storage = reader.loadTensorStorage(tensor)
-                    tracker.record(tensor.name, storage)
+                    tracker.record(tensor.name, reader.loadTensorView(tensor))
                 }
 
                 val report = tracker.report()

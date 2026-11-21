@@ -7,7 +7,8 @@ import sk.ainet.io.openRandomAccessSource
 import sk.ainet.io.model.LoadingProgress
 import sk.ainet.io.model.LoadingStage
 import sk.ainet.io.model.ProgressReportingLoader
-import sk.ainet.lang.tensor.storage.TensorStorage
+import sk.ainet.lang.memory.ScopeKind
+import sk.ainet.lang.memory.TensorView
 
 /**
  * Streaming reader for sharded/multi-file SafeTensors models.
@@ -111,32 +112,30 @@ public class StreamingShardedSafeTensorsReader private constructor(
     }
 
     /**
-     * Same shape as [loadTensorData] but returns a file-backed
-     * [TensorStorage] instead of a heap [ByteArray]. Lets callers
-     * memory-map the tensor's byte range straight from the shard file
-     * without going through a 2 GB-capped `ByteArray` round-trip.
+     * The path of the shard file that holds [tensor], or `null` when that shard did not come from
+     * a file (a Blob or an in-memory source). With [ShardedTensorInfo.absoluteDataOffset] and
+     * [ShardedTensorInfo.sizeInBytes] it names the tensor's byte range on disk.
+     */
+    public fun shardPathOf(tensor: ShardedTensorInfo): String? = shardPaths[tensor.shardFilename]
+
+    /**
+     * Map the tensor's byte range of its shard file and return a [TensorView] over it, with no
+     * heap array in between (so a tensor above 2 GB works).
      *
-     * The returned [TensorStorage] holds a
-     * [sk.ainet.lang.tensor.storage.BufferHandle.FileBacked] that
-     * references the shard file by absolute path; callers (or the
-     * runtime that consumes the storage) own the mmap lifecycle.
-     *
-     * Sharded analog of
-     * [StreamingSafeTensorsReader.loadTensorStorageMapped]. The
-     * shard's file path is resolved internally from the index — the
-     * caller doesn't need to know which physical file contains the
-     * tensor.
+     * Sharded counterpart of [StreamingSafeTensorsReader.loadTensorViewMapped]: the shard's path
+     * comes from the index, so the caller does not need to know which file holds the tensor.
+     * The mapping lives until `view.storage.close()`, which the caller owns.
      *
      * @param tensor The tensor info from [tensors].
-     * @return [TensorStorage] descriptor with a file-backed buffer
-     *   handle pointing at the shard file's tensor byte range.
+     * @param scope The lifetime the mapping is recorded under.
      * @throws IllegalStateException if the containing shard was not
      *   loaded, or if the per-shard reader does not surface the
      *   tensor (consistency check).
      * @throws UnsupportedOperationException if the shard did not come
-     *   from a file (a Blob or in-memory source has nothing to map).
+     *   from a file (a Blob or in-memory source has nothing to map), or
+     *   on a target without memory-mapped files.
      */
-    public fun loadTensorStorageMapped(tensor: ShardedTensorInfo): TensorStorage {
+    public fun loadTensorViewMapped(tensor: ShardedTensorInfo, scope: ScopeKind = ScopeKind.MODEL): TensorView {
         val reader = shardReaders[tensor.shardFilename]
             ?: throw IllegalStateException("Shard not loaded: ${tensor.shardFilename}")
         val streamingTensor = reader.tensors.firstOrNull { it.name == tensor.name }
@@ -147,20 +146,18 @@ public class StreamingShardedSafeTensorsReader private constructor(
             ?: throw UnsupportedOperationException(
                 "Shard '${tensor.shardFilename}' is not a file (its source has no filePath): mapped loading needs file-backed shards",
             )
-        return reader.loadTensorStorageMapped(streamingTensor, path)
+        return reader.loadTensorViewMapped(streamingTensor, path, scope)
     }
 
     /**
-     * Convenience overload for [loadTensorStorageMapped] that looks up
-     * the tensor by name. Mirrors the [loadTensorData] name-based
-     * overload.
+     * [loadTensorViewMapped] for the tensor called [name].
      *
      * @throws IllegalArgumentException if no tensor matches [name].
      */
-    public fun loadTensorStorageMapped(name: String): TensorStorage {
+    public fun loadTensorViewMapped(name: String, scope: ScopeKind = ScopeKind.MODEL): TensorView {
         val tensor = _tensors.firstOrNull { it.name == name }
             ?: throw IllegalArgumentException("Tensor not found: $name")
-        return loadTensorStorageMapped(tensor)
+        return loadTensorViewMapped(tensor, scope)
     }
 
     override fun close() {
@@ -328,7 +325,7 @@ public class StreamingShardedSafeTensorsReader private constructor(
          * [shardSource] is asked once per shard name in the index (`model-00001-of-00003.safetensors`,
          * …) and answers with an open [RandomAccessSource] the reader owns from then on, or `null` for
          * a shard that is not there. It may suspend, so a browser can open a `Blob` per shard inside
-         * it. Mapped loading ([loadTensorStorageMapped]) is available only for sources that carry a
+         * it. Mapped loading ([loadTensorViewMapped]) is available only for sources that carry a
          * [RandomAccessSource.filePath].
          *
          * @param indexJson The content of `model.safetensors.index.json`

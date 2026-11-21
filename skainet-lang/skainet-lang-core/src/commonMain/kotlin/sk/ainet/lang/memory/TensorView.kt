@@ -263,7 +263,8 @@ public class TensorView(
             else {
                 val ints = s.ints
                 if (ints != null) ints[s.arrayOffset + flat.toInt()].toFloat()
-                else throw UnsupportedOperationException("dense element access over byte storage needs a decoder")
+                // Heap bytes: the little-endian bytes of a file, read like any other byte storage.
+                else readDenseFromBytes(s, flat)
             }
         }
         else -> readDenseFromBytes(s, flat)
@@ -292,6 +293,9 @@ public class TensorView(
             sk.ainet.lang.types.FP64 -> Double.fromBits(bits).toFloat()
             sk.ainet.lang.types.BF16 -> sk.ainet.lang.types.Bf16Codec.decode((bits and 0xFFFF).toInt())
             sk.ainet.lang.types.FP16 -> sk.ainet.lang.types.Fp16Codec.decode((bits and 0xFFFF).toInt())
+            // Signed integers: the bytes were assembled unsigned, so extend the sign from the top bit.
+            sk.ainet.lang.types.Int8, sk.ainet.lang.types.Int16, sk.ainet.lang.types.Int32, sk.ainet.lang.types.Int64 ->
+                ((bits shl (64 - 8 * width)) shr (64 - 8 * width)).toFloat()
             else -> bits.toFloat()
         }
     }
@@ -325,6 +329,44 @@ public class TensorView(
     override fun toString(): String = "TensorView(${id?.canonical ?: "—"}, $format, $shape, $layout, ${storage.id})"
 
     public companion object {
+        /**
+         * A view of [format] over [storage] that holds a tensor's bytes the way a model file has
+         * them: dense elements little-endian in row-major order, or packed blocks in row-major
+         * block order. The bytes are not copied or decoded; `get` decodes on read.
+         *
+         * This is what a streaming reader returns for one tensor, over a heap array or a mapped
+         * file range alike.
+         *
+         * @throws UnsupportedOperationException if no decoder reads [format]'s encoding from raw
+         *   bytes (TurboQuant, `BITNET_PLANES`, `Opaque`); take the raw bytes instead.
+         */
+        public fun ofBytes(storage: Storage, shape: Shape, format: Format, id: TensorId? = null): TensorView {
+            val encoding = format.encoding
+            val needed = format.physicalBytes(shape.volume.toLong())
+            require(needed == null || storage.sizeBytes >= needed) {
+                "storage holds ${storage.sizeBytes} bytes; $format $shape needs $needed"
+            }
+            if (encoding is TensorEncoding.Dense) {
+                val narrow = when (format.dtype) {
+                    sk.ainet.lang.types.FP16 -> NarrowFloatDecoder(sk.ainet.lang.types.Fp16Codec)
+                    sk.ainet.lang.types.BF16 -> NarrowFloatDecoder(sk.ainet.lang.types.Bf16Codec)
+                    else -> null
+                }
+                return TensorView(shape, format, Layout.rowMajor(shape, format), storage, id, narrow)
+            }
+            val spec = encoding.blockSpec
+            val decoder: BlockDecoder? = when {
+                spec == null -> null
+                encoding.isTernary && spec.isPerTensor -> TernaryBlockDecoder(encoding, shape.volume)
+                encoding.isTernary -> TernaryBlockDecoder(encoding)
+                else -> StorageBlockDecoder.orNull(encoding)
+            }
+            if (decoder == null) throw UnsupportedOperationException(
+                "no decoder reads ${encoding.name} from raw bytes; take the tensor's raw bytes instead"
+            )
+            return packed(storage, shape, encoding, decoder, format.dtype, id)
+        }
+
         /** A dense row-major view of [shape] over [storage]. */
         public fun dense(storage: Storage, shape: Shape, dtype: DType = FP32, id: TensorId? = null): TensorView {
             val format = Format.dense(dtype)

@@ -51,11 +51,11 @@ class GgufTernaryLoadTest {
         try {
             JvmRandomAccessSource.open(file).use { src ->
                 val reader = StreamingGGUFReader.open(src)
-                val storage = reader.loadTensorStorage("w_tq1")
-                assertEquals(TensorEncoding.TQ1_0, storage.encoding)
-                assertEquals(FP32, storage.dtype, "ternary weights are logically FP32 (SKEEP-003 rule 3)")
-                assertEquals(54L * 2, storage.encoding.physicalBytes(512), "two 54-byte blocks")
-                assertEquals(1.625, storage.encoding.blockSpec!!.bitsPerElement)
+                val format = reader.loadTensorView("w_tq1").format
+                assertEquals(TensorEncoding.TQ1_0, format.encoding)
+                assertEquals(FP32, format.dtype, "ternary weights are logically FP32 (SKEEP-003 rule 3)")
+                assertEquals(54L * 2, format.encoding.physicalBytes(512), "two 54-byte blocks")
+                assertEquals(1.625, format.encoding.blockSpec!!.bitsPerElement)
 
                 // the plan sees the same geometry the file has
                 val input = reader.planInput(ctx = 128)

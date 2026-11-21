@@ -2,6 +2,11 @@ package sk.ainet.io.safetensors
 
 import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.model.DataType
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.PlatformStorage
+import sk.ainet.lang.memory.ScopeKind
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.*
 import sk.ainet.lang.types.*
@@ -76,7 +81,7 @@ public class StreamingSafeTensorsReader private constructor(
     public fun loadTensorData(tensor: StreamingSafeTensorInfo): ByteArray {
         require(tensor.sizeInBytes <= Int.MAX_VALUE) {
             "Tensor '${tensor.name}' is ${tensor.sizeInBytes} bytes (> 2 GB). " +
-            "Use loadTensorStorageMapped() for file-backed zero-copy access instead."
+            "Use loadTensorViewMapped() for file-backed zero-copy access instead."
         }
         return source.readAt(tensor.absoluteDataOffset, tensor.sizeInBytes.toInt())
     }
@@ -92,58 +97,62 @@ public class StreamingSafeTensorsReader private constructor(
     public fun loadTensorData(tensor: StreamingSafeTensorInfo, buffer: ByteArray, offset: Int = 0): Int {
         require(tensor.sizeInBytes <= Int.MAX_VALUE) {
             "Tensor '${tensor.name}' is ${tensor.sizeInBytes} bytes (> 2 GB). " +
-            "Use loadTensorStorageMapped() for file-backed zero-copy access instead."
+            "Use loadTensorViewMapped() for file-backed zero-copy access instead."
         }
         return source.readAt(tensor.absoluteDataOffset, buffer, offset, tensor.sizeInBytes.toInt())
     }
 
-    // ========== TensorStorage Loading ==========
+    // ========== View Loading ==========
 
     /**
-     * Load a tensor as a [TensorStorage] descriptor with borrowed bytes.
+     * Load a tensor into a heap array and return a [TensorView] over it.
+     *
+     * The view holds the file's bytes as they are: nothing is decoded or copied after the read.
+     * `view.format` says what they are, `view.get` decodes on read, and the storage is read-only.
      */
-    public fun loadTensorStorage(tensor: StreamingSafeTensorInfo): TensorStorage {
+    public fun loadTensorView(tensor: StreamingSafeTensorInfo): TensorView {
         val bytes = loadTensorData(tensor)
-        val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
-        return TensorStorage(
-            shape = shape,
-            dtype = safeTensorsTypeToDType(tensor.dataType),
-            encoding = safeTensorsTypeToEncoding(tensor.dataType),
-            buffer = BufferHandle.Borrowed(bytes, isMutable = false),
-            placement = Placement.CPU_HEAP
-        )
+        return TensorView.ofBytes(Storage.Heap.wrap(bytes, mutable = false), shapeOf(tensor), formatOf(tensor))
     }
 
-    /**
-     * Load a tensor by name as a [TensorStorage] descriptor.
-     */
-    public fun loadTensorStorage(name: String): TensorStorage {
+    /** [loadTensorView] for the tensor called [name]. */
+    public fun loadTensorView(name: String): TensorView {
         val tensor = _tensors.firstOrNull { it.name == name }
             ?: throw IllegalArgumentException("Tensor not found: $name")
-        return loadTensorStorage(tensor)
+        return loadTensorView(tensor)
     }
 
     /**
-     * Create a file-backed [TensorStorage] that references the tensor's bytes
-     * in the original file without loading them into heap.
+     * Map the tensor's byte range of the file at [filePath] and return a [TensorView] over it.
+     * Nothing is read into the heap, so a tensor above 2 GB works.
+     *
+     * The mapping lives until the view's storage is closed: `view.storage.close()` unmaps it,
+     * and the caller owns that call.
      *
      * @param tensor   The tensor info from [tensors] list
-     * @param filePath Path to the SafeTensors file
+     * @param filePath Path to the SafeTensors file this reader reads
+     * @param scope    The lifetime the mapping is recorded under
+     * @throws UnsupportedOperationException on a target without memory-mapped files
      */
-    public fun loadTensorStorageMapped(tensor: StreamingSafeTensorInfo, filePath: String): TensorStorage {
-        val shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
-        return TensorStorage(
-            shape = shape,
-            dtype = safeTensorsTypeToDType(tensor.dataType),
-            encoding = safeTensorsTypeToEncoding(tensor.dataType),
-            buffer = BufferHandle.FileBacked(
-                path = filePath,
-                fileOffset = tensor.absoluteDataOffset,
-                sizeInBytes = tensor.sizeInBytes
-            ),
-            placement = Placement.MMAP_WEIGHTS
-        )
+    public fun loadTensorViewMapped(
+        tensor: StreamingSafeTensorInfo,
+        filePath: String,
+        scope: ScopeKind = ScopeKind.MODEL,
+    ): TensorView {
+        val storage = PlatformStorage.mapFile(filePath, tensor.absoluteDataOffset, tensor.sizeInBytes, scope)
+        return try {
+            TensorView.ofBytes(storage, shapeOf(tensor), formatOf(tensor))
+        } catch (t: Throwable) {
+            storage.close()
+            throw t
+        }
     }
+
+    private fun shapeOf(tensor: StreamingSafeTensorInfo): Shape = Shape(*tensor.shape.map { it.toInt() }.toIntArray())
+
+    /** What the tensor's bytes are: its dtype and its dense encoding. Nothing is loaded. */
+    public fun formatOf(tensor: StreamingSafeTensorInfo): Format =
+        Format(safeTensorsTypeToDType(tensor.dataType), safeTensorsTypeToEncoding(tensor.dataType))
 
     private fun safeTensorsTypeToDType(type: DataType): DType = when (type) {
         DataType.FLOAT32 -> FP32
