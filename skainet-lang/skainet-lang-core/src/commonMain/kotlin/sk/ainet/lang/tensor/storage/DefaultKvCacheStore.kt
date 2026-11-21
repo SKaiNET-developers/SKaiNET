@@ -111,14 +111,6 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
         return readRange(values[layer], layer, startPos, endPos)
     }
 
-    override fun readKeyStorage(layer: Int, startPos: Int, endPos: Int): TensorStorage {
-        return toTensorStorage(readKeys(layer, startPos, endPos), endPos - startPos, keyEncoding)
-    }
-
-    override fun readValueStorage(layer: Int, startPos: Int, endPos: Int): TensorStorage {
-        return toTensorStorage(readValues(layer, startPos, endPos), endPos - startPos, valueEncoding)
-    }
-
     override fun evict(fromPos: Int) {
         require(fromPos in 0..currentSeqLen) {
             "evict fromPos=$fromPos out of range [0, $currentSeqLen]"
@@ -262,29 +254,6 @@ public class DefaultKvCacheStore @kotlin.jvm.JvmOverloads constructor(
             position += run
         }
         return result
-    }
-
-    private fun toTensorStorage(
-        data: FloatArray,
-        seqLen: Int,
-        encoding: TensorEncoding
-    ): TensorStorage {
-        // Convert FloatArray to ByteArray for TensorStorage
-        val bytes = ByteArray(data.size * 4)
-        for (i in data.indices) {
-            val bits = data[i].toRawBits()
-            bytes[i * 4] = (bits and 0xFF).toByte()
-            bytes[i * 4 + 1] = ((bits shr 8) and 0xFF).toByte()
-            bytes[i * 4 + 2] = ((bits shr 16) and 0xFF).toByte()
-            bytes[i * 4 + 3] = ((bits shr 24) and 0xFF).toByte()
-        }
-        return TensorStorage(
-            shape = Shape(numHeads, seqLen, headDim),
-            dtype = FP32,
-            encoding = encoding,
-            buffer = BufferHandle.Owned(bytes),
-            placement = placement
-        )
     }
 
     private fun requireLayerIndex(layer: Int) {

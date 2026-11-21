@@ -40,3 +40,15 @@ public data class StorageMemoryReport(
         append(")")
     }
 }
+
+/**
+ * How the bytes a report describes are held. A view reports [OWNED] when its storage was allocated
+ * for it, [BORROWED] when someone else's array or storage is behind it, [FILE_BACKED] for a mapped
+ * file and [DEVICE_RESIDENT] for device memory.
+ */
+public enum class Ownership {
+    OWNED,
+    BORROWED,
+    FILE_BACKED,
+    DEVICE_RESIDENT
+}

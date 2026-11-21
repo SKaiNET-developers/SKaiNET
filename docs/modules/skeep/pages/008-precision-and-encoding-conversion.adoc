@@ -14,6 +14,7 @@ Origin: the stub inventory behind the operator coverage matrix (https://github.c
 | Phase | What shipped | Where
 
 | B1 | Lossless `repackTo`, lossy `requantizeTo` | https://github.com/SKaiNET-developers/SKaiNET/pull/1470[#1470], 0.63.0
+| B1, moved | The two calls live on `TensorView`: `materialize()` (lossless) and `requantizeTo(encoding)` (lossy). `TensorStorage` is removed (SKEEP-003) | https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]
 | A1 | `PrecisionBoundary`, `dense(dtype = …)`, `stage(id, dtype = …)`, deprecations | https://github.com/SKaiNET-developers/SKaiNET/pull/1469[#1469], 0.63.0
 | A2 | Trace and StableHLO export pinned by `MixedPrecisionExportTest`; a same-dtype boundary no longer records a cast | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492], 0.64.0
 | A3 | `convert` is `@Diff`; gradient check and training through a boundary in `MixedPrecisionBackwardTest` | https://github.com/SKaiNET-developers/SKaiNET/pull/1492[#1492], 0.64.0
@@ -227,6 +228,25 @@ unchecked output cast) is not something to preserve.
 
 ==== Lossless and lossy are different calls
 
+[IMPORTANT]
+====
+*Amended by SKEEP-003 (https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).* `TensorStorage`
+is removed, so the two calls moved to `sk.ainet.lang.memory.TensorView`. The split and the rules
+below are unchanged; only the owner and one name changed:
+
+[cols="1,1",options="header"]
+|===
+| As designed (0.63.0, 0.64.0) | Now
+| `storage.repackTo(TensorEncoding.Dense(4))` | `view.materialize()`
+| `storage.requantizeTo(encoding)` | `view.requantizeTo(encoding)`
+| `repackTo` with a lossy target throws and names `requantizeTo` | `materialize` with a packed target throws and names `requantizeTo`
+| Overloads with a `BufferResolver` | None: a view reads its own storage, whatever kind it is
+| Result is `BufferHandle.Owned` | `materialize` allocates from the given `Scope`; `requantizeTo` returns a view over new heap bytes
+|===
+
+The listing and the behaviour notes that follow describe the design as it shipped first.
+====
+
 [source,kotlin]
 ----
 public class TensorStorage {
@@ -357,7 +377,8 @@ Each phase is a DARC feature with lane sub-issues, linked from the tracking issu
   tree the user wrote and would not help hand-written or imported graphs.
 . Is `TensorStorage` the right owner of `requantizeTo`, or should it be a free function in
   `sk.ainet.lang.tensor.data` next to `Requantizers`, keeping `TensorStorage` a descriptor? +
-  *Resolved:* it is a member of `TensorStorage`, next to `repackTo`.
+  *Resolved:* it is a member of `TensorStorage`, next to `repackTo`. +
+  *Amended (#1507):* `TensorStorage` is removed; `requantizeTo` is a member of `TensorView`, next to `materialize`.
 . Does phase 2 need per-boundary `DTypePolicy` metadata, so that
   `DTypeConstraintResolutionPass` can see and validate the boundaries in a compiled graph? +
   *Resolved: yes, as metadata on the region*
@@ -373,8 +394,8 @@ Each phase is a DARC feature with lane sub-issues, linked from the tracking issu
 
 * `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/dsl/NetworkBuilder.kt`:
   the generic overloads and their stubs
-* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/storage/TensorStorage.kt`:
-  `repackTo`
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/memory/TensorView.kt`:
+  `materialize`, `requantizeTo` (first shipped as `repackTo` / `requantizeTo` on `TensorStorage`, since removed)
 * `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/MixedPrecisionModule.kt`,
   `.../tensor/ops/MixedPrecisionTensorOps.kt`: the scaffold this proposal retires
 * `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/data/Requantizers.kt`

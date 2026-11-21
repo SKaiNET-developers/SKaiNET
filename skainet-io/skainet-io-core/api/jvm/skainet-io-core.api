@@ -36,12 +36,6 @@ public final class sk/ainet/io/FallbackMappedMemoryChunk$Companion {
 	public static synthetic fun fromSource$default (Lsk/ainet/io/FallbackMappedMemoryChunk$Companion;Lsk/ainet/io/RandomAccessSource;Ljava/lang/String;JJILjava/lang/Object;)Lsk/ainet/io/FallbackMappedMemoryChunk;
 }
 
-public final class sk/ainet/io/JvmFileBackedResolver {
-	public static final field INSTANCE Lsk/ainet/io/JvmFileBackedResolver;
-	public final fun createResolver ()Lsk/ainet/lang/tensor/storage/DefaultBufferResolver;
-	public final fun resolveFileBacked (Lsk/ainet/lang/tensor/storage/BufferHandle$FileBacked;)Lsk/ainet/lang/tensor/storage/BufferAccessor;
-}
-
 public final class sk/ainet/io/JvmMappedFile : sk/ainet/io/MappedFile {
 	public static final field Companion Lsk/ainet/io/JvmMappedFile$Companion;
 	public synthetic fun <init> (Ljava/io/RandomAccessFile;Lsk/ainet/lang/tensor/data/MmapTensorSource;JLkotlin/jvm/internal/DefaultConstructorMarker;)V

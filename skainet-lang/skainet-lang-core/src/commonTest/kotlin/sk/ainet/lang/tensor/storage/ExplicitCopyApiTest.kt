@@ -73,30 +73,4 @@ class ExplicitCopyApiTest {
         val intData = copied as sk.ainet.lang.tensor.data.IntArrayTensorData<*>
         assertNotSame(original, intData.buffer)
     }
-
-    // --- TensorStorage bridge with borrowed vs owned ---
-
-    @Test
-    fun tensorStorageFromBorrowedRawBytes() {
-        val rawData = ByteArray(144) // Q4_K block
-        val storage = TensorStorageFactory.fromRawBytes(
-            shape = Shape(256),
-            dtype = FP32,
-            encoding = TensorEncoding.Q4_K,
-            data = rawData
-        )
-        assertEquals(Ownership.BORROWED, storage.ownership)
-    }
-
-    @Test
-    fun tensorStorageFromOwnedRawBytes() {
-        val rawData = ByteArray(144)
-        val storage = TensorStorageFactory.fromRawBytesOwned(
-            shape = Shape(256),
-            dtype = FP32,
-            encoding = TensorEncoding.Q4_K,
-            data = rawData
-        )
-        assertEquals(Ownership.OWNED, storage.ownership)
-    }
 }

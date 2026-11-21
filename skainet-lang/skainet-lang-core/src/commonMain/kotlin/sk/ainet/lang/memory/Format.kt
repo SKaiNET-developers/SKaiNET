@@ -2,7 +2,6 @@ package sk.ainet.lang.memory
 
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.tensor.storage.TensorStorage
 import sk.ainet.lang.types.DType
 
 /**
@@ -48,7 +47,3 @@ public val Tensor<*, *>.formatOrNull: Format?
         val dt = DType.fromWitnessOrNull(this.dtype) ?: return null
         return Format(dt, this.data.encoding ?: TensorEncoding.Dense(dt.sizeInBytes))
     }
-
-/** The [Format] of this storage descriptor: `(dtype, encoding)`. */
-public val TensorStorage.format: Format
-    get() = Format(dtype, encoding)

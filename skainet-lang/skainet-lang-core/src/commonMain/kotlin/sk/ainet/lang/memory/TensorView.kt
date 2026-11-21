@@ -318,12 +318,33 @@ public class TensorView(
      * [targetFormat] owned by [scope]. Everything else in the memory model is a view.
      */
     public fun materialize(targetFormat: Format = Format.dense(FP32), scope: Scope = Scope.Ambient): TensorView {
-        require(targetFormat.isDense) { "materialize targets a dense format; re-quantization is an adapter (#1027)" }
+        require(targetFormat.isDense) { "materialize is lossless and targets a dense format; use requantizeTo for ${targetFormat.encoding.name}" }
         require(targetFormat.dtype == FP32) { "only FP32 materialization is implemented in this milestone" }
         val values = toFloatArray()
         val out = scope.allocateFloats(values.size, id)
         values.copyInto(out.floats!!, out.arrayOffset)
         return TensorView(shape, targetFormat, Layout.rowMajor(shape, targetFormat), out, id)
+    }
+
+    /**
+     * The lossy direction: quantize this view's values into [targetEncoding] and return a view over
+     * the new packed bytes (heap storage, row-major block order). The same quantizers a loader's
+     * requantize step uses run here, so the bytes are identical to a load-time requantize.
+     *
+     * Returns `this` when the view already has [targetEncoding]. The lossless direction (packed or
+     * narrow to dense FP32) is [materialize].
+     *
+     * @throws IllegalArgumentException if no quantizer exists for [targetEncoding], or if the shape
+     *   does not divide into its blocks; both are checked before any value is read.
+     */
+    public fun requantizeTo(targetEncoding: TensorEncoding): TensorView {
+        if (format.encoding == targetEncoding) return this
+        sk.ainet.lang.tensor.data.Requantizers.validateShape(targetEncoding, shape)
+        val quantized = sk.ainet.lang.tensor.data.Requantizers.quantize(targetEncoding, toFloatArray(), shape)
+        val view = quantized.view ?: throw IllegalStateException(
+            "quantizer for ${targetEncoding.name} produced data without a view"
+        )
+        return if (id == null) view else TensorView(view.shape, view.format, view.layout, view.storage, id, view.decoderOrNull())
     }
 
     override fun toString(): String = "TensorView(${id?.canonical ?: "—"}, $format, $shape, $layout, ${storage.id})"

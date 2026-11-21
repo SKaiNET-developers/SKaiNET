@@ -1,7 +1,6 @@
 package sk.ainet.io.gguf
 
-import sk.ainet.io.JvmFileBackedResolver
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.io.JvmMappedMemoryChunk
 import sk.ainet.lang.types.FP32
 import java.io.File
 import java.io.RandomAccessFile
@@ -16,7 +15,7 @@ import kotlin.test.assertTrue
  * Host-side test of the *Android compilation* of the mmap weight path (#921):
  * this source set compiles against androidMain (android.jar nio API), so it
  * proves `MappedGgufWeights`, `MmapFloatTensorData` and the shared
- * `JvmFileBackedResolver` all build and behave on the Android variant —
+ * `JvmMappedMemoryChunk` all build and behave on the Android variant —
  * without a device or emulator (the precise allocation-counter budget gate
  * lives in jvmTest's `MappedGgufHeapBudgetTest`, which exercises the
  * byte-identical shared source).
@@ -95,11 +94,9 @@ class MappedGgufWeightsAndroidHostTest {
                     assertEquals(v, tensor[idx], "big.weight[$idx]")
                 }
 
-                // A file-backed handle + the shared resolver, on the android variant.
+                // The tensor's byte range through the shared mapped chunk, on the android variant.
                 val big = weights.info("big.weight")
-                val accessor = JvmFileBackedResolver.resolveFileBacked(
-                    BufferHandle.FileBacked(file.absolutePath, big.absoluteDataOffset, big.nBytes)
-                )
+                val accessor = JvmMappedMemoryChunk.open(file, offset = big.absoluteDataOffset, length = big.nBytes)
                 try {
                     // First 4 sentinel bytes come back identical through the mmap accessor.
                     val viaAccessor = accessor.readBytes(0, 4)

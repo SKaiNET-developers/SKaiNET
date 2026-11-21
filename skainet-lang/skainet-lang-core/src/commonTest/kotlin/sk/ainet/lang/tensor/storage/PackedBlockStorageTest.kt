@@ -79,17 +79,4 @@ class PackedBlockStorageTest {
         assertEquals(32.0f, floats[31])
     }
 
-    @Test
-    fun packedBlockStorageToTensorStorage() {
-        val data = ByteArray(144)
-        val td = Q4_KBlockTensorData.fromRawBytes(Shape(256), data)
-        val packed = td as PackedBlockStorage
-        val storage = packed.toTensorStorage()
-
-        assertEquals(FP32, storage.dtype)
-        assertEquals(TensorEncoding.Q4_K, storage.encoding)
-        assertEquals(Ownership.BORROWED, storage.ownership)
-        assertEquals(144L, storage.physicalBytes)
-        assertEquals(1024L, storage.logicalBytes) // 256 * 4
-    }
 }

@@ -1,6 +1,5 @@
 package sk.ainet.io
 
-import sk.ainet.lang.tensor.storage.BufferHandle
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -10,8 +9,7 @@ import kotlin.test.assertEquals
 
 /**
  * Host-side test of the *Android compilation* of the shared mmap IO (#921):
- * [JvmMappedMemoryChunk], [MappedRandomAccessSource] and
- * [JvmFileBackedResolver] are java.nio-only (FileChannel.map is API 1) and
+ * [JvmMappedMemoryChunk] and [MappedRandomAccessSource] are java.nio-only (FileChannel.map is API 1) and
  * are compiled into androidMain from the shared `jvmAndroidMain` source
  * directory. This test compiles against the android variant and runs on the
  * host JVM — no device/emulator required.
@@ -53,23 +51,6 @@ class MappedMemoryChunkAndroidHostTest {
             val buf = ByteArray(128)
             assertEquals(128, source.readAt(2048, buf, 0, 128))
             assertContentEquals(payload.copyOfRange(2048, 2048 + 128), buf)
-        }
-    }
-
-    @Test
-    fun `FileBacked handles resolve to mmap-backed accessors`() {
-        val handle = BufferHandle.FileBacked(
-            path = file.absolutePath,
-            fileOffset = 8192,
-            sizeInBytes = 1024,
-        )
-        val accessor = JvmFileBackedResolver.resolveFileBacked(handle)
-        try {
-            assertEquals(1024, accessor.sizeInBytes)
-            assertEquals(payload[8192], accessor.readByte(0))
-            assertContentEquals(payload.copyOfRange(8192, 8192 + 1024), accessor.readBytes(0, 1024))
-        } finally {
-            accessor.close()
         }
     }
 }

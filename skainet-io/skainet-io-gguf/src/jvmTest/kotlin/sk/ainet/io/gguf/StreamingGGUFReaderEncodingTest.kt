@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  * mapping (#928): every quant format with a dedicated encoding must map to it,
  * and formats without one must carry their real byte count in
  * [TensorEncoding.Opaque] — the previous `Opaque(name, 0)` made
- * `TensorStorage.physicalBytes` report 0 and silently corrupted memory
+ * a format's `physicalBytes` report 0 and silently corrupted memory
  * reports and compression ratios.
  */
 class StreamingGGUFReaderEncodingTest {
