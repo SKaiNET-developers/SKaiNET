@@ -26,19 +26,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
-import sk.ainet.lang.tensor.data.MemorySegmentBackedData
 import sk.ainet.lang.tensor.data.MemorySegmentTensorData
-import sk.ainet.lang.tensor.data.Q4MemorySegmentMarker
-import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
-import sk.ainet.lang.tensor.data.Bf16TensorData
-import sk.ainet.lang.tensor.data.NarrowFloatTensorData
-import sk.ainet.lang.types.Bf16Codec
-import sk.ainet.lang.types.Fp16Codec
-import sk.ainet.lang.tensor.data.Q4_0TensorData
-import sk.ainet.lang.tensor.data.Q8_0TensorData
-import sk.ainet.lang.tensor.data.Q8MemorySegmentMarker
-import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
-import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
@@ -160,8 +148,90 @@ internal class DefaultCpuOpsJvm(
         // MemorySegment-backed activation (SKEEP-004 forbids element access over SegmentStorage by
         // design), so such an activation is bulk-copied to the heap once per call first: a
         // decode-step activation is k floats, and the copy is trivial beside the matmul it unlocks.
+        // A Q4_0 / Q8_0 weight in file order over a segment: this tier's Vector API kernels read
+        // the segment where it lies. Before the common lookup, which has no kernel for a segment
+        // without the native library and would decode element by element.
+        if (weight.shape.rank == 2) {
+            segmentPackedWeight(weight.data)?.takeIf { it.blockAxis == 1 }?.let { w ->
+                matmulSegmentPacked(x, w, inputDim = weight.shape[1], outputDim = weight.shape[0], weight)?.let { return it }
+            }
+        }
         segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
         return super.matmulWeightTransposed(x, weight)
+    }
+
+    /** A packed weight's segment and the format its blocks are in. */
+    private class SegmentPackedWeight(
+        @JvmField val segment: java.lang.foreign.MemorySegment,
+        @JvmField val encoding: sk.ainet.lang.tensor.storage.TensorEncoding,
+        /** The axis the view says the blocks run along; the last one for a weight labelled as stored. */
+        @JvmField val blockAxis: Int,
+    )
+
+    /**
+     * The segment behind [data] when its view is Q4_0 or Q8_0 blocks in file order over a
+     * [sk.ainet.lang.memory.SegmentStorage], the two formats the Vector API segment kernels read;
+     * `null` otherwise. Read off the view's format, layout and storage, not off the class
+     * (SKEEP-003, #1507).
+     */
+    private fun segmentPackedWeight(data: TensorData<*, *>): SegmentPackedWeight? {
+        if (data.heapFloats != null) return null
+        val view = data.view ?: return null
+        val layout = view.layout
+        if (!layout.blocked || layout.blockOrder != sk.ainet.lang.memory.BlockOrder.ROW_MAJOR) return null
+        if (layout.offsetElements != 0L) return null
+        val encoding = view.format.encoding
+        if (encoding != sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0 &&
+            encoding != sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0
+        ) return null
+        val storage = view.storage as? sk.ainet.lang.memory.SegmentStorage ?: return null
+        return SegmentPackedWeight(storage.segment(), encoding, layout.blockAxis)
+    }
+
+    /**
+     * `x · Wᵀ` for the file-order `[outputDim, inputDim]` blocks in [w], one kernel call per
+     * activation row. A dense FP32 activation that is itself over a segment is read there for Q8_0
+     * (no heap copy); any other dense activation is taken as a heap array. `null` when the
+     * activation is not dense FP32 or its last dimension is not [inputDim].
+     */
+    private fun <T : DType, V> matmulSegmentPacked(
+        x: Tensor<T, V>,
+        w: SegmentPackedWeight,
+        inputDim: Int,
+        outputDim: Int,
+        weight: Tensor<T, V>,
+    ): Tensor<T, V>? {
+        if (x.dtype != FP32::class || x.shape.rank < 1) return null
+        if (x.shape.dimensions.last() != inputDim) return null
+        val rows = if (inputDim == 0) 0 else x.shape.volume / inputDim
+        val out = FloatArray(rows * outputDim)
+        val q8 = w.encoding == sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0
+        val xSegment = if (q8) segmentFloatWindow(x.data) else null
+        if (xSegment != null) {
+            for (row in 0 until rows) {
+                JvmQuantizedVectorKernels.matmulF32Q8_0MemSegInput(
+                    xSegment.segment, xSegment.byteOffset + row.toLong() * inputDim * 4,
+                    w.segment, 0L, inputDim, outputDim, out, row * outputDim,
+                )
+            }
+        } else {
+            // The activation as one FloatArray: its own array when it is heap floats from index 0,
+            // otherwise a copy through its own (offset-aware) copyToFloatArray (#993, #1145/#1146).
+            // A packed activation (encoding != null) is not for these kernels.
+            val input: FloatArray = floatsFromZero(x.data)
+                ?: if (x.data.encoding == null) x.data.copyToFloatArray() else return null
+            for (row in 0 until rows) {
+                val rowInput = if (rows == 1) input else input.copyOfRange(row * inputDim, (row + 1) * inputDim)
+                if (q8) {
+                    JvmQuantizedVectorKernels.matmulF32Q8_0MemSeg(rowInput, w.segment, 0L, inputDim, outputDim, out, row * outputDim)
+                } else {
+                    JvmQuantizedVectorKernels.matmulF32Q4_0MemSeg(rowInput, w.segment, 0L, inputDim, outputDim, out, row * outputDim)
+                }
+            }
+        }
+        val outShape = if (x.shape.rank == 2) Shape(rows, outputDim)
+        else Shape(*(x.shape.dimensions.copyOf(x.shape.rank - 1) + outputDim))
+        return floatResult(outShape, x.dtype, out, x, weight)
     }
 
     /** The vectorised feed-order kernels are this tier's fast path for a packed weight (#1096). */
@@ -170,7 +240,7 @@ internal class DefaultCpuOpsJvm(
     /**
      * A heap FP32 copy of an activation whose bytes live off-heap, or null when [x] is not that
      * shape. Two producers exist on this tier: TensorData that is itself segment-backed
-     * ([MemorySegmentBackedData]), and TensorData whose VIEW presents a
+     * (`MemorySegmentTensorData`), and TensorData whose VIEW presents a
      * [sk.ainet.lang.memory.SegmentStorage] (SKEEP-004 off-heap scope allocations).
      */
     private fun <T : DType, V> segmentActivationToHeap(x: Tensor<T, V>): Tensor<T, V>? {
@@ -279,6 +349,10 @@ internal class DefaultCpuOpsJvm(
         java.lang.foreign.MemorySegment.copy(seg.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, seg.byteOffset, arr, 0, count)
         return arr to 0
     }
+
+    private val NARROW_FLOAT_BYTES: Int = 2
+    private val NARROW_FLOAT_ENCODING: sk.ainet.lang.tensor.storage.TensorEncoding =
+        sk.ainet.lang.tensor.storage.TensorEncoding.Dense(NARROW_FLOAT_BYTES)
 
     /** A dense FP32 segment and the byte offset of element 0. */
     private class SegmentWindow(@JvmField val segment: java.lang.foreign.MemorySegment, @JvmField val byteOffset: Long)
@@ -526,22 +600,12 @@ internal class DefaultCpuOpsJvm(
             val rows = tensor.shape[0]
             val cols = tensor.shape[1]
             val data = tensor.data
-            // Lazy transpose for Q4/Q8 MemorySegment data: swap shape, keep data.
-            // The quantized matmul kernel accesses the segment directly with
-            // (inputDim, outputDim) parameters derived from the transposed shape,
-            // so physical data reordering is not needed.
-            if (data is Q4MemorySegmentMarker) {
-                val td = data as Q4MemorySegmentTensorData
-                val transposed = Q4MemorySegmentTensorData(Shape(cols, rows), td.segment, td.segmentByteOffset)
-                @Suppress("UNCHECKED_CAST")
-                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
-            }
-            if (data is Q8MemorySegmentMarker) {
-                val td = data as Q8MemorySegmentTensorData
-                val transposed = Q8MemorySegmentTensorData(Shape(cols, rows), td.segment, td.segmentByteOffset)
-                @Suppress("UNCHECKED_CAST")
-                return newTensor(transposed as TensorData<T, V>, tensor.dtype, tensor)
-            }
+            // A packed Q4_0 / Q8_0 weight over a segment is not intercepted here any more (#1507):
+            // it has a view that says "blocked, file order", so the common `transpose` returns
+            // the `Wᵀ` marker for it as for every packed weight, and `matmulWeightTransposed`
+            // below hands the segment to the segment kernels. The shape swap this replaced
+            // produced a tensor whose label disagreed with its bytes.
+            //
             // Q4_K (ByteArray-backed `Q4_KBlockTensorData`) transpose used to be
             // intercepted here with a bare shape swap, on the claim that
             // `JvmQuantizedVectorKernels.matmulQ4_KVec`'s `(blockIdx * outputDim + o)`
@@ -564,17 +628,18 @@ internal class DefaultCpuOpsJvm(
             // ofConfined() builds leaked an arena per call, blowing 32+ GiB
             // of direct memory in inference loops (every layer × every
             // forward pass).
-            if (data is MemorySegmentBackedData) {
+            // Dense FP32 over a segment, found by the view (never a packed segment weight).
+            val src = segmentFloatWindow(data)
+            if (src != null) {
                 val arena = Arena.ofAuto()
                 val result = MemorySegmentTensorData<T>(Shape(cols, rows), arena)
-                val src = data as MemorySegmentBackedData
                 val floatLayout = java.lang.foreign.ValueLayout.JAVA_FLOAT
                 // Bulk-load source into FloatArray, transpose via tight scalar
                 // loop (JIT auto-vectorizes), bulk-write destination. Replaces
                 // O(rows*cols) per-element VarHandle.get/set which dominated
                 // attention-path transposes.
                 val srcArr = FloatArray(rows * cols)
-                java.lang.foreign.MemorySegment.copy(src.segment, floatLayout, src.segmentByteOffset, srcArr, 0, rows * cols)
+                java.lang.foreign.MemorySegment.copy(src.segment, floatLayout, src.byteOffset, srcArr, 0, rows * cols)
                 val dstArr = FloatArray(rows * cols)
                 for (r in 0 until rows) {
                     val rowBase = r * cols
@@ -811,18 +876,25 @@ internal class DefaultCpuOpsJvm(
     }
 
     /**
-     * Dispatch to vectorized quantized matmul kernels for Q8_0 and Q4_K weights.
-     * Input must be FP32, weights can be Q8_0TensorData or Q4_KTensorData.
-     * Also supports MemorySegment-backed quantized tensor data.
+     * `FP32 input × packed or narrow-float weight` as the right-hand operand, every arm chosen
+     * from the weight's view (format, layout, storage), none from its class.
      */
     private fun <T : DType, V> chooseQuantizedMatmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         // Input must be FP32
         if (a.dtype != FP32::class) return null
         if (b.shape.rank != 2) return null
         if (a.shape.rank < 1) return null
+        // A segment-backed Q4_0 / Q8_0 right-hand operand: its bytes are the file-order
+        // `[out, in]` weight whatever the operand is labelled, which is how this tier has always
+        // read one (the segment counterpart of the feed-order contract in the common code, #973).
+        // Callers should pass the `[out, in]` weight to `matmulWeightTransposed`, or its
+        // `transpose`, which arrives there by the marker. Before the heap lookup, whose kernels
+        // read heap bytes.
+        segmentPackedWeight(b.data)?.let { w ->
+            return matmulSegmentPacked(a, w, inputDim = b.shape[0], outputDim = b.shape[1], b)
+        }
         // The heap block formats: the kernel registered for the weight's format, looked up by key
-        // in the common code (SKEEP-003, #1507). What is left below is narrow floats and the
-        // MemorySegment weights, which do not have a view yet.
+        // in the common code (SKEEP-003, #1507). What is left below is narrow floats.
         chooseQuantizedMatmulHeap(a, b)?.let { return it }
         if (a.shape.rank == 2) return chooseQuantizedMatmul2D(a, b)
 
@@ -845,146 +917,51 @@ internal class DefaultCpuOpsJvm(
         return reshape(result2d, Shape(leading + outputDim))
     }
 
+    /**
+     * `FP32 [batch, in] × narrow-float [in, out]`: the FP16 / BF16 SGEMM kernels read the weight at
+     * two bytes per element. The weight is recognised by its view (dense 2-byte floats, gap-free
+     * row-major, on the heap), not by its class (SKEEP-003, #1507); a weight relaid input-major has
+     * a strided view and is not taken here.
+     */
     private fun <T : DType, V> chooseQuantizedMatmul2D(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         val bData = b.data
-        val bShape = b.shape
-
         val batchSize = a.shape[0]
         val inputDim = a.shape[1]
-        val weightInputDim = bShape[0]
-        val outputDim = bShape[1]
+        val outputDim = b.shape[1]
+        if (inputDim != b.shape[0]) return null
+        if (bData.heapFloats != null) return null
 
-        if (inputDim != weightInputDim) return null
-
-        // Fast path: MemorySegment input × Q8 MemorySegment weights — avoid heap copy entirely
-        val aData = a.data
-        if (aData is MemorySegmentBackedData && bData is Q8MemorySegmentMarker) {
-            return chooseQ8MemSegInputMatmul(aData, bData, batchSize, inputDim, outputDim, a)
+        val bView = bData.view ?: return null
+        if (bView.format.encoding != NARROW_FLOAT_ENCODING || !bView.isContiguous) return null
+        // The dtype selects the kernel: the two formats have different bit layouts, so decoding
+        // F16 bytes with the BF16 kernel would yield silent garbage.
+        val kernel = when (bView.format.dtype) {
+            sk.ainet.lang.types.BF16 -> bf16MatmulKernel
+            sk.ainet.lang.types.FP16 -> fp16MatmulKernel
+            else -> return null
         }
+        val heap = bView.storage as? sk.ainet.lang.memory.Storage.Heap ?: return null
+        val weightBytes = heap.bytes ?: return null
+        val weightOffset = heap.arrayOffset + (bView.layout.offsetElements * NARROW_FLOAT_BYTES).toInt()
 
         // The activation as one FloatArray: its own array when it is heap floats from index 0,
         // otherwise a copy. Any other *dense* FP32 activation — segment-backed, a slab window from
         // a ScopedExecutionContext forward (#1145/#1146), a view-only wrapper — copies out through
-        // its own (offset-aware) copyToFloatArray. Bailing out here instead used to drop these
-        // activations to matmulGeneric, whose per-element get() on a quantized weight returns raw
-        // codes, not values — silently wrong logits, the #993 class of bug. A packed/encoded
-        // *activation* (encoding != null) still bails: this chooser's kernels want dense FP32 input.
+        // its own (offset-aware) copyToFloatArray. A packed/encoded *activation* (encoding != null)
+        // bails: this kernel wants dense FP32 input.
+        val aData = a.data
         val inputBuffer: FloatArray = floatsFromZero(aData)
             ?: if (aData.encoding == null) aData.copyToFloatArray() else return null
 
-        return when (bData) {
-            is NarrowFloatTensorData -> {
-                // Narrow floats are dense (not block-quantized) and the kernel SPI is a
-                // full SGEMM with `(m, n, k)` strides — no per-batch loop needed,
-                // unlike the matvec-shaped Q4_K / Q8_0 / Q6_K branches.
-                //
-                // The codec selects the kernel: the two formats have different bit layouts,
-                // so decoding F16 bytes with the BF16 kernel would yield silent garbage.
-                val kernel = when (bData.codec) {
-                    Bf16Codec -> bf16MatmulKernel
-                    Fp16Codec -> fp16MatmulKernel
-                    else -> null
-                }
-                if (kernel == null) {
-                    null
-                } else {
-                    val outBuffer = FloatArray(batchSize * outputDim)
-                    kernel.matmul(
-                        inputBuffer, 0, inputDim,
-                        bData.packedData, 0, outputDim * NarrowFloatTensorData.BYTES_PER_ELEMENT,
-                        outBuffer, 0, outputDim,
-                        batchSize, outputDim, inputDim,
-                    )
-                    floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
-                }
-            }
-            // Q6_K / Q5_1 / Q5_0 dispatch is handled in DefaultCpuOpsBase via the kernel
-            // registry (block-major, shared with Native); not intercepted here.
-            // MemorySegment-backed quantized weights (Q4/Q8) — dispatch to MemorySegment kernels
-            is MemorySegmentBackedData -> {
-                chooseQuantizedMatmulMemSeg(inputBuffer, bData, batchSize, inputDim, outputDim, a)
-            }
-            else -> null
-        }
-    }
-
-    /**
-     * Dispatch quantized matmul when weight data is MemorySegment-backed.
-     * The concrete type is checked via marker interfaces set during weight loading.
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun <T : DType, V> chooseQuantizedMatmulMemSeg(
-        inputBuffer: FloatArray,
-        bData: MemorySegmentBackedData,
-        batchSize: Int,
-        inputDim: Int,
-        outputDim: Int,
-        a: Tensor<T, V>,
-    ): Tensor<T, V>? {
+        // Narrow floats are dense (not block-quantized) and the kernel SPI is a full SGEMM with
+        // `(m, n, k)` strides — no per-batch loop needed.
         val outBuffer = FloatArray(batchSize * outputDim)
-        when (bData) {
-            is Q4MemorySegmentMarker -> {
-                for (batch in 0 until batchSize) {
-                    val batchInput = if (batchSize == 1) inputBuffer
-                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    JvmQuantizedVectorKernels.matmulF32Q4_0MemSeg(
-                        batchInput,
-                        bData.segment,
-                        bData.segmentByteOffset,
-                        inputDim,
-                        outputDim,
-                        outBuffer,
-                        batch * outputDim,
-                    )
-                }
-            }
-            is Q8MemorySegmentMarker -> {
-                for (batch in 0 until batchSize) {
-                    val batchInput = if (batchSize == 1) inputBuffer
-                    else inputBuffer.copyOfRange(batch * inputDim, (batch + 1) * inputDim)
-                    JvmQuantizedVectorKernels.matmulF32Q8_0MemSeg(
-                        batchInput,
-                        bData.segment,
-                        bData.segmentByteOffset,
-                        inputDim,
-                        outputDim,
-                        outBuffer,
-                        batch * outputDim,
-                    )
-                }
-            }
-            else -> return null
-        }
-        return floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
-    }
-
-    /**
-     * MemorySegment input × Q8 MemorySegment weights — zero-copy path that avoids
-     * materializing input as a heap FloatArray.
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun <T : DType, V> chooseQ8MemSegInputMatmul(
-        aData: MemorySegmentBackedData,
-        bData: Q8MemorySegmentMarker,
-        batchSize: Int,
-        inputDim: Int,
-        outputDim: Int,
-        a: Tensor<T, V>,
-    ): Tensor<T, V> {
-        val outBuffer = FloatArray(batchSize * outputDim)
-        for (batch in 0 until batchSize) {
-            val inputByteOffset = aData.segmentByteOffset + batch.toLong() * inputDim * 4
-            JvmQuantizedVectorKernels.matmulF32Q8_0MemSegInput(
-                aData.segment,
-                inputByteOffset,
-                bData.segment,
-                bData.segmentByteOffset,
-                inputDim,
-                outputDim,
-                outBuffer,
-                batch * outputDim,
-            )
-        }
+        kernel.matmul(
+            inputBuffer, 0, inputDim,
+            weightBytes, weightOffset, outputDim * NARROW_FLOAT_BYTES,
+            outBuffer, 0, outputDim,
+            batchSize, outputDim, inputDim,
+        )
         return floatResult(Shape(batchSize, outputDim), a.dtype, outBuffer)
     }
 

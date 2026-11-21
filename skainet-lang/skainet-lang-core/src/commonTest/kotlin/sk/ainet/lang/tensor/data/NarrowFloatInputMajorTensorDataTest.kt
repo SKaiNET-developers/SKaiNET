@@ -67,6 +67,27 @@ class NarrowFloatInputMajorTensorDataTest {
     }
 
     @Test
+    fun `the view reads the logical elements and says the bytes are not row-major`() {
+        for (codec in listOf(Fp16Codec, Bf16Codec)) {
+            val data = NarrowFloatInputMajorTensorData.fromRowMajor(
+                Shape(rows, cols), rowMajorBytes(codec), codec,
+            )
+            val view = data.view
+            assertEquals(Shape(rows, cols), view.shape)
+            assertEquals(codec.dtype, view.format.dtype)
+            assertEquals(sk.ainet.lang.tensor.storage.TensorEncoding.Dense(2), view.format.encoding)
+            for (r in 0 until rows) for (c in 0 until cols) {
+                assertEquals(values[r * cols + c], view.get(r, c), "view.get($r, $c)")
+            }
+            assertEquals(false, view.isContiguous, "input-major bytes are a strided view of [rows, cols]")
+            // The transpose is the buffer as it lies: gap-free row-major [cols, rows].
+            val t = view.transpose()
+            assertEquals(Shape(cols, rows), t.shape)
+            assertEquals(true, t.isContiguous)
+        }
+    }
+
+    @Test
     fun `transposedView shares the buffer and reads as the transpose`() {
         val data = NarrowFloatInputMajorTensorData.fromRowMajor(
             Shape(rows, cols), rowMajorBytes(Fp16Codec), Fp16Codec,
