@@ -46,14 +46,14 @@ class ViewOfBytesTest {
 
     @Test
     fun denseFp32BytesAreReadLittleEndianWithoutACopy() {
-        val values = floatArrayOf(1f, -2.5f, 3.25f, 0f, 1e-3f, -7f)
+        val values = floatArrayOf(1f, -2.5f, 3.25f, 0f, 0.125f, -7f)
         val bytes = le32(IntArray(values.size) { values[it].toRawBits() })
         val view = TensorView.ofBytes(heap(bytes), Shape(2, 3), Format.dense(FP32))
 
         assertSame(bytes, (view.storage as Storage.Heap).bytes, "the view is over the array it was given")
         assertFalse(view.isMutable)
         assertEquals(-2.5f, view.get(0, 1))
-        assertEquals(1e-3f, view.get(1, 1))
+        assertEquals(0.125f, view.get(1, 1))
         assertContentEquals(values, view.toFloatArray())
     }
 
