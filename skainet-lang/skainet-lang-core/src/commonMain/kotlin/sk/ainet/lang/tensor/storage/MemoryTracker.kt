@@ -21,6 +21,36 @@ public class MemoryTracker {
     }
 
     /**
+     * Record what [view] says about itself under [name]: its format, the bytes it stands for and
+     * the bytes it holds, and where its storage lives. A view over a mapped file counts as
+     * file-backed; a view over storage that someone else owns counts as borrowed.
+     */
+    public fun record(name: String, view: sk.ainet.lang.memory.TensorView) {
+        val storage = view.storage
+        val mapped = storage.domain == MemoryDomain.MMAP_FILE
+        entries.add(
+            TrackedEntry(
+                name,
+                StorageMemoryReport(
+                    shape = view.shape,
+                    dtype = view.format.dtype,
+                    encoding = view.format.encoding,
+                    ownership = when {
+                        mapped -> Ownership.FILE_BACKED
+                        storage.owner is sk.ainet.lang.memory.Owner.Owned -> Ownership.OWNED
+                        else -> Ownership.BORROWED
+                    },
+                    placement = Placement(domain = storage.domain),
+                    logicalBytes = view.elementCount * view.format.dtype.sizeInBytes,
+                    physicalBytes = view.format.physicalBytes(view.elementCount) ?: storage.sizeBytes,
+                    isFileBacked = mapped,
+                    isMutable = view.isMutable,
+                ),
+            )
+        )
+    }
+
+    /**
      * Record an explicit copy event (for copy-tracing).
      *
      * [sourceName] is aggregated per source, so reports can attribute copy

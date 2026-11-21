@@ -468,7 +468,7 @@ class GGUFReader(
             val nBytesLong = numBlocks * typeSize.toLong()
             require(nBytesLong <= Int.MAX_VALUE) {
                 "Tensor '$tensorName' is $nBytesLong bytes (> 2 GB). " +
-                "Use StreamingGGUFReader with loadTensorStorageMapped() instead."
+                "Use StreamingGGUFReader with loadTensorViewMapped() instead."
             }
             val nBytes = nBytesLong.toInt()
             val dataOffs = startOffs + offsetTensor[0].toInt()

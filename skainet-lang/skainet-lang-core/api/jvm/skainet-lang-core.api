@@ -1395,6 +1395,19 @@ public abstract class sk/ainet/lang/memory/Storage$OffHeap : sk/ainet/lang/memor
 	public fun getDomain ()Lsk/ainet/lang/tensor/storage/MemoryDomain;
 }
 
+public final class sk/ainet/lang/memory/StorageBlockDecoder : sk/ainet/lang/memory/BlockDecoder {
+	public static final field Companion Lsk/ainet/lang/memory/StorageBlockDecoder$Companion;
+	public synthetic fun <init> (II[BLsk/ainet/lang/tensor/storage/PackedBlockStorage;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decodeBlock (Lsk/ainet/lang/memory/Storage;J[FI)V
+	public fun decodeElement (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/memory/Layout;J)F
+	public fun getBlockSize ()I
+	public fun getBytesPerBlock ()I
+}
+
+public final class sk/ainet/lang/memory/StorageBlockDecoder$Companion {
+	public final fun orNull (Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/memory/StorageBlockDecoder;
+}
+
 public final class sk/ainet/lang/memory/StorageClosedException : java/lang/IllegalStateException {
 	public synthetic fun <init> (JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (JLsk/ainet/lang/tensor/TensorId;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -1453,6 +1466,8 @@ public final class sk/ainet/lang/memory/TensorView {
 public final class sk/ainet/lang/memory/TensorView$Companion {
 	public final fun dense (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/TensorView;
 	public static synthetic fun dense$default (Lsk/ainet/lang/memory/TensorView$Companion;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
+	public final fun ofBytes (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/tensor/TensorId;)Lsk/ainet/lang/memory/TensorView;
+	public static synthetic fun ofBytes$default (Lsk/ainet/lang/memory/TensorView$Companion;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/memory/Format;Lsk/ainet/lang/tensor/TensorId;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
 	public final fun packed (Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/BlockDecoder;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/BlockOrder;)Lsk/ainet/lang/memory/TensorView;
 	public static synthetic fun packed$default (Lsk/ainet/lang/memory/TensorView$Companion;Lsk/ainet/lang/memory/Storage;Lsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/TensorEncoding;Lsk/ainet/lang/memory/BlockDecoder;Lsk/ainet/lang/types/DType;Lsk/ainet/lang/tensor/TensorId;Lsk/ainet/lang/memory/BlockOrder;ILjava/lang/Object;)Lsk/ainet/lang/memory/TensorView;
 }
@@ -7588,6 +7603,7 @@ public final class sk/ainet/lang/tensor/storage/MemoryDomain : java/lang/Enum {
 public final class sk/ainet/lang/tensor/storage/MemoryTracker {
 	public fun <init> ()V
 	public final fun clear ()V
+	public final fun record (Ljava/lang/String;Lsk/ainet/lang/memory/TensorView;)V
 	public final fun record (Ljava/lang/String;Lsk/ainet/lang/tensor/storage/TensorStorage;)V
 	public final fun recordCopy (Ljava/lang/String;J)V
 	public final fun report ()Lsk/ainet/lang/tensor/storage/AggregateMemoryReport;

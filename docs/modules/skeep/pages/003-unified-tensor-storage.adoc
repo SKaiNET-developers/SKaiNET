@@ -21,7 +21,7 @@ https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
 
 | One abstraction owns bytes, ownership enforced
 | Partly
-| Enforcement is tested (`StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest`). `TensorStorage` and `BufferHandle` still exist beside `Storage`, and the streaming readers' `loadTensorStorage*` return the old type (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502], https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
+| Enforcement is tested (`StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest`). `TensorStorage` and `BufferHandle` still exist beside `Storage`, but nothing outside their package produces them any more: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`) and the compiler's export path has its own `ConstantSource` (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502], https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
 
 | One view mechanism
 | Partly

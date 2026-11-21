@@ -12,23 +12,26 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.io.buffered
 import kotlinx.io.files.Path as IoPath
 import kotlinx.io.files.SystemFileSystem
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.lang.tensor.storage.MemoryDomain
+import sk.ainet.lang.types.FP32
+import kotlin.test.assertContentEquals
+import kotlin.test.assertSame
 
 /**
  * JVM-only end-to-end coverage of [StreamingShardedSafeTensorsReader],
- * focused on the `loadTensorStorageMapped` entry points added to support
- * file-backed `TensorStorage` reads on tensors that exceed the JVM
- * `ByteArray` limit (used by the Gemma 4 PLE token-embedding table).
+ * focused on the `loadTensorViewMapped` entry points, which read a tensor
+ * from a mapped shard file so that one above the JVM `ByteArray` limit
+ * works (the Gemma 4 PLE token-embedding table).
  *
  * Builds a real tiny single-shard SafeTensors file via [SafeTensorsWriter]
  * and a hand-crafted index JSON, opens via the sharded reader, and
- * verifies the returned [sk.ainet.lang.tensor.storage.TensorStorage]
- * carries the right metadata and a [BufferHandle.FileBacked] handle.
+ * verifies that the returned view has the right metadata and reads the
+ * file's values.
  */
 class StreamingShardedSafeTensorsReaderJvmTest {
 
     @Test
-    fun `loadTensorStorageMapped returns file-backed storage with correct metadata`() {
+    fun `loadTensorViewMapped returns a view over the mapped shard`() {
         val tempDir = Files.createTempDirectory("sharded-mapped-")
         try {
             val shardName = "model.safetensors"
@@ -57,20 +60,28 @@ class StreamingShardedSafeTensorsReaderJvmTest {
                     assertEquals("test.weight", reader.tensors[0].name)
 
                     // 1) Look-up by name overload.
-                    val byName = reader.loadTensorStorageMapped("test.weight")
-                    assertEquals(listOf(2, 2), byName.shape.dimensions.toList())
-                    assertTrue(byName.isFileBacked)
-                    val handle = byName.buffer
-                    assertTrue(handle is BufferHandle.FileBacked, "Expected FileBacked, got ${handle::class}")
-                    handle as BufferHandle.FileBacked
-                    assertEquals(shardPath.toString(), handle.path)
-                    assertEquals(16L, handle.sizeInBytes) // 4 floats × 4 bytes
+                    val byName = reader.loadTensorViewMapped("test.weight")
+                    try {
+                        assertEquals(listOf(2, 2), byName.shape.dimensions.toList())
+                        assertSame(FP32, byName.format.dtype)
+                        assertEquals(MemoryDomain.MMAP_FILE, byName.storage.domain)
+                        assertEquals(16L, byName.storage.sizeBytes) // 4 floats × 4 bytes
+                        assertContentEquals(data, byName.toFloatArray())
+                    } finally {
+                        byName.storage.close()
+                    }
+                    assertEquals(shardPath.toString(), reader.shardPathOf(reader.tensors[0]))
 
                     // 2) Look-up by ShardedTensorInfo overload — must produce
-                    // the same TensorStorage shape.
-                    val byInfo = reader.loadTensorStorageMapped(reader.tensors[0])
-                    assertEquals(byName.shape.dimensions.toList(), byInfo.shape.dimensions.toList())
-                    assertTrue(byInfo.isFileBacked)
+                    // the same view.
+                    val byInfo = reader.loadTensorViewMapped(reader.tensors[0])
+                    try {
+                        assertEquals(listOf(2, 2), byInfo.shape.dimensions.toList())
+                        assertEquals(MemoryDomain.MMAP_FILE, byInfo.storage.domain)
+                        assertContentEquals(data, byInfo.toFloatArray())
+                    } finally {
+                        byInfo.storage.close()
+                    }
                 }
             }
         } finally {
@@ -79,7 +90,7 @@ class StreamingShardedSafeTensorsReaderJvmTest {
     }
 
     @Test
-    fun `loadTensorStorageMapped throws on missing tensor name`() {
+    fun `loadTensorViewMapped throws on missing tensor name`() {
         val tempDir = Files.createTempDirectory("sharded-mapped-missing-")
         try {
             val shardPath = tempDir.resolve("model.safetensors")
@@ -93,7 +104,7 @@ class StreamingShardedSafeTensorsReaderJvmTest {
 
             runBlocking {
                 StreamingShardedSafeTensorsReader.openFromIndex(indexPath.toString()).use { reader ->
-                    val thrown = runCatching { reader.loadTensorStorageMapped("missing.weight") }
+                    val thrown = runCatching { reader.loadTensorViewMapped("missing.weight") }
                         .exceptionOrNull()
                     assertNotNull(thrown, "Expected an exception for missing tensor name")
                     assertTrue(thrown is IllegalArgumentException)

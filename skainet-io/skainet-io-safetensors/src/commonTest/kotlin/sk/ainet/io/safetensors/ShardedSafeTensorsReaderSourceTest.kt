@@ -3,7 +3,6 @@ package sk.ainet.io.safetensors
 import kotlinx.coroutines.test.runTest
 import sk.ainet.io.ByteArrayRandomAccessSource
 import sk.ainet.io.RandomAccessSource
-import sk.ainet.lang.tensor.storage.BufferHandle
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -54,7 +53,7 @@ class ShardedSafeTensorsReaderSourceTest {
         assertContentEquals(ShardFixtures.fp32Bytes(ShardFixtures.alphaValues), reader.loadTensorData("alpha.weight"))
         assertContentEquals(ShardFixtures.bf16Bytes(ShardFixtures.bravoValues), reader.loadTensorData("bravo.weight"))
 
-        val mapped = assertFailsWith<UnsupportedOperationException> { reader.loadTensorStorageMapped(zulu) }
+        val mapped = assertFailsWith<UnsupportedOperationException> { reader.loadTensorViewMapped(zulu) }
         assertTrue(mapped.message!!.contains("filePath"), mapped.message)
 
         assertTrue(opened.values.all { it.closed == 0 }, "sources stay open while the reader is")
@@ -67,10 +66,11 @@ class ShardedSafeTensorsReaderSourceTest {
         val reader = StreamingShardedSafeTensorsReader.openFromIndexContent(index, { name ->
             shards[name]?.let { Probe(it, filePath = "/models/$name") }
         })
-        val storage = reader.loadTensorStorageMapped("alpha.weight")
-        val handle = storage.buffer as BufferHandle.FileBacked
-        assertEquals("/models/${ShardFixtures.SHARD_1}", handle.path)
-        assertEquals(ShardFixtures.alphaValues.size * 4L, handle.sizeInBytes)
+        // The reader knows the file behind the shard, which is what mapped loading needs.
+        // (Mapping itself needs a real file and a target with mmap: see the JVM test.)
+        val alpha = reader.tensors.single { it.name == "alpha.weight" }
+        assertEquals("/models/${ShardFixtures.SHARD_1}", reader.shardPathOf(alpha))
+        assertEquals(ShardFixtures.alphaValues.size * 4L, alpha.sizeInBytes)
         reader.close()
     }
 
