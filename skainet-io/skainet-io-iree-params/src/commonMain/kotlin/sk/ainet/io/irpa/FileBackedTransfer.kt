@@ -1,13 +1,12 @@
 package sk.ainet.io.irpa
 
 import kotlinx.io.Sink
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.compile.hlo.ConstantSource
 
 /**
- * Stream the bytes behind a [BufferHandle.FileBacked] handle directly
- * into [sink].
+ * Stream the bytes of a [ConstantSource.FileRange] directly into [sink].
  *
- * The whole point of the FileBacked variant is that the tensor lives
+ * The whole point of a file range is that the tensor lives
  * as a byte range in a source file — the GGUF or safetensors blob on
  * disk. Under [IrpaWriter], that range blits verbatim into the
  * `.irpa` archive's storage segment with no intermediate heap copy,
@@ -22,11 +21,11 @@ import sk.ainet.lang.tensor.storage.BufferHandle
  * undermine the "zero-copy ingestion" contract callers rely on.
  *
  * Implementations MUST:
- *  - Respect [BufferHandle.FileBacked.fileOffset] as the starting
+ *  - Respect [ConstantSource.FileRange.fileOffset] as the starting
  *    byte in the file, not in any mapped window.
- *  - Write exactly [BufferHandle.FileBacked.sizeInBytes] bytes.
+ *  - Write exactly [ConstantSource.FileRange.sizeInBytes] bytes.
  *  - Not flush or close [sink]; the caller manages lifecycle.
  *  - Close any OS resources they open (file descriptors, mapped
  *    regions) before returning, regardless of exceptions.
  */
-internal expect fun writeFileBackedBytes(sink: Sink, handle: BufferHandle.FileBacked)
+internal expect fun writeFileRangeBytes(sink: Sink, handle: ConstantSource.FileRange)

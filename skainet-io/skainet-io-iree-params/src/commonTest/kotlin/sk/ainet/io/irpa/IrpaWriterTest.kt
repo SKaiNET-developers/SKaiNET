@@ -3,7 +3,7 @@ package sk.ainet.io.irpa
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import sk.ainet.compile.hlo.ExternalParameterRef
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.compile.hlo.ConstantSource
 import sk.ainet.lang.tensor.storage.TensorEncoding
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -156,23 +156,21 @@ class IrpaWriterTest {
     }
 
     @Test
-    fun testOwnedBufferHandleWithOffsetAndBorrowedBoth() {
-        // Sanity-check that both BufferHandle flavors land bytes
-        // unmolested — important because Owned/Borrowed come from
-        // different ingestion paths (Owned from in-memory serializers,
-        // Borrowed from caller-supplied arrays, and eventually Mapped
-        // from PR E's mmap work).
+    fun testByteSourceWithAndWithoutOffset() {
+        // A byte source with an offset and one without both land their
+        // bytes unchanged: serializers hand over a whole array, callers
+        // may hand over a window of a larger one.
         val owned = ExternalParameterRef(
             scope = "model",
             key = "o",
             encoding = TensorEncoding.Dense(bytesPerElement = 1),
-            source = BufferHandle.Owned(byteArrayOf(0, 0, 42, 43, 44), offset = 2)
+            source = ConstantSource.Bytes(byteArrayOf(0, 0, 42, 43, 44), offset = 2)
         )
         val borrowed = ExternalParameterRef(
             scope = "model",
             key = "b",
             encoding = TensorEncoding.Dense(bytesPerElement = 1),
-            source = BufferHandle.Borrowed(byteArrayOf(99, 100, 101))
+            source = ConstantSource.Bytes(byteArrayOf(99, 100, 101))
         )
 
         val buffer = Buffer()
@@ -197,7 +195,7 @@ class IrpaWriterTest {
         scope = scope,
         key = key,
         encoding = TensorEncoding.Dense(bytesPerElement = 1),
-        source = BufferHandle.Owned(bytes)
+        source = ConstantSource.Bytes(bytes)
     )
 
     private fun readU64Le(bytes: ByteArray, offset: Int): Long {

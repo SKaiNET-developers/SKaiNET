@@ -1,6 +1,5 @@
 package sk.ainet.compile.hlo
 
-import sk.ainet.lang.tensor.storage.BufferHandle
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
 /**
@@ -72,10 +71,10 @@ public sealed interface ConstantMaterializationPolicy {
  * converter produces these; a downstream packager consumes them to
  * write an IREE parameter archive (`.irpa`).
  *
- * The converter does not copy bytes — it passes the [source] handle
- * through unchanged. Callers that back a handle with `mmap` (planned
- * in PR E for skainet-io-gguf and skainet-io-safetensors) get a
- * true zero-copy path all the way from the source file to the `.irpa`.
+ * The converter does not copy bytes — it passes the [source] through
+ * unchanged. A caller that names a file range ([ConstantSource.FileRange])
+ * gets the bytes moved from the source file to the `.irpa` without a
+ * heap copy.
  *
  * @property scope Parameter-archive scope (`@<scope>::@<key>` in the
  *     emitted MLIR, and the scope name inside the `.irpa` container).
@@ -84,15 +83,14 @@ public sealed interface ConstantMaterializationPolicy {
  * @property encoding Physical [TensorEncoding] (Dense / Q4_K / Q8_0 /
  *     TurboQuant / TernaryPacked / Opaque). Preserved so the packager
  *     can blit quantized blocks verbatim instead of re-quantizing.
- * @property source [BufferHandle] backing the tensor bytes. May be
- *     an in-memory copy today; PR E replaces these with mmap windows
- *     into the source GGUF / safetensors file.
+ * @property source Where the tensor bytes are: an array in memory or a
+ *     range of a file. See [ConstantSource].
  */
 public data class ExternalParameterRef(
     val scope: String,
     val key: String,
     val encoding: TensorEncoding,
-    val source: BufferHandle,
+    val source: ConstantSource,
     /**
      * Physical block order of the packed bytes as a stable string (`ROW_MAJOR` /
      * `INPUT_BLOCK_MAJOR`), or `null` when unknown / not packed (#1179). Carried so a
@@ -102,3 +100,43 @@ public data class ExternalParameterRef(
      */
     val blockOrder: String? = null,
 )
+
+/**
+ * Where the bytes of an externalized constant are. This is the compiler's own carrier:
+ * `skainet-compile` does not import the storage model (`sk.ainet.lang.memory`, SKEEP-003a),
+ * so a constant crosses this boundary as plain arrays or as a file range, never as a
+ * `Storage` or a `TensorView`.
+ *
+ * A packager (for example `IrpaWriter`) writes [sizeInBytes] bytes for each source.
+ */
+public sealed interface ConstantSource {
+
+    /** Number of bytes the packager writes for this source. */
+    public val sizeInBytes: Long
+
+    /** [sizeInBytes] bytes of [data], starting at [offset]. The array is read, never changed. */
+    public class Bytes(
+        public val data: ByteArray,
+        public val offset: Int = 0,
+        override val sizeInBytes: Long = (data.size - offset).toLong(),
+    ) : ConstantSource
+
+    /**
+     * FP32 values, written little-endian. A constant above 2 GiB has no byte-array form,
+     * so it travels as the float array it already is (#1247).
+     */
+    public class Floats(public val data: FloatArray) : ConstantSource {
+        override val sizeInBytes: Long get() = data.size.toLong() * 4L
+    }
+
+    /**
+     * [sizeInBytes] bytes of the file at [path], starting at [fileOffset]. Nothing is read
+     * until the packager writes the entry. A streaming reader gives the numbers: the
+     * tensor's absolute data offset and its byte size.
+     */
+    public class FileRange(
+        public val path: String,
+        public val fileOffset: Long,
+        override val sizeInBytes: Long,
+    ) : ConstantSource
+}

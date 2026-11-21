@@ -6,20 +6,19 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import sk.ainet.compile.hlo.ExternalParameterRef
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.compile.hlo.ConstantSource
 import sk.ainet.lang.tensor.storage.TensorEncoding
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * JVM round-trip for the FileBacked path added in PR E of #523.
+ * JVM round-trip for the file-range path added in PR E of #523.
  *
- * The gguf / safetensors loaders already produce
- * `BufferHandle.FileBacked` via their `loadTensorStorageMapped`
- * methods — this test pins the writer end of that path so the full
- * ingestion pipeline (source file → FileBacked handle → IrpaWriter →
- * `.irpa`) lands bytes unchanged.
+ * A streaming gguf / safetensors reader gives a tensor's absolute data
+ * offset and byte size; that is a `ConstantSource.FileRange`. This test
+ * pins the writer end of the path, so the pipeline (source file → file
+ * range → IrpaWriter → `.irpa`) lands bytes unchanged.
  */
 class FileBackedIrpaRoundTripTest {
 
@@ -46,7 +45,7 @@ class FileBackedIrpaRoundTripTest {
             scope = "model",
             key = "w",
             encoding = TensorEncoding.Dense(bytesPerElement = 1),
-            source = BufferHandle.FileBacked(
+            source = ConstantSource.FileRange(
                 path = sourceFile.absolutePath,
                 fileOffset = leading.size.toLong(),
                 sizeInBytes = tensor.size.toLong()
@@ -80,7 +79,7 @@ class FileBackedIrpaRoundTripTest {
             // Declared size exceeds Int.MAX_VALUE — this is the guard
             // rail for the single-window mmap limit. A follow-up will
             // add multi-window streaming.
-            source = BufferHandle.FileBacked(
+            source = ConstantSource.FileRange(
                 path = sourceFile.absolutePath,
                 fileOffset = 0L,
                 sizeInBytes = Int.MAX_VALUE.toLong() + 1L
@@ -102,7 +101,7 @@ class FileBackedIrpaRoundTripTest {
             scope = "model",
             key = "empty",
             encoding = TensorEncoding.Dense(bytesPerElement = 1),
-            source = BufferHandle.FileBacked(
+            source = ConstantSource.FileRange(
                 path = "/nonexistent/path",  // must not be opened
                 fileOffset = 0L,
                 sizeInBytes = 0L

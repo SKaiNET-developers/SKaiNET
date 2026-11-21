@@ -6,7 +6,7 @@ import kotlinx.io.writeIntLe
 import kotlinx.io.writeLongLe
 import kotlinx.io.writeShortLe
 import sk.ainet.compile.hlo.ExternalParameterRef
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.compile.hlo.ConstantSource
 
 /**
  * Writes an IREE parameter archive (`.irpa`) file.
@@ -51,7 +51,7 @@ public class IrpaWriter {
      * Write an `.irpa` archive containing every [entry] to [sink].
      *
      * Streams the output so peak memory stays bounded by the largest
-     * single [BufferHandle] and the entry/metadata tables (tiny even
+     * single [ConstantSource] and the entry/metadata tables (tiny even
      * for thousands of weights). The sink is not flushed or closed —
      * caller decides when to do either.
      *
@@ -140,7 +140,7 @@ public class IrpaWriter {
             // Pad from previous entry's end to this entry's aligned offset.
             val entryOffset = perEntryStorageOffset[i]
             writePaddingLong(sink, entryOffset - writtenInStorage)
-            writeBufferHandle(sink, entry.source)
+            writeSource(sink, entry.source)
             writtenInStorage = entryOffset + entry.source.sizeInBytes
         }
         // No trailing file-level pad to 4096 — optional per the spec,
@@ -221,23 +221,16 @@ public class IrpaWriter {
         // 16-aligned, so no inter-entry padding required.
     }
 
-    private fun writeBufferHandle(sink: Sink, handle: BufferHandle) {
-        when (handle) {
-            is BufferHandle.Owned -> writeByteArray(sink, handle.data, handle.offset, handle.sizeInBytes.toInt())
-            is BufferHandle.Floats -> writeFloatArrayLe(sink, handle.data)
-            is BufferHandle.Borrowed -> writeByteArray(sink, handle.data, handle.offset, handle.sizeInBytes.toInt())
-            is BufferHandle.FileBacked -> writeFileBackedBytes(sink, handle)
-            else -> throw IllegalArgumentException(
-                "IrpaWriter does not yet handle BufferHandle subclass ${handle::class.simpleName}. " +
-                    "Owned / Borrowed / FileBacked are wired. DeviceResident and " +
-                    "other variants are out of scope — resolve them to one of the wired " +
-                    "variants before handing to the writer."
-            )
+    private fun writeSource(sink: Sink, source: ConstantSource) {
+        when (source) {
+            is ConstantSource.Bytes -> writeByteArray(sink, source.data, source.offset, source.sizeInBytes.toInt())
+            is ConstantSource.Floats -> writeFloatArrayLe(sink, source.data)
+            is ConstantSource.FileRange -> writeFileRangeBytes(sink, source)
         }
     }
 
     private fun writeFloatArrayLe(sink: Sink, data: FloatArray) {
-        // Stream little-endian in 64 MiB chunks: a Floats handle exists
+        // Stream little-endian in 64 MiB chunks: a Floats source exists
         // precisely because its logical bytes can exceed what a single
         // ByteArray can hold (issue #1247, the 2 GiB tied embedding) —
         // never materialize the whole payload.
@@ -260,7 +253,7 @@ public class IrpaWriter {
     }
 
     private fun writeByteArray(sink: Sink, data: ByteArray, offset: Int, length: Int) {
-        // Bulk range write. Owned/Borrowed buffers can be large for real
+        // Bulk range write. Byte sources can be large for real
         // LLM weights (a 262153x640 FP32 embedding = ~670MB); a
         // byte-at-a-time loop there is pathological (hundreds of millions
         // of calls). kotlinx-io's range write copies in one shot.

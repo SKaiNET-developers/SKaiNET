@@ -14,7 +14,7 @@ import sk.ainet.lang.trace.PackedConstantHandling
 import sk.ainet.lang.tensor.ops.blockOrder
 import sk.ainet.lang.tensor.ops.TensorSpec
 import sk.ainet.lang.tensor.ops.tensorEncoding
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.compile.hlo.ConstantSource
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
 
@@ -399,7 +399,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
      * falls through to its existing `dense<...>` emission.
      *
      * When externalized, three things happen:
-     *  1. Bytes are serialized from [values] into a [BufferHandle.Owned].
+     *  1. Bytes are serialized from [values] into a [ConstantSource.Bytes].
      *  2. An [ExternalParameterRef] is recorded on the context so a
      *     downstream packager can write the `.irpa`.
      *  3. `util.global private @<key> : <type>` is emitted at module
@@ -457,7 +457,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 scope = scope,
                 key = key,
                 encoding = encoding,
-                source = BufferHandle.Owned(bytes),
+                source = ConstantSource.Bytes(bytes),
                 blockOrder = outputSpec.blockOrder,
             )
         )
@@ -519,7 +519,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
         }
 
         val normalizedDtype = outputSpec.dtype.uppercase()
-        val source: BufferHandle = if (
+        val source: ConstantSource = if (
             (normalizedDtype == "FP32" || normalizedDtype == "F32" || normalizedDtype == "FLOAT32") &&
             values.size.toLong() == elementCount
         ) {
@@ -528,7 +528,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
             // packager as-is. No byte serialization means no extra copy and
             // no 2 GiB ByteArray ceiling: the gemma3n tied embedding
             // (262144x2048 = Int.MAX_VALUE + 1 bytes) only exports this way.
-            BufferHandle.Floats(values)
+            ConstantSource.Floats(values)
         } else {
             // Under-filled initializations and non-FP32 dtypes keep the
             // padded byte serialization. ConstantTooLargeException is NOT
@@ -542,7 +542,7 @@ public class ConstantOperationsConverter : StableHloOperationConverter {
                 )
                 return null
             }
-            BufferHandle.Owned(bytes)
+            ConstantSource.Bytes(bytes)
         }
 
         val key = outputSpec.name.ifEmpty { node.id }
