@@ -206,8 +206,7 @@ public class StreamingGGUFReader private constructor(
         GGMLQuantizationType.TQ1_0 -> TensorEncoding.TQ1_0
         GGMLQuantizationType.TQ2_0 -> TensorEncoding.TQ2_0
         // Types without a dedicated TensorEncoding carry their real byte count,
-        // so TensorStorage.physicalBytes (which prefers encoding.physicalBytes
-        // over buffer.sizeInBytes) stays truthful. The previous Opaque(name, 0)
+        // so Format.physicalBytes stays truthful. The previous Opaque(name, 0)
         // made every such tensor report 0 physical bytes and silently corrupted
         // memory reports and compression ratios.
         else -> TensorEncoding.Opaque(type.name, nBytes)

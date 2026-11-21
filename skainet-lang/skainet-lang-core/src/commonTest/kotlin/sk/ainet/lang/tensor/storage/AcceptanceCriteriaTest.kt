@@ -1,5 +1,9 @@
 package sk.ainet.lang.tensor.storage
 
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.Owner
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
@@ -8,73 +12,61 @@ import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import sk.ainet.lang.types.FP16
 
 /**
- * End-to-end acceptance criteria tests for the Memory Architecture PRD.
+ * End-to-end acceptance criteria of the Memory Architecture PRD, stated on views.
  *
  * AC1: Large GGUF can be parsed without whole-file heap loading
- *   → Tested via StreamingGGUFReader integration tests (requires file I/O, in gguf module)
+ *   → the StreamingGGUFReader integration tests (file I/O, in the gguf module)
  *
  * AC2: Tensors stay borrowed/mapped/packed after loading
  * AC3: Tensor views remain zero-copy, copy operations are explicit
  * AC4: Quantized tensors exist as packed layouts end-to-end
  * AC5: Every tensor reports encoding, ownership, placement, logical size, physical size
  * AC6: Runtime distinguishes immutable weights from mutable runtime buffers
+ *
+ * The mapped-file cases of AC2, AC5 and AC6 need a real file: `StorageIntegrationTest` (gguf module).
  */
 class AcceptanceCriteriaTest {
 
-    // --- AC2: Tensors stay borrowed/mapped/packed after loading ---
+    private fun report(view: TensorView): StorageMemoryReport =
+        MemoryTracker().also { it.record("t", view) }.report().entries.single().report
+
+    // --- AC2: Tensors stay borrowed/packed after loading ---
 
     @Test
-    fun ac2_borrowedStorageSurvivesConversion() {
+    fun ac2_packedBytesStayBorrowedAndPacked() {
         val rawQ4K = ByteArray(144)
-        val packed = Q4_KBlockTensorData.fromRawBytes(Shape(256), rawQ4K)
-        val storage = TensorStorageFactory.fromTensorData(packed)
+        val view = Q4_KBlockTensorData.fromRawBytes(Shape(256), rawQ4K).view!!
 
-        assertEquals(Ownership.BORROWED, storage.ownership)
-        assertEquals(TensorEncoding.Q4_K, storage.encoding)
-        assertFalse(storage.isMutable)
-    }
-
-    @Test
-    fun ac2_fileBackedStoragePreservesPlacement() {
-        val storage = TensorStorageFactory.fileBacked(
-            shape = Shape(1024, 768),
-            dtype = FP16,
-            encoding = TensorEncoding.Dense(2),
-            path = "/model/weights.bin",
-            fileOffset = 0,
-            sizeInBytes = 1024L * 768 * 2
-        )
-
-        assertTrue(storage.isFileBacked)
-        assertFalse(storage.isMutable)
-        assertEquals(MemoryDomain.MMAP_FILE, storage.placement.domain)
+        assertTrue(view.storage.owner is Owner.Borrowed)
+        assertEquals(TensorEncoding.Q4_K, view.format.encoding)
+        assertSame(rawQ4K, (view.storage as Storage.Heap).bytes, "the view is over the loaded array")
     }
 
     // --- AC3: Tensor views zero-copy, copies explicit ---
 
     @Test
-    fun ac3_rawByteConstructorGenuinelyBorrows() {
-        // Real zero-copy borrowing starts from bytes: mutations through the
-        // source array must be visible through the storage handle.
+    fun ac3_aViewOverBytesGenuinelyBorrows() {
+        // Zero-copy borrowing starts from bytes: a change in the source array is visible through the view.
         val bytes = ByteArray(12)
-        val storage = TensorStorageFactory.fromRawBytes(
-            Shape(3), FP32, TensorEncoding.Dense(4), bytes
-        )
-        assertEquals(Ownership.BORROWED, storage.ownership)
-        bytes[0] = 42
-        val handle = storage.buffer as BufferHandle.Borrowed
-        assertEquals(42, handle.data[0])
+        val view = TensorView.ofBytes(Storage.Heap.wrap(bytes, mutable = false), Shape(3), Format.dense(FP32))
+        assertTrue(view.storage.owner is Owner.Borrowed)
+        assertEquals(0f, view.get(0))
+        bytes[3] = 0x40 // 2.0f, little-endian
+        assertEquals(2f, view.get(0))
     }
 
     @Test
-    fun ac3_ownedConstructorCopies() {
-        val original = floatArrayOf(1f, 2f, 3f)
-        val storage = TensorStorageFactory.fromFloatArray(Shape(3), original)
-        assertEquals(Ownership.OWNED, storage.ownership)
+    fun ac3_materializeIsTheExplicitCopy() {
+        val bytes = ByteArray(12)
+        val view = TensorView.ofBytes(Storage.Heap.wrap(bytes, mutable = false), Shape(3), Format.dense(FP32))
+        val copy = view.materialize()
+        assertTrue(copy.storage.owner is Owner.Owned)
+        bytes[3] = 0x40
+        assertEquals(0f, copy.get(0), "the copy does not follow the source")
     }
 
     // --- AC4: Quantized tensors as packed layouts end-to-end ---
@@ -90,14 +82,14 @@ class AcceptanceCriteriaTest {
         assertEquals(TensorEncoding.Q4_K, (packed as PackedBlockStorage).encoding)
         assertEquals(144L, packed.physicalBytes)
 
-        // 3. Convert to TensorStorage descriptor
-        val storage = packed.toTensorStorage()
-        assertEquals(TensorEncoding.Q4_K, storage.encoding)
-        assertEquals(144L, storage.physicalBytes)
-        assertEquals(1024L, storage.logicalBytes) // logical FP32: 256 * 4
+        // 3. Its view says the same
+        val r = report(packed.view!!)
+        assertEquals(TensorEncoding.Q4_K, r.encoding)
+        assertEquals(144L, r.physicalBytes)
+        assertEquals(1024L, r.logicalBytes) // logical FP32: 256 * 4
 
         // 4. Physical bytes << logical bytes (compression working)
-        assertTrue(storage.physicalBytes < storage.logicalBytes)
+        assertTrue(r.physicalBytes < r.logicalBytes)
     }
 
     @Test
@@ -114,86 +106,50 @@ class AcceptanceCriteriaTest {
 
     @Test
     fun ac5_denseFloatReportsAllFields() {
-        val data = floatArrayOf(1f, 2f, 3f, 4f, 5f, 6f)
-        val td = DenseFloatArrayTensorData<FP32>(Shape(2, 3), data)
-        val storage = TensorStorageFactory.fromTensorData(td)
-        val report = storage.memoryReport()
+        val view = TensorView.dense(Storage.Heap.floats(6), Shape(2, 3))
+        val r = report(view)
 
-        assertEquals(FP32, report.dtype)
-        assertEquals("Dense(4B)", report.encoding.name)
-        assertEquals(Ownership.OWNED, report.ownership)
-        assertEquals(24L, report.logicalBytes)
-        assertEquals(24L, report.physicalBytes)
-        assertFalse(report.isFileBacked)
-        assertTrue(report.isMutable)
+        assertEquals(FP32, r.dtype)
+        assertEquals("Dense(4B)", r.encoding.name)
+        assertEquals(Ownership.OWNED, r.ownership)
+        assertEquals(24L, r.logicalBytes)
+        assertEquals(24L, r.physicalBytes)
+        assertFalse(r.isFileBacked)
+        assertTrue(r.isMutable)
     }
 
     @Test
     fun ac5_packedQ4KReportsAllFields() {
-        val storage = TensorStorage(
-            shape = Shape(512),
-            dtype = FP32,
-            encoding = TensorEncoding.Q4_K,
-            buffer = BufferHandle.Borrowed(ByteArray(288)), // 2 blocks
-            placement = Placement.CPU_HEAP
+        val view = TensorView.ofBytes(
+            Storage.Heap.wrap(ByteArray(288), mutable = false), // 2 blocks
+            Shape(512), Format(FP32, TensorEncoding.Q4_K),
         )
-        val report = storage.memoryReport()
+        val r = report(view)
 
-        assertEquals(FP32, report.dtype)
-        assertEquals("Q4_K", report.encoding.name)
-        assertEquals(Ownership.BORROWED, report.ownership)
-        assertEquals(DeviceKind.CPU, report.placement.device)
-        assertEquals(MemoryDomain.HOST_HEAP, report.placement.domain)
-        assertEquals(2048L, report.logicalBytes) // 512 * 4
-        assertEquals(288L, report.physicalBytes) // 2 Q4_K blocks
-        assertTrue(report.compressionRatio > 7.0)
-    }
-
-    @Test
-    fun ac5_fileBackedReportsAllFields() {
-        val storage = TensorStorage(
-            shape = Shape(1000),
-            dtype = FP16,
-            encoding = TensorEncoding.Dense(2),
-            buffer = BufferHandle.FileBacked("/model.bin", 4096, 2000),
-            placement = Placement.MMAP_WEIGHTS
-        )
-        val report = storage.memoryReport()
-
-        assertTrue(report.isFileBacked)
-        assertEquals(Ownership.FILE_BACKED, report.ownership)
-        assertEquals(MemoryDomain.MMAP_FILE, report.placement.domain)
-        assertFalse(report.isMutable)
+        assertEquals(FP32, r.dtype)
+        assertEquals("Q4_K", r.encoding.name)
+        assertEquals(Ownership.BORROWED, r.ownership)
+        assertEquals(DeviceKind.CPU, r.placement.device)
+        assertEquals(MemoryDomain.HOST_HEAP, r.placement.domain)
+        assertEquals(2048L, r.logicalBytes) // 512 * 4
+        assertEquals(288L, r.physicalBytes) // 2 Q4_K blocks
+        assertTrue(r.compressionRatio > 7.0)
     }
 
     // --- AC6: Distinguish immutable weights from mutable runtime buffers ---
 
     @Test
-    fun ac6_weightsAreImmutableAndPersistent() {
-        val weights = TensorStorage(
-            shape = Shape(768, 768),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.FileBacked("/model.bin", 0, 768L * 768 * 4),
-            placement = Placement.MMAP_WEIGHTS
-        )
-
+    fun ac6_loadedWeightsAreImmutable() {
+        val weights = TensorView.ofBytes(Storage.Heap.wrap(ByteArray(16), mutable = false), Shape(4), Format.dense(FP32))
         assertFalse(weights.isMutable)
-        assertTrue(weights.isFileBacked)
+        assertFalse(report(weights).isMutable)
     }
 
     @Test
-    fun ac6_activationsAreMutableAndTransient() {
-        val activations = TensorStorage(
-            shape = Shape(32, 768),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.Owned(ByteArray(32 * 768 * 4)),
-            placement = Placement.CPU_HEAP
-        )
-
+    fun ac6_activationsAreMutable() {
+        val activations = DenseFloatArrayTensorData<FP32>(Shape(32, 768), FloatArray(32 * 768)).view!!
         assertTrue(activations.isMutable)
-        assertFalse(activations.isFileBacked)
+        assertFalse(report(activations).isFileBacked)
     }
 
     // --- Aggregate observability ---
@@ -202,19 +158,9 @@ class AcceptanceCriteriaTest {
     fun memoryTrackerDetectsUnexpectedCopies() {
         val tracker = MemoryTracker()
 
-        // Load two tensors — one borrowed, one owned (copy)
-        tracker.record("borrowed_weight", TensorStorage(
-            shape = Shape(100),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.Borrowed(ByteArray(400))
-        ))
-        tracker.record("copied_activation", TensorStorage(
-            shape = Shape(100),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.Owned(ByteArray(400))
-        ))
+        // Two tensors: one borrowed, one owned (a copy)
+        tracker.record("borrowed_weight", TensorView.ofBytes(Storage.Heap.wrap(ByteArray(400), mutable = false), Shape(100), Format.dense(FP32)))
+        tracker.record("copied_activation", TensorView.dense(Storage.Heap.floats(100), Shape(100)))
         tracker.recordCopy("copied_activation", 400)
 
         val report = tracker.report()

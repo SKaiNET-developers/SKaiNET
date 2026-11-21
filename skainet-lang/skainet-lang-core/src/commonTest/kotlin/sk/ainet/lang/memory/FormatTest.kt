@@ -15,9 +15,7 @@ import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.Ternary2BitTensorData
-import sk.ainet.lang.tensor.storage.BufferHandle
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.tensor.storage.TensorStorage
 import sk.ainet.lang.types.BF16
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP16
@@ -78,14 +76,6 @@ class FormatTest {
             assertSame(FP32, fmt.dtype)
             assertEquals("Float32/${enc.name}", fmt.toString())
         }
-    }
-
-    @Test
-    fun storageFormatPairsDtypeAndEncoding() {
-        val s = TensorStorage(Shape(1, 256), FP32, TensorEncoding.Q4_K, BufferHandle.Borrowed(ByteArray(144)))
-        assertEquals(Format(FP32, TensorEncoding.Q4_K), s.format)
-        assertEquals(144L, s.format.physicalBytes(256))
-        assertEquals(Format.dense(FP32), TensorStorage(Shape(2), FP32, TensorEncoding.Dense(4), BufferHandle.Borrowed(ByteArray(8))).format)
     }
 
     @Test

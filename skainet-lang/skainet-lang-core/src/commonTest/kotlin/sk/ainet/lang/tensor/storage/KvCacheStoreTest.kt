@@ -114,19 +114,6 @@ class KvCacheStoreTest {
         assertEquals(12f, keys[3])
     }
 
-    // --- TensorStorage output ---
-
-    @Test
-    fun readKeyStorageReturnsTensorStorage() {
-        val store = createStore(numLayers = 1, numHeads = 2, headDim = 4, maxSeqLen = 8)
-        store.appendToken(0, FloatArray(8) { it.toFloat() }, FloatArray(8))
-
-        val storage = store.readKeyStorage(0)
-        assertEquals(FP32, storage.dtype)
-        assertEquals(Ownership.OWNED, storage.ownership)
-        assertTrue(storage.isMutable)
-    }
-
     // --- Eviction ---
 
     @Test

@@ -6,10 +6,7 @@ import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
 import sk.ainet.lang.tensor.data.TensorData
-import sk.ainet.lang.tensor.storage.BufferHandle
-import sk.ainet.lang.tensor.storage.Placement
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.tensor.storage.TensorStorage
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,16 +34,20 @@ class DescribeTest {
     }
 
     @Test
-    fun storageRendererShowsKindAndOrigin() {
-        val mapped = TensorStorage(
-            Shape(2048, 2048), FP32, TensorEncoding.Q4_K,
-            BufferHandle.FileBacked("/models/model.gguf", 0x1A3F000L, 144L * 16384), Placement.MMAP_WEIGHTS,
+    fun viewRendererShowsStorageKindOwnerScopeAndId() {
+        val id = TensorId.parse("model.layers.blk.3.attn.q_proj.weight")
+        val packed = TensorView.ofBytes(
+            Storage.Heap.wrap(ByteArray(144), mutable = false), Shape(1, 256), Format(FP32, TensorEncoding.Q4_K), id,
         )
-        assertEquals(
-            "model.layers.blk.3.attn.q_proj.weight · Float32/Q4_K · [2048, 2048] · Mapped · /models/model.gguf @0x1a3f000 · scope — · storage —",
-            mapped.describe(TensorId.parse("model.layers.blk.3.attn.q_proj.weight")),
-        )
-        val owned = TensorStorage(Shape(4), FP32, TensorEncoding.Dense(4), BufferHandle.Owned(ByteArray(16)))
-        assertEquals("— · Float32/Dense(4B) · [4] · Owned · — · scope — · storage —", owned.describe())
+        val parts = packed.describe().split(" · ")
+        assertEquals(7, parts.size)
+        assertEquals("model.layers.blk.3.attn.q_proj.weight", parts[0])
+        assertEquals("Float32/Q4_K", parts[1]); assertEquals("[1, 256]", parts[2])
+        assertEquals("Heap/Borrowed", parts[3]); assertEquals("—", parts[4])
+        assertEquals("scope ${packed.storage.scope.name}", parts[5])
+        assertEquals("storage ${packed.storage.id}", parts[6])
+
+        val owned = TensorView.dense(Storage.Heap.floats(4), Shape(4))
+        assertTrue(owned.describe().startsWith("— · Float32/Dense(4B) · [4] · Heap/Owned · — · scope AMBIENT · storage "), owned.describe())
     }
 }

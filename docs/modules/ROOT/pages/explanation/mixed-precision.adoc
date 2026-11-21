@@ -215,4 +215,4 @@ parameters are not affected.
   entry points.
 * `TensorOps.convert` — the cast, including FP16/BF16 rounding through the format codecs.
 * xref:skeep:008-precision-and-encoding-conversion.adoc[SKEEP-008] — the full design,
-  including the storage-side `repackTo`/`requantizeTo` split and the phased rollout.
+  including the lossless and lossy re-encoding split (`materialize` / `requantizeTo` on a view; first shipped as `repackTo` / `requantizeTo`) and the phased rollout.

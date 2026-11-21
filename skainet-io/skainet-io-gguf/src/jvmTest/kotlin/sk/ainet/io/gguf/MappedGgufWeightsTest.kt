@@ -1,7 +1,6 @@
 package sk.ainet.io.gguf
 
-import sk.ainet.io.JvmFileBackedResolver
-import sk.ainet.lang.tensor.storage.BufferHandle
+import sk.ainet.io.JvmMappedMemoryChunk
 import sk.ainet.lang.types.FP32
 import java.io.File
 import java.io.RandomAccessFile
@@ -14,13 +13,13 @@ import kotlin.test.assertFailsWith
 
 /**
  * Functional coverage for [MappedGgufWeights] (#921): mapped F32 views,
- * a file-backed handle resolved through the (JVM+Android shared)
- * [JvmFileBackedResolver], packed-byte fallback, and the fail-fast guards.
+ * the tensor's byte range read through the (JVM+Android shared)
+ * [JvmMappedMemoryChunk], packed-byte fallback, and the fail-fast guards.
  */
 class MappedGgufWeightsTest {
 
     @Test
-    fun `mapped F32 view, FileBacked storage and packed bytes agree with the file`() {
+    fun `mapped F32 view, mapped byte range and packed bytes agree with the file`() {
         val f32Values = FloatArray(1024) { (it - 512) * 0.25f }
         val q80Payload = ByteArray(34 * 4) { (it * 7 + 3).toByte() } // 4 blocks of Q8_0
         val file = writeGguf(
@@ -40,14 +39,13 @@ class MappedGgufWeightsTest {
                     assertEquals(f32Values[i], dense[i], "flat index $i")
                 }
 
-                // A file-backed handle on the tensor's bytes, read through the shared resolver.
+                // The tensor's byte range of the file, read through the shared mapped chunk.
                 val q80 = weights.info("packed.q80")
-                val handle = BufferHandle.FileBacked(file.absolutePath, q80.absoluteDataOffset, q80.nBytes)
-                val accessor = JvmFileBackedResolver.resolveFileBacked(handle)
+                val chunk = JvmMappedMemoryChunk.open(file, offset = q80.absoluteDataOffset, length = q80.nBytes)
                 try {
-                    assertContentEquals(q80Payload, accessor.readBytes(0, q80Payload.size))
+                    assertContentEquals(q80Payload, chunk.readBytes(0, q80Payload.size))
                 } finally {
-                    accessor.close()
+                    chunk.close()
                 }
 
                 // Heap fallback for packed kernels.

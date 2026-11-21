@@ -66,19 +66,6 @@ class CompressedKvAttentionTest {
     }
 
     @Test
-    fun rawStorageReturnsTensorStorage() {
-        val bridge = createBridge()
-        bridge.storeKeyValue(0, FloatArray(8), FloatArray(8))
-
-        val keyStorage = bridge.loadKeyStorageRaw(0)
-        assertEquals(FP32, keyStorage.dtype)
-        assertEquals(Ownership.OWNED, keyStorage.ownership)
-
-        val valueStorage = bridge.loadValueStorageRaw(0)
-        assertEquals(FP32, valueStorage.dtype)
-    }
-
-    @Test
     fun isCompressedDetectsEncoding() {
         val denseBridge = createBridge()
         assertFalse(denseBridge.isKeyCompressed)

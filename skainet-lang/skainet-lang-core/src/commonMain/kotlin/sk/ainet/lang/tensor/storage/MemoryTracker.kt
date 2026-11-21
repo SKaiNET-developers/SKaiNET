@@ -2,7 +2,7 @@ package sk.ainet.lang.tensor.storage
 
 /**
  * Tracks memory allocation events and reports aggregate statistics
- * across all live [TensorStorage] instances.
+ * across the tensor views recorded with it.
  *
  * Use [record] to log storage creation, and [report] to get a snapshot
  * of current memory usage. This is primarily for debugging and regression
@@ -14,11 +14,6 @@ public class MemoryTracker {
     private var copyCount: Long = 0
     private var copyBytes: Long = 0
     private val copiesBySource = mutableMapOf<String, CopySourceStat>()
-
-    /** Record a tensor storage allocation. */
-    public fun record(name: String, storage: TensorStorage) {
-        entries.add(TrackedEntry(name, storage.memoryReport()))
-    }
 
     /**
      * Record what [view] says about itself under [name]: its format, the bytes it stands for and

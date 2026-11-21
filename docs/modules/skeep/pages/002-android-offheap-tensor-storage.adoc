@@ -244,7 +244,9 @@ Landed:
 
 * *Phase 1 and 2* — `JvmMappedMemoryChunk` / `MappedRandomAccessSource` and a readable
   `BufferHandle.FileBacked` with `JvmFileBackedResolver`, shared between the JVM and Android
-  compilations, covered by `androidHostTest`
+  compilations, covered by `androidHostTest`. (`BufferHandle` and `JvmFileBackedResolver` were removed
+  later by SKEEP-003, https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]: a mapped range is
+  `PlatformStorage.mapFile` or a reader's `loadTensorViewMapped`; the mapped chunk and source stay.)
   (https://github.com/SKaiNET-developers/SKaiNET/issues/921[#921],
   https://github.com/SKaiNET-developers/SKaiNET/issues/922[#922]).
 * *Phase 3* — mapped loading is a *configuration of the ordinary loader* rather than a separate

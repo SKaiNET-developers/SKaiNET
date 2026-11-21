@@ -1,8 +1,6 @@
 package sk.ainet.lang.memory
 
 import sk.ainet.lang.tensor.Tensor
-import sk.ainet.lang.tensor.storage.BufferHandle
-import sk.ainet.lang.tensor.storage.TensorStorage
 
 /**
  * One-line debugger rendering of a tensor (SKEEP-003 §4.7, PRD M0-F5):
@@ -21,28 +19,31 @@ public fun Tensor<*, *>.describe(): String = buildString {
     append("storage —")
 }
 
-/** Same rendering for a storage descriptor; origin is the file for file-backed buffers. */
-public fun TensorStorage.describe(id: sk.ainet.lang.tensor.TensorId? = null): String = buildString {
+/**
+ * The same line for a view, with the fields a view knows: the kind of its storage and how it is
+ * held (`Heap/Borrowed`, `Mapped/Owned`, ...), its scope and its storage id.
+ *
+ * Example: `model.blk.3.q_proj.weight · Float32/Q4_K · [2048, 2048] · Mapped/Owned · — · scope MODEL · storage #17`
+ */
+public fun TensorView.describe(): String = buildString {
     append(id?.canonical ?: "—"); append(SEP)
     append(format.toString()); append(SEP)
     append(shapeText(shape.dimensions)); append(SEP)
-    append(
-        when (val b = buffer) {
-            is BufferHandle.Owned -> "Owned"
-            is BufferHandle.Floats -> "Floats"
-            is BufferHandle.Borrowed -> "Borrowed"
-            is BufferHandle.FileBacked -> "Mapped"
-            is BufferHandle.DeviceResident -> "Device(${b.deviceId})"
-        }
-    ); append(SEP)
-    append(
-        when (val b = buffer) {
-            is BufferHandle.FileBacked -> "${b.path} @0x${b.fileOffset.toString(16)}"
-            else -> "—"
-        }
-    ); append(SEP)
-    append("scope —"); append(SEP)
-    append("storage —")
+    val kind = when (storage) {
+        is Storage.Heap -> "Heap"
+        is Storage.OffHeap -> "OffHeap"
+        is Storage.Mapped -> "Mapped"
+        is Storage.Device -> "Device"
+    }
+    val held = when (storage.owner) {
+        is Owner.Owned -> "Owned"
+        is Owner.Borrowed -> "Borrowed"
+        is Owner.Alias -> "Alias"
+    }
+    append(kind); append('/'); append(held); append(SEP)
+    append("—"); append(SEP)          // origin (file/offset): the storage does not record it
+    append("scope "); append(storage.scope.name); append(SEP)
+    append("storage "); append(storage.id.toString())
 }
 
 private const val SEP = " · "

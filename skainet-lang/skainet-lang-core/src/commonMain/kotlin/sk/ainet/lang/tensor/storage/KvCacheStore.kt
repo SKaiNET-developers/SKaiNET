@@ -8,7 +8,7 @@ import sk.ainet.lang.tensor.ops.turboquant.TurboQuantPresets
 /**
  * Dedicated KV-cache storage abstraction for inference.
  *
- * Unlike generic [TensorStorage], a KV cache is **append-friendly** and
+ * Unlike a weight tensor, a KV cache is **append-friendly** and
  * **role-aware**: keys and values may use different encodings and bit budgets.
  * The cache is addressed by (layer, head, position) and supports compressed
  * block storage for quantized formats (Q4_K, Q8_0, TurboQuant, etc.).
@@ -147,28 +147,6 @@ public interface KvCacheStore {
      * @param endPos   Last token position (exclusive), defaults to [currentSeqLen]
      */
     public fun readValues(layer: Int, startPos: Int = 0, endPos: Int = currentSeqLen): FloatArray
-
-    /**
-     * Read raw (possibly compressed) key storage for a layer as [TensorStorage].
-     *
-     * This is the zero-copy path for backends that can fuse dequantization
-     * with attention computation. Returns storage with the cache's native
-     * [keyEncoding].
-     *
-     * @param layer    Layer index
-     * @param startPos First token position (inclusive)
-     * @param endPos   Last token position (exclusive)
-     */
-    public fun readKeyStorage(layer: Int, startPos: Int = 0, endPos: Int = currentSeqLen): TensorStorage
-
-    /**
-     * Read raw (possibly compressed) value storage for a layer as [TensorStorage].
-     *
-     * @param layer    Layer index
-     * @param startPos First token position (inclusive)
-     * @param endPos   Last token position (exclusive)
-     */
-    public fun readValueStorage(layer: Int, startPos: Int = 0, endPos: Int = currentSeqLen): TensorStorage
 
     /**
      * Evict all cached tokens from position [fromPos] onward.

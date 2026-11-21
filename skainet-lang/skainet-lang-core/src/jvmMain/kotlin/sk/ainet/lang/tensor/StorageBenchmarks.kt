@@ -2,6 +2,9 @@ package sk.ainet.lang.tensor
 
 import kotlinx.benchmark.*
 import sk.ainet.lang.tensor.data.*
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.storage.*
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
@@ -75,69 +78,39 @@ public open class DequantizationBenchmark {
     public fun dequantTernary(): FloatArray = ternaryData.toFloatArray()
 }
 
-// --- BufferAccessor read performance ---
+// --- TensorData <-> TensorView ---
 
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.MICROSECONDS)
-public open class BufferAccessorBenchmark {
-    private lateinit var accessor: ByteArrayAccessor
-    private val readSize = 1024
-
-    @Setup
-    public fun setup() {
-        val data = ByteArray(1024 * 1024) // 1 MB
-        Random.nextBytes(data)
-        accessor = ByteArrayAccessor(data)
-    }
-
-    @Benchmark
-    public fun heapAccessor_readBytes_1KB(): ByteArray =
-        accessor.readBytes(512_000, readSize)
-
-    @Benchmark
-    public fun heapAccessor_readByte_sequential(): Long {
-        var sum = 0L
-        for (i in 0 until readSize) {
-            sum += accessor.readByte(i.toLong())
-        }
-        return sum
-    }
-}
-
-// --- TensorData <-> TensorStorage bridge ---
-
-@State(Scope.Benchmark)
-@BenchmarkMode(Mode.AverageTime)
-@OutputTimeUnit(BenchmarkTimeUnit.MICROSECONDS)
-public open class StorageBridgeBenchmark {
+public open class StorageViewBenchmark {
     private lateinit var floatTd: DenseFloatArrayTensorData<FP32>
     private lateinit var q4kTd: Q4_KBlockTensorData
-    private lateinit var floatStorage: TensorStorage
-    private lateinit var q4kStorage: TensorStorage
+    private lateinit var q4kBytes: ByteArray
+    private lateinit var q4kView: TensorView
 
     @Setup
     public fun setup() {
         floatTd = DenseFloatArrayTensorData(Shape(1024), FloatArray(1024) { it.toFloat() })
-        q4kTd = Q4_KBlockTensorData.fromRawBytes(Shape(256), ByteArray(144))
-
-        floatStorage = TensorStorageFactory.fromTensorData(floatTd)
-        q4kStorage = TensorStorageFactory.fromTensorData(q4kTd)
+        q4kBytes = ByteArray(144)
+        q4kTd = Q4_KBlockTensorData.fromRawBytes(Shape(256), q4kBytes)
+        q4kView = TensorView.ofBytes(Storage.Heap.wrap(q4kBytes, mutable = false), Shape(256), Format(FP32, TensorEncoding.Q4_K))
     }
 
+    /** The view a dense data object gives for its own array. */
     @Benchmark
-    public fun floatTensorData_toStorage(): TensorStorage =
-        TensorStorageFactory.fromTensorData(floatTd)
+    public fun floatTensorData_view(): TensorView? = floatTd.view
 
+    /** The view a packed data object gives for its own bytes. */
     @Benchmark
-    public fun q4kTensorData_toStorage(): TensorStorage =
-        TensorStorageFactory.fromTensorData(q4kTd)
+    public fun q4kTensorData_view(): TensorView? = q4kTd.view
 
+    /** A view over raw file bytes, as a streaming reader builds it. */
     @Benchmark
-    public fun storage_toTensorData_float(): TensorData<FP32, Float> =
-        TensorStorageFactory.toTensorData(floatStorage)
+    public fun q4kBytes_toView(): TensorView =
+        TensorView.ofBytes(Storage.Heap.wrap(q4kBytes, mutable = false), Shape(256), Format(FP32, TensorEncoding.Q4_K))
 
+    /** One block decoded through the view (the reference path, not a kernel). */
     @Benchmark
-    public fun storage_toTensorData_q4k(): TensorData<DType, Byte> =
-        TensorStorageFactory.toTensorData(q4kStorage)
+    public fun q4kView_toFloatArray(): FloatArray = q4kView.toFloatArray()
 }

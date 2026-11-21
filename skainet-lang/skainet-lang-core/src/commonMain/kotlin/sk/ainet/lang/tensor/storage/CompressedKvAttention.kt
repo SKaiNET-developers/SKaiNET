@@ -106,27 +106,6 @@ public class CompressedKvAttention(
         endPos: Int = cache.currentSeqLen,
     ): sk.ainet.lang.memory.WindowedKV = cache.valueWindow(layer, startPos, endPos)
 
-    /**
-     * Load raw [TensorStorage] for keys, preserving the cache's native encoding.
-     *
-     * This is the zero-copy path for backends that can fuse decompression
-     * with attention computation (e.g., Metal fused dequant+SDPA).
-     */
-    public fun loadKeyStorageRaw(
-        layer: Int,
-        startPos: Int = 0,
-        endPos: Int = cache.currentSeqLen
-    ): TensorStorage = cache.readKeyStorage(layer, startPos, endPos)
-
-    /**
-     * Load raw [TensorStorage] for values, preserving native encoding.
-     */
-    public fun loadValueStorageRaw(
-        layer: Int,
-        startPos: Int = 0,
-        endPos: Int = cache.currentSeqLen
-    ): TensorStorage = cache.readValueStorage(layer, startPos, endPos)
-
     /** Whether the cache uses compressed (non-Dense) encoding for keys. */
     public val isKeyCompressed: Boolean
         get() = cache.keyEncoding !is TensorEncoding.Dense

@@ -21,7 +21,7 @@ https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
 
 | One abstraction owns bytes, ownership enforced
 | Partly
-| Enforcement is tested (`StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest`). `TensorStorage` and `BufferHandle` still exist beside `Storage`, but nothing outside their package produces them any more: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`) and the compiler's export path has its own `ConstantSource` (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502], https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
+| Enforcement is tested (`StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest`). `TensorStorage`, `BufferHandle`, `BufferAccessor` and their factories are removed: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`), the compiler's export path has its own `ConstantSource`, and `repackTo` / `requantizeTo` live on `TensorView`. What is left: most `TensorData` classes still own their array and wrap it on each `view` read (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502], https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
 
 | One view mechanism
 | Partly

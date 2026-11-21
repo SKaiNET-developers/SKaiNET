@@ -1,37 +1,33 @@
 package sk.ainet.lang.tensor.storage
 
+import sk.ainet.lang.memory.Format
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.Shape
+import sk.ainet.lang.types.FP32
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import sk.ainet.lang.types.FP16
-import sk.ainet.lang.types.FP32
 
+/** The file-backed counts need a mapped file: `StorageIntegrationTest` in the gguf module. */
 class MemoryTrackerTest {
+
+    private fun owned(elements: Int): TensorView = TensorView.dense(Storage.Heap.floats(elements), Shape(elements))
 
     @Test
     fun trackAndReport() {
         val tracker = MemoryTracker()
 
-        val s1 = TensorStorage(
-            shape = Shape(100),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.Owned(ByteArray(400))
+        tracker.record("weight1", owned(100))
+        tracker.record(
+            "weight2_q4k",
+            TensorView.ofBytes(Storage.Heap.wrap(ByteArray(144), mutable = false), Shape(256), Format(FP32, TensorEncoding.Q4_K)),
         )
-        val s2 = TensorStorage(
-            shape = Shape(256),
-            dtype = FP32,
-            encoding = TensorEncoding.Q4_K,
-            buffer = BufferHandle.Borrowed(ByteArray(144))
-        )
-
-        tracker.record("weight1", s1)
-        tracker.record("weight2_q4k", s2)
 
         val report = tracker.report()
         assertEquals(2, report.tensorCount)
         assertEquals(1, report.ownedCount)
         assertEquals(1, report.borrowedCount)
+        assertEquals(0, report.fileBackedCount)
         assertEquals(400L + 1024L, report.totalLogicalBytes) // 100*4 + 256*4
         assertEquals(400L + 144L, report.totalPhysicalBytes)
     }
@@ -50,33 +46,12 @@ class MemoryTrackerTest {
     @Test
     fun clearResetsState() {
         val tracker = MemoryTracker()
-        tracker.record("x", TensorStorage(
-            shape = Shape(10),
-            dtype = FP32,
-            encoding = TensorEncoding.Dense(4),
-            buffer = BufferHandle.Owned(ByteArray(40))
-        ))
+        tracker.record("x", owned(10))
         tracker.recordCopy("x", 40)
         tracker.clear()
 
         val report = tracker.report()
         assertEquals(0, report.tensorCount)
         assertEquals(0L, report.copyCount)
-    }
-
-    @Test
-    fun fileBackedTracking() {
-        val tracker = MemoryTracker()
-        tracker.record("mmap_weight", TensorStorage(
-            shape = Shape(1000),
-            dtype = FP16,
-            encoding = TensorEncoding.Dense(2),
-            buffer = BufferHandle.FileBacked("/model.bin", 0, 2000),
-            placement = Placement.MMAP_WEIGHTS
-        ))
-
-        val report = tracker.report()
-        assertEquals(1, report.fileBackedCount)
-        assertEquals(2000L, report.fileBackedBytes)
     }
 }
