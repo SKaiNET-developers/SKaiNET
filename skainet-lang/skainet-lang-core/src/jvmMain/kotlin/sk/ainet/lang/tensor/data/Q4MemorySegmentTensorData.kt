@@ -47,6 +47,26 @@ public class Q4MemorySegmentTensorData(
 
     override val encoding: TensorEncoding get() = TensorEncoding.Q4_0
 
+    /**
+     * A packed view over the *same* off-heap bytes (SKEEP-003 §4.1 façade): `Format(FP32, Q4_0)`,
+     * blocks in row-major (file) order, the storage borrowing this data's [segment]. Nothing is
+     * copied. The ops select the matmul kernel from this view, not from the class (#1507).
+     *
+     * [shape] is the shape the bytes were written for, `[out, in]` for a weight. `view.get()`
+     * returns the decoded value, where [get] returns the raw code. The view is built once; its
+     * decoder keeps one block of scratch and is not thread-safe.
+     */
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = cachedView ?: sk.ainet.lang.memory.TensorView.ofBytes(
+            sk.ainet.lang.memory.SegmentStorage.borrow(
+                if (segmentByteOffset == 0L) segment else segment.asSlice(segmentByteOffset),
+            ),
+            shape,
+            sk.ainet.lang.memory.Format(sk.ainet.lang.types.FP32, TensorEncoding.Q4_0),
+        ).also { cachedView = it }
+
+    private var cachedView: sk.ainet.lang.memory.TensorView? = null
+
     override val blockSize: Int = 32
     override val bytesPerBlock: Int = 18 // 2 scale + 16 codes
     override val blockCount: Int = (shape.volume + blockSize - 1) / blockSize

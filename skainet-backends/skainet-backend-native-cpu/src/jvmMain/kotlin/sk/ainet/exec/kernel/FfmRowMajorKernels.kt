@@ -33,6 +33,7 @@ import sk.ainet.lang.types.FP32
  * - [MappedBufferStorage]/[DirectBufferStorage] → `MemorySegment.ofBuffer` — **zero-copy**: the
  *   kernel reads the mmap'd GGUF pages directly, which is the point of `WeightResidency.MAPPED`.
  *   Before this tier, a mapped packed weight on the JVM fell to the decoding reference kernel.
+ * - [sk.ainet.lang.memory.SegmentStorage] → its segment as it is, also zero-copy (#1507).
  * - Heap `ByteArray` → staged into a confined arena per call, the same cost class as the
  *   existing heap FFM kernels ([NativeQ4KMatmulKernel] et al. stage their weight too).
  *
@@ -76,6 +77,10 @@ public class FfmRowMajorMatmulKernel internal constructor(
                 is MappedBufferStorage, is DirectBufferStorage -> {
                     val buffer = if (s is MappedBufferStorage) s.buffer() else (s as DirectBufferStorage).buffer()
                     weightSeg = MemorySegment.ofBuffer(buffer)   // zero-copy over the mapping
+                    weightSegOffset = weightOffset
+                }
+                is sk.ainet.lang.memory.SegmentStorage -> {
+                    weightSeg = s.segment()                      // zero-copy over the caller's segment
                     weightSegOffset = weightOffset
                 }
                 is Storage.Heap -> {

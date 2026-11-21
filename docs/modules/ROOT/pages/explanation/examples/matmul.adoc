@@ -182,10 +182,11 @@ val result = ctx.ops.matmul(matrix, vector)
 
 === Transpose Before Matmul
 
-`ctx.ops.transpose` produces a tensor view that the matmul dispatch
-recognises; for some packed quantized formats the transpose is lazy
-(no data reordering — see `Q4MemorySegmentTensorData` in
-`skainet-backend-cpu` for the marker class).
+`ctx.ops.transpose` of a dense tensor is the transposed tensor. For a
+packed quantized weight it is a marker (`TransposedWeightTensorData`):
+no bytes are reordered, and `matmul` recognises the marker and multiplies
+by the weight as it is stored. This holds for heap, mapped and
+`MemorySegment` weights alike.
 
 [source,kotlin]
 ----

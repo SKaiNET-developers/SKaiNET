@@ -245,6 +245,19 @@ public class NarrowFloatInputMajorTensorData(
     private val rows: Int = shape.dimensions[0]
     private val cols: Int = shape.dimensions[1]
 
+    /**
+     * A view over the *same* bytes (SKEEP-003 §4.1 façade): the row-major `[cols, rows]` view of
+     * the buffer, transposed. It is strided, not contiguous, which is how a kernel that wants
+     * row-major bytes sees that these are not; `view.transpose()` is contiguous again and is what
+     * the ops' `transpose` returns for this data (#1507).
+     */
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = sk.ainet.lang.memory.TensorView.ofBytes(
+            sk.ainet.lang.memory.Storage.Heap.wrap(data, mutable = false),
+            Shape(cols, rows),
+            sk.ainet.lang.memory.Format(codec.dtype, TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)),
+        ).transpose()
+
     init {
         require(shape.dimensions.size == 2) {
             "Input-major layout is only defined for rank-2 weights, got shape $shape"
