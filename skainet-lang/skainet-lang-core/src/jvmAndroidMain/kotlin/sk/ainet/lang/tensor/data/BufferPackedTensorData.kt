@@ -28,10 +28,8 @@ import sk.ainet.lang.types.FP32
  * correct but per-block-copy slow, and **not thread-safe**; it exists for embedding-lookup-style
  * reads and references, not for matmuls.
  *
- * [get] mirrors the heap classes' raw-code semantics (`Q4_KBlockTensorData.get` returns the
- * quantization *code*, not the value — PackedBlockStorage's documented source-compat quirk), so
- * that the "staging never changes the numbers" invariant holds across HEAP↔MAPPED loads of the
- * same file. Decoded values come from [packedView]`.get` (rule 4) or [dequantizeBlock].
+ * [get] returns the decoded value, as the heap block classes do, so the same file gives the same
+ * numbers whether it was loaded to the heap or mapped.
  *
  * [packedData] deliberately throws: handing out a heap `ByteArray` is exactly what this class
  * exists to avoid. Readers that need bytes go through [packedView]'s storage; readers that need
@@ -45,7 +43,6 @@ public class BufferPackedTensorData(
 ) : TensorData<FP32, Float>, PackedBlockStorage {
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
-    private val strides: IntArray = shape.computeStrides()
 
     override val blockSize: Int
     private val bytesPerBlock: Int
@@ -53,7 +50,6 @@ public class BufferPackedTensorData(
     /** Decodes one block out of [scratch]; refilled from the buffer before each decode. */
     private val scratch: ByteArray
     private val scratchDecoder: PackedBlockStorage
-    private val scratchData: TensorData<*, *>
 
     private val buf: ByteBuffer = when (storage) {
         is MappedBufferStorage -> storage.buffer()
@@ -72,7 +68,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q4_KBlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             TensorEncoding.Q6_K -> {
                 blockSize = TensorEncoding.Q6_K.BLOCK_SIZE
@@ -80,7 +75,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q6_KBlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             TensorEncoding.Q5_K -> {
                 blockSize = TensorEncoding.Q5_K.BLOCK_SIZE
@@ -88,7 +82,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q5_KBlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             TensorEncoding.Q8_0 -> {
                 blockSize = TensorEncoding.Q8_0.BLOCK_SIZE
@@ -96,7 +89,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q8_0BlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             TensorEncoding.Q4_0 -> {
                 blockSize = TensorEncoding.Q4_0.BLOCK_SIZE
@@ -104,7 +96,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q4_0BlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             TensorEncoding.Q5_0 -> {
                 blockSize = TensorEncoding.Q5_0.BLOCK_SIZE
@@ -112,7 +103,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q5_0BlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             TensorEncoding.Q5_1 -> {
                 blockSize = TensorEncoding.Q5_1.BLOCK_SIZE
@@ -120,7 +110,6 @@ public class BufferPackedTensorData(
                 scratch = ByteArray(bytesPerBlock)
                 val d = Q5_1BlockTensorData(Shape(blockSize), scratch)
                 scratchDecoder = d
-                scratchData = d
             }
             else -> throw IllegalArgumentException(
                 "BufferPackedTensorData supports the GGML block formats " +
@@ -170,27 +159,8 @@ public class BufferPackedTensorData(
         scratchDecoder.dequantizeBlock(0, output, outputOffset)
     }
 
-    override fun get(vararg indices: Int): Float {
-        require(indices.size == shape.dimensions.size) {
-            "Number of indices (${indices.size}) must match tensor dimensions (${shape.dimensions.size})"
-        }
-        var flat = 0
-        for (i in indices.indices) {
-            val idx = indices[i]
-            require(idx >= 0 && idx < shape.dimensions[i]) {
-                "Index $idx out of bounds for dimension $i with size ${shape.dimensions[i]}"
-            }
-            flat += idx * strides[i]
-        }
-        val block = flat / blockSize
-        val within = flat % blockSize
-        val d = buf.duplicate()
-        d.position(block * bytesPerBlock)
-        d.get(scratch, 0, bytesPerBlock)
-        // Raw code, as the heap classes return it — see the class KDoc. Decoded values are
-        // packedView.get's job.
-        return (scratchData.get(within) as Number).toFloat()
-    }
+    /** The decoded value of one element, as the heap block classes return it: read through [packedView]. */
+    override fun get(vararg indices: Int): Float = packedView.get(*indices)
 
     override fun set(vararg indices: Int, value: Float): Unit =
         throw UnsupportedOperationException("BufferPackedTensorData is read-only (mapped/borrowed weight bytes)")

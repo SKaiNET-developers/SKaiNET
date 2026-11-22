@@ -4,6 +4,7 @@ import sk.ainet.lang.tensor.Shape
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class Q4_0TensorDataTest {
 
@@ -72,13 +73,16 @@ class Q4_0TensorDataTest {
     }
 
     @Test
-    fun `set round-trips through nibble packing`() {
-        val data = block(0x00, 0x3C, IntArray(32) { 8 })
-        val tensor = Q4_0BlockTensorData.fromRawBytes(Shape(32), data)
-        tensor[3] = 5      // low nibble of byte 3
-        tensor[19] = 12    // high nibble of byte 3 (19-16=3)
-        assertEquals(5.toByte(), tensor[3])
-        assertEquals(12.toByte(), tensor[19])
+    fun `get returns the decoded value and set is refused`() {
+        val codes = IntArray(32) { 8 }
+        codes[3] = 5       // low nibble of byte 3
+        codes[19] = 12     // high nibble of byte 3 (19-16=3)
+        val tensor = Q4_0BlockTensorData.fromRawBytes(Shape(32), block(0x00, 0x40, codes)) // scale 2.0
+        assertEquals(5.toByte(), tensor.getCode(0, 3))
+        assertEquals(-6f, tensor[3])       // (5 - 8) * 2
+        assertEquals(8f, tensor[19])       // (12 - 8) * 2
+        assertEquals(0f, tensor[0])
+        assertFailsWith<UnsupportedOperationException> { tensor[3] = 1f }
     }
 
     @Test

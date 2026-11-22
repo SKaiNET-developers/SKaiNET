@@ -151,10 +151,7 @@ class TransposedWeightViewTest {
         val (w, inDim) = weight(32, 34) { s, b -> Q8_0BlockTensorData(s, b) as TensorData<FP32, Float> }
         val t = w.t()
         assertEquals(Shape(inDim, outDim), t.shape)
-        // Read through a star projection: the fixture is really `TensorData<FP32, Byte>` wearing a
-        // `<FP32, Float>` cast (the repo's fixture idiom), and asking it for a Float is a real
-        // ClassCastException on Kotlin/Wasm, which checks the cast the JVM erases. The element
-        // values are quantized codes either way — that is the point of the assertion.
+        // The elements are decoded values: a packed weight is `TensorData<FP32, Float>` (SKEEP-003 rule 3).
         val weightData: TensorData<*, *> = w.data
         val markerData: TensorData<*, *> = t.data
         for (o in 0 until outDim) {

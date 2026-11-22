@@ -3,7 +3,7 @@ package sk.ainet.lang.tensor.data
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
 
 /**
  * Tensor data interface for Q5_K quantized format (canonical ggml layout).
@@ -38,7 +38,7 @@ import sk.ainet.lang.types.DType
  * Validated bit-exact against `DequantOps.dequantQ5KFromBytes`, which carries
  * the proof and the regression note about the earlier `qh[idx/8]` bug.
  */
-public interface Q5_KTensorData : TensorData<DType, Byte> {
+public interface Q5_KTensorData : TensorData<FP32, Float> {
     /** Number of Q5_K blocks in the tensor. */
     public val blockCount: Int
 
@@ -124,7 +124,6 @@ public class Q5_KBlockTensorData(
     override val view: sk.ainet.lang.memory.TensorView get() = packedView
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
-    private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
 
     override val blockCount: Int = (shape.volume + Q5_KTensorData.BLOCK_SIZE - 1) / Q5_KTensorData.BLOCK_SIZE
@@ -245,31 +244,19 @@ public class Q5_KBlockTensorData(
         return low or (fifth shl 4)
     }
 
-    override fun get(vararg indices: Int): Byte {
-        val flatIndex = calcFlatIndex(indices)
-        val blockIdx = flatIndex / Q5_KTensorData.BLOCK_SIZE
-        val elementIdx = flatIndex % Q5_KTensorData.BLOCK_SIZE
-        return getCode(blockIdx, elementIdx).toByte()
-    }
+    /**
+     * The decoded value of one element, read through [packedView] (SKEEP-003 rule 3: a packed
+     * weight is logically FP32; the encoding only says how it is stored). It decodes a whole block
+     * per call, so it is for inspection and tests, not for loops: take [packedView] or
+     * [PackedBlockStorage.toFloatArray] for those. The memory debug mode warns when element reads
+     * of a packed weight become a pattern.
+     */
+    override fun get(vararg indices: Int): Float = packedView.get(*indices)
 
-    override fun set(vararg indices: Int, value: Byte) {
-        throw UnsupportedOperationException("Q5_K packed tensor data is read-only")
-    }
+    /** Packed weights are read-only through the element interface: there is no one code for a value. */
+    override fun set(vararg indices: Int, value: Float): Unit =
+        throw UnsupportedOperationException("${encoding.name} data is read-only by element; requantize the tensor instead")
 
-    private fun calcFlatIndex(indices: IntArray): Int {
-        require(indices.size == shape.dimensions.size) {
-            "Number of indices (${indices.size}) must match tensor dimensions (${shape.dimensions.size})"
-        }
-        var flatIndex = 0
-        for (i in indices.indices) {
-            val idx = indices[i]
-            require(idx >= 0 && idx < shape.dimensions[i]) {
-                "Index $idx out of bounds for dimension $i with size ${shape.dimensions[i]}"
-            }
-            flatIndex += idx * strides[i]
-        }
-        return flatIndex
-    }
 
     public companion object {
         /**

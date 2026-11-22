@@ -5,7 +5,7 @@ import sk.ainet.lang.memory.TernaryCodec
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
 
 /**
  * Packed ternary tensor data in the [TensorEncoding.BITNET_B1_58] layout — the first packed
@@ -19,14 +19,14 @@ import sk.ainet.lang.types.DType
  * The whole tensor is one block ([blockCount] `== 1`): the encoding has a single scale, so there
  * is no per-block structure to expose, and [packedView] carries
  * `Format(FP32, BITNET_B1_58) × BLOCKED_ROW_MAJOR` — the exact key the ternary f32 kernel pack
- * serves (#1138). `get` returns the *signed code* (−1, 0, +1; byte code 3 → +2), scale not
- * applied; decoding with the scale goes through [dequantizeBlock] / [PackedBlockStorage.toFloatArray].
+ * serves (#1138). `get` returns the decoded value (code × [scale]), as for every packed weight;
+ * [dequantizeBlock] / [PackedBlockStorage.toFloatArray] decode the whole tensor.
  */
 public class BitNetB158TensorData private constructor(
     initialShape: Shape,
     private val heapData: ByteArray?,
     private val backingStorage: Storage?,
-) : TensorData<DType, Byte>, PackedBlockStorage {
+) : TensorData<FP32, Float>, PackedBlockStorage {
 
     /** Wrap raw `payload + scale` bytes on the JVM/heap — the historical constructor. */
     public constructor(initialShape: Shape, data: ByteArray) : this(initialShape, data, null)
@@ -56,7 +56,6 @@ public class BitNetB158TensorData private constructor(
     override val view: sk.ainet.lang.memory.TensorView get() = packedView
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
-    private val strides: IntArray = shape.computeStrides()
 
     override val encoding: TensorEncoding get() = TensorEncoding.BITNET_B1_58
     override val blockCount: Int get() = 1
@@ -103,35 +102,19 @@ public class BitNetB158TensorData private constructor(
     private fun codeAt(flatIndex: Int): Int =
         (((data[flatIndex / 4].toInt() and 0xFF) shr ((flatIndex % 4) * 2)) and 3) - 1
 
-    override fun get(vararg indices: Int): Byte = codeAt(calcFlatIndex(indices)).toByte()
+    /**
+     * The decoded value of one element, read through [packedView] (SKEEP-003 rule 3: a packed
+     * weight is logically FP32; the encoding only says how it is stored). It decodes a whole block
+     * per call, so it is for inspection and tests, not for loops: take [packedView] or
+     * [PackedBlockStorage.toFloatArray] for those. The memory debug mode warns when element reads
+     * of a packed weight become a pattern.
+     */
+    override fun get(vararg indices: Int): Float = packedView.get(*indices)
 
-    override fun set(vararg indices: Int, value: Byte) {
-        require(value in -1..1) { "BITNET_B1_58 stores ternary codes; got $value" }
-        val flatIndex = calcFlatIndex(indices)
-        val byteIndex = flatIndex / 4
-        val shift = (flatIndex % 4) * 2
-        val cleared = data[byteIndex].toInt() and (3 shl shift).inv()
-        val updated = (cleared or ((value + 1) shl shift)).toByte()
-        data[byteIndex] = updated
-        // The lazy snapshot above is a copy, not an alias, when backed by off-heap/mapped
-        // storage — write the single changed byte back so the two never diverge.
-        backingStorage?.copyFrom(byteArrayOf(updated), offset = byteIndex.toLong(), length = 1)
-    }
+    /** Packed weights are read-only through the element interface: there is no one code for a value. */
+    override fun set(vararg indices: Int, value: Float): Unit =
+        throw UnsupportedOperationException("${encoding.name} data is read-only by element; requantize the tensor instead")
 
-    private fun calcFlatIndex(indices: IntArray): Int {
-        require(indices.size == shape.dimensions.size) {
-            "Number of indices (${indices.size}) must match tensor dimensions (${shape.dimensions.size})"
-        }
-        var flatIndex = 0
-        for (i in indices.indices) {
-            val idx = indices[i]
-            require(idx >= 0 && idx < shape.dimensions[i]) {
-                "Index $idx out of bounds for dimension $i with size ${shape.dimensions[i]}"
-            }
-            flatIndex += idx * strides[i]
-        }
-        return flatIndex
-    }
 
     public companion object {
         /** Wrap raw `payload + scale` bytes (validates the size). */
