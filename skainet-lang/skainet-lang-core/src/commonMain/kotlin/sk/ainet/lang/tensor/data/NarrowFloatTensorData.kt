@@ -93,7 +93,7 @@ public open class NarrowFloatDenseTensorData(
      * decoded float, exactly like [get].
      */
     override val view: sk.ainet.lang.memory.TensorView
-        get() = sk.ainet.lang.memory.TensorView(
+        get() = cachedView ?: sk.ainet.lang.memory.TensorView(
             shape = shape,
             format = sk.ainet.lang.memory.Format(codec.dtype, TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)),
             layout = sk.ainet.lang.memory.Layout(
@@ -103,7 +103,10 @@ public open class NarrowFloatDenseTensorData(
             ),
             storage = sk.ainet.lang.memory.Storage.Heap.wrap(data, mutable = false),
             decoder = sk.ainet.lang.memory.NarrowFloatDecoder(codec),
-        )
+        ).also { cachedView = it }
+
+    /** The view is built on first use and kept: one storage handle per data object (#1507). */
+    private var cachedView: sk.ainet.lang.memory.TensorView? = null
 
     init {
         val requiredBytes = shape.volume * NarrowFloatTensorData.BYTES_PER_ELEMENT
@@ -252,11 +255,14 @@ public class NarrowFloatInputMajorTensorData(
      * the ops' `transpose` returns for this data (#1507).
      */
     override val view: sk.ainet.lang.memory.TensorView
-        get() = sk.ainet.lang.memory.TensorView.ofBytes(
+        get() = cachedView ?: sk.ainet.lang.memory.TensorView.ofBytes(
             sk.ainet.lang.memory.Storage.Heap.wrap(data, mutable = false),
             Shape(cols, rows),
             sk.ainet.lang.memory.Format(codec.dtype, TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)),
-        ).transpose()
+        ).transpose().also { cachedView = it }
+
+    /** The view is built on first use and kept: one storage handle per data object (#1507). */
+    private var cachedView: sk.ainet.lang.memory.TensorView? = null
 
     init {
         require(shape.dimensions.size == 2) {

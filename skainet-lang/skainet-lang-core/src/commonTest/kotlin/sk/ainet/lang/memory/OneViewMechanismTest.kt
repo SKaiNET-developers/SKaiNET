@@ -128,14 +128,14 @@ class OneViewMechanismTest {
     // --- the layout is the mechanism ----------------------------------------------------------
 
     @Test
-    fun eachViewCallWrapsTheSameBytesInAFreshHandle() {
-        // `view()` is a *handle* over the tensor's array, so two calls carry two StorageIds — but
-        // one array: a write through either is visible through the other. Callers that compare
-        // identity (tracing, plan-vs-actual) must hold on to one view rather than re-deriving it.
+    fun everyViewCallGivesTheSameHandle() {
+        // The data has one storage handle and one view for its life (#1507), so two calls carry
+        // the same StorageId: tracing and plan-vs-actual can compare identity without holding on
+        // to a view. Before, each call wrapped the array in a fresh handle.
         val t = rampTensor(2, 3)
         val a = t.view()
         val b = t.view()
-        assertNotEquals(a.storage.id, b.storage.id, "a new handle per call")
+        assertEquals(a.storage.id, b.storage.id, "one handle per data object")
         a.set(0, 0, value = -7f)
         assertEquals(-7f, b.get(0, 0), "the same bytes underneath")
         assertEquals(-7f, t.data.get(0, 0), "and the same bytes the TensorData reads")

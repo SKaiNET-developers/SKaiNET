@@ -50,6 +50,16 @@ public class Ternary2BitTensorData(
 ) : TernaryTensorData, PackedBlockStorage {
 
     /** The façade over the packed bytes (SKEEP-003 §4.1): see [PackedBlockStorage.packedView]. */
+    private var cachedPackedView: sk.ainet.lang.memory.TensorView? = null
+
+    /**
+     * Built on first use and kept: one storage handle and one view for the life of this data
+     * (SKEEP-003 §4.1, #1507). Two threads may each build one; the views are equal and borrow the
+     * same bytes, so either may win.
+     */
+    override val packedView: sk.ainet.lang.memory.TensorView
+        get() = cachedPackedView ?: super.packedView.also { cachedPackedView = it }
+
     override val view: sk.ainet.lang.memory.TensorView get() = packedView
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())

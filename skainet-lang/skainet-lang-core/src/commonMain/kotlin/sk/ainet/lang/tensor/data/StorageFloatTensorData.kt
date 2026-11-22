@@ -80,7 +80,12 @@ public class StorageFloatTensorData<T : DType>(
     override val view: TensorView
         get() {
             storage.checkAlive()
-            // In memory debug mode the view carries the storage's id (an eager activation id, decision 10).
-            return TensorView.dense(storage, shape, FP32, id = if (MemoryDebug.isEnabled) storage.debugOrigin else null)
+            // In memory debug mode the view carries the storage's id (an eager activation id,
+            // decision 10); that one is built per read, because the mode can be switched.
+            if (MemoryDebug.isEnabled) return TensorView.dense(storage, shape, FP32, id = storage.debugOrigin)
+            return cachedView ?: TensorView.dense(storage, shape, FP32).also { cachedView = it }
         }
+
+    /** The view without an id, built on first use and kept (#1507). */
+    private var cachedView: TensorView? = null
 }
