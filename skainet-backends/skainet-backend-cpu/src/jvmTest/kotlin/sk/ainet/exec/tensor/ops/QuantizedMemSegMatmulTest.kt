@@ -384,8 +384,9 @@ class QuantizedMemSegMatmulTest {
         // The forward-scope shape of the same activation: a StorageFloatTensorData over a slab
         // slice at a NONZERO offset — what a ScopedExecutionContext hands every op mid-step
         // (#1145/#1146). Before chooseQuantizedMatmul2D grew its dense-FP32 fallback this fell
-        // through to matmulGeneric, whose per-element get() on the Q8 weight returns raw codes —
-        // silently wrong results, not an error.
+        // through to matmulGeneric, whose per-element get() on the Q8 weight then returned raw
+        // codes — silently wrong results, not an error. (`get` decodes since #1507; the element
+        // loop would now be right, only slow.)
         sk.ainet.lang.memory.ForwardScope(1024).use { scope ->
             scope.allocateFloats(7) // push the next allocation off offset 0
             val st = scope.allocateFloats(inputDim)

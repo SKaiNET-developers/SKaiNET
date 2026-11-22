@@ -3,6 +3,7 @@ package sk.ainet.lang.tensor.data
 import sk.ainet.lang.tensor.Shape
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertContentEquals
 import kotlin.math.abs
 
@@ -99,8 +100,12 @@ class Q4_KTensorDataTest {
         val block = createQ4KBlock(0x3C00, 0x0000, codes = codes)
         val tensor = Q4_KBlockTensorData.fromRawBytes(Shape(256), block)
 
-        assertEquals(1.toByte(), tensor[0])
-        assertEquals(2.toByte(), tensor[32])
+        assertEquals(1, tensor.getCode(0, 0))
+        assertEquals(2, tensor.getCode(0, 32))
+        // `get` is the decoded value: the same number the whole-tensor decode gives.
+        val decoded = tensor.toFloatArray()
+        assertEquals(decoded[0], tensor[0])
+        assertEquals(decoded[32], tensor[32])
     }
 
     @Test
@@ -123,22 +128,22 @@ class Q4_KTensorDataTest {
         // tensor[0, 0] = element 0 = lo byte 0 = (0 + 0) % 16 = 0
         // tensor[0, 1] = element 1 = lo byte 1 = (0 + 1) % 16 = 1
         // tensor[2, 0] = element 32 = hi byte 0 = (0 + 32) % 16 = 0
-        assertEquals(0, tensor[0, 0].toInt())
-        assertEquals(1, tensor[0, 1].toInt())
-        assertEquals(0, tensor[2, 0].toInt())
+        assertEquals(0, tensor.getCode(0, 0))
+        assertEquals(1, tensor.getCode(0, 1))
+        assertEquals(0, tensor.getCode(0, 32))
+        // and the indexed read is the decoded value at the same row-major position
+        val decoded = tensor.toFloatArray()
+        assertEquals(decoded[1], tensor[0, 1])
+        assertEquals(decoded[32], tensor[2, 0])
+        assertEquals(decoded[255], tensor[15, 15])
     }
 
     @Test
-    fun `Q4_KBlockTensorData set operation works - canonical strided layout`() {
+    fun `Q4_KBlockTensorData refuses element writes`() {
         val block = createQ4KBlock(0x3C00, 0x0000)
         val tensor = Q4_KBlockTensorData.fromRawBytes(Shape(256), block)
 
-        // Element 0 lives in byte 0 lo; element 32 lives in byte 0 hi.
-        tensor[0] = 7
-        tensor[32] = 11
-
-        assertEquals(7.toByte(), tensor[0])
-        assertEquals(11.toByte(), tensor[32])
+        assertFailsWith<UnsupportedOperationException> { tensor[0] = 7f }
     }
 
     @Test

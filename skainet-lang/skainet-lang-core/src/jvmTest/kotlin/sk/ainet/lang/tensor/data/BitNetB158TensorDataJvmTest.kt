@@ -44,20 +44,15 @@ class BitNetB158TensorDataJvmTest {
     }
 
     @Test
-    fun setWritesThroughToBackingStorage() {
-        val values = floatArrayOf(1f, -1f, 0f, 1f, -1f, 0f, 0f, 1f)
+    fun elementReadsDecodeFromTheBackingStorage() {
+        val values = floatArrayOf(0.5f, -0.5f, 0f, 0.5f, -0.5f, 0f, 0f, 0.5f)
         val bytes = TernaryCodec.encodeBitNet(values)
         val storage = PlatformStorage.allocate(bytes.size.toLong(), MemoryDomain.HOST_OFFHEAP)
         storage.copyFrom(bytes)
         val offHeap = BitNetB158TensorData.fromStorage(Shape(8), storage)
 
-        offHeap.set(2, value = -1)
-        assertEquals(-1, offHeap.get(2).toInt())
-
-        // A second view constructed straight from the same storage — not the same Kotlin object,
-        // no shared lazy snapshot — must see the write, proving it reached the storage itself.
-        val reread = BitNetB158TensorData.fromStorage(Shape(8), storage)
-        assertEquals(-1, reread.get(2).toInt())
+        val decoded = TernaryCodec.decodeBitNet(bytes, values.size)
+        for (i in values.indices) assertEquals(decoded[i], offHeap.get(i), "element $i")
         storage.close()
     }
 }
