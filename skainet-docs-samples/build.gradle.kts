@@ -6,7 +6,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  * The Kotlin sources under this module ARE the Antora example resources: the
  * `commonMain` source directory points at `docs/modules/ROOT/examples/kotlin`, so
  * every snippet rendered in the docs is real code that this module compiles and
- * `commonTest` executes in CI. AsciiDoc pages pull tagged regions out of these files
+ * `commonTest` executes in CI (JVM-only samples: `examples/kotlin-jvm`, run by `jvmTest`). AsciiDoc pages pull tagged regions out of these files
  * with `include::example$kotlin/...[tag=...]` — there are no hand-typed snippets to rot.
  *
  * Not published: this module exists only to keep the documentation honest.
@@ -32,6 +32,16 @@ kotlin {
                 implementation(project(":skainet-compile:skainet-compile-dag"))
                 implementation(project(":skainet-data:skainet-data-api"))
                 implementation(project(":skainet-data:skainet-data-simple"))
+            }
+        }
+        jvmMain {
+            // Samples that need files (GGUF, memory mapping) are JVM-only and live beside the
+            // common ones, so Antora includes them the same way: `example$kotlin-jvm/...`.
+            kotlin.srcDir("../docs/modules/ROOT/examples/kotlin-jvm")
+            dependencies {
+                implementation(project(":skainet-backends:skainet-backend-api"))
+                implementation(project(":skainet-io:skainet-io-core"))
+                implementation(project(":skainet-io:skainet-io-gguf"))
             }
         }
         commonTest.dependencies {
