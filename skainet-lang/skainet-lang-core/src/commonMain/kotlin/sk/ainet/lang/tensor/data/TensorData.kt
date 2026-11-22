@@ -109,6 +109,16 @@ public interface TensorData<T : DType, V> : ItemsAccessor<V> {
     public val heapFloatsOffset: Int get() = 0
 
     /**
+     * The data this one is the unmaterialized transpose of, or `null` for ordinary data.
+     *
+     * Non-null means: the shape is the transpose's, the bytes are still [transposeOf]'s, and a
+     * product is asked of the ops' `matmulWeightTransposed` with that data (#1108). The ops read
+     * this instead of checking for [TransposedWeightTensorData] (SKEEP-003, #1507), so any data
+     * that wraps a weight this way is routed the same.
+     */
+    public val transposeOf: TensorData<T, V>? get() = null
+
+    /**
      * Copies all tensor data to a FloatArray.
      *
      * This method provides efficient bulk data transfer from tensor storage to a FloatArray.

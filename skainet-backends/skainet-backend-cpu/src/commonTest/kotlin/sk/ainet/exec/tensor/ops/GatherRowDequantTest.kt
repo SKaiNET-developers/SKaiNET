@@ -3,6 +3,7 @@ package sk.ainet.exec.tensor.ops
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.data.Q4_0Quantizer
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.RowDequantSource
@@ -74,6 +75,32 @@ class GatherRowDequantTest {
         assertContentEquals(
             expected.copyOfRange(4 * cols, 5 * cols) + expected.copyOfRange(0, cols) +
                 expected.copyOfRange(5 * cols, 6 * cols),
+            out.data.copyToFloatArray(),
+        )
+    }
+
+    @Test
+    fun gatherDecodesAPackedTableThroughItsView() {
+        // Q4_0 has no row decoder of its own. Its element access returns the stored code, so the
+        // lookup reads the touched rows through the view, which decodes (#1507).
+        val rows = 5
+        val cols = 64
+        val values = FloatArray(rows * cols) { ((it * 7) % 23 - 11) / 11f * (1 + it / cols) }
+        val packed = Q4_0Quantizer.quantize(values, Shape(rows, cols))
+        val expected = packed.view.toFloatArray()
+
+        val ctx = DirectCpuExecutionContext.create()
+        @Suppress("UNCHECKED_CAST")
+        val table = ctx.fromData<FP32, Float>(packed as TensorData<FP32, Float>, FP32::class)
+        val ids = ctx.fromIntArray<Int32, Int>(Shape(3), Int32::class, intArrayOf(3, 0, 4))
+
+        @Suppress("UNCHECKED_CAST")
+        val out = ctx.ops.gather(table, ids as Tensor<sk.ainet.lang.types.DType, *>, dim = 0)
+
+        assertEquals(listOf(3, cols), out.shape.dimensions.toList())
+        assertContentEquals(
+            expected.copyOfRange(3 * cols, 4 * cols) + expected.copyOfRange(0, cols) +
+                expected.copyOfRange(4 * cols, 5 * cols),
             out.data.copyToFloatArray(),
         )
     }
