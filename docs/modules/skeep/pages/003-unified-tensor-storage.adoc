@@ -50,7 +50,7 @@ execution in debug mode. The rest:
 |===
 | # | Open part | Tracked by
 
-| 1 | Façades: only `StorageFloatTensorData` sits on a `Storage`; the other `TensorData` classes own their bytes and wrap a view around them on each read | https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]
+| 1 | Façades: every heap data class (dense arrays, narrow floats, the packed block formats) has one storage handle and one view for its life, built on first use; the segment, mapped and wasm classes have a view too. Still open: the classes keep their array as the primary field (only `StorageFloatTensorData` is constructed from a `Storage`), and a packed view decodes by calling back into its data object | https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]
 | 2 | `sk.ainet.lang.graph.Layout` is not deprecated; `BlockOrderLayout` implements it now | SKEEP-004, which owns the compile-side layout
 | 4 | The `(head, tail)` pair and its gather fallback exist (`WindowedKV`); only the reference attention consumes them | https://github.com/SKaiNET-developers/SKaiNET/issues/1504[#1504], outside this SKEEP
 | 5 | `BlockSpec.activation` drives the eager dispatcher; the StableHLO export does not read it | https://github.com/SKaiNET-developers/SKaiNET/issues/1505[#1505], outside this SKEEP
