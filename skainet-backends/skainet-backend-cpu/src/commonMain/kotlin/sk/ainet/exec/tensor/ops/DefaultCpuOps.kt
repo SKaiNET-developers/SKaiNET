@@ -19,7 +19,6 @@ import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.tensor.data.packedBlockTensorData
 import sk.ainet.lang.tensor.data.RowDequantSource
-import sk.ainet.lang.tensor.data.NarrowFloatInputMajorTensorData
 import sk.ainet.lang.tensor.data.TransposedWeightTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
@@ -1093,8 +1092,8 @@ public open class DefaultCpuOpsBase(
      * gets the wrong answer and a dense path would read the packed payload as floats.
      */
     protected fun <T : DType, V> untransposedWeight(b: Tensor<T, V>): Tensor<T, V>? {
-        val marker = b.data as? TransposedWeightTensorData<T, V> ?: return null
-        return newTensor(marker.weight, b.dtype, b)
+        val weight = b.data.transposeOf ?: return null
+        return newTensor(weight, b.dtype, b)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -1310,6 +1309,31 @@ public open class DefaultCpuOpsBase(
         }
     }
 
+    /**
+     * The transpose of rank-2 narrow-float [data] as ordinary row-major data over the same bytes,
+     * when the data is stored input-major: its view is strided, and the view's transpose is the
+     * whole heap byte array, gap-free. `null` for everything else.
+     */
+    private fun narrowFloatTransposeInPlace(data: TensorData<*, *>): TensorData<*, *>? {
+        if (data.heapFloats != null) return null
+        val view = data.view ?: return null
+        if (view.format.encoding != NARROW_FLOAT_ENCODING || view.isContiguous) return null
+        val codec = when (view.format.dtype) {
+            sk.ainet.lang.types.FP16 -> sk.ainet.lang.types.Fp16Codec
+            sk.ainet.lang.types.BF16 -> sk.ainet.lang.types.Bf16Codec
+            else -> return null
+        }
+        val transposed = view.transpose()
+        if (!transposed.isContiguous || transposed.layout.offsetElements != 0L) return null
+        val heap = transposed.storage as? Storage.Heap ?: return null
+        val bytes = heap.bytes ?: return null
+        if (heap.arrayOffset != 0) return null
+        return sk.ainet.lang.tensor.data.NarrowFloatDenseTensorData(transposed.shape, bytes, codec)
+    }
+
+    private val NARROW_FLOAT_ENCODING: sk.ainet.lang.tensor.storage.TensorEncoding =
+        sk.ainet.lang.tensor.storage.TensorEncoding.Dense(2)
+
     @TensorOp()
     override fun <T : DType, V> transpose(tensor: Tensor<T, V>): Tensor<T, V> {
         val rank = tensor.shape.rank
@@ -1319,9 +1343,9 @@ public open class DefaultCpuOpsBase(
 
         // Transposing a transposed weight is the weight (#1108). Restoring this involution is half
         // the point of the marker: `w.t().t()` has not been `w` for as long as packed data existed.
-        val alreadyTransposed = tensor.data as? TransposedWeightTensorData<T, V>
-        if (alreadyTransposed != null) {
-            return newTensor(alreadyTransposed.weight, tensor.dtype, tensor)
+        val untransposed = tensor.data.transposeOf
+        if (untransposed != null) {
+            return newTensor(untransposed, tensor.dtype, tensor)
         }
 
         // Only the *heap* packed types, whose kernels read input-block-major bytes. The
@@ -1347,11 +1371,13 @@ public open class DefaultCpuOpsBase(
         // relayout: the transpose is the same buffer read with the other shape's strides, which is
         // what lets a KEEP_NATIVE weight survive Linear's weight handling and reach the narrow
         // matmul kernel (#888). Only the block-quantized types are refused above (#973).
+        // Recognised by the view (SKEEP-003, #1507): two-byte floats whose transpose is the heap
+        // buffer as it lies.
         if (rank == 2) {
-            val narrow = tensor.data as? NarrowFloatInputMajorTensorData
+            val narrow = narrowFloatTransposeInPlace(tensor.data)
             if (narrow != null) {
                 @Suppress("UNCHECKED_CAST")
-                return newTensor(narrow.transposedView() as TensorData<T, V>, tensor.dtype, tensor)
+                return newTensor(narrow as TensorData<T, V>, tensor.dtype, tensor)
             }
         }
 
@@ -3803,8 +3829,22 @@ public open class DefaultCpuOpsBase(
                     (rowCache.getOrPut(row) { src.dequantRow(row) }[col] as V)
                 }
             } else {
-                dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
-                    input.data[rowOf(outIdx), outIdx[outIdx.size - 1]]
+                // A table whose view decodes (any packed format, narrow floats) and that has no
+                // row decoder of its own: read the touched rows through the view. Element access
+                // on such data returns the stored code, not the value.
+                val decoding = if (src.heapFloats == null) src.view?.takeIf { it.decoderOrNull() != null } else null
+                if (decoding != null) {
+                    val rowCache = HashMap<Int, FloatArray>()
+                    dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+                        val row = rowOf(outIdx)
+                        val col = outIdx[outIdx.size - 1]
+                        @Suppress("UNCHECKED_CAST")
+                        (rowCache.getOrPut(row) { decoding.narrow(0, row, 1).toFloatArray() }[col] as V)
+                    }
+                } else {
+                    dataFactory.init<T, V>(outShape, input.dtype) { outIdx ->
+                        input.data[rowOf(outIdx), outIdx[outIdx.size - 1]]
+                    }
                 }
             }
             return newTensor(outData, input.dtype, input)

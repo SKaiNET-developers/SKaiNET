@@ -51,6 +51,9 @@ public class TransposedWeightTensorData<T : DType, V>(
 
     override val shape: Shape = Shape(weight.shape[1], weight.shape[0])
 
+    /** The untransposed weight: what the ops multiply by. */
+    override val transposeOf: TensorData<T, V> get() = weight
+
     /** The wrapped weight's encoding: transposing does not change how the bytes are packed. */
     override val encoding: sk.ainet.lang.tensor.storage.TensorEncoding? get() = weight.encoding
 
