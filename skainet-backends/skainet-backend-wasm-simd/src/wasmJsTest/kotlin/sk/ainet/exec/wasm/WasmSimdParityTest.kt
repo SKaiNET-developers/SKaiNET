@@ -39,6 +39,7 @@ import sk.ainet.lang.types.Bf16Codec
 import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.tensor.sliceView
 import sk.ainet.lang.tensor.data.Q4_0Quantizer
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0Quantizer
@@ -645,6 +646,41 @@ class WasmSimdParityTest {
         assertEquals(expected[7], gd.get(1, 2))
         assertTrue(gd.isMirrored)
         assertClose(expected, ctx.ops.transpose(ctx.ops.transpose(g)).data.copyToFloatArray(), "common op on a resident tensor")
+    }
+
+    @Test
+    fun `a resident tensor's view is the sidecar bytes and a slice of it stays resident`() = runTest {
+        WasmSimd.install()
+        val ctx = DirectCpuExecutionContext()
+        val values = pseudo(15, 1)
+        val a = ctx.fromFloatArray<FP32, Float>(Shape(3, 5), FP32::class, values)
+        val expected = DirectCpuExecutionContext().let { s -> s.ops.gelu(s.fromFloatArray<FP32, Float>(Shape(3, 5), FP32::class, values)).data.copyToFloatArray() }
+        val g = ctx.ops.gelu(a)
+        val gd = assertIs<WasmLinearTensorData<*>>(g.data)
+
+        // The view says where the bytes are (SKEEP-003, #1507): dense FP32 over the sidecar
+        // storage. Asking for it, and reading an element through it, downloads nothing.
+        val view = gd.view
+        assertIs<WasmLinearStorage>(view.storage)
+        assertTrue(view.isContiguous)
+        assertEquals(Shape(3, 5), view.shape)
+        assertEquals(expected[7], view.get(1, 2), 1e-5f)
+        assertTrue(!gd.isMirrored, "the view is not the heap mirror")
+
+        // A contiguous slice (row 1) is found in the sidecar by its view: a sidecar op reads it in
+        // place and answers resident, still without a download of the source.
+        val row = g.sliceView { segment { at(1) }; segment { all() } }
+        val relu = ctx.ops.relu(row)
+        assertIs<WasmLinearTensorData<*>>(relu.data, "relu of a resident slice runs in the sidecar")
+        assertTrue(!gd.isMirrored, "the slice was read in place")
+        val rowExpected = FloatArray(5) { maxOf(expected[5 + it], 0f) }
+        assertClose(rowExpected, relu.data.copyToFloatArray(), "relu of a resident slice")
+
+        // A common op without an override reads the slice through the heap mirror.
+        val t = ctx.ops.transpose(g.sliceView { segment { range(1, 3) }; segment { all() } })
+        val tExpected = FloatArray(10) { expected[5 + (it % 2) * 5 + it / 2] }
+        assertClose(tExpected, t.data.copyToFloatArray(), "common op on a resident slice")
+        assertTrue(gd.isMirrored)
     }
 
     /**

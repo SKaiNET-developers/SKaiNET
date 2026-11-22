@@ -13,7 +13,9 @@ import sk.ainet.lang.memory.trace.TraceSink
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.TensorId
 import sk.ainet.lang.tensor.data.FloatArrayTensorData
+import sk.ainet.lang.memory.TensorView
 import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
 
 /**
  * The wasm tier's [Storage.OffHeap]: a region of the SIMD128 sidecar's linear memory
@@ -48,6 +50,36 @@ public class WasmLinearStorage private constructor(
     public fun pointer(): Int {
         checkAlive()
         return base
+    }
+
+    private var mirror: FloatArray? = null
+
+    /** `true` once [heapMirror] has downloaded the bytes (diagnostics and tests). */
+    public val isMirrored: Boolean get() = mirror != null
+
+    /**
+     * These bytes as FP32 on the Kotlin heap: one bulk download on the first call, kept for the
+     * storage's life. It is how common code that has no sidecar kernel reads a resident tensor.
+     * A sidecar kernel never asks for it. The copy and the sidecar bytes agree because ops do not
+     * mutate their inputs; [writeFloat] writes both.
+     */
+    public fun heapMirror(): FloatArray {
+        checkAlive()
+        mirror?.let { return it }
+        val n = (sizeBytes / 4).toInt()
+        val arr = FloatArray(n)
+        if (n > 0) WasmKernels.readFloats(base, arr, 0, n)
+        mirror = arr
+        return arr
+    }
+
+    /** Write one FP32 element, to the sidecar and to the heap mirror when there is one. */
+    public fun writeFloat(index: Int, value: Float) {
+        checkAlive()
+        require(isMutable) { "storage $id is not mutable" }
+        require(index >= 0 && (index + 1) * 4L <= sizeBytes) { "element $index outside $sizeBytes bytes" }
+        mirror?.let { it[index] = value }
+        WasmKernels.writeFloats(base + index * 4, floatArrayOf(value), 0, 1)
     }
 
     override fun slice(offsetBytes: Long, lengthBytes: Long): WasmLinearStorage {
@@ -120,12 +152,15 @@ public class WasmLinearStorage private constructor(
  * [WasmCpuOps] hand out, so a chain `matmul → gelu → multiply → add` never copies an activation back
  * to the Kotlin heap between kernels.
  *
- * It is a [FloatArrayTensorData] so every common fast path keeps working on it: the first access to
- * [buffer] (or to an element, or [copyToFloatArray], or [view]) downloads the whole tensor once into
- * a heap mirror that is kept for the tensor's life. A sidecar kernel never triggers that — it reads
- * [pointer] — and the download is the same single bulk copy the matmul output paid before resident
- * activations existed. Ops do not mutate their inputs, so the mirror and the sidecar copy agree;
- * [set] writes both.
+ * [view] is the truth about the bytes (SKEEP-003 §4.1 façade): dense FP32 over the sidecar
+ * storage, nothing copied. The ops find a resident operand by that view, not by this class (#1507).
+ *
+ * It is also a [FloatArrayTensorData], so every common fast path keeps working on it: the first
+ * access to [buffer] (or [heapFloats], an element, or [copyToFloatArray]) downloads the tensor once
+ * into the storage's heap mirror ([WasmLinearStorage.heapMirror]). This is the one data class whose
+ * [heapFloats] is a copy of what [view] describes and not the same bytes: a caller that can use
+ * sidecar memory asks [view] first, everything else gets the mirror. Ops do not mutate their
+ * inputs, so the two agree; [set] writes both.
  */
 public class WasmLinearTensorData<T : DType>(
     initialShape: Shape,
@@ -140,13 +175,18 @@ public class WasmLinearTensorData<T : DType>(
             stride *= shape.dimensions[i]
         }
     }
-    private var mirror: FloatArray? = null
+
+    /** A mirror of this data's own, only when the storage is longer than the tensor. */
+    private var ownMirror: FloatArray? = null
 
     init {
         require(storage.sizeBytes >= shape.volume.toLong() * 4) {
             "storage holds ${storage.sizeBytes} bytes, shape $shape needs ${shape.volume.toLong() * 4}"
         }
     }
+
+    /** Dense FP32 over the sidecar bytes, zero-copy. Built once: shape and storage never change. */
+    override val view: TensorView = TensorView.dense(storage, shape, FP32)
 
     /** `true` while the sidecar bytes are alive: kernels use [pointer] and nothing is downloaded. */
     public val isResident: Boolean get() = storage.isAlive
@@ -155,16 +195,17 @@ public class WasmLinearTensorData<T : DType>(
     public fun pointer(): Int = storage.pointer()
 
     /** `true` once a heap mirror has been downloaded (diagnostics and tests). */
-    public val isMirrored: Boolean get() = mirror != null
+    public val isMirrored: Boolean get() = ownMirror != null || storage.isMirrored
 
     override val buffer: FloatArray
         get() {
-            storage.checkAlive()
-            mirror?.let { return it }
             val n = shape.volume
+            if (storage.sizeBytes == n.toLong() * 4) return storage.heapMirror()
+            storage.checkAlive()
+            ownMirror?.let { return it }
             val arr = FloatArray(n)
             if (n > 0) WasmKernels.readFloats(storage.pointer(), arr, 0, n)
-            mirror = arr
+            ownMirror = arr
             return arr
         }
 
@@ -184,11 +225,9 @@ public class WasmLinearTensorData<T : DType>(
     override fun get(vararg indices: Int): Float = buffer[flatIndex(indices)]
 
     override fun set(vararg indices: Int, value: Float) {
-        storage.checkAlive()
-        require(storage.isMutable) { "storage ${storage.id} is not mutable" }
         val flat = flatIndex(indices)
-        mirror?.let { it[flat] = value }
-        WasmKernels.writeFloats(storage.pointer() + flat * 4, floatArrayOf(value), 0, 1)
+        ownMirror?.let { it[flat] = value }
+        storage.writeFloat(flat, value)
     }
 
     override fun copyToFloatArray(): FloatArray = buffer.copyOf()
