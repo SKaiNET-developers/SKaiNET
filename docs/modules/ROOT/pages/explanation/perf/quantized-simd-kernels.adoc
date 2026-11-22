@@ -51,8 +51,7 @@ accVec = inputVec.mul(codeVec).add(accVec)
 ----
 
 Q8_0 is the "gold reference" — the cleanest expression of the
-pipeline. Q8_0 MemSeg (`matmulF32Q8_0MemSeg`) is the same loop with
-`ByteVector.fromMemorySegment`.
+pipeline.
 
 === Q4_K — 256 elements / 144 bytes / 8 sub-blocks
 
@@ -110,10 +109,6 @@ once per nibble pass. Lives at
 `skainet-backends/skainet-backend-cpu/src/jvmMain/kotlin/sk/ainet/exec/kernel/PanamaVectorQ4KMatmulKernel.kt`,
 exposed via the `Q4KMatmulKernel` SPI sibling (kernel SPI:
 `KernelProvider.matmulQ4K(): Q4KMatmulKernel?`).
-
-The MemSeg variant (`matmulF32Q4_KMemSeg`) is the same algorithm with
-`ByteVector.fromMemorySegment` — no SPI surface yet, just an inline
-replacement.
 
 ==== Numbers
 
@@ -212,14 +207,19 @@ lane-interleave shuffle required.
 
 == Per-format coverage matrix
 
-[cols="1,1,1,2",options="header"]
+[cols="1,1,2",options="header"]
 |===
-| Format | SPI sibling? | MemSeg variant SIMD? | Inner loop strategy
-| Q8_0 | no | yes | Fully fused (`ByteVector.castShape` + scaled FMA)
-| Q4_K | yes (`Q4KMatmulKernel`) | yes (inline, same algorithm) | Fully fused (single byte load → lo+hi nibble accumulators, lazy `dmin`)
-| Q6_K | no | n/a | SIMD dequant into scratch + SIMD dot (two-stage)
-| Q4_0 | yes (`Q4_0MatmulKernel`) | yes | Scalar split-layout unpack into scratch + SIMD dot (two-stage)
+| Format | SPI sibling? | Inner loop strategy
+| Q8_0 | no | Fully fused (`ByteVector.castShape` + scaled FMA)
+| Q4_K | yes (`Q4KMatmulKernel`) | Fully fused (single byte load → lo+hi nibble accumulators, lazy `dmin`)
+| Q6_K | no | SIMD dequant into scratch + SIMD dot (two-stage)
+| Q4_0 | yes (`Q4_0MatmulKernel`) | Scalar split-layout unpack into scratch + SIMD dot (two-stage)
 |===
+
+The kernels that read a packed weight from a `MemorySegment` (Q4_0, Q8_0 and an unused Q4_K
+variant) were removed with the two segment weight classes that fed them (#1507). A packed weight
+outside the heap is a `BufferPackedTensorData` over mapped or direct storage, and the native FFM
+kernels read it where it lies.
 
 == Where to look in the code
 
@@ -228,7 +228,7 @@ lane-interleave shuffle required.
 | File | What it covers
 | `skainet-backends/skainet-backend-api/.../kernel/Q4KMatmulKernel.kt` | The Q4_K kernel SPI (commonMain).
 | `skainet-backends/skainet-backend-cpu/src/jvmMain/.../kernel/PanamaVectorQ4KMatmulKernel.kt` | Fused-pipeline Q4_K implementation.
-| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../tensor/ops/JvmQuantizedVectorKernels.kt` | All the per-format kernels — Q4_K MemSeg, Q6_K dequant, Q4_0, Q8_0 MemSeg variants.
+| `skainet-backends/skainet-backend-cpu/src/jvmMain/.../tensor/ops/JvmQuantizedVectorKernels.kt` | The heap per-format kernels: Q8_0, Q4_K, Q6_K (with its block dequant).
 | `skainet-backends/skainet-backend-cpu/src/jvmMain/.../tensor/ops/DefaultCpuOpsJvm.kt` | `chooseQuantizedMatmul` — production dispatch by tensor data type.
 | `skainet-backends/benchmarks/jvm-cpu-jmh/src/jmh/kotlin/sk/ainet/bench/QuantizedMatmulBench.kt` | JMH harness for Q4_K Panama.
 | `skainet-backends/skainet-backend-cpu/src/jvmTest/.../kernel/PanamaVectorQ4KMatmulKernelTest.kt` | Parity tests vs the reference partial-vec kernel.

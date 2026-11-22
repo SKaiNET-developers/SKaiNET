@@ -8,21 +8,16 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
-import sk.ainet.lang.tensor.data.Q4MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.Q4_KBlockTensorData
+import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
 import sk.ainet.lang.tensor.data.Q6_KBlockTensorData
 import sk.ainet.lang.tensor.data.Q6_KTensorData
 import sk.ainet.lang.tensor.data.TransposedWeightTensorData
-import sk.ainet.lang.tensor.data.Q8MemorySegmentTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.MemorySegmentTensorDataFactory
 import sk.ainet.lang.types.FP32
-import sk.ainet.lang.memory.BlockOrder
-import sk.ainet.lang.memory.Format
-import sk.ainet.lang.memory.SegmentStorage
-import sk.ainet.lang.tensor.storage.TensorEncoding
-import kotlin.test.assertNotNull
 import java.lang.foreign.Arena
 
 /**
@@ -38,17 +33,15 @@ class QuantizedMemSegMatmulTest {
         return VoidOpsTensor(data, FP32::class)
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun q4Tensor(shape: Shape, bytes: ByteArray, arena: Arena): Tensor<FP32, Float> {
-        val q4 = Q4MemorySegmentTensorData.fromRawBytes(shape, bytes, arena)
-        return VoidOpsTensor(q4 as TensorData<FP32, Float>, FP32::class)
-    }
+    // Heap block weights. The `arena` parameter is kept so the tests read as before; the segment
+    // weight classes these helpers once built are gone (#1507).
+    @Suppress("UNCHECKED_CAST", "UNUSED_PARAMETER")
+    private fun q4Tensor(shape: Shape, bytes: ByteArray, arena: Arena): Tensor<FP32, Float> =
+        VoidOpsTensor(Q4_0BlockTensorData(shape, bytes) as TensorData<FP32, Float>, FP32::class)
 
-    @Suppress("UNCHECKED_CAST")
-    private fun q8Tensor(shape: Shape, bytes: ByteArray, arena: Arena): Tensor<FP32, Float> {
-        val q8 = Q8MemorySegmentTensorData.fromRawBytes(shape, bytes, arena)
-        return VoidOpsTensor(q8 as TensorData<FP32, Float>, FP32::class)
-    }
+    @Suppress("UNCHECKED_CAST", "UNUSED_PARAMETER")
+    private fun q8Tensor(shape: Shape, bytes: ByteArray, arena: Arena): Tensor<FP32, Float> =
+        VoidOpsTensor(Q8_0BlockTensorData(shape, bytes) as TensorData<FP32, Float>, FP32::class)
 
     /**
      * Encode a single Q4_0 block: 32 float values -> 18 bytes (2 scale + 16 packed nibbles).
@@ -116,10 +109,10 @@ class QuantizedMemSegMatmulTest {
 
         val transposed = ops.transpose(t)
         assertEquals(Shape(32, 2), transposed.shape)
-        // The transpose of a packed weight is the `Wᵀ` marker, for a segment weight as for a heap
-        // one (#1507): no tensor exists whose label disagrees with its bytes.
+        // The transpose of a packed weight is the `Wᵀ` marker (#1507): no tensor exists whose
+        // label disagrees with its bytes.
         assertTrue(transposed.data is TransposedWeightTensorData<*, *>,
-            "transpose of a packed segment weight is the marker, got ${transposed.data::class.simpleName}")
+            "transpose of a packed weight is the marker, got ${transposed.data::class.simpleName}")
         assertTrue(ops.transpose(transposed).data === t.data, "transposing back gives the weight")
         arena.close()
     }
@@ -134,10 +127,10 @@ class QuantizedMemSegMatmulTest {
 
         val transposed = ops.transpose(t)
         assertEquals(Shape(32, 2), transposed.shape)
-        // The transpose of a packed weight is the `Wᵀ` marker, for a segment weight as for a heap
-        // one (#1507): no tensor exists whose label disagrees with its bytes.
+        // The transpose of a packed weight is the `Wᵀ` marker (#1507): no tensor exists whose
+        // label disagrees with its bytes.
         assertTrue(transposed.data is TransposedWeightTensorData<*, *>,
-            "transpose of a packed segment weight is the marker, got ${transposed.data::class.simpleName}")
+            "transpose of a packed weight is the marker, got ${transposed.data::class.simpleName}")
         assertTrue(ops.transpose(transposed).data === t.data, "transposing back gives the weight")
         arena.close()
     }
@@ -211,36 +204,6 @@ class QuantizedMemSegMatmulTest {
     }
 
     @Test
-    fun `segment weights have a packed file-order view over the same segment`() {
-        Arena.ofConfined().use { arena ->
-            val outputDim = 3
-            val inputDim = 64
-            val rows = wideRows(outputDim, inputDim)
-            var q4Bytes = ByteArray(0)
-            var q8Bytes = ByteArray(0)
-            for (row in rows) for (blk in 0 until inputDim / 32) {
-                q4Bytes += encodeQ4_0Block(row.copyOfRange(blk * 32, (blk + 1) * 32))
-                q8Bytes += encodeQ8_0Block(row.copyOfRange(blk * 32, (blk + 1) * 32))
-            }
-            val cases = listOf(
-                q4Tensor(Shape(outputDim, inputDim), q4Bytes, arena) to TensorEncoding.Q4_0,
-                q8Tensor(Shape(outputDim, inputDim), q8Bytes, arena) to TensorEncoding.Q8_0,
-            )
-            for ((tensor, encoding) in cases) {
-                val view = assertNotNull(tensor.data.view, "$encoding has a view")
-                assertEquals(Format(FP32, encoding), view.format)
-                assertTrue(view.layout.blocked && view.layout.blockOrder == BlockOrder.ROW_MAJOR)
-                assertTrue(view.storage is SegmentStorage, "the view borrows the segment")
-                assertEquals(Shape(outputDim, inputDim), view.shape)
-                val decoded = tensor.data.copyToFloatArray()
-                for (r in 0 until outputDim) for (c in 0 until inputDim) {
-                    assertEquals(decoded[r * inputDim + c], view.get(r, c), 0f, "$encoding [$r, $c]")
-                }
-            }
-        }
-    }
-
-    @Test
     fun `a weight two blocks wide gives the same product by every route`() {
         Arena.ofConfined().use { arena ->
             val outputDim = 3
@@ -259,7 +222,7 @@ class QuantizedMemSegMatmulTest {
                 q8Tensor(Shape(outputDim, inputDim), q8Bytes, arena),
             )) {
                 val name = weight.data.encoding!!.name
-                val dequantized = weight.data.copyToFloatArray()
+                val dequantized = weight.data.view!!.toFloatArray()
                 val expected = FloatArray(batch * outputDim) { i ->
                     val b = i / outputDim
                     val o = i % outputDim
@@ -290,7 +253,7 @@ class QuantizedMemSegMatmulTest {
     // ── Q4_0 Matmul Tests ───────────────────────────────────────────────────
 
     @Test
-    fun `Q4 MemorySegment matmul produces correct output shape`() {
+    fun `Q4_0 matmul produces correct output shape`() {
         val arena = Arena.ofConfined()
         val inputDim = 32
         val outputDim = 2
@@ -312,7 +275,7 @@ class QuantizedMemSegMatmulTest {
     }
 
     @Test
-    fun `Q4 MemorySegment matmul matches dequantized reference`() {
+    fun `Q4_0 matmul matches dequantized reference`() {
         val arena = Arena.ofConfined()
         val inputDim = 32
         val outputDim = 2
@@ -324,7 +287,7 @@ class QuantizedMemSegMatmulTest {
         for (row in weightValues) weightBytes += encodeQ4_0Block(row)
         val weight = q4Tensor(Shape(outputDim, inputDim), weightBytes, arena)
 
-        val dequantized = (weight.data as Q4MemorySegmentTensorData).copyToFloatArray()
+        val dequantized = weight.data.view!!.toFloatArray()
 
         val inputValues = FloatArray(inputDim) { (it + 1).toFloat() / inputDim }
         val input = fpTensor(Shape(1, inputDim), inputValues)
@@ -350,7 +313,7 @@ class QuantizedMemSegMatmulTest {
     // ── Q8_0 Matmul Tests ───────────────────────────────────────────────────
 
     @Test
-    fun `Q8 MemorySegment matmul produces correct output shape`() {
+    fun `Q8_0 matmul produces correct output shape`() {
         val arena = Arena.ofConfined()
         val inputDim = 32
         val outputDim = 2
@@ -367,7 +330,7 @@ class QuantizedMemSegMatmulTest {
     }
 
     @Test
-    fun `Q8 MemorySegment matmul matches dequantized reference`() {
+    fun `Q8_0 matmul matches dequantized reference`() {
         val arena = Arena.ofConfined()
         val inputDim = 32
         val outputDim = 2
@@ -379,7 +342,7 @@ class QuantizedMemSegMatmulTest {
         for (row in weightValues) weightBytes += encodeQ8_0Block(row)
         val weight = q8Tensor(Shape(outputDim, inputDim), weightBytes, arena)
 
-        val dequantized = (weight.data as Q8MemorySegmentTensorData).copyToFloatArray()
+        val dequantized = weight.data.view!!.toFloatArray()
 
         val inputValues = FloatArray(inputDim) { (it + 1).toFloat() / inputDim }
         val input = fpTensor(Shape(1, inputDim), inputValues)
@@ -421,8 +384,9 @@ class QuantizedMemSegMatmulTest {
         // The forward-scope shape of the same activation: a StorageFloatTensorData over a slab
         // slice at a NONZERO offset — what a ScopedExecutionContext hands every op mid-step
         // (#1145/#1146). Before chooseQuantizedMatmul2D grew its dense-FP32 fallback this fell
-        // through to matmulGeneric, whose per-element get() on the Q8 weight returns raw codes —
-        // silently wrong results, not an error.
+        // through to matmulGeneric, whose per-element get() on the Q8 weight then returned raw
+        // codes — silently wrong results, not an error. (`get` decodes since #1507; the element
+        // loop would now be right, only slow.)
         sk.ainet.lang.memory.ForwardScope(1024).use { scope ->
             scope.allocateFloats(7) // push the next allocation off offset 0
             val st = scope.allocateFloats(inputDim)
