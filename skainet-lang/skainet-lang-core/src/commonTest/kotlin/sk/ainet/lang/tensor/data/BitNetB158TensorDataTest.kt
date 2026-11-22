@@ -38,14 +38,17 @@ class BitNetB158TensorDataTest {
     }
 
     @Test
-    fun getReturnsSignedCodesAndSetWritesThem() {
-        val data = BitNetB158TensorData.fromFloats(Shape(8), floatArrayOf(1f, -1f, 0f, 1f, -1f, 0f, 0f, 1f))
-        assertEquals(1, data.get(0).toInt())
-        assertEquals(-1, data.get(1).toInt())
-        assertEquals(0, data.get(2).toInt())
-        data.set(2, value = -1)
-        assertEquals(-1, data.get(2).toInt())
-        assertFailsWith<IllegalArgumentException> { data.set(0, value = 2) }
+    fun getReturnsTheDecodedValueAndSetIsRefused() {
+        // 0.5 everywhere it is not zero, so the per-tensor scale is 0.5 and a decoded value differs
+        // from its code: `get` must give the value (SKEEP-003 rule 3), not the code.
+        val values = floatArrayOf(0.5f, -0.5f, 0f, 0.5f, -0.5f, 0f, 0f, 0.5f)
+        val data = BitNetB158TensorData.fromFloats(Shape(8), values)
+        val decoded = data.toFloatArray()
+        for (i in values.indices) assertEquals(decoded[i], data.get(i), "element $i")
+        assertEquals(data.scale, data.get(0))
+        assertEquals(-data.scale, data.get(1))
+        assertEquals(0f, data.get(2))
+        assertFailsWith<UnsupportedOperationException> { data.set(2, value = -1f) }
     }
 
     @Test

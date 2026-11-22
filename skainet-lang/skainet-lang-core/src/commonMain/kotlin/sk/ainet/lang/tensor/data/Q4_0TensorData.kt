@@ -3,7 +3,7 @@ package sk.ainet.lang.tensor.data
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.PackedBlockStorage
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
 
 /**
  * Tensor data interface for the Q4_0 quantized format (older GGML 4-bit).
@@ -26,7 +26,7 @@ import sk.ainet.lang.types.DType
  * This interface enables direct quantized matmul without full
  * dequantization, mirroring [Q8_0TensorData].
  */
-public interface Q4_0TensorData : TensorData<DType, Byte> {
+public interface Q4_0TensorData : TensorData<FP32, Float> {
     /** Number of Q4_0 blocks in the tensor. */
     public val blockCount: Int
 
@@ -91,7 +91,6 @@ public class Q4_0BlockTensorData(
     override val view: sk.ainet.lang.memory.TensorView get() = packedView
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
-    private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
 
     override val blockCount: Int = (shape.volume + Q4_0TensorData.BLOCK_SIZE - 1) / Q4_0TensorData.BLOCK_SIZE
@@ -140,39 +139,19 @@ public class Q4_0BlockTensorData(
         return nibble.toByte()
     }
 
-    override fun get(vararg indices: Int): Byte {
-        val flatIndex = calcFlatIndex(indices)
-        val blockIdx = flatIndex / Q4_0TensorData.BLOCK_SIZE
-        val elementIdx = flatIndex % Q4_0TensorData.BLOCK_SIZE
-        return getCode(blockIdx, elementIdx)
-    }
+    /**
+     * The decoded value of one element, read through [packedView] (SKEEP-003 rule 3: a packed
+     * weight is logically FP32; the encoding only says how it is stored). It decodes a whole block
+     * per call, so it is for inspection and tests, not for loops: take [packedView] or
+     * [PackedBlockStorage.toFloatArray] for those. The memory debug mode warns when element reads
+     * of a packed weight become a pattern.
+     */
+    override fun get(vararg indices: Int): Float = packedView.get(*indices)
 
-    override fun set(vararg indices: Int, value: Byte) {
-        val flatIndex = calcFlatIndex(indices)
-        val blockIdx = flatIndex / Q4_0TensorData.BLOCK_SIZE
-        val elementIdx = flatIndex % Q4_0TensorData.BLOCK_SIZE
-        val byteInBlock = if (elementIdx < 16) elementIdx else elementIdx - 16
-        val offset = blockIdx * Q4_0TensorData.BYTES_PER_BLOCK + 2 + byteInBlock
-        val nib = value.toInt() and 0x0F
-        val cur = data[offset].toInt() and 0xFF
-        data[offset] = if (elementIdx < 16) ((cur and 0xF0) or nib).toByte()
-        else ((cur and 0x0F) or (nib shl 4)).toByte()
-    }
+    /** Packed weights are read-only through the element interface: there is no one code for a value. */
+    override fun set(vararg indices: Int, value: Float): Unit =
+        throw UnsupportedOperationException("${encoding.name} data is read-only by element; requantize the tensor instead")
 
-    private fun calcFlatIndex(indices: IntArray): Int {
-        require(indices.size == shape.dimensions.size) {
-            "Number of indices (${indices.size}) must match tensor dimensions (${shape.dimensions.size})"
-        }
-        var flatIndex = 0
-        for (i in indices.indices) {
-            val idx = indices[i]
-            require(idx >= 0 && idx < shape.dimensions[i]) {
-                "Index $idx out of bounds for dimension $i with size ${shape.dimensions[i]}"
-            }
-            flatIndex += idx * strides[i]
-        }
-        return flatIndex
-    }
 
     public companion object {
         /** Create [Q4_0BlockTensorData] from raw packed Q4_0 bytes. */

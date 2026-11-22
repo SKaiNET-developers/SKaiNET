@@ -3,6 +3,7 @@ package sk.ainet.lang.tensor.data
 import sk.ainet.lang.tensor.Shape
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertContentEquals
 import kotlin.math.abs
 
@@ -60,8 +61,9 @@ class Q8_0TensorDataTest {
 
         val tensor = Q8_0BlockTensorData.fromRawBytes(Shape(32), blockData)
 
+        // scale 1.0, so the decoded value is the code
         for (i in 0 until 32) {
-            assertEquals((i * 2).toByte(), tensor[i])
+            assertEquals((i * 2).toFloat(), tensor[i])
         }
     }
 
@@ -82,10 +84,10 @@ class Q8_0TensorDataTest {
         // tensor[0, 7] = element 7
         // tensor[1, 0] = element 8
         // tensor[3, 7] = element 31
-        assertEquals(0.toByte(), tensor[0, 0])
-        assertEquals(7.toByte(), tensor[0, 7])
-        assertEquals(8.toByte(), tensor[1, 0])
-        assertEquals(31.toByte(), tensor[3, 7])
+        assertEquals(0f, tensor[0, 0])
+        assertEquals(7f, tensor[0, 7])
+        assertEquals(8f, tensor[1, 0])
+        assertEquals(31f, tensor[3, 7])
     }
 
     @Test
@@ -149,18 +151,19 @@ class Q8_0TensorDataTest {
     }
 
     @Test
-    fun `Q8_0BlockTensorData set operation works`() {
+    fun `Q8_0BlockTensorData get applies the block scale and set is refused`() {
         val blockData = ByteArray(34)
         blockData[0] = 0x00
-        blockData[1] = 0x3C
+        blockData[1] = 0x40  // scale = 2.0
+        blockData[2 + 5] = 42
+        blockData[2 + 10] = (-10).toByte()
 
         val tensor = Q8_0BlockTensorData.fromRawBytes(Shape(32), blockData)
 
-        tensor[5] = 42
-        tensor[10] = (-10).toByte()
-
-        assertEquals(42.toByte(), tensor[5])
-        assertEquals((-10).toByte(), tensor[10])
+        assertEquals(42.toByte(), tensor.getCode(0, 5))
+        assertEquals(84f, tensor[5])
+        assertEquals(-20f, tensor[10])
+        assertFailsWith<UnsupportedOperationException> { tensor[5] = 1f }
     }
 
     @Test

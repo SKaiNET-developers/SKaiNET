@@ -3,7 +3,7 @@ package sk.ainet.lang.tensor.data
 import sk.ainet.lang.memory.BlockOrder
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.storage.TensorEncoding
-import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP32
 
 /**
  * The heap block tensor data for [encoding] over [bytes], or `null` for an encoding that has no
@@ -22,7 +22,7 @@ public fun packedBlockTensorData(
     bytes: ByteArray,
     blockOrder: BlockOrder = BlockOrder.ROW_MAJOR,
     blockAxis: Int = shape.rank - 1,
-): TensorData<DType, Byte>? = when (encoding) {
+): TensorData<FP32, Float>? = when (encoding) {
     TensorEncoding.Q4_K -> Q4_KBlockTensorData(shape, bytes, blockOrder, blockAxis)
     TensorEncoding.Q5_K -> Q5_KBlockTensorData(shape, bytes, blockOrder, blockAxis)
     TensorEncoding.Q6_K -> Q6_KBlockTensorData(shape, bytes, blockOrder, blockAxis)
