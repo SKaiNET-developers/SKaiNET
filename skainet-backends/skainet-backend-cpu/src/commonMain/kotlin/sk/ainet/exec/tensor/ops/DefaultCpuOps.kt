@@ -777,7 +777,15 @@ public open class DefaultCpuOpsBase(
         val aView = heapPreferredView(a.data) ?: return null
         val bView = heapPreferredView(b.data) ?: return null
         // b is [k, n] here; the kernels take the weight output-major, which is a transposed *view*.
-        val bT = try { bView.transpose() } catch (_: IllegalArgumentException) { return null }
+        val bT = try {
+            bView.transpose()
+        } catch (_: IllegalArgumentException) {
+            return null
+        } catch (_: IllegalStateException) {
+            // A packed view whose blocks span rows (a ternary weight held as one block) has no
+            // transposed view. Its decoded copy has one, and decodes the scale with it.
+            try { bView.materialize().transpose() } catch (_: RuntimeException) { return null }
+        }
         val (aNorm, leading) = try {
             sk.ainet.backend.api.kernel.KernelDispatch.normalizeActivation(aView)
         } catch (_: IllegalArgumentException) {

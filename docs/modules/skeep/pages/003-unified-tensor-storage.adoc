@@ -32,7 +32,7 @@ checked one by one:
 
 | A packed tensor reports FP32 and its encoding; no dispatch site downcasts to a concrete `TensorData` class outside the data package
 | Met, with the listed exceptions
-| A packed view reports `Float32/<encoding>` (`FormatTest`), and the public packed block types are `TensorData<FP32, Float>` whose `get` returns the decoded value. The ops choose a kernel by `KernelKey` from the views, or read `TensorData.heapFloats`: `DefaultCpuOps.kt` went from 51 downcasts to 1, `DefaultCpuOpsJvm.kt` from 48 to none, `AccelerateCpuOps.kt` from 18 to none, `WasmCpuOps.kt` from 10 to none. `./gradlew checkTensorDataDowncasts` runs in CI and fails when a count rises. 18 downcasts remain (162 at the start), each with its reason in `config/tensor-data-downcast-allowlist.txt`: one in `gather` for the `RowDequantSource` capability (implemented outside this repository for tables without a view), ten in the scalar `QuantizedMatmul` / `TernaryMatmul` helpers, which are typed on the data interfaces in their public signatures, two in the trace code of `skainet-lang-core`, and five in `skainet-compile`, which may not import the view types (xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a]). None of them chooses a kernel in a backend.
+| A packed view reports `Float32/<encoding>` (`FormatTest`), and the public packed block types are `TensorData<FP32, Float>` whose `get` returns the decoded value. The ops choose a kernel by `KernelKey` from the views, or read `TensorData.heapFloats`: `DefaultCpuOps.kt` went from 51 downcasts to 1, `DefaultCpuOpsJvm.kt` from 48 to none, `AccelerateCpuOps.kt` from 18 to none, `WasmCpuOps.kt` from 10 to none. `./gradlew checkTensorDataDowncasts` runs in CI and fails when a count rises. 8 downcasts remain (162 at the start), each with its reason in `config/tensor-data-downcast-allowlist.txt`: one in `gather` for the `RowDequantSource` capability (implemented outside this repository for tables without a view), two in the trace code of `skainet-lang-core`, and five in `skainet-compile`, which may not import the view types (xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a]). None of them chooses a kernel in a backend. The scalar `QuantizedMatmul` / `TernaryMatmul` helpers, which held ten more, are deprecated: their predicates read the view's encoding and `matmulAutoDispatch` calls `ops.matmul`.
 
 | No kernel regression against a baseline
 | Met, with three small-size exceptions
@@ -53,15 +53,19 @@ execution in debug mode.
 *Façades (decision 1), as decided on 2026-11-22.* Every heap data class (dense arrays, narrow
 floats, the packed block formats) has one storage handle and one view for its life, built on first
 use; the dense segment, mapped and wasm classes have a view too. The two packed `MemorySegment`
-weight classes are removed: nothing produced them. Three things the proposal named are not done
-and not planned:
+weight classes are removed: nothing produced them. Two things the proposal named are not done
+and not planned, and a third is by design:
 
 * The heap data classes keep their array as the primary field. Only `StorageFloatTensorData` is
   constructed from a `Storage`.
 * The view of a heap packed data class decodes by calling back into its data object. A view built
   from bytes (`TensorView.ofBytes`, the loaders) decodes from storage with `StorageBlockDecoder`.
-* `DenseTensorDataFactory` widens FP16 and BF16 to a `FloatArray`. The loaders keep the 2-byte
-  form (`Float16/Dense(2B)`).
+* `DenseTensorDataFactory` creates FP16 and BF16 tensors over a `FloatArray`. This is by design:
+  the factory's form is the compute form. Every op result goes through the factory, the fast
+  paths read a float array, and the dtype tag is what the trace and the StableHLO export read.
+  Two-byte storage there would round every intermediate result to 16 bits and take the fast
+  paths away. The storage form is `NarrowFloatDenseTensorData`, two bytes per element, which the
+  loaders produce (`Float16/Dense(2B)`) and code can construct directly.
 
 The proposal also said the façades are deleted at the next major release. No release is scheduled
 for that: `TensorData` is the type the tensor API is written against.

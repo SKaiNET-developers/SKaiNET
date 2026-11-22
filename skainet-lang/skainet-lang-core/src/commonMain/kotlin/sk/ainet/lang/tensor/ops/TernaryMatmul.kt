@@ -4,7 +4,7 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.TernaryTensorData
-import sk.ainet.lang.tensor.data.Ternary2BitTensorData
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.FP32
 
 /**
@@ -21,7 +21,14 @@ import sk.ainet.lang.types.FP32
  *
  * This avoids all floating-point multiplications, replacing them with
  * conditional additions/subtractions based on the ternary weight value.
+ *
+ * Deprecated (SKEEP-003, #1507): `ops.matmul` reads a ternary weight through its view. This helper
+ * reads the weight one element at a time and is typed on the data interface.
  */
+@Deprecated(
+    "ops.matmul(input, weight) reads a ternary weight through its view; this helper is scalar and typed on the data interface",
+    ReplaceWith("ctx.ops.matmul(input, weight)"),
+)
 public object TernaryMatmul {
 
     /**
@@ -92,20 +99,17 @@ public object TernaryMatmul {
     }
 
     /**
-     * Check if a tensor's underlying data is ternary.
-     * This can be used to dispatch to optimized ternary matmul.
+     * Whether the tensor's view reports the packed ternary encoding.
      */
-    public fun isTernaryWeight(tensor: Tensor<*, *>): Boolean {
-        return tensor.data is TernaryTensorData
-    }
+    public fun isTernaryWeight(tensor: Tensor<*, *>): Boolean =
+        tensor.data.view?.format?.encoding == TensorEncoding.TernaryPacked
 
     /**
-     * Perform matmul with automatic dispatch based on weight type.
-     * Uses ternary-optimized path when weights are TernaryTensorData,
-     * otherwise falls back to standard matmul.
+     * `ctx.ops.matmul(input, weight)`. The ops read a ternary weight through its view, scale
+     * included, and a dense weight as before.
      *
      * @param input FP32 input tensor
-     * @param weight Weight tensor (either FP32 or Ternary)
+     * @param weight Weight tensor (either FP32 or Ternary), `[inputDim, outputDim]`
      * @param ctx ExecutionContext
      * @return Output tensor
      */
@@ -114,14 +118,8 @@ public object TernaryMatmul {
         weight: Tensor<*, *>,
         ctx: ExecutionContext
     ): Tensor<FP32, Float> {
-        val weightData = weight.data
-        return if (weightData is TernaryTensorData) {
-            matmul(input, weightData, ctx)
-        } else {
-            // Fall back to standard matmul
-            @Suppress("UNCHECKED_CAST")
-            ctx.ops.matmul(input, weight as Tensor<FP32, Float>)
-        }
+        @Suppress("UNCHECKED_CAST")
+        return ctx.ops.matmul(input, weight as Tensor<FP32, Float>)
     }
 
     /** The values in row-major order: the data's own array when it is one from element 0, else a copy. */
@@ -136,6 +134,8 @@ public object TernaryMatmul {
  * Extension function for convenient ternary matmul.
  * Use this when you know the weight is ternary-quantized.
  */
+@Suppress("DEPRECATION")
+@Deprecated("ops.matmul(input, weight) reads a ternary weight through its view")
 public fun Tensor<FP32, Float>.matmulTernary(
     weights: TernaryTensorData,
     ctx: ExecutionContext
