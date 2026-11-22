@@ -36,7 +36,7 @@ checked one by one:
 
 | No kernel regression against a baseline
 | Met, with three small-size exceptions
-| xref:ROOT:reference/benchmark-baseline.adoc[Benchmark baseline] holds the JMH numbers of 2026-11-11, and each dispatch pull request compared against them. Recorded slowdowns, all on operands of a few hundred elements: a one-row matmul at k=256 (+18 %, #1520), a small-table transpose (+4 %, about 50 ns, #1529) and a one-row gather (+10 %, about 36 ns, #1529). Larger sizes are equal or faster.
+| xref:ROOT:reference/benchmark-baseline.adoc[Benchmark baseline] holds the JMH numbers of 2026-11-11, and each dispatch pull request compared against them. Recorded slowdowns, all on operands of a few hundred elements: a one-row matmul at k=256 (+18 %, #1520), a small-table transpose (+4 %, about 50 ns, #1529) and a one-row gather (+10 %, about 36 ns, #1529). Larger sizes are equal or faster. The packed matmul through the ops layer costs the same as the bare Q4_K kernel (`PackedOpsMatmulBench`, on the same page).
 
 | Flat direct memory under a forward scope on the JVM
 | Met
