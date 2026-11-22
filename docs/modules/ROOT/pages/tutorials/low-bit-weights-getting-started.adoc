@@ -1,0 +1,139 @@
+= Weights at 1.7 bits: one view for every format
+:description: Store one weight six ways in a GGUF file, from 32 bits per weight down to 1.7, and read all six back through one type, TensorView: decode, map, measure, convert and multiply.
+
+You will write one weight into a GGUF file six times, as FP32, FP16, Q8_0, Q4_0 and the two
+ternary formats, and read every one of them back with the same call. Then you will map one of them
+from the file without a heap copy, read what each form costs, convert between forms, and multiply
+by a packed weight.
+
+All six are one type, `TensorView`. A view is a shape, a format, a layout and a storage. The
+format says what the bytes mean (`Float32/TQ1_0`: logically FP32, stored as ternary blocks). The
+storage says where they are (a heap array, a mapped file). Code that reads a view does not ask
+which of the six it has.
+
+Every snippet below is compiled and run in CI from `skainet-docs-samples` (`LowBitWeights.kt`),
+and the numbers on this page are asserted by its test.
+
+This page is about how a low-bit weight is stored and read.
+xref:tutorials/ternary-getting-started.adoc[Ternary networks: getting started] trains a ternary
+classifier and runs it through the native ternary kernel.
+
+== Prerequisites
+
+* JDK 21+ with the Vector API module (`--enable-preview --add-modules jdk.incubator.vector`).
+* `sk.ainet.core:skainet-lang-core`, `sk.ainet.core:skainet-backend-api`,
+  `sk.ainet.core:skainet-io-core` and `sk.ainet.core:skainet-io-gguf` on the classpath.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=imports]
+----
+
+== Step 1 — Write one weight six ways
+
+The weight is an `[8, 256]` matrix of smooth values, standing in for a trained FP32 weight.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=weight]
+----
+
+The file gets it six times. `requantizeTo` produces the Q8_0 and Q4_0 bytes; `TernaryCodec`
+produces the ternary ones, where every weight becomes -1, 0 or +1 times a scale per block of 256.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=write]
+----
+
+== Step 2 — Read all six through one type
+
+`loadTensorView` reads a tensor's bytes and returns a view over them. It decodes nothing.
+`view.format` says what the bytes are, and `get` and `toFloatArray` decode on read, whatever the
+format.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=read]
+----
+
+The loop body has no branch on the format. This is what it measures:
+
+[cols="1,2,>1,>1,>1",options="header"]
+|===
+| Tensor | `view.format` | Bytes | Bits per weight | Largest error
+| `w.f32` | `Float32/Dense(4B)` | 8192 | 32 | 0
+| `w.f16` | `Float16/Dense(2B)` | 4096 | 16 | 0.0002
+| `w.q8_0` | `Float32/Q8_0` | 2176 | 8.5 | 0.0033
+| `w.q4_0` | `Float32/Q4_0` | 1152 | 4.5 | 0.0996
+| `w.tq2_0` | `Float32/TQ2_0` | 528 | 2.0625 | 0.3993
+| `w.tq1_0` | `Float32/TQ1_0` | 432 | 1.6875 | 0.3993
+|===
+
+Three things to read off the table:
+
+* The packed forms are `Float32/...`. A Q4_0 or ternary weight is logically FP32; the encoding
+  says how it is stored. Only the FP16 tensor has another dtype.
+* `TQ1_0` stores five ternary weights in one byte, which is 1.6 bits; with the block's scale it
+  comes to 1.6875 bits per weight. That is 19 times smaller than FP32.
+* The error column is the price. A ternary weight keeps a sign and a scale, so a weight has to be
+  trained for it; ternarizing a trained FP32 weight afterwards, as here, loses most of it.
+
+`MemoryTracker` gives the same numbers for a whole model: `report().totalPhysicalBytes` is what
+the tensors occupy, `totalLogicalBytes` what they would occupy as their dtype.
+
+== Step 3 — The same view over the mapped file
+
+`loadTensorViewMapped` maps the tensor's byte range of the file. Nothing is read into the heap, so
+it also works for a tensor above 2 GB. The view is used the same way. Its storage owns the
+mapping, and the caller closes it.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=mapped]
+----
+
+The storage's domain is `MMAP_FILE`, and the values equal the heap read.
+
+== Step 4 — Convert: lossless one way, lossy the other
+
+There are two conversions, and their names say which one loses information.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=convert]
+----
+
+`materialize()` decodes into a new dense FP32 view: the values are exactly the ones the packed
+bytes decode to. `requantizeTo(encoding)` goes the other way and loses precision: here the largest
+error against the FP32 weight is 0.0996. It supports `Q8_0`, `Q4_0` and `BITNET_PLANES`.
+
+== Step 5 — Multiply by the packed weight
+
+A matmul does not need the dense weight. `KernelDispatch.matmul` builds a key from the formats and
+layouts of its two operands and runs the kernel registered under it. The kernel reads the packed
+blocks.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/LowBitWeights.kt[tag=matmul]
+----
+
+The trace names the kernel that ran: `scalar-Q4_0` in this sample's setup. Another kernel
+provider registers its kernel under the same key, and the call does not change. The product equals
+the one computed from the decoded weight.
+
+Not every format has a kernel on every platform. When none is registered for a pair, the
+dispatcher runs its reference kernel, which decodes and is slow, and prints that once.
+In this sample's setup (a plain JVM without the native kernel library) that is the case for
+`TQ1_0` and `TQ2_0`; the BitNet encoding has native kernels
+(see xref:tutorials/ternary-getting-started.adoc[Ternary networks: getting started] and
+xref:reference/kernel-support-matrix.adoc[Kernel × platform support]).
+
+== What to read next
+
+* xref:how-to/custom-encoding.adoc[Define your own low-bit encoding]: a decoder and a kernel for a
+  format the library does not know.
+* xref:explanation/memory-model.adoc[The memory model]: storage, view, format and scope, and what
+  the model replaced.
+* xref:how-to/plan-model-memory.adoc[Plan a model's memory before loading].
