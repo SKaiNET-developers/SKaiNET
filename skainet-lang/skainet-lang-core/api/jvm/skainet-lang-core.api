@@ -5859,6 +5859,7 @@ public final class sk/ainet/lang/tensor/data/dense/DenseByteTensorArray : sk/ain
 	public final fun getShape ()Lsk/ainet/lang/tensor/Shape;
 	public fun set ([IB)V
 	public synthetic fun set ([ILjava/lang/Object;)V
+	public final fun view (Lsk/ainet/lang/types/DType;)Lsk/ainet/lang/memory/TensorView;
 }
 
 public final class sk/ainet/lang/tensor/data/dense/DenseFloatTensorArray : sk/ainet/lang/tensor/data/ItemsAccessor {

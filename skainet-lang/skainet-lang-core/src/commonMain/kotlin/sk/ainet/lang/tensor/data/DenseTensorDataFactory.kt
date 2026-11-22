@@ -157,11 +157,22 @@ public class DenseTensorDataFactory: TensorDataFactory {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun <T : DType> createByteTensorData(shape: Shape, data: ByteArray): TensorData<T, Byte> {
+    private fun <T : DType> createByteTensorData(
+        shape: Shape,
+        data: ByteArray,
+        /**
+         * `true` when the bytes are Int8 elements. The Int4 and ternary callers store one unpacked
+         * value per byte under a dtype of another width, which no dense format describes, so that
+         * data has no view.
+         */
+        int8Elements: Boolean = true,
+    ): TensorData<T, Byte> {
         class ByteTensorDataImpl(
             private val denseArray: DenseByteTensorArray
         ) : TensorData<T, Byte>, ItemsAccessor<Byte> by denseArray {
             override val shape: Shape = denseArray.shape
+            override val view: sk.ainet.lang.memory.TensorView?
+                get() = if (int8Elements) denseArray.view(Int8) else null
         }
         val denseArray = DenseByteTensorArray(shape, data.copyOf())
         return ByteTensorDataImpl(denseArray) as TensorData<T, Byte>
@@ -284,7 +295,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
                     values.add((byte.toInt() and 0x0F).toByte()) // Lower nibble
                     values.add(((byte.toInt() and 0xF0) ushr 4).toByte()) // Upper nibble
                 }
-                createByteTensorData<T>(Shape(values.size), values.toByteArray()) as TensorData<T, V>
+                createByteTensorData<T>(Shape(values.size), values.toByteArray(), int8Elements = false) as TensorData<T, V>
             }
 
             is Ternary -> {
@@ -302,7 +313,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
                         values.add(value.toByte())
                     }
                 }
-                createByteTensorData<T>(Shape(values.size), values.toByteArray()) as TensorData<T, V>
+                createByteTensorData<T>(Shape(values.size), values.toByteArray(), int8Elements = false) as TensorData<T, V>
             }
 
             else -> throw IllegalArgumentException("Unsupported dtype for fromByteArray: ${dtype.name}")
@@ -749,6 +760,7 @@ public class DenseTensorDataFactory: TensorDataFactory {
                     private val inner: DenseByteTensorArray
                 ) : TensorData<T, Byte>, ItemsAccessor<Byte> by inner {
                     override val shape: Shape = inner.shape
+                    override val view: sk.ainet.lang.memory.TensorView get() = inner.view(Int8)
                 }
                 WrappedByteTensorData(denseArray) as TensorData<T, V>
             }
