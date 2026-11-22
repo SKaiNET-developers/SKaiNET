@@ -236,7 +236,7 @@ below are unchanged; only the owner and one name changed:
 
 [cols="1,1",options="header"]
 |===
-| As designed (0.63.0, 0.64.0) | Now
+| As designed (0.63.0, 0.64.0) | From 0.65.0
 | `storage.repackTo(TensorEncoding.Dense(4))` | `view.materialize()`
 | `storage.requantizeTo(encoding)` | `view.requantizeTo(encoding)`
 | `repackTo` with a lossy target throws and names `requantizeTo` | `materialize` with a packed target throws and names `requantizeTo`
