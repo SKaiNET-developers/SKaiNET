@@ -148,90 +148,8 @@ internal class DefaultCpuOpsJvm(
         // MemorySegment-backed activation (SKEEP-004 forbids element access over SegmentStorage by
         // design), so such an activation is bulk-copied to the heap once per call first: a
         // decode-step activation is k floats, and the copy is trivial beside the matmul it unlocks.
-        // A Q4_0 / Q8_0 weight in file order over a segment: this tier's Vector API kernels read
-        // the segment where it lies. Before the common lookup, which has no kernel for a segment
-        // without the native library and would decode element by element.
-        if (weight.shape.rank == 2) {
-            segmentPackedWeight(weight.data)?.takeIf { it.blockAxis == 1 }?.let { w ->
-                matmulSegmentPacked(x, w, inputDim = weight.shape[1], outputDim = weight.shape[0], weight)?.let { return it }
-            }
-        }
         segmentActivationToHeap(x)?.let { return super.matmulWeightTransposed(it, weight) }
         return super.matmulWeightTransposed(x, weight)
-    }
-
-    /** A packed weight's segment and the format its blocks are in. */
-    private class SegmentPackedWeight(
-        @JvmField val segment: java.lang.foreign.MemorySegment,
-        @JvmField val encoding: sk.ainet.lang.tensor.storage.TensorEncoding,
-        /** The axis the view says the blocks run along; the last one for a weight labelled as stored. */
-        @JvmField val blockAxis: Int,
-    )
-
-    /**
-     * The segment behind [data] when its view is Q4_0 or Q8_0 blocks in file order over a
-     * [sk.ainet.lang.memory.SegmentStorage], the two formats the Vector API segment kernels read;
-     * `null` otherwise. Read off the view's format, layout and storage, not off the class
-     * (SKEEP-003, #1507).
-     */
-    private fun segmentPackedWeight(data: TensorData<*, *>): SegmentPackedWeight? {
-        if (data.heapFloats != null) return null
-        val view = data.view ?: return null
-        val layout = view.layout
-        if (!layout.blocked || layout.blockOrder != sk.ainet.lang.memory.BlockOrder.ROW_MAJOR) return null
-        if (layout.offsetElements != 0L) return null
-        val encoding = view.format.encoding
-        if (encoding != sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0 &&
-            encoding != sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0
-        ) return null
-        val storage = view.storage as? sk.ainet.lang.memory.SegmentStorage ?: return null
-        return SegmentPackedWeight(storage.segment(), encoding, layout.blockAxis)
-    }
-
-    /**
-     * `x · Wᵀ` for the file-order `[outputDim, inputDim]` blocks in [w], one kernel call per
-     * activation row. A dense FP32 activation that is itself over a segment is read there for Q8_0
-     * (no heap copy); any other dense activation is taken as a heap array. `null` when the
-     * activation is not dense FP32 or its last dimension is not [inputDim].
-     */
-    private fun <T : DType, V> matmulSegmentPacked(
-        x: Tensor<T, V>,
-        w: SegmentPackedWeight,
-        inputDim: Int,
-        outputDim: Int,
-        weight: Tensor<T, V>,
-    ): Tensor<T, V>? {
-        if (x.dtype != FP32::class || x.shape.rank < 1) return null
-        if (x.shape.dimensions.last() != inputDim) return null
-        val rows = if (inputDim == 0) 0 else x.shape.volume / inputDim
-        val out = FloatArray(rows * outputDim)
-        val q8 = w.encoding == sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0
-        val xSegment = if (q8) segmentFloatWindow(x.data) else null
-        if (xSegment != null) {
-            for (row in 0 until rows) {
-                JvmQuantizedVectorKernels.matmulF32Q8_0MemSegInput(
-                    xSegment.segment, xSegment.byteOffset + row.toLong() * inputDim * 4,
-                    w.segment, 0L, inputDim, outputDim, out, row * outputDim,
-                )
-            }
-        } else {
-            // The activation as one FloatArray: its own array when it is heap floats from index 0,
-            // otherwise a copy through its own (offset-aware) copyToFloatArray (#993, #1145/#1146).
-            // A packed activation (encoding != null) is not for these kernels.
-            val input: FloatArray = floatsFromZero(x.data)
-                ?: if (x.data.encoding == null) x.data.copyToFloatArray() else return null
-            for (row in 0 until rows) {
-                val rowInput = if (rows == 1) input else input.copyOfRange(row * inputDim, (row + 1) * inputDim)
-                if (q8) {
-                    JvmQuantizedVectorKernels.matmulF32Q8_0MemSeg(rowInput, w.segment, 0L, inputDim, outputDim, out, row * outputDim)
-                } else {
-                    JvmQuantizedVectorKernels.matmulF32Q4_0MemSeg(rowInput, w.segment, 0L, inputDim, outputDim, out, row * outputDim)
-                }
-            }
-        }
-        val outShape = if (x.shape.rank == 2) Shape(rows, outputDim)
-        else Shape(*(x.shape.dimensions.copyOf(x.shape.rank - 1) + outputDim))
-        return floatResult(outShape, x.dtype, out, x, weight)
     }
 
     /** The vectorised feed-order kernels are this tier's fast path for a packed weight (#1096). */
@@ -600,12 +518,6 @@ internal class DefaultCpuOpsJvm(
             val rows = tensor.shape[0]
             val cols = tensor.shape[1]
             val data = tensor.data
-            // A packed Q4_0 / Q8_0 weight over a segment is not intercepted here any more (#1507):
-            // it has a view that says "blocked, file order", so the common `transpose` returns
-            // the `Wᵀ` marker for it as for every packed weight, and `matmulWeightTransposed`
-            // below hands the segment to the segment kernels. The shape swap this replaced
-            // produced a tensor whose label disagreed with its bytes.
-            //
             // Q4_K (ByteArray-backed `Q4_KBlockTensorData`) transpose used to be
             // intercepted here with a bare shape swap, on the claim that
             // `JvmQuantizedVectorKernels.matmulQ4_KVec`'s `(blockIdx * outputDim + o)`
@@ -884,15 +796,6 @@ internal class DefaultCpuOpsJvm(
         if (a.dtype != FP32::class) return null
         if (b.shape.rank != 2) return null
         if (a.shape.rank < 1) return null
-        // A segment-backed Q4_0 / Q8_0 right-hand operand: its bytes are the file-order
-        // `[out, in]` weight whatever the operand is labelled, which is how this tier has always
-        // read one (the segment counterpart of the feed-order contract in the common code, #973).
-        // Callers should pass the `[out, in]` weight to `matmulWeightTransposed`, or its
-        // `transpose`, which arrives there by the marker. Before the heap lookup, whose kernels
-        // read heap bytes.
-        segmentPackedWeight(b.data)?.let { w ->
-            return matmulSegmentPacked(a, w, inputDim = b.shape[0], outputDim = b.shape[1], b)
-        }
         // The heap block formats: the kernel registered for the weight's format, looked up by key
         // in the common code (SKEEP-003, #1507). What is left below is narrow floats.
         chooseQuantizedMatmulHeap(a, b)?.let { return it }
