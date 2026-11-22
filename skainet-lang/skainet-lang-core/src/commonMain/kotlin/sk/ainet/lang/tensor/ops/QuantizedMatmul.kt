@@ -5,7 +5,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q8_0TensorData
 import sk.ainet.lang.tensor.data.Q4_KTensorData
-import sk.ainet.lang.tensor.data.TernaryTensorData
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.types.FP32
 
 /**
@@ -20,7 +20,15 @@ import sk.ainet.lang.types.FP32
  *
  * These kernels maintain numerical accuracy within acceptable tolerance compared
  * to full dequant + FP32 matmul (typically ≤1e-4 relative error).
+ *
+ * Deprecated (SKEEP-003, #1507): `ops.matmul` chooses the kernel for a packed weight from the
+ * weight's view, for every encoding and storage kind. These helpers are scalar, know two formats
+ * and are typed on the data interfaces.
  */
+@Deprecated(
+    "ops.matmul(input, weight) chooses the kernel for a packed weight from its view; these scalar helpers know two formats",
+    ReplaceWith("ctx.ops.matmul(input, weight)"),
+)
 public object QuantizedMatmul {
 
     /**
@@ -175,41 +183,34 @@ public object QuantizedMatmul {
         return ctx.fromFloatArray(outputShape, FP32::class, output)
     }
 
+    /** The encoding the tensor's view reports, `null` for data without a view. */
+    private fun encodingOf(tensor: Tensor<*, *>): TensorEncoding? = tensor.data.view?.format?.encoding
+
     /**
-     * Check if a tensor's underlying data is Q8_0 quantized.
+     * Whether the tensor's view reports the Q8_0 encoding.
      */
-    public fun isQ8_0Weight(tensor: Tensor<*, *>): Boolean {
-        return tensor.data is Q8_0TensorData
+    public fun isQ8_0Weight(tensor: Tensor<*, *>): Boolean = encodingOf(tensor) == TensorEncoding.Q8_0
+
+    /**
+     * Whether the tensor's view reports the Q4_K encoding.
+     */
+    public fun isQ4_KWeight(tensor: Tensor<*, *>): Boolean = encodingOf(tensor) == TensorEncoding.Q4_K
+
+    /**
+     * Whether the tensor's view reports one of the encodings these helpers know: Q8_0, Q4_K or
+     * packed ternary.
+     */
+    public fun isQuantizedWeight(tensor: Tensor<*, *>): Boolean = when (encodingOf(tensor)) {
+        TensorEncoding.Q8_0, TensorEncoding.Q4_K, TensorEncoding.TernaryPacked -> true
+        else -> false
     }
 
     /**
-     * Check if a tensor's underlying data is Q4_K quantized.
-     */
-    public fun isQ4_KWeight(tensor: Tensor<*, *>): Boolean {
-        return tensor.data is Q4_KTensorData
-    }
-
-    /**
-     * Check if a tensor's underlying data is any quantized format we support.
-     */
-    public fun isQuantizedWeight(tensor: Tensor<*, *>): Boolean {
-        val data = tensor.data
-        return data is Q8_0TensorData || data is Q4_KTensorData || data is TernaryTensorData
-    }
-
-    /**
-     * Perform matmul with automatic dispatch based on weight type.
-     * Uses quantized-optimized path when weights are quantized,
-     * otherwise falls back to standard matmul.
-     *
-     * Supported weight types:
-     * - Q8_0TensorData: Uses Q8_0 fused matmul
-     * - Q4_KTensorData: Uses Q4_K fused matmul
-     * - TernaryTensorData: Uses ternary addition-only matmul
-     * - FP32: Standard floating-point matmul
+     * `ctx.ops.matmul(input, weight)`. The ops choose the kernel from the weight's view, so a
+     * packed weight of any encoding takes its packed kernel and a dense one the dense kernel.
      *
      * @param input FP32 input tensor
-     * @param weight Weight tensor (quantized or FP32)
+     * @param weight Weight tensor (packed or FP32), `[inputDim, outputDim]`
      * @param ctx ExecutionContext
      * @return Output tensor
      */
@@ -218,16 +219,8 @@ public object QuantizedMatmul {
         weight: Tensor<*, *>,
         ctx: ExecutionContext
     ): Tensor<FP32, Float> {
-        val weightData = weight.data
-        return when (weightData) {
-            is Q8_0TensorData -> matmulQ8_0(input, weightData, ctx)
-            is Q4_KTensorData -> matmulQ4_K(input, weightData, ctx)
-            is TernaryTensorData -> TernaryMatmul.matmul(input, weightData, ctx)
-            else -> {
-                @Suppress("UNCHECKED_CAST")
-                ctx.ops.matmul(input, weight as Tensor<FP32, Float>)
-            }
-        }
+        @Suppress("UNCHECKED_CAST")
+        return ctx.ops.matmul(input, weight as Tensor<FP32, Float>)
     }
 
     /** The values in row-major order: the data's own array when it is one from element 0, else a copy. */
@@ -241,6 +234,8 @@ public object QuantizedMatmul {
 /**
  * Extension function for Q8_0 matmul.
  */
+@Suppress("DEPRECATION")
+@Deprecated("ops.matmul(input, weight) chooses the kernel for a packed weight from its view")
 public fun Tensor<FP32, Float>.matmulQ8_0(
     weights: Q8_0TensorData,
     ctx: ExecutionContext
@@ -249,6 +244,8 @@ public fun Tensor<FP32, Float>.matmulQ8_0(
 /**
  * Extension function for Q4_K matmul.
  */
+@Suppress("DEPRECATION")
+@Deprecated("ops.matmul(input, weight) chooses the kernel for a packed weight from its view")
 public fun Tensor<FP32, Float>.matmulQ4_K(
     weights: Q4_KTensorData,
     ctx: ExecutionContext

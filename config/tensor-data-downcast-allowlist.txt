@@ -17,7 +17,5 @@ skainet-compile/skainet-compile-dag/src/commonMain/kotlin/sk/ainet/lang/trace/Tr
 skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/BlockQuantMatmulConverter.kt|1|#1507: reads a packed weight out of the untyped operation-parameter map; skainet-compile may not import the view types (SKEEP-003a)
 skainet-compile/skainet-compile-hlo/src/commonMain/kotlin/sk/ainet/compile/hlo/converters/ConstantOperationsConverter.kt|1|#1507: as BlockQuantMatmulConverter.kt
 skainet-compile/skainet-compile-opt/src/commonMain/kotlin/sk/ainet/compile/opt/passes/BlockQuantMatmulFusionPass.kt|1|#1507: as BlockQuantMatmulConverter.kt
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/QuantizedMatmul.kt|8|#1507: the scalar helpers are typed on the Q8_0/Q4_K/ternary data interfaces in their public signatures
 skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TensorSpecEncoding.kt|1|#1507: the one data-to-encoding mapping for traces; TensorData.encoding answers differently for narrow floats and the transposed-weight marker
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/ops/TernaryMatmul.kt|2|#1507: as QuantizedMatmul.kt, typed on TernaryTensorData in its public signature
 skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/trace/TraceSession.kt|1|#1507: block order of a traced tensor; asking the view would build one per traced tensor and download sidecar data

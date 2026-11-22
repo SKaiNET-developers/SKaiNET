@@ -32,7 +32,7 @@ xref:explanation/perf/turboquant-kv-compression.adoc[TurboQuant KV-cache compres
 | *Yes.* Activation ranges are data-dependent and must be measured.
 
 | In the codebase
-| `QuantizedMatmul`, the quantized SIMD kernels, TurboQuant.
+| The packed kernels behind `ops.matmul`, TurboQuant. `QuantizedMatmul` is a deprecated scalar helper over the same weights.
 | Calibration in the framework; int8 emission in the target backend codegen.
 |===
 
@@ -134,6 +134,8 @@ every matmul rather than assuming operand two is a weight.
 
 A natural question: can the existing `QuantizedMatmul` carry this? No — and the reason is worth
 stating, because it shapes where the int8 emission has to live.
+(`QuantizedMatmul` is deprecated in favour of `ops.matmul` with a packed weight; what follows holds
+for that path as well.)
 
 * **It is weight-only and eager.** `QuantizedMatmul` dequant-fuses `Q8_0`/`Q4_K` *weight* blocks
   against **fp32 activations** and returns a materialised fp32 tensor. It never records into the
