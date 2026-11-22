@@ -24,7 +24,7 @@ checked one by one:
 
 | One abstraction owns bytes, ownership enforced
 | Met
-| `Storage` is the only byte owner with an ownership field, and the enforcement is tested: `StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest` (a borrowed or view storage cannot be freed through the view; a scoped storage is unusable after its scope closes). `TensorStorage`, `BufferHandle`, `BufferAccessor` and their factories are removed: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`), the compiler's export path has its own `ConstantSource`, and `repackTo` / `requantizeTo` live on `TensorView`. Every `TensorData` class that holds bytes has one storage handle and one view for its life. See the note on façades below for what the heap data classes keep.
+| `Storage` is the only byte owner with an ownership field, and the enforcement is tested: `StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest` (a borrowed or view storage cannot be freed through the view; a scoped storage is unusable after its scope closes). `TensorStorage`, `BufferHandle`, `BufferAccessor` and their factories are removed: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`), the compiler's export path has its own `ConstantSource`, and `repackTo` / `requantizeTo` live on `TensorView`. Every `TensorData` class that holds bytes has one storage handle and one view for its life. A heap data class keeps its array and lends it to that storage, which is marked `Borrowed` (<<amendment-2026-11-22,amendment of 2026-11-22>>).
 
 | One view mechanism
 | Met
@@ -50,25 +50,11 @@ for element reads of a packed view, optional axis labels on `Shape`, and activat
 execution in debug mode.
 
 [#facade-note]
-*Façades (decision 1), as decided on 2026-11-22.* Every heap data class (dense arrays, narrow
-floats, the packed block formats) has one storage handle and one view for its life, built on first
-use; the dense segment, mapped and wasm classes have a view too. The two packed `MemorySegment`
-weight classes are removed: nothing produced them. Two things the proposal named are not done
-and not planned, and a third is by design:
-
-* The heap data classes keep their array as the primary field. Only `StorageFloatTensorData` is
-  constructed from a `Storage`.
-* The view of a heap packed data class decodes by calling back into its data object. A view built
-  from bytes (`TensorView.ofBytes`, the loaders) decodes from storage with `StorageBlockDecoder`.
-* `DenseTensorDataFactory` creates FP16 and BF16 tensors over a `FloatArray`. This is by design:
-  the factory's form is the compute form. Every op result goes through the factory, the fast
-  paths read a float array, and the dtype tag is what the trace and the StableHLO export read.
-  Two-byte storage there would round every intermediate result to 16 bits and take the fast
-  paths away. The storage form is `NarrowFloatDenseTensorData`, two bytes per element, which the
-  loaders produce (`Float16/Dense(2B)`) and code can construct directly.
-
-The proposal also said the façades are deleted at the next major release. No release is scheduled
-for that: `TensorData` is the type the tensor API is written against.
+*Façades (decision 1).* Every heap data class (dense arrays, narrow floats, the packed block
+formats) has one storage handle and one view for its life, built on first use; the dense segment,
+mapped and wasm classes have a view too. The two packed `MemorySegment` weight classes are
+removed: nothing produced them. Where the code differs from the decision of 2026-08-22, the
+<<amendment-2026-11-22,amendment of 2026-11-22>> below states the end state.
 
 What left this proposal's scope:
 
@@ -94,6 +80,45 @@ façade over the new view type, dispatch sites migrate one kernel at a time,
 and the façades are deleted at the next major release. Pure B would leave the
 erased packed dtype and the `is`-ladder in place; pure A as a big-bang rewrite
 is the "third layer" risk named below.
+
+[#amendment-2026-11-22]
+=== Amendment (2026-11-22)
+
+The decision above is amended in three points. The code as it is in these points is the end state
+of this proposal, not open work.
+
+. *A heap data class owns its array and lends it to a `Storage`.* The decision said every
+  `TensorData` implementation becomes a thin façade over the view type. That holds for scoped
+  activations (`StorageFloatTensorData` is constructed from a `Storage`) and for everything a
+  loader returns as a view. The other heap classes (dense arrays, narrow floats, the packed block
+  formats) keep their array as the primary field and build one `Storage.Heap` around it on first
+  use. That storage has the owner `Borrowed`, so the ownership rules hold: it cannot be freed or
+  resized through the view. The consequence that is accepted: where the bytes of such a tensor
+  live is decided by its class, and a tensor that has to live in a scope's slab, off the heap or
+  in a mapped file is created as such, through the scoped factory or a loader.
+. *The view of a heap packed data class decodes through its data object.* `PackedBlockDecoder`
+  calls the class's own `dequantizeBlock`, which is the tuned decoder of each format. A view
+  built from bytes (`TensorView.ofBytes`, the loaders) decodes from its storage with
+  `StorageBlockDecoder`. Both decoders exist for every block format and are held to the same
+  values by a test (`ViewOfBytesTest.packedBlocksDecodeLikeTheDataClassOverTheSameBytes`).
+. *The façades are not deleted.* The decision said they go at the next major release.
+  `TensorData` is the type the tensor API is written against, and the concrete classes stay
+  public. What replaces their use is the rule the downcast guard enforces in this repository: code
+  outside the data package asks the view (`data.view`, `Format`, `KernelKey`) and does not check
+  the class. The scalar helpers that did check it are deprecated.
+
+One further point is by design and was never a difference from the decision:
+`DenseTensorDataFactory` creates FP16 and BF16 tensors over a `FloatArray`. The factory's form is
+the compute form: every op result goes through the factory, the fast paths read a float array,
+and the dtype tag is what the trace and the StableHLO export read. Two-byte storage there would
+round every intermediate result to 16 bits and take the fast paths away. The storage form is
+`NarrowFloatDenseTensorData`, two bytes per element, which the loaders produce
+(`Float16/Dense(2B)`) and code can construct directly.
+
+Why amended and not built: constructing every heap data class from a `Storage` changes each data
+class and the hot paths that read the array directly, for no change a user of the library sees.
+The parts of the model that users gain from (packed weights from file to kernel, mapped loading,
+scoped activations, one view type, memory reports) do not depend on it.
 
 The full analysis, terminology and diagrams are in the proposal (revision 2) and the milestone
 PRD, both preserved in the pull requests and issues linked from #932 (the design drafts under
