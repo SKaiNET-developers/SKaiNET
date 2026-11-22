@@ -1,60 +1,81 @@
 = SKEEP-003: Unifying the tensor storage model — one byte-owner, enforced ownership, coherent dtype/encoding
 :description: SKaiNET proposal to converge the TensorData and TensorStorage layers into one storage model with real ownership, a single view mechanism, and dtype/encoding coherence.
 
-Status: Accepted (2026-08-22; M0/M1/M2 and the placement resolution shipped in 0.49.0; the removal of the old layer is open, see <<implementation-status,Implementation status>>) +
+Status: Implemented (2026-11-22; accepted 2026-08-22; M0/M1/M2 and the placement resolution shipped in 0.49.0, the old layer was removed after 0.64.0; see <<implementation-status,Implementation status>>) +
 Audience: SKaiNET maintainers and contributors +
 Created: 2026-08-10 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] (umbrella) → https://github.com/SKaiNET-developers/SKaiNET/issues/1001[#1001 M0] · https://github.com/SKaiNET-developers/SKaiNET/issues/1002[#1002 M1] · https://github.com/SKaiNET-developers/SKaiNET/issues/1003[#1003 M2] +
 As built: the model is documented in xref:ROOT:explanation/memory-model.adoc[The memory model] and xref:ROOT:explanation/packed-weight-layout.adoc[Packed weight layout]; the proposal and milestone PRD that led there are in the pull requests and issues linked below (#932, #1001, #1002, #1003).
 
 [#implementation-status]
-== Implementation status (audited 2026-11-11, at 0.64.0)
+== Implementation status (closed 2026-11-22)
 
 The model is built and in use on every target: `Storage`, `TensorView`, `Format`, `Scope`, the
-memory plan, the tracer, mapped staging. The old layer it was meant to replace is still in the
-code, so this proposal is back at `Accepted` until the open rows below are closed. The umbrella
-https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] lists the work.
+memory plan, the tracer, mapped staging. The old layer it replaced (`TensorStorage`,
+`BufferHandle`, `LogicalDType`, the second view mechanism) is removed. The audit of 2026-11-11
+found the removal missing and put this proposal back at `Accepted`; the work since then is listed
+in https://github.com/SKaiNET-developers/SKaiNET/issues/932[#932] and
+https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]. The five acceptance criteria,
+checked one by one:
 
-[cols="3,1,3",options="header"]
+[cols="3,1,4",options="header"]
 |===
-| Acceptance criterion | State | Where it stands
+| Acceptance criterion | State | Evidence
 
 | One abstraction owns bytes, ownership enforced
-| Partly
-| Enforcement is tested (`StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest`). `TensorStorage`, `BufferHandle`, `BufferAccessor` and their factories are removed: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`), the compiler's export path has its own `ConstantSource`, and `repackTo` / `requantizeTo` live on `TensorView`. What is left: most `TensorData` classes still own their array and wrap it on each `view` read (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502], https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
+| Met
+| `Storage` is the only byte owner with an ownership field, and the enforcement is tested: `StorageTest`, `ScopeTest`, `TensorViewTest`, `JvmStorageTest` (a borrowed or view storage cannot be freed through the view; a scoped storage is unusable after its scope closes). `TensorStorage`, `BufferHandle`, `BufferAccessor` and their factories are removed: the streaming readers return `TensorView` (`loadTensorView`, `loadTensorViewMapped`), the compiler's export path has its own `ConstantSource`, and `repackTo` / `requantizeTo` live on `TensorView`. Every `TensorData` class that holds bytes has one storage handle and one view for its life. See the note on façades below for what the heap data classes keep.
 
 | One view mechanism
-| Partly
-| `OneViewMechanismTest` covers slice, transpose and unsqueeze on the new view. The public `slice()` family returns a tensor whose `data.view` is that view; `SlicedTensorView` and the old `TensorView` marker are removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). Other derived data, such as `UnsqueezedTensorData`, still has no view (https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]).
+| Met
+| `OneViewMechanismTest` covers slice, transpose and unsqueeze on `memory.TensorView`. The public `slice()` family and `UnsqueezedTensorData` return data whose `view` is that type; `SlicedTensorView` and the old `TensorView` marker are removed. Packed transpose stays zero-copy and bit-identical: `TransposedWeightViewTest` and the packed golden parity tests (`sk.ainet.exec.golden`).
 
 | A packed tensor reports FP32 and its encoding; no dispatch site downcasts to a concrete `TensorData` class outside the data package
-| Not met
-| The first half holds (`FormatTest`). The common packed matmul (`matmul` with a packed right-hand operand, `matmulWeightTransposed`, the relayout) chooses its kernel by `KernelKey` from the views; on the JVM tier too; the dense fast paths read `TensorData.heapFloats` or the view; conv, the Accelerate ops and the dense layout and index ops (`transpose`, `permute`, `gather`, `indexSelect`, `convert`) take their arrays the same way; `DefaultCpuOps.kt` went from 51 downcasts to 1, `DefaultCpuOpsJvm.kt` from 48 to none, `AccelerateCpuOps.kt` from 18 to none and `WasmCpuOps.kt` from 10 to none. Outside the backends the loaders, the GGUF writer, the quantize tool and the test helpers read the same way. The Q4_0 / Q8_0 `MemorySegment` weights and the input-major narrow floats have a view, and the JVM matmul and transpose choose from it. A sidecar-resident tensor on wasm has a view over the sidecar storage, and the wasm ops find it by that view. The transposed-weight marker is read as `TensorData.transposeOf`, and the narrow-float transpose from the view. 18 remain (162 at the start), each with its reason in the allowlist: the `RowDequantSource` capability in `gather` (implemented outside this repository for tables without a view), the scalar `QuantizedMatmul` / `TernaryMatmul` helpers that are typed on the data interfaces, and the trace and compile code that may not import the view types (SKEEP-003a) (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501] for the guard, https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507] for the migration).
+| Met, with the listed exceptions
+| A packed view reports `Float32/<encoding>` (`FormatTest`), and the public packed block types are `TensorData<FP32, Float>` whose `get` returns the decoded value. The ops choose a kernel by `KernelKey` from the views, or read `TensorData.heapFloats`: `DefaultCpuOps.kt` went from 51 downcasts to 1, `DefaultCpuOpsJvm.kt` from 48 to none, `AccelerateCpuOps.kt` from 18 to none, `WasmCpuOps.kt` from 10 to none. `./gradlew checkTensorDataDowncasts` runs in CI and fails when a count rises. 18 downcasts remain (162 at the start), each with its reason in `config/tensor-data-downcast-allowlist.txt`: one in `gather` for the `RowDequantSource` capability (implemented outside this repository for tables without a view), ten in the scalar `QuantizedMatmul` / `TernaryMatmul` helpers, which are typed on the data interfaces in their public signatures, two in the trace code of `skainet-lang-core`, and five in `skainet-compile`, which may not import the view types (xref:skeep:003a-placement-and-planning-resolution.adoc[SKEEP-003a]). None of them chooses a kernel in a backend.
 
 | No kernel regression against a baseline
-| Partly
-| The benchmarks exist; the recorded baseline was deleted with `docs/design/` in #1106 (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501]).
+| Met, with three small-size exceptions
+| xref:ROOT:reference/benchmark-baseline.adoc[Benchmark baseline] holds the JMH numbers of 2026-11-11, and each dispatch pull request compared against them. Recorded slowdowns, all on operands of a few hundred elements: a one-row matmul at k=256 (+18 %, #1520), a small-table transpose (+4 %, about 50 ns, #1529) and a one-row gather (+10 %, about 36 ns, #1529). Larger sizes are equal or faster.
 
 | Flat direct memory under a forward scope on the JVM
-| No test
-| Slab reuse is tested (`ScopedOpOutputsTest`), direct memory only under the GC arena (`MemSegArenaLeakTest`) (https://github.com/SKaiNET-developers/SKaiNET/issues/1501[#1501]).
+| Met
+| `ForwardScopeFlatMemoryTest`: 300 forward steps under `forwardScope { }`. It asserts that the direct-buffer pool grows by less than one step's activations, that the live heap stays flat, and that the slab's peak does not move after warm-up.
 |===
 
 Decisions 1, 2 (naming and package), 3, 6, 8, 9, 10, 11, 12 and 13 are delivered; `LogicalDType` is
 removed (https://github.com/SKaiNET-developers/SKaiNET/issues/1502[#1502]). Decisions 3, 8 and 10
 came with https://github.com/SKaiNET-developers/SKaiNET/issues/1503[#1503]: the debug-mode warning
 for element reads of a packed view, optional axis labels on `Shape`, and activation ids for eager
-execution in debug mode. The rest:
+execution in debug mode.
+
+[#facade-note]
+*Façades (decision 1), as decided on 2026-11-22.* Every heap data class (dense arrays, narrow
+floats, the packed block formats) has one storage handle and one view for its life, built on first
+use; the dense segment, mapped and wasm classes have a view too. The two packed `MemorySegment`
+weight classes are removed: nothing produced them. Three things the proposal named are not done
+and not planned:
+
+* The heap data classes keep their array as the primary field. Only `StorageFloatTensorData` is
+  constructed from a `Storage`.
+* The view of a heap packed data class decodes by calling back into its data object. A view built
+  from bytes (`TensorView.ofBytes`, the loaders) decodes from storage with `StorageBlockDecoder`.
+* `DenseTensorDataFactory` widens FP16 and BF16 to a `FloatArray`. The loaders keep the 2-byte
+  form (`Float16/Dense(2B)`).
+
+The proposal also said the façades are deleted at the next major release. No release is scheduled
+for that: `TensorData` is the type the tensor API is written against.
+
+What left this proposal's scope:
 
 [cols="1,4,3",options="header"]
 |===
 | # | Open part | Tracked by
 
-| 1 | Façades: every heap data class (dense arrays, narrow floats, the packed block formats) has one storage handle and one view for its life, built on first use; the dense segment, mapped and wasm classes have a view too. The public packed block types are `TensorData<FP32, Float>` and their `get` returns the decoded value. The two packed `MemorySegment` weight classes are removed: nothing produced them. Still open: the classes keep their array as the primary field (only `StorageFloatTensorData` is constructed from a `Storage`), and a packed view decodes by calling back into its data object | https://github.com/SKaiNET-developers/SKaiNET/issues/1507[#1507]
 | 2 | `sk.ainet.lang.graph.Layout` is not deprecated; `BlockOrderLayout` implements it now | SKEEP-004, which owns the compile-side layout
-| 4 | The `(head, tail)` pair and its gather fallback exist (`WindowedKV`); only the reference attention consumes them | https://github.com/SKaiNET-developers/SKaiNET/issues/1504[#1504], outside this SKEEP
-| 5 | `BlockSpec.activation` drives the eager dispatcher; the StableHLO export does not read it | https://github.com/SKaiNET-developers/SKaiNET/issues/1505[#1505], outside this SKEEP
-| 7 | `SuspendingRandomAccessSource` exists in `skainet-io-core`; there is no remote module | https://github.com/SKaiNET-developers/SKaiNET/issues/1506[#1506], outside this SKEEP
+| 4 | The `(head, tail)` pair and its gather fallback exist (`WindowedKV`); only the reference attention consumes them | https://github.com/SKaiNET-developers/SKaiNET/issues/1504[#1504]
+| 5 | `BlockSpec.activation` drives the eager dispatcher; the StableHLO export does not read it | https://github.com/SKaiNET-developers/SKaiNET/issues/1505[#1505]
+| 7 | `SuspendingRandomAccessSource` exists in `skainet-io-core`; there is no remote module | https://github.com/SKaiNET-developers/SKaiNET/issues/1506[#1506]
 |===
 
 Compiled parity (P7 below) was closed as superseded: IREE validation lives in the IREE-tools and
