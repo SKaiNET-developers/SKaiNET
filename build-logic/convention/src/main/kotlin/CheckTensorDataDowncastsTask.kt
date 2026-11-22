@@ -46,8 +46,6 @@ abstract class CheckTensorDataDowncastsTask : DefaultTask() {
         "PackedBlockStorage",
         "RowDequantSource",
         "MemorySegmentBackedData",
-        "Q4MemorySegmentMarker",
-        "Q8MemorySegmentMarker",
     )
 
     /** Packages that define the classes and may inspect them. */

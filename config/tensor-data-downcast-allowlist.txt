@@ -7,8 +7,8 @@
 #
 # Format: path|count|issue or reason
 #   count = exact number of `is` / `!is` / `as` / `as?` whose target is a `…TensorData` class
-#   or a storage marker (PackedBlockStorage, RowDequantSource, MemorySegmentBackedData,
-#   Q4/Q8MemorySegmentMarker). Removing a downcast means lowering the count (or deleting the
+#   or a storage marker (PackedBlockStorage, RowDequantSource, MemorySegmentBackedData).
+#   Removing a downcast means lowering the count (or deleting the
 #   line). Do not raise a count: dispatch on the format instead.
 
 skainet-backends/skainet-backend-cpu/src/commonMain/kotlin/sk/ainet/exec/tensor/ops/DefaultCpuOps.kt|1|#1507: `gather` asks for RowDequantSource, a public capability interface that classes outside this repository implement for tables with no view (above 2 GB); data with a decoding view is read through the view
