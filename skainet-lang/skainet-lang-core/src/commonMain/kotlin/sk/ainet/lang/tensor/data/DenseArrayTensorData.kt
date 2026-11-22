@@ -26,6 +26,16 @@ public class DenseFloatArrayTensorData<T : DType>(
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = this.shape.computeStrides()
 
+    private var cachedView: sk.ainet.lang.memory.TensorView? = null
+
+    /**
+     * Built on first use and kept: one storage handle and one view for the life of this data
+     * (SKEEP-003 §4.1, #1507). The ops fast paths ask [heapFloats] and never build it. Two threads
+     * may each build one; the views are equal and borrow the same array, so either may win.
+     */
+    override val view: sk.ainet.lang.memory.TensorView
+        get() = cachedView ?: super.view.also { cachedView = it }
+
     override fun get(vararg indices: Int): Float =
         buffer[calcFlatIndex(shape, strides, indices)]
 

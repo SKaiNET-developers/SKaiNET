@@ -148,14 +148,17 @@ public class BufferPackedTensorData(
                 "use dequantizeBlock/get."
         )
 
+    private var cachedPackedView: TensorView? = null
+
+    /** Built on first use and kept: one view over [storage] for the life of this data (#1507). */
     override val packedView: TensorView
-        get() = TensorView.packed(
+        get() = cachedPackedView ?: TensorView.packed(
             storage = storage,
             shape = shape,
             encoding = encoding,
             decoder = PackedBlockDecoder(this),
             blockOrder = blockOrder,
-        )
+        ).also { cachedPackedView = it }
 
     override val view: TensorView get() = packedView
 
