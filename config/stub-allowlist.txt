@@ -8,7 +8,7 @@
 # Ops and nn layers do not belong here: annotate them with @NotImplemented(reason, issue).
 
 # --- Docs generator ----------------------------------------------------------------------
-build-logic/convention/src/main/kotlin/GenerateDocumentationTask.kt|2|#1418 Markdown / HTML output formats (AsciiDoc only)
+build-logic/convention/src/main/kotlin/GenerateDocumentationTask.kt|1|#1418 HTML output format (AsciiDoc and Markdown done)
 
 # --- Compile / export: writeExportToFile has only a JVM actual ---------------------------
 skainet-compile/skainet-compile-json/src/androidNativeMain/kotlin/sk/ainet/compile/json/Serialization.androidNative.kt|1|#1420 writeExportToFile on non-JVM targets
