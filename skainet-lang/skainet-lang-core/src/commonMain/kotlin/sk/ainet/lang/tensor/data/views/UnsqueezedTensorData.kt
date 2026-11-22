@@ -26,6 +26,21 @@ public class UnsqueezedTensorData<T : DType, V>(
         Shape(newDims)
     }
 
+    /** The base's encoding: a unit axis does not change how the bytes are stored. */
+    override val encoding: sk.ainet.lang.tensor.storage.TensorEncoding? get() = base.encoding
+
+    /**
+     * The base's view with the unit axis inserted (SKEEP-003 §4.1, #1507): the same storage, no
+     * copy. `null` when the base has no view.
+     */
+    override val view: sk.ainet.lang.memory.TensorView?
+        get() = base.view?.unsqueeze(dim)
+
+    /** The base's heap floats: a unit axis leaves the row-major element order as it is. */
+    override val heapFloats: FloatArray? get() = base.heapFloats
+
+    override val heapFloatsOffset: Int get() = base.heapFloatsOffset
+
     override operator fun get(vararg indices: Int): V {
         require(indices.size == shape.rank) { "Expected ${shape.rank} indices, got ${indices.size}" }
         require(indices[dim] == 0) { "Unsqueezed dimension at $dim must be 0, got ${indices[dim]}" }
