@@ -1,0 +1,107 @@
+= Define your own low-bit encoding
+:description: Read a weight format the library does not know: an Opaque encoding, a BlockDecoder that reads from Storage, and optionally a matmul kernel registered under a KernelKey.
+
+This guide adds a packed weight format from outside the library. You need three things, and the
+third is optional:
+
+. an encoding value that names the format,
+. a `BlockDecoder` that decodes one block out of a `Storage`,
+. a `ViewKernel` that multiplies on the packed bytes.
+
+The example format is invented: one sign bit per weight and one FP32 scale per block of 32
+weights, which is 2 bits per weight. The code is compiled and run in CI from
+`skainet-docs-samples` (`CustomEncoding.kt`).
+
+== Name the format
+
+`TensorEncoding` is a sealed interface, so code outside the library cannot add a member to it. The
+member for this case is `TensorEncoding.Opaque`: a name and the byte count.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=geometry]
+----
+
+The name appears in `view.format` (`Float32/SIGN1`), in memory reports and in kernel keys.
+
+== Write the bytes
+
+How the bytes are produced is up to you. Here each block keeps the signs and the mean absolute
+value.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=encode]
+----
+
+== Decode a block
+
+A `BlockDecoder` states the block geometry and decodes one block. It receives the storage on every
+call, so one decoder reads a heap array, a direct buffer and a mapped file.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=decoder]
+----
+
+== Make a view
+
+`TensorView.packed` puts shape, encoding, decoder and storage together.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=view]
+----
+
+From here the weight is a view like any other: element reads, a full decode, a dense copy and the
+memory tracker all work without knowing the format.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=use]
+----
+
+The tracker reports 2 bits per weight and a compression ratio of 16 against FP32.
+
+== Add a kernel (optional)
+
+A matmul already works at this point: with no kernel registered for the operand pair, the
+dispatcher runs its reference kernel, which decodes through your `BlockDecoder`. It is correct and
+slow, and the dispatcher prints a line the first time it happens.
+
+A kernel of your own reads the packed bytes. Register it under the key of the operand pair it
+serves.
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=kernel]
+----
+
+The same `KernelDispatch.matmul` call then selects it:
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/CustomEncoding.kt[tag=matmul]
+----
+
+The trace shows the reference kernel for the first call and `sample-SIGN1` for the second, and
+both give the same product.
+
+== Limits of an encoding outside the library
+
+* *The key is per byte count.* Two `Opaque` values are equal only when name and byte count are
+  equal, so a kernel key for an `Opaque` encoding matches weights of one size. Register the kernel
+  for each weight size you use, as `installKernel` above does for one.
+* *Call `KernelDispatch.ensureInstalled()` before you register.* The dispatcher installs the
+  built-in kernels on first use only when its table is empty.
+* *Loaders do not know the format.* A GGUF or SafeTensors reader returns a view only for the
+  encodings it maps. For your format, read the raw bytes (`loadTensorData`) and build the view
+  yourself.
+* *No `requantizeTo`.* It needs a quantizer, and the library has one for `Q8_0`, `Q4_0` and
+  `BITNET_PLANES` only. Encode your bytes yourself, as above.
+
+When the format should load from model files, take part in memory planning or get kernels on
+every platform, it belongs in the library: a new `TensorEncoding` member with a `BlockSpec`, a
+decoder in `StorageBlockDecoder`, and kernels in a kernel pack. See
+xref:explanation/packed-weight-layout.adoc[Packed weight layout] and
+xref:explanation/kernel-selection.adoc[Kernel SPI and the selection algorithm].

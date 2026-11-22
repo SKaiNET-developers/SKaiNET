@@ -205,6 +205,51 @@ execution normally does not. With the switch on, each allocation from a forward 
 the same op has the same number in every step. A read of an activation after its step was reset
 then fails with the activation's id, where it was allocated and where the scope was reset.
 
+== What the model replaced
+
+The model came in beside an older one and then took its place
+(xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003]). What changed, side by side:
+
+[cols="2,3,3",options="header"]
+|===
+| | Before | Now
+| What describes a tensor's bytes
+| Two layers: the `TensorData` classes, and a separate storage layer for the loaders (`TensorStorage`, `BufferHandle`)
+| One: `Storage` and `TensorView`. The streaming readers return views (`loadTensorView`, `loadTensorViewMapped`); the storage layer is removed
+| How an op finds its kernel
+| By the class of the data: 162 class checks outside the data package
+| By a `KernelKey` built from the formats and layouts of the operands. 18 class checks are left, each listed with its reason, and a build check keeps the number from growing
+| What a packed weight says it is
+| Raw bytes; the op had to know the class to know the format
+| `view.format`: `Float32/Q4_K` is logically FP32, stored as Q4_K blocks. `view.get` returns the value
+| Where a packed weight can be decoded from
+| A heap array held by its data class
+| Any storage. A `BlockDecoder` is handed the storage, so the same decoder reads a heap array, a direct buffer and a mapped file
+| Slicing, aliasing a byte range, an unmaterialized transpose
+| Three unrelated mechanisms
+| One: a `TensorView` with another `Layout` over the same storage
+| A format the library does not know
+| A new data class and edits to the ops
+| An `Opaque` encoding, a `BlockDecoder` and optionally a registered kernel, all outside the library (xref:how-to/custom-encoding.adoc[how-to])
+|===
+
+What it gives is easiest to see on one weight stored six ways and read through one type. The
+numbers are from xref:tutorials/low-bit-weights-getting-started.adoc[the low-bit weights tutorial],
+whose sample runs in CI:
+
+[cols="2,>1,>1",options="header"]
+|===
+| `view.format` | Bits per weight | Size against FP32
+| `Float32/Dense(4B)` | 32 | 1×
+| `Float16/Dense(2B)` | 16 | 2×
+| `Float32/Q8_0` | 8.5 | 3.8×
+| `Float32/Q4_0` | 4.5 | 7.1×
+| `Float32/TQ2_0` | 2.0625 | 15.5×
+| `Float32/TQ1_0` | 1.6875 | 19×
+|===
+
+The code that reads them has no branch on the format, and the same code reads the mapped file.
+
 == Where it stands
 
 The model is implemented across every KMP target and exercised on each of them, plus on an

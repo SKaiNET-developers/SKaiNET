@@ -26,6 +26,7 @@ matches what you want to try first.
 | Build and train a neural net | [Hello Neural Net](#hello-neural-net) (below) | 5 min |
 | Run a local GGUF model | [SKaiNET Transformers starter](https://github.com/SKaiNET-developers/SKaiNET-transformers#start-in-5-minutes) | 5 min after model setup |
 | Export a secure MCU bundle | [Minerva getting started](docs/modules/ROOT/pages/tutorials/minerva-getting-started.adoc) | 10 min without firmware flashing |
+| Read low-bit weights (4-bit, ternary) | [Weights at 1.7 bits](docs/modules/ROOT/pages/tutorials/low-bit-weights-getting-started.adoc) | 10 min |
 
 Working in Java? SKaiNET ships first-class Java support — see the
 [Java getting-started guide](docs/modules/ROOT/pages/tutorials/java-getting-started.adoc).

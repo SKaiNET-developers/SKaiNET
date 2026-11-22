@@ -51,6 +51,7 @@ directly; only the syntax differs.
 
 - xref:tutorials/hlo-getting-started.adoc[StableHLO getting started] — lower graphs to portable MLIR for IREE-compatible compiler flows.
 - xref:tutorials/minerva-getting-started.adoc[Minerva getting started] — export a tiny static MLP to a secure MCU bundle.
+- xref:tutorials/low-bit-weights-getting-started.adoc[Weights at 1.7 bits] — one weight stored six ways, from 32 bits to 1.7, read through one view type.
 - xref:how-to/arduino-c-codegen.adoc[Generate C for Arduino] — generate standalone C99 for small-device deployment without libminerva.
 
 == Working with images and image-shaped tensors
