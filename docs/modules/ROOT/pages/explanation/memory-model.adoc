@@ -258,7 +258,7 @@ ARMv8.2 Cortex-A55 reference board.
 [cols="2,3",options="header"]
 |===
 | Delivered | Notes
-| `Storage` / `Scope` / `TensorView` / `Format` / `Layout` | All targets; every `TensorData` family used by the kernels exposes a view. Scoped activations (`StorageFloatTensorData`) sit on a `Storage`; the other classes still own their bytes and wrap the view around them (xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003], implementation status)
+| `Storage` / `Scope` / `TensorView` / `Format` / `Layout` | All targets. Every `TensorData` class that holds bytes has one storage handle and one view for its life. Scoped activations (`StorageFloatTensorData`) are constructed from a `Storage`; the heap data classes keep their array and put the storage handle around it (xref:skeep:003-unified-tensor-storage.adoc#facade-note[SKEEP-003], note on façades)
 | `KernelKey` dispatch for matmul | Reference kernel plus packed and ternary kernel packs
 | Ternary encodings and `bitnet_gemv` | `TQ1_0`, `TQ2_0`, BitNet b1.58; reference kernel plus a NEON pack on Android
 | Memory plan, device profiles, fit check | `skainet-plan`, mobile/desktop/native profiles, two-pool device check

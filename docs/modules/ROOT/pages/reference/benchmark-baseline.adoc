@@ -75,3 +75,33 @@ One thing the table shows that is not a storage matter: on this Linux machine `M
 The baseline recorded on 2026-08-22, before the storage migration, was removed with
 `docs/design/` (#1106); it is in the history at commit `3c0ee71d`. It was taken on the same
 machine with OpenJDK 25, so the two are not directly comparable.
+
+== Packed matmul through the ops layer, 2026-11-22
+
+`PackedOpsMatmulBench` measures what the ops layer adds on top of the bare Q4_K kernel: `kernel`
+calls the kernel, `opsLabel` and `opsWeightTransposed` go through `matmul` and
+`matmulWeightTransposed`, which choose the kernel by `KernelKey` from the views. There is no
+number from before the dispatch change; the comparison is between the three rows of one run.
+
+* Commit: `bac77d50` (`develop`, after 0.64.0)
+* Machine and settings: as above
+
+[cols="3,1,2,2,2,1",options="header"]
+|===
+| Benchmark | Batch | Shape | Score | ± | Unit
+
+| `kernel` | 1 | 1024-1024 | 0.110 | 0.001 | ms/op
+| `opsLabel` | 1 | 1024-1024 | 0.111 | 0.001 | ms/op
+| `opsWeightTransposed` | 1 | 1024-1024 | 0.111 | 0.001 | ms/op
+| `kernel` | 1 | 4096-4096 | 1.379 | 0.017 | ms/op
+| `opsLabel` | 1 | 4096-4096 | 1.370 | 0.019 | ms/op
+| `opsWeightTransposed` | 1 | 4096-4096 | 1.377 | 0.023 | ms/op
+| `kernel` | 8 | 1024-1024 | 0.874 | 0.011 | ms/op
+| `opsLabel` | 8 | 1024-1024 | 0.879 | 0.011 | ms/op
+| `opsWeightTransposed` | 8 | 1024-1024 | 0.871 | 0.008 | ms/op
+| `kernel` | 8 | 4096-4096 | 10.969 | 0.073 | ms/op
+| `opsLabel` | 8 | 4096-4096 | 11.131 | 0.256 | ms/op
+| `opsWeightTransposed` | 8 | 4096-4096 | 11.339 | 1.105 | ms/op
+|===
+
+The ops paths are within the error of the kernel at every size.
