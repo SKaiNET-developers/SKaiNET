@@ -52,7 +52,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.64.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.65.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -309,28 +309,31 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.64.0
+## What's New in 0.65.0
 
-Every differentiable op has a backward rule, and mixed precision is finished: it trains, exports without redundant
-casts and is checked by the compiler.
+One storage model: weights stay in their packed form from the file to the kernel, and the old storage layer is
+removed (SKEEP-003). This release has breaking changes; the changelog gives the migration for each removed type.
 
-- **Attention trains** — `scaledDotProductAttention` has its adjoint (dQ, dK, dV and the dense mask's gradient) for
-  every option: `scale`, `causal`, sliding windows, key lengths, grouped-query heads. It is checked against finite
-  differences and PyTorch autograd, and a whole Transformer block is checked parameter by parameter. The ops
-  matrix Backward column reads 60/60.
-- **Training through mixed precision** — `TensorOps.convert` is differentiable, so the layers behind
-  `dense(64, dtype = BF16) { }` and `stage("head", dtype = FP16) { }` train. The cast passes the gradient straight
-  through and rounds it to the region's format; integer casts have no gradient.
-- **Fewer casts in the export** — `CastFoldingPass`, part of the default optimization pipelines, folds casts that
-  change no value: the `bf16 -> f32 -> f16` between two adjacent boundaries exports as one `stablehlo.convert`, and
-  a same-dtype boundary exports none. A narrowing round trip is never folded.
-- **A layer's dtype is checked** — ops traced inside a boundary carry `DTypePolicy.Prefer(dtype)`, and
-  `DTypeConstraintResolutionPass` reports a region that a later pass retyped. `ComputeGraphExecutor` runs
-  `convert` nodes, so a traced mixed-precision graph executes.
-- **Removed** — the generic `dense<T>()` / `stage<T>()` overloads and the `MixedPrecision*` scaffold, deprecated in
-  0.63.0; use the `dtype =` argument.
-- **Fixes** — `concat` backward with inputs of different sizes, `squeeze` backward with no axis, and
-  `DTypeConstraintResolutionPass` no longer drops the edges of the nodes it resolves.
+- **One view for every weight format** — `StreamingGGUFReader` and `StreamingSafeTensorsReader` return a
+  `TensorView` (`loadTensorView`, `loadTensorViewMapped`) over a tensor's bytes, without decoding or copying them.
+  `view.format` says what the bytes are (`Float32/Q4_0`, `Float32/TQ1_0`, `Float16/Dense(2B)`), `get` and
+  `toFloatArray` decode on read, and a mapped view works for a tensor above 2 GB.
+- **Kernels are chosen from the format** — `matmul` with a packed weight looks its kernel up by `KernelKey` from the
+  two views, on every backend. The ops no longer check the data's class: 162 downcasts became 8, and a build task
+  keeps the count from rising.
+- **Packed weights are FP32** — the packed block types are `TensorData<FP32, Float>`; `get` returns the decoded
+  value and `getCode` the stored code. `view.requantizeTo(encoding)` is the lossy conversion, `materialize()` the
+  lossless one.
+- **Your own encoding** — `TensorEncoding.Opaque`, a `BlockDecoder` and a `ViewKernel` add a weight format and its
+  matmul kernel from outside the library.
+- **New docs** — the tutorial "Weights at 1.7 bits: one view for every format", the how-to "Define your own
+  low-bit encoding", and "What the model replaced" in the memory model page. All samples are compiled and run in CI.
+- **Removed** — `TensorStorage`, `BufferHandle`, `LogicalDType`, `SlicedTensorView` and the old `TensorView`
+  marker, `loadTensorStorage*`, the two `MemorySegment` packed weight classes. `slice()` and `sliceView { }`
+  return a `Tensor`.
+- **Deprecated** — `QuantizedMatmul` and `TernaryMatmul`; use `ops.matmul(input, weight)`.
+- **Also** — optional axis labels on `Shape`, a debug-mode warning for element reads of a packed view, activation
+  ids for eager execution in debug mode, and a fix for `ops.matmul` with a ternary right-hand weight.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -356,151 +359,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
 
-### Contributors (0.64.0)
+### Contributors (0.65.0)
 
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the `scaledDotProductAttention` backward
-  with its finite-difference and Transformer-block tests, the `concat` / `squeeze` backward fixes, the rest of
-  SKEEP-008 (differentiable `convert`, export tests, `CastFoldingPass`, the checked boundary dtype, the scaffold
-  removal), and the release
-
-### Contributors (0.63.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the block-quant StableHLO export and its
-  fusion pass with the Torq board checks, the StableHLO-phase and TOSA preparation passes, mixed precision and
-  `repackTo` / `requantizeTo` (SKEEP-008), `convTranspose2d`, the ONNX op mappings and streaming reader,
-  `GroupNormalization`, `sliceCopy`, the tokenizer and `randn` fixes, and the release
-- **Edwin** ([@EdinEd](https://github.com/EdinEd)) — the precision, recall and F1 metrics with the `Averaging`
-  strategy and the shared confusion-matrix accumulator (#1222)
-- [@S0L0-R00T-DEV](https://github.com/S0L0-R00T-DEV) — the removal of the unused `TensorDefineDslImpl.create()`
-  stub (#1471)
-
-### Contributors (0.62.4)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the Accelerate/BLAS routing of the JVM's
-  dense FP32 products, the AArch64 register tiles for the native dense FP32 kernels with their tests, and the release
-
-### Contributors (0.62.3)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the buffered GGUF metadata reader, the
-  one-pass tokenizer build, the AVX2/FMA dense FP32 SGEMM lane with their tests and measurements, and the release
-
-### Contributors (0.62.2)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the schedule-driven and AVX2/FMA
-  dense FP32 lanes with their tests and measurements, the `CoroutineSchedule` fix, the added-token index, and
-  the release
-
-### Contributors (0.62.1)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the native packed-kernel
-  binding fix and its regression test, the YOLO move-out, the compile-flexibility explanation, the
-  SKEEP-008 draft, and the release
-
-### Contributors (0.62.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the JVM ↔ wasm parity
-  series: SIMD128 bodies for every sidecar kernel, the ternary and direct `x · Wᵀ` kernels, resident
-  activations with the elementwise, fused and convolution kernels on both tiers, the browser IO
-  parity, `skainet-data-source` on JS and wasm, the operator coverage matrix, the BitNet decode
-  allocation fixes, and the release
-- **Edwin** ([@EdinEd](https://github.com/EdinEd)) — the `ClassificationSupport` helpers extracted
-  from `Accuracy`, preparing the precision, recall and F1 metrics (#1222)
-
-### Contributors (0.61.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — SKEEP-007: the Tier 0
-  dispatch-order and dense-path fixes, quantize-at-load for the SafeTensors and GGUF loaders with the
-  Q8_0 quantizer and `skainet-quantize`, the `skainet-backend-wasm-simd` sidecar kernel pack, the
-  scheduled SKEEP-006 removal, and the release
-
-### Contributors (0.60.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — key-padding lengths
-  and window metadata for `scaledDotProductAttention` across the CPU kernel, recorder, executor
-  and StableHLO lowering, the n-ary composite seam with the `skainet.sdpa` composite, the
-  SKEEP-006 deprecation step, and the release
-
-### Contributors (0.59.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — exact GELU and `erf`
-  across the CPU kernels, graph executor and backward rules, the lowering-metadata path with
-  composite emission and the legalization pass, and the release
-
-### Contributors (0.58.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — SKEEP-006: the
-  front-end and model-identity modules, the tokenizer move with Metaspace BPE, Unigram and
-  WordPiece, the golden corpus, and the release
-
-### Contributors (0.57.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — masked grouped-query
-  attention in the StableHLO export, the kotlinx-io API fix, the Kotlin 2.4.20 upgrade, and the
-  publish dry run
-
-### Contributors (0.56.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — grouped-query-native
-  `scaledDotProductAttention` and its StableHLO lowering, structural schedule defaults, and
-  schedule-aware graph execution contexts (SKEEP-005 phase 2)
-
-### Contributors (0.53.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the billion-parameter
-  export arc: allocation-free void tracing, aliased constant extraction, strict StableHLO
-  conversion, the array-free `ConstantSource.Floats` path, and the sharded SafeTensors loader
-
-### Contributors (0.52.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the Gemma 4 engine-gap
-  arc: self-healing kernel dispatch and the `ViewKernelPack` SPI, dense FP32 for mapped/off-heap
-  storage, the decode-shaped FP32 kernel work, Android-native targets across the downstream
-  chain, and the ternary packs joining the self-healing SPI
-
-### Contributors (0.51.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — off-heap ternary
-  storage, zero-copy mmap for `SEQUENTIAL` I2_S, the AOT GGUF converter and its IREE-facing
-  counterpart in SKaiNET-IREE-tools, and the scoped dense-FP32 activation matmul-chooser fix
-
-### Contributors (0.49.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the SKEEP-003 memory & storage architecture end to end: M0/M1/M2 milestones, the weight-form and placement-resolution arcs, scope-recycled execution, multi-format footprint analysis, the compile-lane carriage arc, the BitNet/ternary kernel track, and the release docs
-- **Ajith Goveas** ([@AjithGoveas](https://github.com/AjithGoveas)) — Iris dataset provider (#1044, #1101), now powering the Android classifier tutorial
-
-### Contributors (0.40.1)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — packed-quant `transpose()` block-grid correctness fix, all three kernel tiers (#968, #969)
-
-### Contributors (0.40.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — off-heap/mmap tensor storage on Android (#921), GGUF `DEQUANTIZE_TO_FP32` over-allocation fix (#782), native Q5_0/Q5_1 packed matmul kernels (#708), Apple arm64 runtime FEAT_DotProd dispatch (#958), Apple iOS/macOS Kotlin/Native kernel targets (#959)
-
-### Contributors (0.39.1)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — primitive FP32 fast paths for the eager CPU ops (#949), README pointer to SKaiNET-transformers (#923)
-
-### Contributors (0.39.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — Android JNI NEON kernel backend with runtime dotprod dispatch (#943, #945), Android `createRandomAccessSource` streaming loads (#922), cinterop klib archive embedding (#942), Q4_0 NEON kernel (#939), GGUF loader fail-fast (#919), tensor-storage correctness fixes (#927, #928, #929, #930, #931), AAR release publishing (#947)
-
-### Contributors (0.38.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — dynamic tensor dimensions for streaming KV-cache decode (#891), shared narrow-float BF16/FP16 layer (#886), zero-copy transpose for input-major narrow weights (#895), native FP16 matmul kernel (#896), read-once weight tiling in the native narrow kernels (#897)
-- **[@MacOS](https://github.com/MacOS)** — least-privilege permissions on the build workflow (#899), MathJax npm install pinned by version (#889)
-
-### Contributors (0.37.0)
-
-- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — `Lstm` layer (#824), `Dropout` masking (#867), LR schedules (#866), optional/open `Linear` (#870, #875), SDPA scale fix (#880), autograd fixes (#877), `argMax` DAG spec (#878), tokenizer + `gather` fixes (#879), Android native IO targets (#836, #842, #845)
-- **[@MacOS](https://github.com/MacOS)** — OpenSSF Scorecard workflow and badge (#814), commit-hash pinning across all CI workflows and reproducible docs Docker image (#816, #821, #827, #830–#838, #846, #848, #868)
-
-### Contributors (0.36.0)
-
-- **[@MacOS](https://github.com/MacOS)** — REUSE compliance CI workflow and status badge (#806, #807)
-
-### Contributors (0.14.0)
-
-- **Dhia Chemingui** ([@dhiaspaner](https://github.com/dhiaspaner)) — Android KMP plugin migration (#385, #386)
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the finish of SKEEP-003: kernel
+  dispatch by format on every backend, views from the loaders, the removal of the old storage layer, the low-bit
+  tutorial and how-to, and the release
 
 ---
 
@@ -515,7 +378,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.64.0. MIT License},
+  note         = {Version 0.65.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
