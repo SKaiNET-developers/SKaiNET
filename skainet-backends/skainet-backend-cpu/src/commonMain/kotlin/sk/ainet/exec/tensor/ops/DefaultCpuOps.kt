@@ -265,9 +265,29 @@ public open class DefaultCpuOpsBase(
     private fun heapFloatWindowOfView(data: TensorData<*, *>): FloatWindow? {
         val view = data.view ?: return null
         if (view.format != DENSE_FP32 || !view.isContiguous) return null
-        val heap = view.storage as? Storage.Heap ?: return null
+        val heap = view.storage as? Storage.Heap ?: return offHeapFloatWindow(view)
         val floats = heap.floats ?: return null
         return FloatWindow(floats, heap.arrayOffset + view.layout.offsetElements.toInt())
+    }
+
+    /**
+     * Heap floats for a dense FP32, gap-free [view] whose storage is not on the heap, when the
+     * tier keeps a heap copy of such storage (the browser tier's mirror of sidecar memory); `null`
+     * here. The offset is the view's element offset into that copy.
+     */
+    protected open fun offHeapFloatWindow(view: TensorView): FloatWindow? = null
+
+    /**
+     * [data]'s view for a kernel that reads operands on the heap: the view itself when it is over
+     * heap storage or the data has no heap floats, else a view over the data's [TensorData.heapFloats].
+     * Only data whose heap floats are a copy of off-heap bytes takes the second branch.
+     */
+    private fun heapPreferredView(data: TensorData<*, *>): TensorView? {
+        val view = data.view ?: return null
+        if (view.storage is Storage.Heap) return view
+        val floats = data.heapFloats ?: return view
+        if (data.heapFloatsOffset != 0 || floats.size != data.shape.volume) return view
+        return TensorView.dense(Storage.Heap.wrap(floats), data.shape, FP32)
     }
 
     /**
@@ -652,7 +672,7 @@ public open class DefaultCpuOpsBase(
         val rows = if (k == 0) 0 else x.shape.volume / k
         ensurePackedKernelsInstalled()
         val feedOrder = wView.layout.blockOrder == BlockOrder.INPUT_BLOCK_MAJOR
-        val xView = x.data.view
+        val xView = heapPreferredView(x.data)
         val asItLies = xView != null && xView.isContiguous && xView.format == DENSE_FP32 &&
             (!feedOrder || (xView.storage as? Storage.Heap)?.floats != null)
         // Look the kernel up before copying anything: a miss must cost nothing.
@@ -755,8 +775,8 @@ public open class DefaultCpuOpsBase(
     private fun <T : DType, V> dispatchMatmulViaRegistry(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V>? {
         if (a.dtype != FP32::class) return null
         if (b.shape.rank != 2) return null
-        val aView = a.data.view ?: return null
-        val bView = b.data.view ?: return null
+        val aView = heapPreferredView(a.data) ?: return null
+        val bView = heapPreferredView(b.data) ?: return null
         // b is [k, n] here; the kernels take the weight output-major, which is a transposed *view*.
         val bT = try { bView.transpose() } catch (_: IllegalArgumentException) { return null }
         val (aNorm, leading) = try {
@@ -1168,7 +1188,7 @@ public open class DefaultCpuOpsBase(
     @Suppress("UNCHECKED_CAST")
     protected fun <T : DType, V> matmulWeightTransposedViaViews(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V>? {
         if (x.dtype != FP32::class) return null
-        val xView = x.data.view ?: return null
+        val xView = heapPreferredView(x.data) ?: return null
         val wView = weight.data.view ?: return null
         val (xNorm, leading) = try {
             sk.ainet.backend.api.kernel.KernelDispatch.normalizeActivation(xView)

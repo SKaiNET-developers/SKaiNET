@@ -349,6 +349,7 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/context/sched
 	public fun multiply (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun narrow (Lsk/ainet/lang/tensor/Tensor;III)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun newTensor (Lsk/ainet/lang/tensor/data/TensorData;Lkotlin/reflect/KClass;[Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
+	protected fun offHeapFloatWindow (Lsk/ainet/lang/memory/TensorView;)Lsk/ainet/exec/tensor/ops/DefaultCpuOpsBase$FloatWindow;
 	public fun pad2d (Lsk/ainet/lang/tensor/Tensor;IIII)Lsk/ainet/lang/tensor/Tensor;
 	public fun permute (Lsk/ainet/lang/tensor/Tensor;[I)Lsk/ainet/lang/tensor/Tensor;
 	public fun pow (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;

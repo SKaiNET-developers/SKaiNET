@@ -60,26 +60,48 @@ public class WasmCpuOps(
     /** A sidecar address for an operand: a resident tensor's own, or a staged copy freed after the call. */
     private class Operand(val ptr: Int, val temp: Boolean)
 
-    /**
-     * [t]'s data when its bytes were handed out in the sidecar, else `null`.
-     *
-     * The one place this file asks for a class (SKEEP-003, #1507). The view cannot answer yet: a
-     * sidecar tensor's view is its heap mirror, so asking it would download the tensor. Every
-     * caller asks this first for the same reason — `heapFloats` on such data is the mirror too.
-     */
-    private fun sidecarData(t: Tensor<*, *>): WasmLinearTensorData<*>? = t.data as? WasmLinearTensorData<*>
+    /** Dense FP32 in sidecar memory: the storage and the byte offset of element 0 in it. */
+    private class Sidecar(val storage: WasmLinearStorage, val byteOffset: Int) {
+        val isResident: Boolean get() = storage.isAlive
+        fun pointer(): Int = storage.pointer() + byteOffset
+    }
 
-    private fun isResident(t: Tensor<*, *>): Boolean = sidecarData(t)?.isResident == true
+    /**
+     * Where [t]'s floats are in the sidecar, when its view is dense FP32, gap-free and over a
+     * [WasmLinearStorage]; else `null`. Read off the view, not the class (SKEEP-003, #1507), so
+     * a contiguous slice of a resident tensor is resident too.
+     *
+     * Every caller asks this before `heapFloats`: on resident data that is the heap mirror, and
+     * asking for it downloads the tensor.
+     */
+    private fun sidecar(t: Tensor<*, *>): Sidecar? {
+        val view = t.data.view ?: return null
+        val storage = view.storage as? WasmLinearStorage ?: return null
+        if (view.format != DENSE_FP32 || !view.isContiguous) return null
+        return Sidecar(storage, (view.layout.offsetElements * 4).toInt())
+    }
+
+    private fun isResident(t: Tensor<*, *>): Boolean = sidecar(t)?.isResident == true
 
     /** Dense FP32 the sidecar can take: resident, a heap array, or a slab window. */
     private fun isSidecarFloat(t: Tensor<*, *>): Boolean =
-        t.dtype == FP32::class && (sidecarData(t) != null || t.data.heapFloats != null)
+        t.dtype == FP32::class && (sidecar(t) != null || t.data.heapFloats != null)
 
     private fun operand(t: Tensor<*, *>): Operand? {
-        val resident = sidecarData(t)
+        val resident = sidecar(t)
         if (resident != null) return if (resident.isResident) Operand(resident.pointer(), false) else null
         val floats = t.data.heapFloats ?: return null
         return stage(floats, t.data.heapFloatsOffset, t.shape.volume)
+    }
+
+    /**
+     * The heap mirror behind a dense view over sidecar memory, for the common fast paths that
+     * reach a resident tensor through a slice (the slice has no `heapFloats` of its own).
+     */
+    override fun offHeapFloatWindow(view: sk.ainet.lang.memory.TensorView): FloatWindow? {
+        val storage = view.storage as? WasmLinearStorage ?: return null
+        if (!storage.isAlive) return null
+        return FloatWindow(storage.heapMirror(), view.layout.offsetElements.toInt())
     }
 
     /**
@@ -90,7 +112,7 @@ public class WasmCpuOps(
      * a forward slab holds other values after its next reset.
      */
     private fun weightOperand(t: Tensor<*, *>): Operand? {
-        if (sidecarData(t) != null) return operand(t)
+        if (sidecar(t) != null) return operand(t)
         val floats = floatsFromZero(t.data)
         if (floats != null && t.data.view?.storage?.scope != ScopeKind.FORWARD) {
             return Operand(WasmKernels.denseWeightHandle(floats), false)
