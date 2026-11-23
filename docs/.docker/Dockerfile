@@ -13,7 +13,9 @@
 #   3. Offline extras available but not forced: lunr full-text search,
 #      a pre-baked Antora UI bundle, and MathJax es5 for LaTeX.
 #   4. asciidoctor-kroki installed-but-unused as an escape hatch.
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+# Node >= 22: @skainet/antora-site-search runs its indexer as Kotlin/Wasm in-process
+# at build time, which needs the wasm GC Node 22 enables by default.
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
 
 LABEL org.opencontainers.image.title="markup-antora" \
       org.opencontainers.image.description="Universal Antora site generator with offline Mermaid (mermaid-cli), offline search (lunr), pre-baked UI bundle + MathJax. No Kroki, no CDN." \
@@ -43,7 +45,11 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 # Install Antora + tooling into /opt/antora (NOT /antora, which is where
 # the project gets volume-mounted at run time).
 #   - @mermaid-js/mermaid-cli  : offline diagram rendering (the point)
-#   - @antora/lunr-extension   : offline full-text search
+#   - @antora/lunr-extension   : offline full-text search (legacy; superseded
+#                                by @skainet/antora-site-search below)
+#   - @skainet/antora-site-search : hybrid client-side search from SKaiNET-rag,
+#                                installed from a GitHub release tarball (no
+#                                npm registry); the URL pins the exact version
 #   - asciidoctor-kroki        : escape hatch only; the playbook should
 #                                use the local mermaid extension instead.
 # antora/cli: aa33c8283f9cbc76df93201bec5f8421e8f59a43 -> v3.1.15
@@ -51,8 +57,9 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 # antora/lunr-extension: 41975fc8f62cb2219a2de2f618de1ae1482bd0ce -> v1.0.0-alpha.8
 # mermaid-js/mermaid-cli: a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae -> v11.16.0
 # asciidoctor-kroki: d02fbf06cdb837524f5e4e12537c05e0bb83c715 -> v0.18
+# skainet/antora-site-search: SKaiNET-rag release antora-site-search-v0.1.2
 #
-# The five inputs above are declared in package.json; package-lock.json pins them AND every
+# The six inputs above are declared in package.json; package-lock.json pins them AND every
 # transitive package by integrity hash, and `npm ci` installs exactly that. To change a version:
 # edit package.json, regenerate the lockfile in this same base image
 # (`npm install --package-lock-only`), and commit both files.
