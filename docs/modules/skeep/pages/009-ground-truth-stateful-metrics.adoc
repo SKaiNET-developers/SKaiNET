@@ -106,10 +106,10 @@ contract by accident.
 | `general.name`
 | `metric.<name>`, where `<name>` is the metric's `name` property: `metric.accuracy`, `metric.precision`, `metric.recall`, `metric.f1`.
 
-| `input_{2k}`
+| `+input_{2k}+`
 | Predictions of batch `k`: class scores, F32, any rank the metric accepts.
 
-| `input_{2k+1}`
+| `+input_{2k+1}+`
 | Targets of batch `k`, F32 in the file. How they are read depends on `op.target_encoding`.
 
 | `result`
