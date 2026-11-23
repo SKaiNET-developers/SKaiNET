@@ -390,9 +390,218 @@ abstract class GenerateDocumentationTask : DefaultTask() {
         else -> false
     }
     
+    /**
+     * Markdown counterpart of [generateAsciidoc]: `index.md`, one `<operator>.md` page per
+     * operator, and `ops-status-matrix.md` one level above, with the same rows and columns
+     * as the AsciiDoc matrix. Antora `partial$` includes have no Markdown equivalent, so the
+     * per-function prose is not emitted here.
+     */
     private fun generateMarkdown(module: OperatorDocModule, outputDir: File) {
-        // TODO: Implement markdown generation
-        throw NotImplementedError("Markdown generation not implemented yet")
+        outputDir.mkdirs()
+
+        if (generateIndex.getOrElse(true)) {
+            File(outputDir, "index.md").writeText(buildString {
+                appendLine("# AI-NET Operators Reference")
+                appendLine("")
+                appendLine("Generated from version `${module.version}` on ${formatTimestamp(module.timestamp)}")
+                appendLine("")
+                appendLine("## Operators by Modality")
+                appendLine("")
+                module.operators.groupBy { it.modality }.forEach { (modality, operators) ->
+                    appendLine("### ${modality.capitalize()}")
+                    appendLine("")
+                    operators.forEach { operator ->
+                        appendLine("* [${operator.name}](${operator.name.lowercase()}.md)")
+                    }
+                    appendLine("")
+                }
+            })
+        }
+
+        module.operators.forEach { operator ->
+            File(outputDir, "${operator.name.lowercase()}.md").writeText(buildString {
+                appendLine("# ${operator.name}")
+                appendLine("")
+                appendLine("Package: `${operator.packageName}`")
+                appendLine("")
+                appendLine("Modality: ${operator.modality.capitalize()}")
+                appendLine("")
+                operator.functions.forEach { function -> appendMarkdownFunction(function, this) }
+            })
+        }
+
+        if (includeBackendStatus.getOrElse(true)) {
+            emitMarkdownStatusMatrix(module, outputDir)
+        }
+    }
+
+    private fun appendMarkdownFunction(function: FunctionDoc, builder: StringBuilder) {
+        builder.apply {
+            appendLine("## ${function.name}")
+            appendLine("")
+            appendLine(if (function.validated) {
+                val on = function.validatedOn.ifBlank { "an unspecified date" }
+                val by = function.validatedBy.ifBlank { "an unspecified reviewer" }
+                "**✅ DARC-validated by $by on $on**"
+            } else {
+                "**✖ Generated facts only (no human prose)**"
+            })
+            appendLine("")
+            appendLine("### Signature")
+            appendLine("")
+            appendLine("```kotlin")
+            appendLine(function.signature)
+            appendLine("```")
+            appendLine("")
+
+            if (function.parameters.isNotEmpty()) {
+                appendLine("### Parameters")
+                appendLine("")
+                function.parameters.forEach { param ->
+                    appendLine("* `${param.name}: ${param.type}`")
+                    if (param.description.isNotEmpty()) {
+                        appendLine("  ${param.description}")
+                    }
+                }
+                appendLine("")
+            }
+
+            appendLine("### Return Type")
+            appendLine("")
+            appendLine("`${function.returnType}`")
+            appendLine("")
+
+            if (function.notes.isNotEmpty()) {
+                appendLine("### Notes")
+                appendLine("")
+                function.notes.forEach { note ->
+                    val who = if (note.backend == "*") "all backends" else note.backend
+                    val text = if (note.type == "issue") issueLinkMarkdown(note.message) else note.message
+                    appendLine("> **$who**: $text")
+                    appendLine("")
+                }
+            }
+        }
+    }
+
+    /** Render an issue reference (`#123`, a URL, or free text) as a Markdown link. */
+    private fun issueLinkMarkdown(issue: String): String {
+        val trimmed = issue.trim()
+        return when {
+            trimmed.startsWith("http") -> "[${trimmed.substringAfterLast('/').let { if (it.all(Char::isDigit)) "#$it" else "issue" }}]($trimmed)"
+            trimmed.startsWith("#") && trimmed.drop(1).all(Char::isDigit) ->
+                "[$trimmed](${issueBaseUrl.getOrElse("https://github.com/SKaiNET-developers/SKaiNET/issues/")}${trimmed.drop(1)})"
+            else -> trimmed
+        }
+    }
+
+    /** Markdown twin of [emitOpsStatusMatrix]: same rows, columns and totals, as a GFM table. */
+    private fun emitMarkdownStatusMatrix(module: OperatorDocModule, outputDir: File) {
+        val matrixDir = outputDir.parentFile?.parentFile ?: outputDir
+        matrixDir.mkdirs()
+        val matrixFile = File(matrixDir, "ops-status-matrix.md")
+
+        val allBackends: List<String> = module.operators
+            .flatMap { op -> op.functions.flatMap { it.statusByBackend.keys } }
+            .filter { it != "*" }
+            .toSortedSet()
+            .toList()
+        val hloOps = readHloCoverage()
+        val backward = readBackwardCoverage()
+
+        val partialsRoot = derivePartialsRoot(outputDir)
+        data class Row(val operator: String, val function: FunctionDoc, val hasPartial: Boolean)
+        val rows: List<Row> = module.operators.flatMap { op ->
+            op.functions.map { fn ->
+                val relative = "ops/${op.name.lowercase()}/${fn.name.lowercase()}.adoc"
+                val present = partialsRoot?.let { File(it, relative).isFile } == true
+                Row(op.name, fn, present)
+            }
+        }
+
+        matrixFile.writeText(buildString {
+            appendLine("# Operator Coverage Matrix")
+            appendLine("")
+            appendLine("Generated from `operators.json` version `${module.version}` on ${formatTimestamp(module.timestamp)}.")
+            appendLine("")
+            appendLine("Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation.")
+            appendLine("")
+            appendLine("* **Validated** — whether the function's documentation has been DARC-validated by a reviewer.")
+            appendLine("* **Lowering** — the compile-path forms the function declares with `@Lowering` (`composite`, `decompose`, `native`); `—` means undeclared.")
+            if (hloOps != null) appendLine("* **StableHLO** — ✅ the StableHLO converter can lower the op; ❌ export fails with \"No converter found\".")
+            if (backward != null) appendLine("* **Backward** — for `@Diff` ops: ✅ a backward rule is wired; ❌ the rule is missing or a stub returning null gradients; `—` the op is not differentiable.")
+            appendLine("* **Backend columns** — ✅ the backend overrides the function; ↪ the backend relies on the `TensorOps` default; 🚧 in progress; ❌ not implemented; `—` the backend makes no claim (unknown, not \"unsupported\").")
+            appendLine("")
+            if (rows.isEmpty() || allBackends.isEmpty()) {
+                appendLine("NOTE: No backend status information found in the source data.")
+                appendLine("")
+                return@buildString
+            }
+
+            val extraCols = listOfNotNull(hloOps?.let { "StableHLO" }, backward?.let { "Backward" })
+            append("| Operator.function | Validated | Lowering ")
+            extraCols.forEach { append("| $it ") }
+            allBackends.forEach { append("| $it ") }
+            appendLine("|")
+            append("| --- | --- | --- ")
+            repeat(extraCols.size + allBackends.size) { append("| --- ") }
+            appendLine("|")
+
+            rows.forEach { row ->
+                append("| `${row.operator}.${row.function.name}` ")
+                append("| ${darcCell(row.function, row.hasPartial)} ")
+                append("| ${row.function.lowering.ifEmpty { "—" }} ")
+                if (hloOps != null) append("| ${if (row.function.name.lowercase() in hloOps) "✅" else "❌"} ")
+                if (backward != null) append("| ${backwardCell(row.function, backward)} ")
+                allBackends.forEach { backend ->
+                    val raw = row.function.statusByBackend[backend]
+                    val cell = if (raw == null) "—" else shortStatus(raw)
+                    val issue = row.function.notes.firstOrNull { it.type == "issue" && (it.backend == backend || it.backend == "*") }
+                    val link = if (issue != null && raw != null && !isDone(raw)) " ${issueLinkMarkdown(issue.message)}" else ""
+                    append("| $cell$link ")
+                }
+                appendLine("|")
+            }
+
+            val validatedCount = rows.count { it.function.validated }
+            val loweringCount = rows.count { it.function.lowering.isNotEmpty() }
+            append("| **Done** | **$validatedCount / ${rows.size}** | **$loweringCount / ${rows.size}** ")
+            if (hloOps != null) append("| **${rows.count { it.function.name.lowercase() in hloOps }} / ${rows.size}** ")
+            if (backward != null) {
+                val diffRows = rows.filter { it.function.isDifferentiable }
+                append("| **${diffRows.count { backward[it.function.name] == "implemented" }} / ${diffRows.size}** ")
+            }
+            allBackends.forEach { backend ->
+                val n = rows.count { isDone(it.function.statusByBackend[backend]) }
+                append("| **$n / ${rows.size}** ")
+            }
+            appendLine("|")
+            appendLine("")
+            appendLine("Per-function detail including notes lives in [Operator reference](${outputDir.name}/index.md).")
+            appendMarkdownLayersTable(module.layers)
+        })
+    }
+
+    /** Markdown `nn` layer table, one row per concrete `Module` subclass. */
+    private fun StringBuilder.appendMarkdownLayersTable(layers: List<LayerDoc>) {
+        if (layers.isEmpty()) return
+        appendLine("")
+        appendLine("## NN layers")
+        appendLine("")
+        appendLine("Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forward` throws today; the class carries `@NotImplemented`.")
+        appendLine("")
+        appendLine("| Layer | Package | Status | Missing |")
+        appendLine("| --- | --- | --- | --- |")
+        layers.forEach { layer ->
+            val missing = listOf(layer.reason, layer.issue.takeIf { it.isNotBlank() }?.let { issueLinkMarkdown(it) }.orEmpty())
+                .filter { it.isNotBlank() }
+                .joinToString(" — ")
+                .ifEmpty { "—" }
+            appendLine("| `${layer.name}` | `${layer.packageName}` | ${shortStatus(layer.status)} | $missing |")
+        }
+        appendLine("")
+        val done = layers.count { isDone(it.status) }
+        appendLine("| **Done** | | **$done / ${layers.size}** | |")
     }
     
     private fun generateHtml(module: OperatorDocModule, outputDir: File) {
