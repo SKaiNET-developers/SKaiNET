@@ -4,6 +4,9 @@
 
 ### Documentation
 
+- **SKEEP-009 (Draft): ground-truth validation for stateful metrics.** Proposes a fixture convention for metric
+  cases (a sequence of batches, one expected scalar, scikit-learn as the reference) and a `MetricExecutor` beside
+  `OperationExecutor`. No code yet (#1223).
 - **Precision, recall and F1 are documented.** Three partials under `partials/ops/metrics/` (definition, intuition,
   example, references) and a *Precision, recall and F1* section in the metrics how-to. The examples are compiled and
   run by `skainet-docs-samples` (`ClassificationMetrics.kt`) (#1234).

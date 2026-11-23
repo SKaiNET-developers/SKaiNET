@@ -248,10 +248,12 @@ deciding its shape once, durably — is exactly the drift SKEEP exists
 to prevent. So:
 
 * every Code-lane PR states "unit tests only; ground-truth wiring
-  tracked in SKEEP-005";
+  tracked in SKEEP-009";
 * https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223] is
-  the SKEEP-005 tracking issue (`skeep`, `skill:design`), and writing
-  the proposal is its Lane 0 task;
+  the tracking issue (`skeep`, `skill:design`) of
+  xref:skeep:009-ground-truth-stateful-metrics.adoc[SKEEP-009] (filed as
+  "SKEEP-005" before that number was found taken), and writing the
+  proposal is its Lane 0 task;
 * the proposal, not the parent issue, carries the "why this shape"
   argument — fixture format, one batch vs. a sequence, scalar tolerance.
 
