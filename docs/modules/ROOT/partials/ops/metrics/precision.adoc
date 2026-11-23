@@ -1,0 +1,42 @@
+// tag::math[]
+For a class stem:[c], let stem:[TP_c] be the number of samples predicted as stem:[c] whose true class is stem:[c] (true positives) and stem:[FP_c] the number predicted as stem:[c] whose true class is another one (false positives). The precision of class stem:[c] is:
+
+[stem]
+++++
+P_c = \frac{TP_c}{TP_c + FP_c}
+++++
+
+`Averaging` selects how the per-class values become one number. stem:[C] is the set of classes that occur in the targets or in the predictions; a class that the tensor has room for but that never occurs is not part of stem:[C].
+
+[stem]
+++++
+P_{\text{macro}} = \frac{1}{|C|} \sum_{c \in C} P_c
+\qquad
+P_{\text{micro}} = \frac{\sum_{c \in C} TP_c}{\sum_{c \in C} TP_c + \sum_{c \in C} FP_c}
+\qquad
+P_{\text{binary}} = P_1
+++++
+
+*Macro* gives every class the same weight, however few samples it has. *Micro* pools the counts first, so every sample has the same weight. *Binary* reports class `1` only and rejects class indices other than `0` and `1`.
+
+Zero division: when a denominator is zero (class stem:[c] was never predicted, or nothing was accumulated yet), the value is `0.0`, never `NaN`.
+// end::math[]
+
+// tag::intuition[]
+Precision answers: *of everything I predicted as this class, how much was right?* It is the metric to watch when a false alarm is expensive, for example a spam filter that must not move real mail to the spam folder.
+
+Precision says nothing about the samples the model missed. A model that predicts the positive class once, and is right that one time, has a precision of 1.0 however many positives it overlooked. Read it together with recall.
+// end::intuition[]
+
+// tag::examples[]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ClassificationMetrics.kt[tag=precision]
+----
+// end::examples[]
+
+// tag::references[]
+* https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_score.html[`sklearn.metrics.precision_score`] — the same per-class definition; `average="macro"` and `"micro"` as above, and `zero_division="warn"` returning 0.
+* https://lightning.ai/docs/torchmetrics/stable/classification/precision.html[torchmetrics `Precision`] — the stateful `update` / `compute` form of the same metric.
+* https://en.wikipedia.org/wiki/Precision_and_recall[Precision and recall — Wikipedia]
+// end::references[]

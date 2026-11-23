@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- **Precision, recall and F1 are documented.** Three partials under `partials/ops/metrics/` (definition, intuition,
+  example, references) and a *Precision, recall and F1* section in the metrics how-to. The examples are compiled and
+  run by `skainet-docs-samples` (`ClassificationMetrics.kt`) (#1234).
+
+### Tests
+
+- **Metric values are pinned bit for bit on every tested target.** `MetricsPlatformParityTest` feeds 6,000 samples
+  in three batches and requires the exact `Double` bits of accuracy, precision, recall and F1 (macro and micro) on
+  JVM, Kotlin/Native, JS and Wasm. The expected bits equal scikit-learn's on the same labels (#1232, #1233).
+
 ## [0.65.0] - 2026-11-22
 
 Headline: **one storage model. Weights stay in their packed form from the file to the kernel, and the old storage
