@@ -12,6 +12,11 @@ skainet {
 }
 
 kotlin {
+    androidLibrary {
+        // Run commonTest as host-side (JVM) unit tests of the Android compilation (#1230).
+        withHostTest {}
+    }
+
     sourceSets {
         commonMain.dependencies {
             // Every concrete backend should go through the neutral api
