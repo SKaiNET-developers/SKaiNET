@@ -13,6 +13,9 @@
 - **Metric values are pinned bit for bit on every tested target.** `MetricsPlatformParityTest` feeds 6,000 samples
   in three batches and requires the exact `Double` bits of accuracy, precision, recall and F1 (macro and micro) on
   JVM, Kotlin/Native, JS and Wasm. The expected bits equal scikit-learn's on the same labels (#1232, #1233).
+- **The CPU backend's common tests run on the Android compilation.** `skainet-backend-cpu` enables Android host
+  tests, so `testAndroidHostTest` (the `test (android)` CI leg) runs its 67 `commonTest` suites, the metric tests
+  among them (#1230).
 
 ## [0.65.0] - 2026-11-22
 
