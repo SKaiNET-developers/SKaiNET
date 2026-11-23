@@ -57,7 +57,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
 # antora/lunr-extension: 41975fc8f62cb2219a2de2f618de1ae1482bd0ce -> v1.0.0-alpha.8
 # mermaid-js/mermaid-cli: a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae -> v11.16.0
 # asciidoctor-kroki: d02fbf06cdb837524f5e4e12537c05e0bb83c715 -> v0.18
-# skainet/antora-site-search: SKaiNET-rag release antora-site-search-v0.1.1
+# skainet/antora-site-search: SKaiNET-rag release antora-site-search-v0.1.2
 #
 # The six inputs above are declared in package.json; package-lock.json pins them AND every
 # transitive package by integrity hash, and `npm ci` installs exactly that. To change a version:
