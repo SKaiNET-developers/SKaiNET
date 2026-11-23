@@ -1,5 +1,6 @@
 package sk.ainet.test.groundtruth
 
+import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.data.TensorDataFactory
@@ -123,6 +124,11 @@ public class GroundTruthValidator(
         val atol = tolerance ?: ToleranceConfig.forOperation(testCase.operationName)
 
         try {
+            // A metric case (SKEEP-009) is not a tensor operation and has its own path.
+            require(!testCase.operationName.startsWith(METRIC_CASE_PREFIX)) {
+                "'${testCase.operationName}' is a metric case: use validateMetric(testCase, ctx)"
+            }
+
             // Execute the operation in SKaiNET
             val actualOutput = executor.execute(testCase, params)
 
@@ -175,6 +181,24 @@ public class GroundTruthValidator(
                 errorMessage = "${e::class.simpleName}: ${e.message}"
             )
         }
+    }
+
+    /**
+     * Validate a metric case (`general.name = "metric.<name>"`, SKEEP-009): the value against
+     * the reference and the `reset()` contract. See [MetricExecutor.validate].
+     *
+     * @param ctx the execution context the metric is updated in
+     * @param tolerance absolute tolerance for the value
+     */
+    public fun validateMetric(
+        testCase: GroundTruthTestCase,
+        ctx: ExecutionContext,
+        tolerance: Double = MetricExecutor.DEFAULT_TOLERANCE
+    ): MetricValidationResult {
+        val case = requireNotNull(testCase.toMetricCase()) {
+            "'${testCase.operationName}' is not a metric case: use validate(testCase)"
+        }
+        return MetricExecutor(ctx).validate(case, tolerance)
     }
 
     /**

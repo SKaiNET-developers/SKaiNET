@@ -2,7 +2,11 @@ package sk.ainet.test.groundtruth
 
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.nn.metrics.Accuracy
+import sk.ainet.lang.nn.metrics.Averaging
+import sk.ainet.lang.nn.metrics.F1Score
 import sk.ainet.lang.nn.metrics.Metric
+import sk.ainet.lang.nn.metrics.Precision
+import sk.ainet.lang.nn.metrics.Recall
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
@@ -25,6 +29,24 @@ public data class GroundTruthMetricCase(
     val source: GroundTruthTestCase,
 ) {
     public data class Batch(val predictions: GroundTruthTensor, val targets: GroundTruthTensor)
+}
+
+/** Outcome of [MetricExecutor.validate] for one case. */
+public data class MetricValidationResult(
+    val success: Boolean,
+    val case: GroundTruthMetricCase,
+    /** The value SKaiNET computed, or `null` when the case could not be run. */
+    val actual: Double?,
+    val absDiff: Double?,
+    val errorMessage: String? = null,
+) {
+    public fun toReport(): String {
+        val source = case.source.sourcePath?.substringAfterLast('/') ?: case.source.description
+        val status = if (success) "PASSED" else "FAILED"
+        val detail = errorMessage
+            ?: "expected ${case.expected}, got $actual (diff $absDiff, ${case.batches.size} batch(es))"
+        return "$status metric.${case.metricName} [$source] ${case.source.description}: $detail"
+    }
 }
 
 /** Prefix of `general.name` that marks a metric case. */
@@ -79,6 +101,63 @@ public class MetricExecutor(private val ctx: ExecutionContext) {
         val metric = create(case)
         feed(metric, case)
         return metric.compute()
+    }
+
+    /**
+     * Runs [case], compares the value with the reference and checks the stateful contract
+     * that no reference value can express: after `reset()` the metric returns what a new
+     * instance returns, and feeding the same batches again gives the same value.
+     *
+     * @param tolerance absolute tolerance. The expected value is stored as F32, which costs at
+     *   most `6e-8` for a value in `[0, 1]`.
+     */
+    public fun validate(case: GroundTruthMetricCase, tolerance: Double = DEFAULT_TOLERANCE): MetricValidationResult {
+        try {
+            val metric = create(case)
+            feed(metric, case)
+            val actual = metric.compute()
+            val diff = kotlin.math.abs(actual - case.expected)
+
+            metric.reset()
+            val afterReset = metric.compute()
+            val fresh = create(case).compute()
+            feed(metric, case)
+            val secondRun = metric.compute()
+            val contractError = when {
+                afterReset != fresh ->
+                    "after reset() compute() returned $afterReset, a new instance returns $fresh"
+                secondRun != actual ->
+                    "the same batches gave $actual, and $secondRun after reset()"
+                else -> null
+            }
+
+            // `!(diff <= tolerance)` so that a NaN value fails.
+            val valueError = if (!(diff <= tolerance)) {
+                "expected ${case.expected}, got $actual (diff $diff, tolerance $tolerance)"
+            } else {
+                null
+            }
+            return MetricValidationResult(
+                success = valueError == null && contractError == null,
+                case = case,
+                actual = actual,
+                absDiff = diff,
+                errorMessage = listOfNotNull(valueError, contractError).joinToString("; ").ifEmpty { null },
+            )
+        } catch (e: Exception) {
+            return MetricValidationResult(
+                success = false,
+                case = case,
+                actual = null,
+                absDiff = null,
+                errorMessage = "${e::class.simpleName}: ${e.message}",
+            )
+        }
+    }
+
+    public companion object {
+        /** Absolute tolerance for a metric value (SKEEP-009). */
+        public const val DEFAULT_TOLERANCE: Double = 1e-6
     }
 
     /** Builds the metric a case names, without feeding it. */
@@ -152,6 +231,19 @@ public class MetricExecutor(private val ctx: ExecutionContext) {
             )
         }
 
+        /** `op.average`, required for a metric that averages over classes. */
+        fun averaging(): Averaging = when (val value = string("average")) {
+            "macro" -> Averaging.MACRO
+            "micro" -> Averaging.MICRO
+            "binary" -> Averaging.BINARY
+            null -> throw IllegalArgumentException(
+                "Metric '${case.metricName}': op.average is required (macro, micro or binary)"
+            )
+            else -> throw IllegalArgumentException(
+                "Metric '${case.metricName}': unknown op.average '$value' (macro, micro or binary)"
+            )
+        }
+
         fun requireAllUsed() {
             val unknown = case.params.keys - used
             require(unknown.isEmpty()) {
@@ -173,5 +265,8 @@ public class MetricExecutor(private val ctx: ExecutionContext) {
     /** Metric name -> factory. Adding a metric to the harness is one entry here. */
     private val factories: Map<String, (Params) -> Metric> = mapOf(
         "accuracy" to { p -> Accuracy(dim = p.int("dim") ?: -1, threshold = p.float("threshold")) },
+        "precision" to { p -> Precision(p.averaging(), dim = p.int("dim") ?: -1, threshold = p.float("threshold")) },
+        "recall" to { p -> Recall(p.averaging(), dim = p.int("dim") ?: -1, threshold = p.float("threshold")) },
+        "f1" to { p -> F1Score(p.averaging(), dim = p.int("dim") ?: -1, threshold = p.float("threshold")) },
     )
 }

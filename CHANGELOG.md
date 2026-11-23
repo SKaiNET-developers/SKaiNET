@@ -13,11 +13,13 @@
 
 ### Tests
 
-- **Ground-truth harness can run a metric case (SKEEP-009 phase 0, spike).** `skainet-test-groundtruth` gains
-  `GroundTruthMetricCase`, `toMetricCase()` and a `MetricExecutor` with `Accuracy` registered: a fixture named
-  `metric.<name>` holds (predictions, targets) batches and one expected value. `GroundTruthLoader` keeps string
-  `op.*` values (`op.target_encoding`). A new `TS-008` integration test compares with scikit-learn; an unknown
-  metric or parameter fails the case (#1223).
+- **Accuracy, precision, recall and F1 are validated against scikit-learn in the ground-truth suite (SKEEP-009).**
+  `skainet-test-groundtruth` gains a path for metric cases: a fixture named `metric.<name>` holds (predictions,
+  targets) batches and one expected value. `GroundTruthMetricCase`, `toMetricCase()`, `MetricExecutor` (accuracy,
+  precision, recall, f1) and `GroundTruthValidator.validateMetric` run it; every case also checks `reset()`. An
+  unknown metric or parameter fails the case. `GroundTruthLoader` keeps string `op.*` values. The `TS-008`
+  integration test runs 32 generated cases (macro / micro / binary, several batches, one-hot targets, threshold,
+  zero denominators), and a change under `nn/metrics/` now starts the `Ground Truth Validation` workflow (#1223).
 - **Metric values are pinned bit for bit on every tested target.** `MetricsPlatformParityTest` feeds 6,000 samples
   in three batches and requires the exact `Double` bits of accuracy, precision, recall and F1 (macro and micro) on
   JVM, Kotlin/Native, JS and Wasm. The expected bits equal scikit-learn's on the same labels (#1232, #1233).
