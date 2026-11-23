@@ -1,7 +1,7 @@
 = SKEEP-009: Ground-truth validation for stateful metrics
 :description: SKaiNET proposal for checking evaluation metrics (accuracy, precision, recall, F1 and later ones) against a reference library in the ground-truth harness: a fixture convention for a sequence of batches and one expected scalar, and a MetricExecutor beside the existing OperationExecutor.
 
-Status: Draft +
+Status: Implemented +
 Audience: SKaiNET maintainers and contributors; authors of new metrics; maintainers of `skainet-ground-truth` and `gradienttracer` +
 Created: 2026-11-23 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223] +
@@ -252,10 +252,10 @@ public class MetricExecutor(private val ctx: ExecutionContext) {
 | Done: `gradienttracer` #10, `skainet-ground-truth` #4, SKaiNET https://github.com/SKaiNET-developers/SKaiNET/pull/1561[#1561]. Two Accuracy cases matched scikit-learn; no decision of this document had to change.
 
 | 1 — harness
-| Done. One difference from the sketch above: `GroundTruthValidator` has no execution context, so the method is `validateMetric(testCase, ctx, tolerance)`, and the comparison and the stateful-contract check live in `MetricExecutor.validate(case, tolerance)`, which returns a `MetricValidationResult`.
+| Done (https://github.com/SKaiNET-developers/SKaiNET/pull/1562[#1562]). One difference from the sketch above: `GroundTruthValidator` has no execution context, so the method is `validateMetric(testCase, ctx, tolerance)`, and the comparison and the stateful-contract check live in `MetricExecutor.validate(case, tolerance)`, which returns a `MetricValidationResult`.
 
 | 2 — Precision, Recall, F1
-| Done. `TS-008` holds 32 cases: two for Accuracy and ten each for Precision, Recall and F1.
+| Done (`skainet-ground-truth` #5, https://github.com/SKaiNET-developers/SKaiNET/pull/1562[#1562]). `TS-008` holds 32 cases: two for Accuracy and ten each for Precision, Recall and F1.
 |===
 
 Found on the way and left open: the loader's `useCase` is always `null`, because the files are
@@ -264,12 +264,30 @@ named `TS_<NNN>_UC_<MMM>.<function>.gguf` and the loader looks for a path part t
 
 == Acceptance Criteria
 
-* A `metric.*` fixture produced by the image is loaded, executed and compared in the `Ground Truth Validation` workflow, and a wrong value fails the job.
-* Accuracy, Precision, Recall and F1 each have at least one multi-batch case.
-* A case with a metric name or a parameter the executor does not know fails with a message that names it.
-* `reset()` is exercised on every metric case.
-* `CONTRACT.md` describes metric cases, so the consumer can be written without reading the producer.
-* A change under `nn/metrics/` starts the ground-truth job.
+All six are met. The right column says what shows it.
+
+[cols="3,2",options="header"]
+|===
+| Criterion | Met by
+
+| A `metric.*` fixture produced by the image is loaded, executed and compared in the `Ground Truth Validation` workflow, and a wrong value fails the job.
+| The `TS-008` test of `GroundTruthIntegrationTest`, green in the workflow. The wrong-value path is tested by `MetricExecutorTest` with a hand-built case.
+
+| Accuracy, Precision, Recall and F1 each have at least one multi-batch case.
+| Asserted by the `TS-008` test itself.
+
+| A case with a metric name or a parameter the executor does not know fails with a message that names it.
+| `MetricExecutorTest`.
+
+| `reset()` is exercised on every metric case.
+| `MetricExecutor.validate`, which every `TS-008` case goes through.
+
+| `CONTRACT.md` describes metric cases, so the consumer can be written without reading the producer.
+| The "Metric cases" section of `CONTRACT.md` in `skainet-ground-truth`.
+
+| A change under `nn/metrics/` starts the ground-truth job.
+| The path filter in `.github/workflows/ground-truth.yml`. Not yet seen in practice: no pull request has changed a metric since.
+|===
 
 == Risks
 

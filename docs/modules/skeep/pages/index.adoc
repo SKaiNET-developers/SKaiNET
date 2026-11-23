@@ -144,6 +144,6 @@ Every proposal should include:
 | Precision and encoding conversion — per-layer and per-stage dtype in the network DSL, lossless `repackTo` and lossy `requantizeTo` for stored weights
 
 | xref:skeep:009-ground-truth-stateful-metrics.adoc[SKEEP-009]
-| Draft
+| Implemented
 | Ground-truth validation for stateful metrics — a fixture convention for batches and one expected scalar, and a `MetricExecutor` beside `OperationExecutor`
 |===
