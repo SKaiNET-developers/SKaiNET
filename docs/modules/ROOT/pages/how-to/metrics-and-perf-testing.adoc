@@ -33,6 +33,83 @@ separate from the autograd/training context, so metric computation does not reco
 gradients.
 ====
 
+=== Precision, recall and F1
+
+Accuracy counts correct predictions and nothing else. `sk.ainet.lang.nn.metrics` also has
+`Precision`, `Recall` and `F1Score`, which tell *what kind* of mistakes a classifier makes.
+All three are a `Metric`: call `update(predictions, targets, ctx)` for each batch, `compute()`
+for the value, `reset()` before the next epoch. Predictions are class scores (the highest
+score along `dim` wins) and targets are class indices or one-hot rows.
+
+The examples below use this batch of four samples and three classes:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ClassificationMetrics.kt[tag=fixture]
+----
+
+==== Precision
+
+include::partial$ops/metrics/precision.adoc[tag=intuition]
+
+include::partial$ops/metrics/precision.adoc[tag=examples]
+
+.Definition
+[%collapsible]
+====
+include::partial$ops/metrics/precision.adoc[tag=math]
+====
+
+==== Recall
+
+include::partial$ops/metrics/recall.adoc[tag=intuition]
+
+include::partial$ops/metrics/recall.adoc[tag=examples]
+
+.Definition
+[%collapsible]
+====
+include::partial$ops/metrics/recall.adoc[tag=math]
+====
+
+==== F1 score
+
+include::partial$ops/metrics/f1score.adoc[tag=intuition]
+
+include::partial$ops/metrics/f1score.adoc[tag=examples]
+
+.Definition
+[%collapsible]
+====
+include::partial$ops/metrics/f1score.adoc[tag=math]
+====
+
+==== Over a whole epoch
+
+A metric keeps counts, not per-batch values, so the result over many batches is the same
+as over one batch that holds all the samples:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ClassificationMetrics.kt[tag=epoch]
+----
+
+For a binary classifier with one output or two, `binaryPrecision()`, `binaryRecall()` and
+`binaryF1Score()` report the positive class (`1`) with a decision threshold of `0.5`.
+
+[NOTE]
+====
+These values are checked by unit tests and by the sample test of this page. They are not yet
+part of the ground-truth suite that compares tensor operations with PyTorch; that needs a
+harness for stateful metrics (https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223]).
+====
+
+==== References
+
+include::partial$ops/metrics/precision.adoc[tag=references]
+include::partial$ops/metrics/recall.adoc[tag=references]
+include::partial$ops/metrics/f1score.adoc[tag=references]
+
 == Benchmarking engine performance
 
 Engine performance is a separate concern with its own reproducible harness. Rather

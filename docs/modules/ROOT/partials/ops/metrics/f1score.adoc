@@ -1,0 +1,54 @@
+// tag::math[]
+The F1 score of a class stem:[c] is the harmonic mean of its precision stem:[P_c] and recall stem:[R_c]. Written with the counts of true positives, false positives and false negatives it needs no intermediate division:
+
+[stem]
+++++
+F1_c = \frac{2 \, P_c \, R_c}{P_c + R_c} = \frac{2 \, TP_c}{2 \, TP_c + FP_c + FN_c}
+++++
+
+`Averaging` selects how the per-class values become one number. stem:[C] is the set of classes that occur in the targets or in the predictions; a class that the tensor has room for but that never occurs is not part of stem:[C].
+
+[stem]
+++++
+F1_{\text{macro}} = \frac{1}{|C|} \sum_{c \in C} F1_c
+\qquad
+F1_{\text{micro}} = \frac{2 \sum_{c} TP_c}{2 \sum_{c} TP_c + \sum_{c} FP_c + \sum_{c} FN_c}
+\qquad
+F1_{\text{binary}} = F1_1
+++++
+
+*Macro* F1 is the mean of the per-class F1 scores. It is *not* the F1 of macro precision and macro recall; the two calculations give different numbers. *Micro* pools the counts first. When every sample has exactly one class, each wrong prediction is one false positive and one false negative, so micro F1, micro precision, micro recall and accuracy are all equal. *Binary* reports class `1` only and rejects class indices other than `0` and `1`.
+
+Zero division: when stem:[2 \, TP_c + FP_c + FN_c = 0], or nothing was accumulated yet, the value is `0.0`, never `NaN`.
+// end::math[]
+
+// tag::intuition[]
+F1 is one number for precision and recall together. Because it is a harmonic mean, it stays low when either of the two is low: a precision of 1.0 with a recall of 0.1 gives an F1 of about 0.18, where the arithmetic mean would say 0.55.
+
+This is where accuracy stays silent. If one sample in ten is positive, a model that always answers "negative" is 90 % accurate and has never found a positive; its recall and its F1 for the positive class are 0. Use F1 when the classes are imbalanced and you need both few false alarms and few misses.
+
+With more than two classes, choose the averaging on purpose. Macro F1 treats a rare class like a frequent one, so it drops when the model fails on a small class. Micro F1 follows the frequent classes.
+// end::intuition[]
+
+// tag::examples[]
+Macro and micro F1 on four samples and three classes:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ClassificationMetrics.kt[tag=f1]
+----
+
+The majority-class model on imbalanced data:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ClassificationMetrics.kt[tag=imbalanced]
+----
+// end::examples[]
+
+// tag::references[]
+* https://scikit-learn.org/stable/modules/generated/sklearn.metrics.f1_score.html[`sklearn.metrics.f1_score`] — the formula in counts, `average="macro"` and `"micro"` as above, and `zero_division="warn"` returning 0.
+* https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_recall_fscore_support.html[`sklearn.metrics.precision_recall_fscore_support`] — states that by default the labels are those present in `y_true` and `y_pred`, the class set used here for macro averaging.
+* https://lightning.ai/docs/torchmetrics/stable/classification/f1_score.html[torchmetrics `F1Score`] — the stateful `update` / `compute` form; its `zero_division` parameter defaults to 0.
+* https://en.wikipedia.org/wiki/F-score[F-score — Wikipedia] — the harmonic-mean definition and the form in counts.
+// end::references[]

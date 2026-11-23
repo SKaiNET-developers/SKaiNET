@@ -60,4 +60,25 @@ class SamplesTest {
         assertTrue(r.lastLoss < r.firstLoss, "loss should decrease: ${r.firstLoss} -> ${r.lastLoss}")
         assertTrue(r.accuracy >= 0.75f, "accuracy should be high on separable data, got ${r.accuracy}")
     }
+
+    @Test
+    fun classification_metrics_match_the_documented_values() {
+        val ctx = DirectCpuExecutionContext.create()
+
+        assertEquals(0.5, ClassificationMetrics.macroPrecision(ctx), 1e-12)
+        assertEquals(0.5, ClassificationMetrics.macroRecall(ctx), 1e-12)
+
+        val (macroF1, microF1) = ClassificationMetrics.macroAndMicroF1(ctx)
+        assertEquals(4.0 / 9.0, macroF1, 1e-12)
+        assertEquals(0.5, microF1, 1e-12)
+
+        val baseline = ClassificationMetrics.majorityClassBaseline(ctx)
+        assertEquals(0.9, baseline.accuracy, 1e-12)
+        assertEquals(0.0, baseline.recall, 1e-12)
+        assertEquals(0.0, baseline.f1, 1e-12)
+
+        // Two batches of the same four samples give the same macro F1 as one.
+        val batch = ClassificationMetrics.predictions(ctx) to ClassificationMetrics.targets(ctx)
+        assertEquals(4.0 / 9.0, ClassificationMetrics.overBatches(listOf(batch, batch), ctx), 1e-12)
+    }
 }

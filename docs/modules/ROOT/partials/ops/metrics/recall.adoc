@@ -1,0 +1,42 @@
+// tag::math[]
+For a class stem:[c], let stem:[TP_c] be the number of samples of true class stem:[c] that were predicted as stem:[c] (true positives) and stem:[FN_c] the number of samples of true class stem:[c] that were predicted as another class (false negatives). The recall of class stem:[c] is:
+
+[stem]
+++++
+R_c = \frac{TP_c}{TP_c + FN_c}
+++++
+
+`Averaging` selects how the per-class values become one number. stem:[C] is the set of classes that occur in the targets or in the predictions; a class that the tensor has room for but that never occurs is not part of stem:[C].
+
+[stem]
+++++
+R_{\text{macro}} = \frac{1}{|C|} \sum_{c \in C} R_c
+\qquad
+R_{\text{micro}} = \frac{\sum_{c \in C} TP_c}{\sum_{c \in C} TP_c + \sum_{c \in C} FN_c}
+\qquad
+R_{\text{binary}} = R_1
+++++
+
+*Macro* gives every class the same weight, however few samples it has. *Micro* pools the counts first, so every sample has the same weight. *Binary* reports class `1` only and rejects class indices other than `0` and `1`.
+
+Zero division: when a denominator is zero (no sample has true class stem:[c], or nothing was accumulated yet), the value is `0.0`, never `NaN`.
+// end::math[]
+
+// tag::intuition[]
+Recall answers: *of everything that really is this class, how much did I catch?* It is the metric to watch when a miss is expensive, for example a screening test that must not send a sick patient home.
+
+Recall says nothing about false alarms. A model that predicts the positive class for every sample has a recall of 1.0 and is useless. Read it together with precision.
+// end::intuition[]
+
+// tag::examples[]
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/ClassificationMetrics.kt[tag=recall]
+----
+// end::examples[]
+
+// tag::references[]
+* https://scikit-learn.org/stable/modules/generated/sklearn.metrics.recall_score.html[`sklearn.metrics.recall_score`] — the same per-class definition; `average="macro"` and `"micro"` as above, and `zero_division="warn"` returning 0.
+* https://lightning.ai/docs/torchmetrics/stable/classification/recall.html[torchmetrics `Recall`] — the stateful `update` / `compute` form of the same metric.
+* https://en.wikipedia.org/wiki/Precision_and_recall[Precision and recall — Wikipedia]
+// end::references[]
