@@ -1,0 +1,276 @@
+= SKEEP-009: Ground-truth validation for stateful metrics
+:description: SKaiNET proposal for checking evaluation metrics (accuracy, precision, recall, F1 and later ones) against a reference library in the ground-truth harness: a fixture convention for a sequence of batches and one expected scalar, and a MetricExecutor beside the existing OperationExecutor.
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors; authors of new metrics; maintainers of `skainet-ground-truth` and `gradienttracer` +
+Created: 2026-11-23 +
+Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223] +
+Origin: the Precision / Recall / F1 feature (https://github.com/SKaiNET-developers/SKaiNET/issues/1222[#1222]) shipped with unit tests only, because the ground-truth harness can only run stateless tensor operations. The tracking issue was filed as "SKEEP-005"; that number was already taken by the schedules proposal, so this document is SKEEP-009.
+
+== Summary
+
+The ground-truth harness (`skainet-test/skainet-test-groundtruth`) compares SKaiNET with a
+reference library. Today it can do that for one shape of thing only: a stateless `TensorOps`
+call that takes tensors and returns one tensor. A `Metric` does not have that shape. It is fed
+batch by batch with `update()`, returns one `Double` from `compute()`, and has a `reset()`.
+
+This proposal adds a second, parallel path for metrics:
+
+. A *fixture convention* inside the existing GGUF contract: a metric case is a normal fixture
+  file whose operation name starts with `metric.`, whose inputs are a sequence of
+  (predictions, targets) batches, and whose result is one scalar.
+. A *`MetricExecutor`* beside `OperationExecutor`. It builds the metric from the fixture's
+  parameters, feeds the batches in order, and returns the value. It also checks the stateful
+  contract (`reset()`) that no reference value can express.
+. *scikit-learn as the reference* for classification metrics, added to the fixture image.
+
+Nothing changes for tensor operations: `OperationExecutor`, the existing fixtures and the
+existing contract keys are untouched.
+
+== Motivation
+
+=== What the code does today
+
+[cols="2,3",options="header"]
+|===
+| Part | Behaviour
+
+| `OperationExecutor.execute(testCase)`
+| Maps `general.name` to one `TensorOps` call. Returns one `Tensor<FP32, Float>`.
+
+| `GroundTruthLoader`
+| Reads `input_0 … input_n`, `result`, and the `op.*` metadata keys. Every tensor becomes a `FloatArray`. An `op.*` value can be an int, a float or an array of numbers; a string value is dropped.
+
+| `gradienttracer` writer (`store_experiment_as_gguf`)
+| Writes all tensors as F32. Writes `op.*` parameters of type int, float, list or tuple; a string parameter is silently not written.
+
+| `Metric` (`sk.ainet.lang.nn.metrics`)
+| `update(predictions, targets, ctx)`, `compute(): Double`, `reset()`. Class-index targets are `Int32` tensors; one-hot targets are float tensors.
+
+| Fixture image (`skainet-ground-truth/pytorch`)
+| Installs `gradienttracer`, `gguf`, `torchvision`. No metrics library.
+|===
+
+So five things do not fit: the executor (stateless), the return type (tensor, not scalar), the
+targets (the loader has no integer tensors), the parameters (an averaging mode is a word, not a
+number), and the reference (nothing in the image computes a metric).
+
+=== Why this needs a SKEEP
+
+Every future metric inherits whatever is decided here, and the decision spans three
+repositories (SKaiNET, `skainet-ground-truth`, `gradienttracer`) joined by a written fixture
+contract. Settling it inside the first metric pull request that needs it would fix the
+contract by accident.
+
+== Goals
+
+* Any `Metric` can be checked against a reference library in the same CI job as tensor operations.
+* One case can exercise accumulation over several `update()` calls.
+* The fixture stays inside the existing GGUF contract and file layout.
+* Adding a metric to the harness is one line in the executor plus fixtures.
+
+== Non-Goals
+
+* Gradient validation and wider operation coverage (the Phase 2 roadmap, https://github.com/SKaiNET-developers/SKaiNET/issues/984[#984]).
+* A fixture format version field. The contract has none today; this proposal stays additive so it does not need one.
+* Rendering a "ground-truth validated" badge for metrics. Metrics have no generated reference page yet.
+* Metrics that do not return one scalar (a per-class vector, a confusion matrix). See <<open-questions>>.
+
+== Proposed Design
+
+=== The four questions of the tracking issue
+
+[cols="2,3",options="header"]
+|===
+| Question | Decision
+
+| New decorator, or reuse `@Executable`?
+| Reuse `@Executable`. A metric case is `@Executable(description, op_type="metric.<name>", op_params={…})`. The `metric.` prefix routes the case to the `MetricExecutor`.
+
+| One batch or a sequence?
+| A sequence. The inputs are pairs: `input_0`, `input_1` are the predictions and targets of batch 0, `input_2`, `input_3` of batch 1, and so on. One batch is the sequence of length one.
+
+| Scalar tolerance?
+| Absolute `1e-6`, no relative part. The expected value is stored as F32 like every tensor in the contract; for values in `[0, 1]` that costs at most `6e-8`.
+
+| Own format, or GGUF?
+| GGUF, same layout and naming. The only producer change is that `op.*` may hold a string.
+|===
+
+=== Fixture convention
+
+[cols="2,3",options="header"]
+|===
+| Item | Convention
+
+| `general.name`
+| `metric.<name>`, where `<name>` is the metric's `name` property: `metric.accuracy`, `metric.precision`, `metric.recall`, `metric.f1`.
+
+| `+input_{2k}+`
+| Predictions of batch `k`: class scores, F32, any rank the metric accepts.
+
+| `+input_{2k+1}+`
+| Targets of batch `k`, F32 in the file. How they are read depends on `op.target_encoding`.
+
+| `result`
+| One element: the reference value over all batches together.
+
+| `op.target_encoding` (string, required)
+| `index`: the values are class indices; the executor builds an `Int32` tensor. `one_hot`: the executor builds a float tensor with the same values.
+
+| `op.average` (string)
+| `macro`, `micro` or `binary`. Absent for metrics without averaging (accuracy).
+
+| `op.dim` (int), `op.threshold` (float)
+| Passed to the metric's constructor when present; the metric's defaults otherwise.
+|===
+
+A case is written like this on the Python side:
+
+[source,python]
+----
+@Executable("F1 macro, three classes, two batches",
+            op_type="metric.f1",
+            op_params={"average": "macro", "target_encoding": "index"})
+def f1_macro_two_batches():
+    scores_0, y_0 = torch.randn(32, 3), torch.randint(0, 3, (32,))
+    scores_1, y_1 = torch.randn(32, 3), torch.randint(0, 3, (32,))
+    y_true = torch.cat([y_0, y_1])
+    y_pred = torch.cat([scores_0, scores_1]).argmax(dim=1)
+    expected = f1_score(y_true, y_pred, average="macro", zero_division=0)
+    return [scores_0, y_0, scores_1, y_1], torch.tensor([expected])
+----
+
+The reference value is computed once over the *concatenation* of the batches. The SKaiNET side
+feeds the batches one at a time. A case with more than one batch therefore checks the value
+and the accumulation in one comparison.
+
+=== Reference library
+
+scikit-learn is the reference for classification metrics. Its conventions are the ones the
+metrics were built to: macro averaging runs over the labels present in the targets or the
+predictions, and a zero denominator gives `0` (with `zero_division=0` passed explicitly, so no
+warning is involved). torchmetrics is stateful like SKaiNET's `Metric`, but that is not needed:
+accumulation is checked by comparing with the concatenated batches. It also needs the number
+of classes fixed up front, and it would be a second dependency for no extra coverage.
+
+A later metric uses whatever library defines it best. The fixture does not record the library;
+the test suite's README does.
+
+=== Kotlin side
+
+[source,kotlin]
+----
+/** A metric case: batches in feed order, one expected value. */
+public data class GroundTruthMetricCase(
+    val metricName: String,                 // "f1" for general.name = "metric.f1"
+    val batches: List<Batch>,
+    val expected: Double,
+    val params: Map<String, Any>,           // op.* values, strings included
+    val source: GroundTruthTestCase,
+) {
+    public data class Batch(val predictions: GroundTruthTensor, val targets: GroundTruthTensor)
+}
+
+/** Null when the case is not a metric case. Fails on an odd input count or a non-scalar result. */
+public fun GroundTruthTestCase.toMetricCase(): GroundTruthMetricCase?
+
+public class MetricExecutor(private val ctx: ExecutionContext) {
+    /** Builds the metric, feeds every batch in order, returns compute(). */
+    public fun execute(case: GroundTruthMetricCase): Double
+}
+----
+
+* *Registry.* `MetricExecutor` holds a map from metric name to a factory that takes the
+  parameters. Adding a metric is one entry. An unknown name fails the case with a message that
+  names it; it is not skipped.
+* *Loader.* `GroundTruthLoader` keeps string values of `op.*` keys. `rawOpParams` already has
+  the type `Map<String, Any>`, so this is not an API change.
+* *Validator.* `GroundTruthValidator` gets `validateMetric(case, tolerance = 1e-6)`. The
+  existing `validate(testCase)` is unchanged, and a `metric.*` case passed to it fails with a
+  message that points to `validateMetric`.
+* *Stateful contract.* After comparing the value, the executor calls `reset()`, requires
+  `compute()` to return what a new instance returns, feeds the batches again and requires the
+  same value as before. A reference library cannot express this, so the harness checks it on
+  every case.
+* *Unknown parameters.* A parameter in `op.*` that the factory does not know fails the case.
+  A fixture that sets an option SKaiNET ignores would otherwise pass by luck.
+
+=== Producer side
+
+[cols="1,3",options="header"]
+|===
+| Repository | Change
+
+| `gradienttracer`
+| The writer stores a `str` value of `op_params` with `add_string`. Today it is dropped without a message. Also: an `op_params` value of an unsupported type raises instead of being dropped.
+
+| `skainet-ground-truth`
+| `scikit-learn` added to `pytorch/requirements.txt`. A new suite, `TS-008` (classification metrics). `CONTRACT.md` gains a "Metric cases" section with the convention above.
+|===
+
+=== CI
+
+`ground-truth.yml` already generates all fixtures and runs the module's `jvmTest`. Two changes:
+
+* The integration test gets a `TS-008` test that fails on any failed case, like `TS-001`.
+* The workflow's path filter adds `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/metrics/**`. Today a change to a metric does not start the ground-truth job; only the weekly run would catch it.
+
+== Compatibility and Migration
+
+* Additive in all three repositories. No existing fixture, key or Kotlin signature changes.
+* *Order of merges.* The producer goes first. A consumer that does not know metric cases is
+  safe with the new fixtures: the per-suite tests name their suites, and the "all suites" test
+  reports an unknown operation without failing.
+* The fixture image installs `gradienttracer` from its default branch and CI checks out
+  `skainet-ground-truth` at its default branch. Neither is pinned, so a merge there takes
+  effect in SKaiNET's CI at once. This is how it works today and is not changed here.
+
+== Rollout Plan
+
+[cols="1,3",options="header"]
+|===
+| Phase | Content
+
+| 0 — spike
+| String `op_params` in `gradienttracer`; `scikit-learn` in the image; one `TS-008` use case for `Accuracy`, which already ships and has the simplest parameters; a minimal `MetricExecutor`. Purpose: prove the convention end to end before more cases are written.
+
+| 1 — harness
+| `GroundTruthMetricCase`, `toMetricCase()`, `validateMetric`, the stateful-contract check, the `TS-008` integration test, the path filter, `CONTRACT.md`.
+
+| 2 — Precision, Recall, F1
+| Cases for the three metrics × macro / micro / binary, multi-batch, one-hot targets, a class that never occurs, a zero denominator, binary with a threshold. The note in the metrics how-to that says ground truth is pending is removed.
+|===
+
+== Acceptance Criteria
+
+* A `metric.*` fixture produced by the image is loaded, executed and compared in the `Ground Truth Validation` workflow, and a wrong value fails the job.
+* Accuracy, Precision, Recall and F1 each have at least one multi-batch case.
+* A case with a metric name or a parameter the executor does not know fails with a message that names it.
+* `reset()` is exercised on every metric case.
+* `CONTRACT.md` describes metric cases, so the consumer can be written without reading the producer.
+* A change under `nn/metrics/` starts the ground-truth job.
+
+== Risks
+
+* *Three repositories.* A metric case needs a merge in up to three places. The spike phase exists to find ordering problems while only one case depends on them.
+* *Random data and ties.* Predictions are random class scores; two equal scores in a row would make the predicted class depend on tie-breaking. With `torch.randn` this does not happen in practice, and binary threshold cases use fixed scores away from the threshold.
+* *F32 expected value.* The reference computes in 64 bit and the file holds 32 bit. The tolerance covers it for values in `[0, 1]`; a later unbounded metric (a sum of errors) needs a relative tolerance. See <<open-questions>>.
+* *Reference drift.* A new scikit-learn release could change a default. The cases pass `average` and `zero_division` explicitly, and the image should pin the version.
+
+[#open-questions]
+== Open Questions
+
+. *Non-scalar metrics.* A per-class result or a confusion matrix does not fit `compute(): Double`. That is a question for the `Metric` interface first; the fixture's `result` tensor could already hold more than one element.
+. *Regression metrics.* Targets that are real values need a third `target_encoding` (`value`) and a relative tolerance. Left until the first such metric exists.
+. *Recording the reference.* Should the fixture name the library and version that produced the value (`op.reference = "scikit-learn 1.5"`)? Useful when a value is disputed; not needed for the comparison.
+. *Other targets.* The ground-truth module builds for JVM and Android only (https://github.com/SKaiNET-developers/SKaiNET/issues/1301[#1301]). Metric values are already pinned bit for bit on every tested target by `MetricsPlatformParityTest`, so running the fixtures on the JVM is enough for metrics.
+
+== References
+
+* https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223] — tracking issue.
+* https://github.com/SKaiNET-developers/SKaiNET/issues/1222[#1222] — Precision, Recall and F1Score; xref:ROOT:contributing/darc-worked-example-f1score.adoc[Worked example: F1Score via DARC].
+* https://github.com/SKaiNET-developers/skainet-ground-truth/blob/main/CONTRACT.md[`skainet-ground-truth` — GGUF fixture contract].
+* https://github.com/SKaiNET-developers/gradienttracer[`gradienttracer`] — the `@Executable` decorator and the GGUF writer.
+* https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_recall_fscore_support.html[`sklearn.metrics.precision_recall_fscore_support`] — label set and `zero_division`.
+* xref:ROOT:how-to/metrics-and-perf-testing.adoc[Metrics and performance testing].

@@ -10,3 +10,4 @@
 ** xref:skeep:006-input-frontends-and-model-identity.adoc[SKEEP-006: Input front ends and model identity]
 ** xref:skeep:007-browser-lane.adoc[SKEEP-007: The browser lane]
 ** xref:skeep:008-precision-and-encoding-conversion.adoc[SKEEP-008: Precision and encoding conversion]
+** xref:skeep:009-ground-truth-stateful-metrics.adoc[SKEEP-009: Ground-truth validation for stateful metrics]
