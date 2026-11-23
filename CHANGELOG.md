@@ -13,6 +13,11 @@
 
 ### Tests
 
+- **Ground-truth harness can run a metric case (SKEEP-009 phase 0, spike).** `skainet-test-groundtruth` gains
+  `GroundTruthMetricCase`, `toMetricCase()` and a `MetricExecutor` with `Accuracy` registered: a fixture named
+  `metric.<name>` holds (predictions, targets) batches and one expected value. `GroundTruthLoader` keeps string
+  `op.*` values (`op.target_encoding`). A new `TS-008` integration test compares with scikit-learn; an unknown
+  metric or parameter fails the case (#1223).
 - **Metric values are pinned bit for bit on every tested target.** `MetricsPlatformParityTest` feeds 6,000 samples
   in three batches and requires the exact `Double` bits of accuracy, precision, recall and F1 (macro and micro) on
   JVM, Kotlin/Native, JS and Wasm. The expected bits equal scikit-learn's on the same labels (#1232, #1233).

@@ -106,12 +106,19 @@ public object GroundTruthLoader {
      * (`gt/pytorch/io/writer.py`): `add_int32`/`add_uint32` for a scalar int, `add_float32`
      * for a scalar float, `add_array` for a list/tuple of ints (e.g. an asymmetric
      * `(stride_h, stride_w)`) — see [decodeFieldValue] for the corresponding GGUF-side shape.
+     * A string value (`add_string`, e.g. `op.average = "macro"` of a metric case, SKEEP-009)
+     * is kept as a [String].
      */
     private fun extractOpParams(reader: GGUFReader): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
         for ((name, field) in reader.fields) {
             if (!name.startsWith("op.")) continue
-            decodeFieldValue(field)?.let { result[name.removePrefix("op.")] = it }
+            val value = if (field.types.firstOrNull() == GGUFValueType.STRING) {
+                extractStringField(reader, name)
+            } else {
+                decodeFieldValue(field)
+            }
+            value?.let { result[name.removePrefix("op.")] = it }
         }
         return result
     }
