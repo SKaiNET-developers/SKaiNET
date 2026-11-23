@@ -99,9 +99,10 @@ For a binary classifier with one output or two, `binaryPrecision()`, `binaryReca
 
 [NOTE]
 ====
-These values are checked by unit tests and by the sample test of this page. They are not yet
-part of the ground-truth suite that compares tensor operations with PyTorch; that needs a
-harness for stateful metrics (https://github.com/SKaiNET-developers/SKaiNET/issues/1223[#1223]).
+Accuracy, precision, recall and F1 are also compared with scikit-learn in the ground-truth
+suite: 32 generated cases (suite `TS-008`) cover macro, micro and binary averaging, several
+batches, one-hot targets, a threshold and zero denominators. See
+xref:skeep:009-ground-truth-stateful-metrics.adoc[SKEEP-009] for how a metric case is written.
 ====
 
 ==== References

@@ -132,4 +132,76 @@ class MetricExecutorTest {
         )
         assertFailsWith<IllegalArgumentException> { executor.execute(testCase.toMetricCase()!!) }
     }
+
+    @Test
+    fun `precision, recall and f1 read the averaging mode`() {
+        // Predicted [0, 0, 1, 2], targets [0, 1, 1, 2].
+        // Precision per class: 1/2, 1/1, 1/1. Recall per class: 1/1, 1/2, 1/1.
+        fun run(metric: String, average: String) = executor.execute(
+            case(
+                name = "metric.$metric",
+                inputs = listOf(scores("input_0", 0, 0, 1, 2), tensor("input_1", Shape(4), 0f, 1f, 1f, 2f)),
+                expected = 0f,
+                params = mapOf("target_encoding" to "index", "average" to average),
+            ).toMetricCase()!!
+        )
+        assertEquals(2.5 / 3.0, run("precision", "macro"), 1e-12)
+        assertEquals(2.5 / 3.0, run("recall", "macro"), 1e-12)
+        assertEquals((2.0 / 3.0 + 2.0 / 3.0 + 1.0) / 3.0, run("f1", "macro"), 1e-12)
+        assertEquals(0.75, run("precision", "micro"), 1e-12)
+        assertEquals(0.75, run("f1", "micro"), 1e-12)
+    }
+
+    @Test
+    fun `a metric that averages needs op average`() {
+        val testCase = case(
+            name = "metric.f1",
+            inputs = listOf(scores("input_0", 0), tensor("input_1", Shape(1), 0f)),
+            expected = 1f,
+        )
+        val e = assertFailsWith<IllegalArgumentException> { executor.execute(testCase.toMetricCase()!!) }
+        assertTrue("op.average" in e.message!!, e.message)
+    }
+
+    @Test
+    fun `validate passes on the right value and fails on a wrong one`() {
+        val inputs = listOf(scores("input_0", 0, 1), tensor("input_1", Shape(2), 0f, 2f))
+
+        val right = executor.validate(case(inputs = inputs, expected = 0.5f).toMetricCase()!!)
+        assertTrue(right.success, right.toReport())
+        assertEquals(0.5, right.actual!!, 1e-12)
+
+        val wrong = executor.validate(case(inputs = inputs, expected = 0.50001f).toMetricCase()!!)
+        assertTrue(!wrong.success, wrong.toReport())
+        assertTrue("expected" in wrong.errorMessage!!, wrong.errorMessage)
+    }
+
+    @Test
+    fun `validate reports an unknown metric as a failed case`() {
+        val result = executor.validate(
+            case(
+                name = "metric.auroc",
+                inputs = listOf(scores("input_0", 0), tensor("input_1", Shape(1), 0f)),
+                expected = 1f,
+            ).toMetricCase()!!
+        )
+        assertTrue(!result.success)
+        assertTrue("auroc" in result.errorMessage!!, result.errorMessage)
+    }
+
+    @Test
+    fun `the operation validator points a metric case to validateMetric`() {
+        val context = DirectCpuExecutionContext()
+        val validator = GroundTruthValidator(context.ops, context.tensorDataFactory)
+        val testCase = case(
+            inputs = listOf(scores("input_0", 0, 1), tensor("input_1", Shape(2), 0f, 2f)),
+            expected = 0.5f,
+        )
+
+        val asOperation = validator.validate(testCase)
+        assertTrue(!asOperation.success)
+        assertTrue("validateMetric" in asOperation.errorMessage!!, asOperation.errorMessage)
+
+        assertTrue(validator.validateMetric(testCase, context).success)
+    }
 }

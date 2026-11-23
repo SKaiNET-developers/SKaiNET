@@ -242,6 +242,26 @@ public class MetricExecutor(private val ctx: ExecutionContext) {
 | Cases for the three metrics × macro / micro / binary, multi-batch, one-hot targets, a class that never occurs, a zero denominator, binary with a threshold. The note in the metrics how-to that says ground truth is pending is removed.
 |===
 
+=== Implementation status
+
+[cols="1,3",options="header"]
+|===
+| Phase | State
+
+| 0 — spike
+| Done: `gradienttracer` #10, `skainet-ground-truth` #4, SKaiNET https://github.com/SKaiNET-developers/SKaiNET/pull/1561[#1561]. Two Accuracy cases matched scikit-learn; no decision of this document had to change.
+
+| 1 — harness
+| Done. One difference from the sketch above: `GroundTruthValidator` has no execution context, so the method is `validateMetric(testCase, ctx, tolerance)`, and the comparison and the stateful-contract check live in `MetricExecutor.validate(case, tolerance)`, which returns a `MetricValidationResult`.
+
+| 2 — Precision, Recall, F1
+| Done. `TS-008` holds 32 cases: two for Accuracy and ten each for Precision, Recall and F1.
+|===
+
+Found on the way and left open: the loader's `useCase` is always `null`, because the files are
+named `TS_<NNN>_UC_<MMM>.<function>.gguf` and the loader looks for a path part that starts with
+`UC-`. It affects all suites, not only metric cases.
+
 == Acceptance Criteria
 
 * A `metric.*` fixture produced by the image is loaded, executed and compared in the `Ground Truth Validation` workflow, and a wrong value fails the job.

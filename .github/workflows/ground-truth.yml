@@ -5,11 +5,15 @@ on:
     branches: [ main, develop ]
     paths:
       - "skainet-test/skainet-test-groundtruth/**"
+      # Metrics are validated by the TS-008 metric cases (SKEEP-009).
+      - "skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/metrics/**"
       - ".github/workflows/ground-truth.yml"
   pull_request:
     branches: [ main, develop ]
     paths:
       - "skainet-test/skainet-test-groundtruth/**"
+      # Metrics are validated by the TS-008 metric cases (SKEEP-009).
+      - "skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/metrics/**"
       - ".github/workflows/ground-truth.yml"
   # skainet-ground-truth's PyTorch fixtures can change independently of any commit here —
   # a weekly run catches that drift even when nothing in this repo touched the module.

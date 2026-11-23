@@ -2,7 +2,7 @@ package sk.ainet.test.groundtruth
 
 import org.junit.Test
 import sk.ainet.context.DirectCpuExecutionContext
-import kotlin.math.abs
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -20,9 +20,6 @@ class GroundTruthIntegrationTest {
 
     private val context = DirectCpuExecutionContext()
     private val validator = GroundTruthValidator(context.ops, context.tensorDataFactory)
-
-    /** Absolute tolerance for a metric value (SKEEP-009): the expected value is stored as F32. */
-    private val METRIC_TOLERANCE = 1e-6
 
     // =========================================================================
     // TS-001: Convolution Operations
@@ -113,25 +110,15 @@ class GroundTruthIntegrationTest {
         println("Found ${testCases.size} test cases in TS-008")
         assertTrue(testCases.isNotEmpty(), "TS-008 holds no fixtures")
 
-        val executor = MetricExecutor(context)
-        val failures = mutableListOf<String>()
-        for (testCase in testCases) {
-            val label = "${testCase.sourcePath?.substringAfterLast('/') ?: testCase.operationName}: ${testCase.description}"
-            try {
-                val case = requireNotNull(testCase.toMetricCase()) {
-                    "not a metric case (general.name = '${testCase.operationName}')"
-                }
-                val actual = executor.execute(case)
-                val diff = abs(actual - case.expected)
-                println("  $label -> expected=${case.expected} actual=$actual (${case.batches.size} batch(es))")
-                if (diff > METRIC_TOLERANCE) {
-                    failures += "$label: expected ${case.expected}, got $actual (diff $diff)"
-                }
-            } catch (e: Exception) {
-                failures += "$label: ${e::class.simpleName}: ${e.message}"
-            }
-        }
+        // Value against the reference, and the reset() contract, for every case.
+        val results = testCases.map { validator.validateMetric(it, context) }
+        results.forEach { println("  ${it.toReport()}") }
 
+        // Every metric of the harness has at least one case with more than one batch.
+        val multiBatch = results.filter { it.case.batches.size > 1 }.map { it.case.metricName }.toSet()
+        assertEquals(setOf("accuracy", "precision", "recall", "f1"), multiBatch, "metrics with a multi-batch case")
+
+        val failures = results.filter { !it.success }.map { it.toReport() }
         assertTrue(failures.isEmpty(), "Failed metric cases:\n${failures.joinToString("\n")}")
     }
 
