@@ -12,6 +12,16 @@ site:
 runtime:
   cache_dir: ./.cache/antora
 
+antora:
+  extensions:
+    # SKaiNET site search (dogfooding SKaiNET-rag): indexes the rendered pages
+    # at build time (Kotlin/Wasm, in-process — hence Node >= 22 in the image)
+    # and publishes _search/search.lrb plus the client-side hybrid engine with
+    # the site. The UI bundle below supplies the search box UX; all queries run
+    # in the visitor's browser, no search server. Installed in the Docker image
+    # from a SKaiNET-rag release tarball (pinned in docs/.docker/package.json).
+    - require: '@skainet/antora-site-search'
+
 content:
   sources:
     - url: /antora
@@ -41,7 +51,7 @@ ui:
     #   https://github.com/SKaiNET-developers/skainet-docs-ui
     # Pinned to a specific tag for reproducible builds. Bumping
     # this URL to a newer version is a one-line PR.
-    url: https://github.com/SKaiNET-developers/skainet-docs-ui/releases/download/v1.1.1/ui-bundle.zip
+    url: https://github.com/SKaiNET-developers/skainet-docs-ui/releases/download/v1.2.0/ui-bundle.zip
     snapshot: true
   # Local overrides layered on top of the UI bundle. The footer-scripts
   # partial is replaced to inject MathJax so stem:[…] / [stem] blocks

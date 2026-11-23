@@ -9,6 +9,7 @@
     "@antora/lunr-extension": "gitlab:antora/antora-lunr-extension#41975fc8f62cb2219a2de2f618de1ae1482bd0ce",
     "@antora/site-generator": "3.1.15",
     "@mermaid-js/mermaid-cli": "github:mermaid-js/mermaid-cli#a85b11df7064498d5b6b97ee9b2d4a7c10cb42ae",
+    "@skainet/antora-site-search": "https://github.com/SKaiNET-developers/SKaiNET-rag/releases/download/antora-site-search-v0.1.1/skainet-antora-site-search-0.1.1.tgz",
     "asciidoctor-kroki": "github:asciidoctor/asciidoctor-kroki#d02fbf06cdb837524f5e4e12537c05e0bb83c715"
   },
   "overrides": {
