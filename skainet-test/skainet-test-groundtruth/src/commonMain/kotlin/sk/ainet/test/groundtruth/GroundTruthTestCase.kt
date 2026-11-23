@@ -33,7 +33,7 @@ public data class GroundTruthTestCase(
 
     /**
      * Operation parameters as written by the Python side's `op.*` GGUF metadata keys
-     * (e.g. `op.padding` -> `"padding" to 1`), decoded to Int/Float/List<Int>/List<Float>
+     * (e.g. `op.padding` -> `"padding" to 1`), decoded to Int/Float/String/List<Int>/List<Float>
      * per value. See [resolvedParams] to turn this into a typed [OperationParams].
      */
     val rawOpParams: Map<String, Any> = emptyMap()
