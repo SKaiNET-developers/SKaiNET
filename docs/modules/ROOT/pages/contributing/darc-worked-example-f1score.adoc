@@ -257,6 +257,13 @@ to prevent. So:
 * the proposal, not the parent issue, carries the "why this shape"
   argument — fixture format, one batch vs. a sequence, scalar tolerance.
 
+[NOTE]
+====
+What happened afterwards: option B was built once the metrics had shipped.
+xref:skeep:009-ground-truth-stateful-metrics.adoc[SKEEP-009] is implemented, and accuracy,
+precision, recall and F1 are compared with scikit-learn in the ground-truth suite (`TS-008`).
+====
+
 == Doc partial and review sign-off
 
 The docs lane produces
