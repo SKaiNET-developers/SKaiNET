@@ -258,9 +258,9 @@ public class MetricExecutor(private val ctx: ExecutionContext) {
 | Done (`skainet-ground-truth` #5, https://github.com/SKaiNET-developers/SKaiNET/pull/1562[#1562]). `TS-008` holds 32 cases: two for Accuracy and ten each for Precision, Recall and F1.
 |===
 
-Found on the way and left open: the loader's `useCase` is always `null`, because the files are
-named `TS_<NNN>_UC_<MMM>.<function>.gguf` and the loader looks for a path part that starts with
-`UC-`. It affects all suites, not only metric cases.
+Found on the way and fixed afterwards: the loader's `useCase` was always `null`, because the
+files are named `TS_<NNN>_UC_<MMM>.<function>.gguf` and the loader looked for a path part that
+starts with `UC-`. It affected all suites, not only metric cases.
 
 == Acceptance Criteria
 

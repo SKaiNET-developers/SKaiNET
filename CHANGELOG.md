@@ -26,6 +26,10 @@
 - **The CPU backend's common tests run on the Android compilation.** `skainet-backend-cpu` enables Android host
   tests, so `testAndroidHostTest` (the `test (android)` CI leg) runs its 67 `commonTest` suites, the metric tests
   among them (#1230).
+- **Ground-truth test cases know their use case.** `GroundTruthLoader` reads the use case from the fixture file name
+  (`TS_008_UC_003.<function>.gguf` → `UC-003`); it looked for a `UC-` path part, which the fixture producer never
+  writes, so `useCase` was always `null`, validation reports said "Use Case: N/A" and `cases["TS-001", "UC-001"]`
+  found nothing.
 
 ## [0.65.0] - 2026-11-22
 

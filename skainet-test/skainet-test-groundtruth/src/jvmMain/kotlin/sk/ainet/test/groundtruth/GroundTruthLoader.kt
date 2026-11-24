@@ -245,10 +245,20 @@ public object GroundTruthLoader {
         return filename.replace("_", " ").trim()
     }
 
-    private fun extractTestIdentifiers(path: String?): Pair<String?, String?> {
+    /** `TS_001_UC_002.<function>.gguf`, the file name the fixture producer writes. */
+    private val fixtureFileName = Regex("""TS_(\d+)_UC_(\d+)\..*""")
+
+    /**
+     * The test suite ("TS-001") and use case ("UC-002") of a fixture path.
+     *
+     * The producer writes `<results>/TS-001/TS_001_UC_002.<function>.gguf`, so the use case is
+     * read from the file name. A path part that starts with `TS-` or `UC-` is used when the
+     * file name does not follow that pattern.
+     */
+    internal fun extractTestIdentifiers(path: String?): Pair<String?, String?> {
         if (path == null) return null to null
 
-        val parts = path.split(File.separator)
+        val parts = path.split('/', File.separatorChar)
         var testSuite: String? = null
         var useCase: String? = null
 
@@ -259,12 +269,19 @@ public object GroundTruthLoader {
             }
         }
 
+        fixtureFileName.matchEntire(parts.last())?.let { match ->
+            val (suiteNumber, useCaseNumber) = match.destructured
+            testSuite = testSuite ?: "TS-$suiteNumber"
+            useCase = "UC-$useCaseNumber"
+        }
+
         return testSuite to useCase
     }
 }
 
 /**
- * Extension function to easily get a test case by index.
+ * The first test case of a use case, e.g. `cases["TS-001", "UC-002"]`. A use case file can
+ * hold several cases; use `filter` on [GroundTruthTestCase.useCase] to get all of them.
  */
 public operator fun List<GroundTruthTestCase>.get(testSuite: String, useCase: String): GroundTruthTestCase? {
     return find { it.testSuite == testSuite && it.useCase == useCase }
