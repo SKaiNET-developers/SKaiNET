@@ -191,6 +191,40 @@ class GroupNormalizationTest {
         assertAlmostEquals(-1f, output.data[0, 1, 0] as Float)
     }
 
+    // ========== PyTorch reference values (#1380) ==========
+
+    private fun assertMatchesTorch(groups: Int, affine: Boolean, expected: FloatArray) {
+        val ref = GroupNormTorchReference
+        val shape = Shape(*ref.shape)
+        val gn = GroupNormalization<FP32, Float>(
+            numGroups = groups,
+            numChannels = ref.shape[1],
+            affine = affine,
+            name = "gn_torch_$groups",
+            initGamma = if (affine) tensor(Shape(ref.shape[1]), ref.gamma) else null,
+            initBeta = if (affine) tensor(Shape(ref.shape[1]), ref.beta) else null,
+        )
+
+        val output = gn.forward(tensor(shape, ref.input), ctx)
+
+        assertFlatClose(expected, output, shape, eps = 1e-5f)
+    }
+
+    @Test
+    fun groupNorm_matchesTorch_singleGroup() = assertMatchesTorch(1, affine = true, GroupNormTorchReference.affineGroups1)
+
+    @Test
+    fun groupNorm_matchesTorch_twoGroups() = assertMatchesTorch(2, affine = true, GroupNormTorchReference.affineGroups2)
+
+    @Test
+    fun groupNorm_matchesTorch_threeGroups() = assertMatchesTorch(3, affine = true, GroupNormTorchReference.affineGroups3)
+
+    @Test
+    fun groupNorm_matchesTorch_groupsEqualChannels() = assertMatchesTorch(6, affine = true, GroupNormTorchReference.affineGroups6)
+
+    @Test
+    fun groupNorm_matchesTorch_withoutAffine() = assertMatchesTorch(3, affine = false, GroupNormTorchReference.plainGroups3)
+
     @Test
     fun groupNorm_constantInput_normalizesToZero() {
         // Zero variance: (x - mean) / sqrt(0 + eps) = 0 (eps prevents NaN/Inf).

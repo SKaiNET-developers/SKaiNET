@@ -4,6 +4,9 @@
 
 ### Documentation
 
+- **`groupNorm` is documented.** New how-to page *Choose a normalization layer*: what `batchNorm`, `groupNorm` and
+  `layerNorm` average over, when to prefer GroupNorm (small batches; Wu & He 2018) and its `torch.nn.GroupNorm`
+  semantics. The example is compiled and run by `skainet-docs-samples` (`NormalizationLayers.kt`) (#1382).
 - **The DARC validation of a metric shows in the docs.** `OperatorDocProcessor` now also collects every public
   `Metric` implementation and reads `@DarcValidated` from its `compute()` function (`metrics` in `operators.json`,
   schema updated). The operator coverage matrix gains a *Metrics* table with the ✅ / ⚠ / ✖ state, the reviewer and
@@ -18,6 +21,10 @@
 
 ### Tests
 
+- **GroupNormalization is checked against PyTorch values.** `GroupNormalizationTest` gains five cases that compare
+  the layer with `torch.nn.GroupNorm` outputs (1, 2, 3 and 6 groups with gamma / beta, one case without affine) within
+  1e-5. The values come from `scripts/reference/groupnorm_reference.py`, which also asserts that PyTorch uses the
+  biased variance (#1380).
 - **Precision, recall and F1 are DARC-validated.** The review checked the three doc partials, the documented examples,
   all nine citations against the claims they back, and the code against the documented contract. `Precision`,
   `Recall` and `F1Score` carry `@DarcValidated` on `compute()`. The badge is in the source only: the doc generator
