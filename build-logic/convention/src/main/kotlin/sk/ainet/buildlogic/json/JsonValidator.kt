@@ -1,7 +1,7 @@
 package sk.ainet.buildlogic.json
 
 import io.github.optimumcode.json.schema.JsonSchema
-import io.github.optimumcode.json.schema.OutputCollector
+import io.github.optimumcode.json.schema.ValidationError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import java.io.File
@@ -23,7 +23,7 @@ class SimpleJsonValidator {
      *
      * @param schemaStream InputStream of JSON Schema (draft-07 / 2019-09 / 2020-12)
      * @param instanceFile File containing the JSON data to validate
-     * @param outputMode "basic", "detailed", or "verbose"
+     * @param outputMode unused, kept for source compatibility
      * @return ValidationResult (valid flag + list of error messages)
      */
     fun validate(schemaStream: InputStream, instanceFile: File, outputMode: String = "basic"): ValidationResult {
@@ -33,14 +33,14 @@ class SimpleJsonValidator {
         val schema = JsonSchema.fromDefinition(schemaText)
         val instance: JsonElement = json.parseToJsonElement(instanceText)
 
-        val collector = when (outputMode.lowercase()) {
-            "detailed" -> OutputCollector.detailed()
-            "verbose"  -> OutputCollector.verbose()
-            else       -> OutputCollector.basic()
+        val errors = mutableListOf<String>()
+        val valid = schema.validate(instance) { error: ValidationError ->
+            errors += "${error.objectPath}: ${error.message}"
         }
-
-        val result = schema.validate(instance, collector)
-        return ValidationResult(result.valid, emptyList()) // TODO: collect errors if needed
+        // An invalid document always carries at least one message, so a caller that only
+        // looks at the messages cannot take it for a valid one.
+        if (!valid && errors.isEmpty()) errors += "document does not match the schema"
+        return ValidationResult(valid, errors)
     }
 
     /**

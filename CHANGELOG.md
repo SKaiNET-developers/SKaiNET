@@ -28,6 +28,13 @@
   example, references) and a *Precision, recall and F1* section in the metrics how-to. The examples are compiled and
   run by `skainet-docs-samples` (`ClassificationMetrics.kt`) (#1234).
 
+### Fixed
+
+- **The operator-schema check fails again when a file is invalid.** `validateOperatorSchema` printed `✗ INVALID` for
+  the `operators.json` of `skainet-lang-core` and still succeeded: the validator returned no error messages and the
+  task fails only on messages. The validator now returns one message per violation. The violation itself is fixed
+  too: the schema gains the `lowering` property that `gelu`, `erf` and `scaledDotProductAttention` emit.
+
 ### Tests
 
 - **GroupNormalization is checked against PyTorch values.** `GroupNormalizationTest` gains five cases that compare
