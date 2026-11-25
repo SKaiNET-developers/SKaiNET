@@ -13,6 +13,11 @@
 
 ### Tests
 
+- **Precision, recall and F1 are DARC-validated.** The review checked the three doc partials, the documented examples,
+  all nine citations against the claims they back, and the code against the documented contract. `Precision`,
+  `Recall` and `F1Score` carry `@DarcValidated` on `compute()`. The badge is in the source only: the doc generator
+  reads the annotation from `TensorOps` functions, not from a `Metric`. A new `MetricsFp16Test` covers FP16
+  predictions and FP16 one-hot targets, which had no test (#1235).
 - **Accuracy, precision, recall and F1 are validated against scikit-learn in the ground-truth suite (SKEEP-009).**
   `skainet-test-groundtruth` gains a path for metric cases: a fixture named `metric.<name>` holds (predictions,
   targets) batches and one expected value. `GroundTruthMetricCase`, `toMetricCase()`, `MetricExecutor` (accuracy,
