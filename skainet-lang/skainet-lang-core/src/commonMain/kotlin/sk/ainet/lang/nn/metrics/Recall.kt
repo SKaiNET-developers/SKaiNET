@@ -1,6 +1,7 @@
 package sk.ainet.lang.nn.metrics
 
 import sk.ainet.context.ExecutionContext
+import sk.ainet.lang.ops.DarcValidated
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
 
@@ -44,6 +45,7 @@ public class Recall(
         acc.update(predictions, targets)
     }
 
+    @DarcValidated(by = "Michal Harakal", on = "2026-11-25", commit = "c4bf1c2d")
     override fun compute(): Double =
         reduce(acc.counts(), averaging) { tp, _, fn ->
             if (tp + fn == 0L) 0.0 else tp.toDouble() / (tp + fn)
