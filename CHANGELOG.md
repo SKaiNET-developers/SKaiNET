@@ -42,6 +42,12 @@
   the `operators.json` of `skainet-lang-core` and still succeeded: the validator returned no error messages and the
   task fails only on messages. The validator now returns one message per violation. The violation itself is fixed
   too: the schema gains the `lowering` property that `gelu`, `erf` and `scaledDotProductAttention` emit.
+- **`convTranspose1d` on the CPU backend computes Int32 and rejects unsupported dtypes clearly.** The kernel cast
+  every element to `Float`: FP32, FP16 and BF16 worked, Int32 and Int8 failed with a `ClassCastException`. It now
+  dispatches like `conv1d` (float family and Int32) and rejects other dtypes with "Unsupported dtype for
+  convTranspose1d". It also validates rank, channel counts, stride, dilation, padding and output padding like
+  `convTranspose2d`, accepts a bias of shape `[1, C_out, 1]`, and no longer accepts a weight whose `C_in` differs from
+  the input (#1421).
 
 ### Tests
 

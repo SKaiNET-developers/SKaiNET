@@ -1779,15 +1779,49 @@ public open class DefaultCpuOpsBase(
         dilation: Int,
         groups: Int
     ): Tensor<T, V> {
-        // input: [batch, inChannels, inLength]
-        // weight: [inChannels, outChannels/groups, kernelSize]
+        // input: [batch, C_in, L]; weight: [C_in, C_out/groups, K] (PyTorch ConvTranspose1d layout).
+        require(input.rank == 3) { "convTranspose1d: input must be 3D (N, C_in, L), got ${input.shape.dimensions.contentToString()}" }
+        require(weight.rank == 3) { "convTranspose1d: weight must be 3D (C_in, C_out/groups, K), got ${weight.shape.dimensions.contentToString()}" }
+        require(groups >= 1) { "convTranspose1d: groups must be >= 1" }
+        require(input.dtype == weight.dtype) { "convTranspose1d: dtype mismatch between input and weight: ${input.dtype} vs ${weight.dtype}" }
+        bias?.let { require(it.dtype == input.dtype) { "convTranspose1d: dtype mismatch for bias" } }
+        // #1421: the same dtypes as conv1d. The float family reads and writes Float values, Int32 Int;
+        // anything else is rejected here instead of failing on a cast inside the loop.
+        val floatFamily = input.dtype == sk.ainet.lang.types.FP32::class ||
+            input.dtype == sk.ainet.lang.types.FP16::class ||
+            input.dtype == sk.ainet.lang.types.BF16::class
+        require(floatFamily || input.dtype == sk.ainet.lang.types.Int32::class) {
+            "Unsupported dtype for convTranspose1d: ${input.dtype}"
+        }
+
         val batch = input.shape[0]
         val inChannels = input.shape[1]
         val inLength = input.shape[2]
+        require(weight.shape[0] == inChannels) { "convTranspose1d: weight C_in ${weight.shape[0]} must equal input channels $inChannels" }
+        require(inChannels % groups == 0) { "convTranspose1d: input channels $inChannels not divisible by groups $groups" }
+        require(stride > 0) { "convTranspose1d: stride must be positive, got $stride" }
+        require(dilation > 0) { "convTranspose1d: dilation must be positive, got $dilation" }
+        require(padding >= 0) { "convTranspose1d: padding must be non-negative, got $padding" }
+        // PyTorch: output padding must be smaller than either stride or dilation.
+        require(outputPadding >= 0 && outputPadding < maxOf(stride, dilation)) {
+            "convTranspose1d: outputPadding $outputPadding must be smaller than stride or dilation"
+        }
+
         val outChannelsPerGroup = weight.shape[1]
         val kernelSize = weight.shape[2]
         val outChannels = outChannelsPerGroup * groups
         val outLength = (inLength - 1) * stride - 2 * padding + dilation * (kernelSize - 1) + outputPadding + 1
+        require(outLength > 0) { "convTranspose1d: computed non-positive output length (L=$outLength)" }
+
+        if (bias != null) {
+            when (bias.rank) {
+                1 -> require(bias.shape[0] == outChannels) { "convTranspose1d: bias shape must be [C_out], got ${bias.shape.dimensions.contentToString()}" }
+                3 -> require(bias.shape[0] == 1 && bias.shape[1] == outChannels && bias.shape[2] == 1) {
+                    "convTranspose1d: bias shape must be [1,C_out,1] when 3D, got ${bias.shape.dimensions.contentToString()}"
+                }
+                else -> error("convTranspose1d: unsupported bias rank ${bias.rank}")
+            }
+        }
 
         val outData = dataFactory.zeros<T, V>(Shape(batch, outChannels, outLength), input.dtype)
 
@@ -1796,20 +1830,36 @@ public open class DefaultCpuOpsBase(
 
         val inChPerGroup = inChannels / groups
 
+        // Scatter-add: out[b, oc, il*stride - padding + k*dilation] += in[b, ic, il] * w[ic, oc, k]
         for (b in 0 until batch) {
             for (g in 0 until groups) {
                 for (ic in 0 until inChPerGroup) {
+                    val inCh = g * inChPerGroup + ic
                     for (oc in 0 until outChannelsPerGroup) {
+                        val outCh = g * outChannelsPerGroup + oc
                         for (il in 0 until inLength) {
-                            val inputVal = inData.get(b, g * inChPerGroup + ic, il) as Float
-                            if (inputVal == 0f) continue
-                            for (k in 0 until kernelSize) {
-                                val ol = il * stride - padding + k * dilation
-                                if (ol < 0 || ol >= outLength) continue
-                                val weightVal = wData.get(g * inChPerGroup + ic, oc, k) as Float
-                                val existing = outData.get(b, g * outChannelsPerGroup + oc, ol) as Float
-                                @Suppress("UNCHECKED_CAST")
-                                outData.set(b, g * outChannelsPerGroup + oc, ol, value = (existing + inputVal * weightVal) as V)
+                            if (floatFamily) {
+                                val inputVal = inData.get(b, inCh, il) as Float
+                                if (inputVal == 0f) continue
+                                for (k in 0 until kernelSize) {
+                                    val ol = il * stride - padding + k * dilation
+                                    if (ol < 0 || ol >= outLength) continue
+                                    val weightVal = wData.get(inCh, oc, k) as Float
+                                    val existing = outData.get(b, outCh, ol) as Float
+                                    @Suppress("UNCHECKED_CAST")
+                                    outData.set(b, outCh, ol, value = (existing + inputVal * weightVal) as V)
+                                }
+                            } else {
+                                val inputVal = inData.get(b, inCh, il) as Int
+                                if (inputVal == 0) continue
+                                for (k in 0 until kernelSize) {
+                                    val ol = il * stride - padding + k * dilation
+                                    if (ol < 0 || ol >= outLength) continue
+                                    val weightVal = wData.get(inCh, oc, k) as Int
+                                    val existing = outData.get(b, outCh, ol) as Int
+                                    @Suppress("UNCHECKED_CAST")
+                                    outData.set(b, outCh, ol, value = (existing + inputVal * weightVal) as V)
+                                }
                             }
                         }
                     }
@@ -1822,17 +1872,25 @@ public open class DefaultCpuOpsBase(
             val biasData = bias.data
             for (b in 0 until batch) {
                 for (oc in 0 until outChannels) {
-                    val biasVal = biasData.get(oc) as Float
+                    val biasVal: Any? = if (bias.rank == 1) biasData.get(oc) else biasData.get(0, oc, 0)
                     for (ol in 0 until outLength) {
-                        val existing = outData.get(b, oc, ol) as Float
                         @Suppress("UNCHECKED_CAST")
-                        outData.set(b, oc, ol, value = (existing + biasVal) as V)
+                        val sum = if (floatFamily) {
+                            ((outData.get(b, oc, ol) as Float) + (biasVal as Float)) as V
+                        } else {
+                            ((outData.get(b, oc, ol) as Int) + (biasVal as Int)) as V
+                        }
+                        outData.set(b, oc, ol, value = sum)
                     }
                 }
             }
         }
 
-        return newTensor(outData, input.dtype, input)
+        return if (bias != null) {
+            newTensor(outData, input.dtype, input, weight, bias)
+        } else {
+            newTensor(outData, input.dtype, input, weight)
+        }
     }
 
     override fun <T : DType, V> convTranspose2d(
