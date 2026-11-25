@@ -44,6 +44,13 @@
         "$ref": "#/$defs/LayerDoc"
       },
       "description": "nn Module subclasses with their implementation status (sourced from @NotImplemented on the class)"
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MetricDoc"
+      },
+      "description": "Metric implementations with the DARC validation of their compute() function (sourced from @DarcValidated)"
     }
   },
   "required": ["schema", "version", "commit", "timestamp", "module", "operators"],
@@ -215,6 +222,24 @@
         "issue": { "type": "string", "description": "Tracking issue, from @NotImplemented(issue=...)" }
       },
       "required": ["name", "packageName", "status"],
+      "additionalProperties": false
+    },
+    "MetricDoc": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Simple class name of the metric" },
+        "packageName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+          "description": "Fully qualified package name"
+        },
+        "validated": { "type": "boolean", "description": "Whether compute() carries @DarcValidated" },
+        "validatedBy": { "type": "string", "description": "Reviewer, from @DarcValidated(by=...)" },
+        "validatedOn": { "type": "string", "description": "Review date, from @DarcValidated(on=...)" },
+        "validatedCommit": { "type": "string", "description": "Reviewed revision, from @DarcValidated(commit=...)" },
+        "referencesChecked": { "type": "boolean", "description": "Whether the reviewer checked the citations" }
+      },
+      "required": ["name", "packageName", "validated"],
       "additionalProperties": false
     }
   }

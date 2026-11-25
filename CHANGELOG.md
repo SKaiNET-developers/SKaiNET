@@ -4,6 +4,11 @@
 
 ### Documentation
 
+- **The DARC validation of a metric shows in the docs.** `OperatorDocProcessor` now also collects every public
+  `Metric` implementation and reads `@DarcValidated` from its `compute()` function (`metrics` in `operators.json`,
+  schema updated). The operator coverage matrix gains a *Metrics* table with the ✅ / ⚠ / ✖ state, the reviewer and
+  the date. Until now the annotation was read only from `TensorOps` functions, so the validation of `Precision`,
+  `Recall` and `F1Score` was in the source and on no page (follow-up of #1235).
 - **SKEEP-009 (Implemented): ground-truth validation for stateful metrics.** Defines a fixture convention for metric
   cases (a sequence of batches, one expected scalar, scikit-learn as the reference) and a `MetricExecutor` beside
   `OperationExecutor`. The document records what was built and how each acceptance criterion is met (#1223).

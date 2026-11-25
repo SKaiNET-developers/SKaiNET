@@ -105,6 +105,9 @@ batches, one-hot targets, a threshold and zero denominators. See
 xref:skeep:009-ground-truth-stateful-metrics.adoc[SKEEP-009] for how a metric case is written.
 ====
 
+Which metrics have reviewed documentation is listed in the *Metrics* table of
+xref:reference/ops-status-matrix.adoc[the operator coverage matrix].
+
 ==== References
 
 include::partial$ops/metrics/precision.adoc[tag=references]

@@ -12,6 +12,19 @@ data class OperatorDocModule(
     val operators: List<OperatorDoc>,
     /** nn `Module` subclasses with their implementation status. */
     val layers: List<LayerDoc> = emptyList(),
+    /** `Metric` implementations with the DARC validation of their `compute()`. */
+    val metrics: List<MetricDoc> = emptyList(),
+)
+
+@Serializable
+data class MetricDoc(
+    val name: String,
+    val packageName: String,
+    val validated: Boolean = false,
+    val validatedBy: String = "",
+    val validatedOn: String = "",
+    val validatedCommit: String = "",
+    val referencesChecked: Boolean = true,
 )
 
 @Serializable

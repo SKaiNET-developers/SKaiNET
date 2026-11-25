@@ -322,4 +322,81 @@ class OperatorDocProcessorTest {
         assertTrue(text.contains("\"name\": \"Deconv\", \"packageName\": \"sk.ainet.lang.nn\", \"status\": \"not_implemented\", \"reason\": \"forward throws\", \"issue\": \"#99\""), text)
         assertTrue(!text.contains("\"name\": \"Module\""), "abstract Module must not be listed: $text")
     }
+
+    @Test
+    fun testDarcValidatedOnMetricComputeFlowsIntoMetrics() {
+        // A metric is not a TensorOps function: its @DarcValidated sits on compute().
+        val annotations = SourceFile.kotlin("sk/ainet/lang/ops/Annotations.kt", """
+            package sk.ainet.lang.ops
+
+            @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class InProgress(vararg val backends: String, val owner: String = "", val issue: String = "")
+
+            @Target(AnnotationTarget.FUNCTION)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class DarcValidated(
+                val by: String,
+                val on: String,
+                val commit: String = "",
+                val referencesChecked: Boolean = true,
+            )
+
+            // The processor writes operators.json only when it sees at least one operator.
+            @InProgress("cpu")
+            fun someOp(): String = "ok"
+        """.trimIndent())
+        val metrics = SourceFile.kotlin("sk/ainet/lang/nn/metrics/Metrics.kt", """
+            package sk.ainet.lang.nn.metrics
+
+            import sk.ainet.lang.ops.DarcValidated
+
+            interface Metric {
+                fun compute(): Double
+            }
+
+            abstract class CountingMetric : Metric
+
+            class Reviewed : CountingMetric() {
+                @DarcValidated(by = "Reviewer One", on = "2026-11-25", commit = "abc1234")
+                override fun compute(): Double = 1.0
+            }
+
+            class Plain : Metric {
+                override fun compute(): Double = 0.0
+            }
+
+            internal class Hidden : Metric {
+                @DarcValidated(by = "Reviewer One", on = "2026-11-25")
+                override fun compute(): Double = 0.0
+            }
+        """.trimIndent())
+
+        val compilation = KotlinCompilation().apply {
+            sources = listOf(annotations, metrics)
+            configureKsp {}
+            symbolProcessorProviders = mutableListOf(OperatorDocProcessorProvider())
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }
+        compilation.compile()
+        val text = compilation.workingDir.walkTopDown()
+            .first { it.isFile && it.name == "operators.json" }.readText()
+
+        assertTrue(
+            text.contains(
+                "{\"name\": \"Reviewed\", \"packageName\": \"sk.ainet.lang.nn.metrics\", \"validated\": true, " +
+                    "\"validatedBy\": \"Reviewer One\", \"validatedOn\": \"2026-11-25\", " +
+                    "\"validatedCommit\": \"abc1234\", \"referencesChecked\": true}"
+            ),
+            text,
+        )
+        assertTrue(
+            text.contains("{\"name\": \"Plain\", \"packageName\": \"sk.ainet.lang.nn.metrics\", \"validated\": false}"),
+            text,
+        )
+        assertTrue(!text.contains("\"name\": \"Hidden\""), "internal metric must not be listed: $text")
+        assertTrue(!text.contains("\"name\": \"CountingMetric\""), "abstract metric must not be listed: $text")
+        assertTrue(!text.contains("\"name\": \"Metric\""), "the interface must not be listed: $text")
+    }
 }
