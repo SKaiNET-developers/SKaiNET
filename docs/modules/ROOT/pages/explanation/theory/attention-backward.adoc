@@ -1,0 +1,160 @@
+= Backward pass of scaled dot-product attention
+:description: Derivation of the gradients of scaledDotProductAttention with respect to query, key, value and the dense mask, how every option of the forward enters it, and a numerical check against PyTorch autograd.
+
+This page derives the adjoint that `scaledDotProductAttentionBackward`
+(`DefaultExecutionTape.kt`) implements, and states how each option of
+`TensorOps.scaledDotProductAttention` enters it. The formulas are checked against
+PyTorch autograd by `scripts/reference/sdpa_backward_check.py`; the Kotlin implementation is
+checked by `SdpaBackwardTest`.
+
+== Forward
+
+For one batch row and one head, let stem:[Q \in \mathbb{R}^{n \times d}] hold the stem:[n]
+queries and stem:[K, V \in \mathbb{R}^{m \times d}] the stem:[m] keys and values:
+
+[stem]
+++++
+S = s\,Q K^\top + M, \qquad P = \operatorname{softmax}_{\text{rows}}(S), \qquad O = P V
+++++
+
+stem:[s] is the scale and stem:[M \in \mathbb{R}^{n \times m}] the sum of all additive masks.
+stem:[S] and stem:[P] are stem:[n \times m]; stem:[O] is stem:[n \times d].
+
+== Derivation
+
+Write stem:[\bar X] for the gradient of the loss with respect to stem:[X]. stem:[\bar O] comes
+from the layers above. The three steps of the forward are undone in reverse order.
+
+*Step 3, stem:[O = PV].* A matrix product stem:[C = AB] has stem:[\bar A = \bar C B^\top] and
+stem:[\bar B = A^\top \bar C]:
+
+[stem]
+++++
+\bar V = P^\top \bar O, \qquad \bar P = \bar O V^\top
+++++
+
+*Step 2, the row-wise softmax.* For one row, stem:[\partial P_j / \partial S_l = P_j(\delta_{jl} - P_l)], so
+
+[stem]
+++++
+\bar S_{il} = \sum_j \bar P_{ij}\, P_{ij} (\delta_{jl} - P_{il})
+            = P_{il} \Bigl( \bar P_{il} - \sum_j \bar P_{ij} P_{ij} \Bigr)
+++++
+
+or, with stem:[\odot] the element-wise product and the row sum broadcast over the row,
+
+[stem]
+++++
+\bar S = P \odot \bigl( \bar P - \operatorname{rowsum}(\bar P \odot P) \bigr)
+++++
+
+*Step 1, stem:[S = s\,QK^\top + M].* The product rule of step 3 again, and the identity for the
+added mask:
+
+[stem]
+++++
+\bar Q = s\,\bar S K, \qquad \bar K = s\,\bar S^\top Q, \qquad \bar M = \bar S
+++++
+
+Each row of stem:[\bar S] sums to zero, because adding a constant to a row of stem:[S] does not
+change its softmax.
+
+== How each option of the forward enters
+
+[cols="1,3",options="header"]
+|===
+| Option | Effect on the backward
+
+| `scale`
+| A constant. `0` selects stem:[s = 1/\sqrt{d}]. It multiplies stem:[\bar Q] and stem:[\bar K] and has no gradient of its own.
+
+| `causal`
+| Query stem:[q] attends to keys stem:[k \le m - n + q] (the last query is aligned with the last key). The rule adds the constant `AttentionMask.MASKED` (stem:[-10^{30}]) to every other score. A constant has no gradient; its effect is that stem:[P = 0] at the masked positions, so stem:[\bar S = 0] there and those positions contribute nothing to stem:[\bar Q], stem:[\bar K] or stem:[\bar V].
+
+| `window`, `rightContext`
+| Query stem:[q] attends to keys stem:[m - n + q - w + 1 \le k \le m - n + q + r]. The same mechanism as `causal`: a constant mask, zero stem:[P] outside the band.
+
+| `keyLengths`
+| Row stem:[b] attends to keys stem:[k < \text{length}_b]. Again a constant mask. A padded key has stem:[P = 0] in its whole column, so its rows of stem:[\bar K] and stem:[\bar V] are exactly zero. The lengths are integers and get no gradient.
+
+| Several rules
+| Their key sets intersect; the masks add. Nothing changes in the formulas.
+
+| Dense `mask`
+| A real input, added to stem:[S], so it has the gradient stem:[\bar M = \bar S]. The mask is broadcast to `[batch, heads, seqQ, seqKV]` from the right; stem:[\bar S] is summed over every axis along which the mask was broadcast. A mask with one entry per key/value head (grouped-query attention) collects the sum over the query heads of its group.
+
+| Grouped-query attention
+| Key/value head stem:[g] serves the query heads stem:[g \cdot r, \dots, g \cdot r + r - 1] with stem:[r = \text{heads} / \text{kvHeads}]. Each of those heads uses the formulas above with the same stem:[K] and stem:[V]; the gradient of the shared stem:[K] and stem:[V] is the sum of the stem:[r] per-head results.
+
+| KV-cache decode step
+| stem:[n = 1] and stem:[m] = number of cached keys. No special case: the alignment stem:[m - n + q] places the single query at the last key, so a causal step attends to the whole cache.
+|===
+
+Masked scores have exactly zero probability in floating point, not just a small one:
+stem:[e^{-10^{30} - \max}] underflows to zero. That is why the gradients at masked positions
+are exactly zero and not merely small. It requires that the row has at least one attended key;
+see <<empty-rows>>.
+
+== Memory: stem:[P] is recomputed
+
+The formulas need stem:[P], which is `[batch, heads, seqQ, seqKV]` and by far the largest
+intermediate. The implementation does not keep it from the forward pass; it recomputes
+stem:[S] and stem:[P] from stem:[Q], stem:[K] and the mask rules in the backward. That costs one
+more stem:[Q K^\top] and softmax and saves storing a quadratic tensor per attention layer for
+the lifetime of the tape. FlashAttention makes the same trade: its backward pass recomputes
+the attention matrix from stem:[Q] and stem:[K] instead of storing it (Dao et al., 2022).
+
+[#empty-rows]
+== A row with no attended key
+
+If the rules leave a query row without any key (for example `keyLengths[b] = 0`), every score
+of that row is stem:[-10^{30}]. The softmax of a constant row is uniform, so the forward
+returns the mean of *all* value rows, padded ones included, and the result stays finite.
+
+For such a row the formulas above still describe the derivative of the definition, but not of
+what the CPU kernel computes. The kernel never evaluates the scores of a masked position, so
+its output does not depend on stem:[Q] or stem:[K] for an empty row; the true gradient is zero.
+The backward recomputes stem:[S = s\,QK^\top + M], gets a uniform stem:[P] and returns a
+non-zero stem:[\bar Q] and stem:[\bar K]. This is tracked as
+https://github.com/SKaiNET-developers/SKaiNET/issues/1572[#1572]. stem:[\bar V] is
+consistent with the forward (uniform over all keys).
+
+== Numerical check
+
+`scripts/reference/sdpa_backward_check.py` evaluates the formulas in float64 and compares them
+with `torch.autograd.grad` of stem:[\sum (O \odot W)] for a random stem:[W]. Where PyTorch has the
+same option, the forward is also compared with
+`torch.nn.functional.scaled_dot_product_attention`. Output with PyTorch 2.4.1:
+
+----
+plain                                        max |hand - autograd| = 0.0e+00   forward vs torch 2.2e-16
+custom scale 0.5                             max |hand - autograd| = 0.0e+00   forward vs torch 2.2e-16
+causal                                       max |hand - autograd| = 0.0e+00   forward vs torch 2.2e-16
+causal decode step (1 query, 5 cached keys)  max |hand - autograd| = 1.1e-16   forward vs torch 1.1e-16
+key padding, lengths [4, 2]                  max |hand - autograd| = 0.0e+00   gradient of padded keys 0.0e+00
+sliding window 2                             max |hand - autograd| = 0.0e+00
+sliding window 2, right context 1            max |hand - autograd| = 0.0e+00
+causal + window 3 + lengths [5, 3]           max |hand - autograd| = 0.0e+00   gradient of padded keys 0.0e+00
+dense mask [1, 1, seqQ, seqKV]               max |hand - autograd| = 2.2e-16
+dense mask [batch, heads, seqQ, seqKV]       max |hand - autograd| = 0.0e+00
+grouped query, 4 heads on 2 K/V heads        max |hand - autograd| = 0.0e+00   forward vs torch 2.8e-16
+grouped query + causal + scale 0.5           max |hand - autograd| = 0.0e+00
+grouped query + dense mask per K/V head      max |hand - autograd| = 0.0e+00
+fully masked row, lengths [3, 0]             max |hand - autograd| = 0.0e+00   gradient of padded keys 6.5e-01
+  fully masked row: |dQ| of that row = 2.6e-01 (not zero, see the note)
+----
+
+Formulas and autograd perform the same floating-point operations in the same order, which is
+why most differences are exactly zero.
+
+`SdpaBackwardTest` checks the Kotlin implementation: every option above against central finite
+differences, and three cases (plain, causal, grouped-query with causal mask and custom scale)
+against gradients exported from PyTorch.
+
+== References
+
+* Vaswani, A. et al. (2017). _Attention Is All You Need_. https://arxiv.org/abs/1706.03762[arXiv:1706.03762] — definition of scaled dot-product attention and the stem:[1/\sqrt{d}] scale (section 3.2.1).
+* Dao, T. et al. (2022). _FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness_. https://arxiv.org/abs/2205.14135[arXiv:2205.14135] — backward pass that recomputes the attention matrix instead of storing it.
+* Dao, T. (2023). _FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning_. https://arxiv.org/abs/2307.08691[arXiv:2307.08691] — the same backward in a simpler form.
+* Ainslie, J. et al. (2023). _GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints_. https://arxiv.org/abs/2305.13245[arXiv:2305.13245] — grouped-query attention.
+* https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html[`torch.nn.functional.scaled_dot_product_attention` — PyTorch documentation]

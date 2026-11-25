@@ -15,6 +15,11 @@
 - **SKEEP-009 (Implemented): ground-truth validation for stateful metrics.** Defines a fixture convention for metric
   cases (a sequence of batches, one expected scalar, scikit-learn as the reference) and a `MetricExecutor` beside
   `OperationExecutor`. The document records what was built and how each acceptance criterion is met (#1223).
+- **The attention backward pass is derived and checked.** New theory page *Backward pass of scaled dot-product
+  attention*: the adjoint for query, key, value and the dense mask, and how scale, causal, sliding window, key padding,
+  grouped-query attention and a decode step enter it. `scripts/reference/sdpa_backward_check.py` compares the formulas
+  with PyTorch autograd for every option. The check found that a query row with no attended key gets non-zero
+  gradients for query and key (#1572) (#1385).
 - **Precision, recall and F1 are documented.** Three partials under `partials/ops/metrics/` (definition, intuition,
   example, references) and a *Precision, recall and F1* section in the metrics how-to. The examples are compiled and
   run by `skainet-docs-samples` (`ClassificationMetrics.kt`) (#1234).

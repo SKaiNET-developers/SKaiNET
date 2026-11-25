@@ -9,6 +9,10 @@ This section contains mathematical definitions and theoretical foundations for S
 
 include::matmul.adoc[leveloffset=+2]
 
+=== Attention
+
+* xref:explanation/theory/attention-backward.adoc[Backward pass of scaled dot-product attention] — derivation of the adjoint, every forward option, numerical check against PyTorch autograd.
+
 === Activation Functions
 
 // TODO: Add theory for activation functions
