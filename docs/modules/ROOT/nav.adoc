@@ -50,6 +50,7 @@
 ** xref:explanation/mixed-precision.adoc[Mixed precision]
 ** xref:explanation/theory/index.adoc[Mathematical theory]
 *** xref:explanation/theory/matmul.adoc[Matrix multiplication]
+*** xref:explanation/theory/attention-backward.adoc[Attention backward pass]
 ** xref:explanation/examples/index.adoc[Worked examples]
 *** xref:explanation/examples/matmul.adoc[Matrix multiplication examples]
 ** xref:explanation/perf/jvm-cpu.adoc[JVM CPU performance]
