@@ -9,6 +9,10 @@
   schema updated). The operator coverage matrix gains a *Metrics* table with the ✅ / ⚠ / ✖ state, the reviewer and
   the date. Until now the annotation was read only from `TensorOps` functions, so the validation of `Precision`,
   `Recall` and `F1Score` was in the source and on no page (follow-up of #1235).
+- **`convTranspose2d` has operator documentation.** New partial `partials/ops/tensorops/convtranspose2d.adoc`:
+  definition and output-size formula, why it is not the inverse of `conv2d`, what `outputPadding` is for, and the
+  checkerboard-artifact caveat. The examples are compiled and run by `skainet-docs-samples`
+  (`TransposedConvolution.kt`). The coverage matrix shows ⚠ (prose, not yet DARC-validated) instead of ✖ (#1377).
 - **SKEEP-009 (Implemented): ground-truth validation for stateful metrics.** Defines a fixture convention for metric
   cases (a sequence of batches, one expected scalar, scikit-learn as the reference) and a `MetricExecutor` beside
   `OperationExecutor`. The document records what was built and how each acceptance criterion is met (#1223).
@@ -23,6 +27,11 @@
   `Recall` and `F1Score` carry `@DarcValidated` on `compute()`. The badge is in the source only: the doc generator
   reads the annotation from `TensorOps` functions, not from a `Metric`. A new `MetricsFp16Test` covers FP16
   predictions and FP16 one-hot targets, which had no test (#1235).
+- **`convTranspose2d` is checked against PyTorch over its parameter grid.** `ConvTranspose2dOpsTest` compares the CPU
+  kernel with `torch.nn.functional.conv_transpose2d` on seven seeded cases covering stride (1,1) / (2,2) / (2,1),
+  padding, output padding, dilation (1,1) / (2,2), groups 1 / 2 and bias, within 1e-5. The values come from
+  `scripts/reference/conv_transpose2d_reference.py`; `--raises` lists the argument combinations PyTorch rejects
+  (#1372).
 - **Accuracy, precision, recall and F1 are validated against scikit-learn in the ground-truth suite (SKEEP-009).**
   `skainet-test-groundtruth` gains a path for metric cases: a fixture named `metric.<name>` holds (predictions,
   targets) batches and one expected value. `GroundTruthMetricCase`, `toMetricCase()`, `MetricExecutor` (accuracy,

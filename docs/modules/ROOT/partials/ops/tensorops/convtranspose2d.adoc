@@ -1,0 +1,53 @@
+// tag::math[]
+For an input stem:[x \in \mathbb{R}^{N \times C_{in} \times H \times W}] and a weight stem:[w \in \mathbb{R}^{C_{in} \times C_{out}/g \times k_H \times k_W}] (stem:[g] = `groups`), every input element adds a scaled copy of the kernel to the output. With stride stem:[s], padding stem:[p] and dilation stem:[d] per axis:
+
+[stem]
+++++
+y_{n,\,c_o,\; i s_H - p_H + a d_H,\; j s_W - p_W + b d_W} \mathrel{+}= x_{n,\,c_i,\,i,\,j} \cdot w_{c_i,\,c_o,\,a,\,b}
+++++
+
+for all stem:[0 \le a < k_H], stem:[0 \le b < k_W]; contributions that fall outside the output are dropped. An optional bias stem:[\beta_{c_o}] is added to every element of output channel stem:[c_o]. With groups, input channels of group stem:[q] contribute only to the stem:[C_{out}/g] output channels of group stem:[q].
+
+The output size per axis is
+
+[stem]
+++++
+H_{out} = (H - 1)\, s_H - 2 p_H + d_H (k_H - 1) + o_H + 1
+++++
+
+where stem:[o] is `outputPadding`; it must be smaller than the stride or the dilation of its axis.
+
+The same result comes from an ordinary convolution with stride 1: insert stem:[s - 1] zeros between neighbouring input elements, pad each side with stem:[d(k - 1) - p], and convolve with the kernel flipped along both spatial axes and with its two channel axes swapped.
+// end::math[]
+
+// tag::intuition[]
+A convolution with stride stem:[s] maps a large image to a small one. Written as a matrix stem:[A] acting on the flattened image, a transposed convolution with the same kernel multiplies by stem:[A^\top]: it maps the small shape back to the large one. It is the operation the backward pass of `conv2d` applies to the gradient, used here as a forward layer that upsamples with learned weights (decoders of segmentation networks, generators, super-resolution).
+
+It is not the inverse of `conv2d`. stem:[A^\top A] is not the identity in general, so `convTranspose2d(conv2d(x))` has the shape of `x` but not its values. The older name "deconvolution" suggests an inverse and is misleading for that reason.
+
+`outputPadding` exists because a strided convolution loses the exact input size: with stride 2 and a 3x3 kernel and padding 1, a 7x7 and an 8x8 input both give 4x4. `outputPadding` picks which of those sizes the transposed convolution returns. It enlarges the output on one side only (bottom and right) and does not pad with zeros.
+
+Checkerboard artifacts: when the kernel size is not divisible by the stride, the kernel copies overlap unevenly, so some output positions receive more contributions than their neighbours. The result is a regular pattern of stronger and weaker pixels. A kernel size that is a multiple of the stride avoids the uneven overlap; resizing the image (for example nearest-neighbour upsampling) and then applying an ordinary convolution avoids it by construction (Odena et al., 2016).
+// end::intuition[]
+
+// tag::examples[]
+With stride 1 the kernel copies overlap and add up:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TransposedConvolution.kt[tag=overlap]
+----
+
+With a stride equal to the kernel size they tile the output, which upsamples the image:
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/TransposedConvolution.kt[tag=upsample]
+----
+// end::examples[]
+
+// tag::references[]
+* Dumoulin, V., Visin, F. (2016). _A guide to convolution arithmetic for deep learning_. https://arxiv.org/abs/1603.07285[arXiv:1603.07285] — chapter 4 covers transposed convolution arithmetic and the equivalent direct convolution.
+* Odena, A., Dumoulin, V., Olah, C. (2016). _Deconvolution and Checkerboard Artifacts_. Distill. https://distill.pub/2016/deconv-checkerboard/
+* https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html[`torch.nn.ConvTranspose2d` — PyTorch documentation]: weight layout, output-size formula and the meaning of `output_padding`. SKaiNET follows these semantics; `ConvTranspose2dOpsTest` compares the CPU kernel with `torch.nn.functional.conv_transpose2d` over stride, padding, output padding, dilation, groups and bias.
+// end::references[]

@@ -266,6 +266,41 @@ class ConvTranspose2dOpsTest {
         assertFlatClose(expected, output, shape, eps = 1e-3f)
     }
 
+    // ========== PyTorch reference cases (#1372) ==========
+
+    @Test
+    fun convTranspose2d_matchesTorch_overTheParameterGrid() {
+        for (case in ConvTranspose2dTorchReference.cases) {
+            val input = tensor(Shape(*case.inputShape), case.input)
+            val weight = tensor(Shape(*case.weightShape), case.weight)
+            val bias = case.bias?.let { tensor(Shape(it.size), it) }
+
+            val output = input.ops.convTranspose2d(
+                input, weight, bias,
+                stride = case.stride, padding = case.padding,
+                outputPadding = case.outputPadding, dilation = case.dilation,
+                groups = case.groups,
+            )
+
+            assertEquals(Shape(*case.outputShape), output.shape, "${case.name}: shape")
+            val got = output.data.copyToFloatArray()
+            for (i in case.output.indices) {
+                assertTrue(abs(case.output[i] - got[i]) <= 1e-5f, "${case.name}[$i]: torch=${case.output[i]} skainet=${got[i]}")
+            }
+        }
+    }
+
+    @Test
+    fun convTranspose2d_torchReference_coversEveryParameterOfTheGrid() {
+        val cases = ConvTranspose2dTorchReference.cases
+        assertEquals(setOf(1 to 1, 2 to 2, 2 to 1), cases.map { it.stride }.toSet())
+        assertTrue(cases.map { it.padding }.containsAll(listOf(0 to 0, 1 to 1)))
+        assertTrue(cases.map { it.outputPadding }.containsAll(listOf(0 to 0, 1 to 1)))
+        assertEquals(setOf(1 to 1, 2 to 2), cases.map { it.dilation }.toSet())
+        assertEquals(setOf(1, 2), cases.map { it.groups }.toSet())
+        assertTrue(cases.any { it.bias != null } && cases.any { it.bias == null })
+    }
+
     // ========== Validation ==========
 
     @Test

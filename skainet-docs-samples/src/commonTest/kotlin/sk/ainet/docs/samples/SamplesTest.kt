@@ -81,4 +81,20 @@ class SamplesTest {
         val batch = ClassificationMetrics.predictions(ctx) to ClassificationMetrics.targets(ctx)
         assertEquals(4.0 / 9.0, ClassificationMetrics.overBatches(listOf(batch, batch), ctx), 1e-12)
     }
+
+    @Test
+    fun transposed_convolution_matches_the_documented_values() {
+        val ctx = DirectCpuExecutionContext.create()
+
+        val overlap = TransposedConvolution.overlap(ctx)
+        assertEquals(listOf(1, 1, 3, 3), overlap.shape.dimensions.toList())
+        kotlin.test.assertContentEquals(floatArrayOf(1f, 3f, 2f, 4f, 10f, 6f, 3f, 7f, 4f), overlap.data.copyToFloatArray())
+
+        val upsample = TransposedConvolution.upsample(ctx)
+        assertEquals(listOf(1, 1, 4, 4), upsample.shape.dimensions.toList())
+        kotlin.test.assertContentEquals(
+            floatArrayOf(1f, 1f, 2f, 2f, 1f, 1f, 2f, 2f, 3f, 3f, 4f, 4f, 3f, 3f, 4f, 4f),
+            upsample.data.copyToFloatArray(),
+        )
+    }
 }
