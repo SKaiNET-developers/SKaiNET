@@ -26,6 +26,9 @@
 - **The CPU backend's common tests run on the Android compilation.** `skainet-backend-cpu` enables Android host
   tests, so `testAndroidHostTest` (the `test (android)` CI leg) runs its 67 `commonTest` suites, the metric tests
   among them (#1230).
+- **The metric tests run on Apple targets in CI.** A new workflow, `Apple targets - metric tests`, runs
+  `macosArm64Test` and `iosSimulatorArm64Test` of `skainet-backend-cpu` for `sk.ainet.exec.metrics.*` on a macOS
+  runner. It starts when the metrics or their tests change, once a week, and by hand; not on every commit (#1231).
 - **Ground-truth test cases know their use case.** `GroundTruthLoader` reads the use case from the fixture file name
   (`TS_008_UC_003.<function>.gguf` → `UC-003`); it looked for a `UC-` path part, which the fixture producer never
   writes, so `useCase` was always `null`, validation reports said "Use Case: N/A" and `cases["TS-001", "UC-001"]`
