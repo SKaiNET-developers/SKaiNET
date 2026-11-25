@@ -1,0 +1,82 @@
+= Choose a normalization layer
+:description: The three normalization layers of the SKaiNET network DSL — batchNorm, groupNorm and layerNorm — what each one averages over, and when to prefer GroupNorm.
+
+The network DSL has three normalization layers. All three compute
+`(x - mean) / sqrt(variance + eps)` and then, unless switched off, apply a learned scale
+(gamma) and shift (beta). They differ in *which elements share one mean and variance*.
+
+The snippet on this page is compiled and executed in CI from `skainet-docs-samples`
+(`NormalizationLayers.kt`).
+
+[cols="1,2,2",options="header"]
+|===
+| Builder | Statistics are taken over | Typical use
+
+| `batchNorm(numFeatures)`
+| the batch, per feature / channel
+| convolutional nets trained with large batches
+
+| `groupNorm(numGroups, numChannels)`
+| one sample, per group of channels (and all spatial positions)
+| small or varying batch sizes: detection, segmentation, diffusion U-Nets
+
+| `layerNorm(normalizedShape)`
+| one sample, over the trailing `normalizedShape` dimensions
+| transformers and other sequence models
+|===
+
+== groupNorm
+
+`groupNorm(numGroups, numChannels)` splits the `numChannels` channels of an `[N, C, *]` input
+into `numGroups` groups of `C / numGroups` consecutive channels and normalizes each group of
+each sample on its own. `numChannels` must be divisible by `numGroups`.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/NormalizationLayers.kt[tag=groupnorm]
+----
+
+Because no statistic crosses the batch axis, the layer gives the same result for a sample
+whatever else is in the batch, and it has no running averages: training and inference run
+the same computation.
+
+[source,kotlin]
+----
+include::example$kotlin/sk/ainet/docs/samples/NormalizationLayers.kt[tag=forward]
+----
+
+Optional arguments: `eps` (default `1e-5`) and `affine` (default `true`; `false` drops gamma
+and beta).
+
+=== When to prefer it over batchNorm
+
+Batch normalization estimates the mean and variance from the batch, so its error grows as
+the batch shrinks; with one or two samples per batch the estimate is too noisy to train
+with. Group normalization does not depend on the batch size. Wu and He report that its
+accuracy stays stable over a wide range of batch sizes, and that at a batch size of 2 it has
+a 10.6 % lower ImageNet error than batch normalization with ResNet-50
+(https://arxiv.org/abs/1803.08494[Wu & He, _Group Normalization_, 2018]). Use `groupNorm`
+when memory limits the batch size (high-resolution images, video, detection and
+segmentation heads) or when batches at inference time do not look like training batches.
+
+Two settings of `numGroups` are known layers in their own right:
+
+* `numGroups = 1` normalizes over all channels and positions of a sample
+  (layer normalization over `[C, H, W]`);
+* `numGroups = numChannels` normalizes each channel of each sample separately
+  (instance normalization).
+
+=== Semantics
+
+The layer follows `torch.nn.GroupNorm`: the variance is the biased one (divided by the number
+of elements in the group), `eps` is added to the variance before the square root, and gamma
+and beta have one value per channel. `GroupNormalizationTest` compares the output with
+PyTorch reference values for 1, 2, 3 and 6 groups; the script that produced them is
+`scripts/reference/groupnorm_reference.py`.
+
+== References
+
+* Wu, Y., He, K. (2018). _Group Normalization_. https://arxiv.org/abs/1803.08494[arXiv:1803.08494]
+* Ioffe, S., Szegedy, C. (2015). _Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift_. https://arxiv.org/abs/1502.03167[arXiv:1502.03167]
+* Ba, J. L., Kiros, J. R., Hinton, G. E. (2016). _Layer Normalization_. https://arxiv.org/abs/1607.06450[arXiv:1607.06450]
+* https://pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html[`torch.nn.GroupNorm` — PyTorch documentation]

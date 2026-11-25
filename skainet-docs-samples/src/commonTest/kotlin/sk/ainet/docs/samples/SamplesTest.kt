@@ -97,4 +97,10 @@ class SamplesTest {
             upsample.data.copyToFloatArray(),
         )
     }
+
+    @Test
+    fun normalization_group_norm_block_runs_on_a_batch_of_one() {
+        val out = NormalizationLayers.forwardOne(FloatArray(3 * 16 * 16) { (it % 17) / 17f })
+        assertEquals(listOf(1, 8, 16, 16), out.shape.dimensions.toList())
+    }
 }
