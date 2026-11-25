@@ -168,6 +168,18 @@ class SdpaBackwardTest {
         assertTrue((2 * 3 until dQ.size).any { dQ[it] != 0f }, "rows with attended keys keep their dQ")
     }
 
+    /** #1577: causal alone with more queries than keys; the query rows before the first key get no gradient. */
+    @Test
+    fun causal_rows_before_the_first_key_give_zero_gradient_to_query() {
+        val shapes = qkv(b = 1, h = 1, kvHeads = 1, seqQ = 4, seqKV = 2, headDim = 3)
+        val case = Sdpa(shapes, randn(shapes[0].volume, 97), causal = true)
+        val vals = values(shapes, 80)
+        assertFiniteDiff(case, vals)
+        val dQ = analytic(case, vals)[0]
+        for (i in 0 until 2 * 3) assertEquals(0f, dQ[i], "dQ[$i] of a query row before the first key")
+        assertTrue((2 * 3 until dQ.size).any { dQ[it] != 0f }, "rows with attended keys keep their dQ")
+    }
+
     @Test
     fun sliding_window_with_right_context_matches_finite_diff() {
         val shapes = qkv(b = 1, h = 2, kvHeads = 2, seqQ = 5, seqKV = 5, headDim = 3)

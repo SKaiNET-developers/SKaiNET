@@ -3960,9 +3960,11 @@ public open class DefaultCpuOpsBase(
         // get AttentionMask.MASKED, which is bit-identical to adding the dense -1e30 mask on the
         // attended keys (the masked exp underflows to exactly 0 either way) and keeps a fully
         // masked row finite. `causal` folds into the range on this path. Without lengths or a
-        // window the kernel below runs unchanged.
+        // window the kernel below runs unchanged. Causal with more queries than keys (#1577) also
+        // takes this path: its leading query rows sit before the first key and attend to nothing,
+        // which the plain causal loop below cannot express.
         val lengths: IntArray? = sdpaKeyLengths(keyLengths, batch, seqKV)
-        val structured = lengths != null || window > 0
+        val structured = lengths != null || window > 0 || (causal && seqQ > seqKV)
         // Grouped-query attention (SKEEP-005 phase 2): K/V are read in place through the
         // head-group index instead of being tiled to Q's head count upstream. Same loop
         // order and arithmetic as before, so nKVHeads == nHeads stays bit-identical.

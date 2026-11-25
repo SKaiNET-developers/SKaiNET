@@ -54,6 +54,27 @@ class SdpaKeyLengthsTest {
         }
     }
 
+    /** #1577: causal alone with `seqQ > seqKV` threw; the query rows before the first key attend to nothing. */
+    @Test
+    fun causal_with_more_queries_than_keys_equals_the_dense_mask_and_averages_empty_rows() {
+        val ctx = DirectCpuExecutionContext(schedule = Schedule.Sequential)
+        for ((heads, kvHeads) in listOf(2 to 2, 4 to 2)) {
+            val batch = 2; val seqQ = 4; val seqKV = 2; val headDim = 3
+            val x = inputs(ctx, batch, heads, kvHeads, seqQ, seqKV, headDim)
+            val causal = floats(ctx.ops.scaledDotProductAttention(x.q, x.k, x.v, causal = true))
+            val dense = ctx.ops.scaledDotProductAttention(x.q, x.k, x.v, mask = denseMask(ctx, batch, seqQ, seqKV, true, 0, 0, null), scale = 0f, causal = false)
+            assertContentEquals(floats(dense), causal, "heads=$heads kv=$kvHeads")
+            // Query rows 0 and 1 (absolute positions -2 and -1) have no key: the output is the mean of the value rows.
+            val v = floats(x.v)
+            val nRep = heads / kvHeads
+            for (b in 0 until batch) for (h in 0 until heads) for (qi in 0 until 2) for (d in 0 until headDim) {
+                val vBase = (b * kvHeads + h / nRep) * seqKV * headDim
+                val mean = (v[vBase + d] + v[vBase + headDim + d]) / 2f
+                assertEquals(mean, causal[((b * heads + h) * seqQ + qi) * headDim + d], 1e-6f, "b=$b h=$h qi=$qi d=$d")
+            }
+        }
+    }
+
     @Test
     fun window_band_equals_the_dense_mask_bit_for_bit() {
         val ctx = DirectCpuExecutionContext(schedule = Schedule.Sequential)
