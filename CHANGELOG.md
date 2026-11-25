@@ -30,6 +30,10 @@
 
 ### Fixed
 
+- **Attention backward: a query row with no attended key gets zero gradient for query, key and mask.** Such a row
+  (for example `keyLengths[b] = 0`) outputs the mean of its value rows, which does not depend on query or key, but
+  `scaledDotProductAttentionBackward` returned gradients of ordinary size for them. `dS` of an empty row is now zero;
+  the value gradient is unchanged (#1572).
 - **The operator-schema check fails again when a file is invalid.** `validateOperatorSchema` printed `✗ INVALID` for
   the `operators.json` of `skainet-lang-core` and still succeeded: the validator returned no error messages and the
   task fails only on messages. The validator now returns one message per violation. The violation itself is fixed
