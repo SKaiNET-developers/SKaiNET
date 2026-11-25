@@ -1,7 +1,7 @@
 package sk.ainet.lang.ops
 
 /**
- * Marks a [TensorOp] function as DARC-validated.
+ * Marks a [TensorOp] function, or the `compute()` function of a `Metric`, as DARC-validated.
  *
  * A reviewer (not the original author) has gone through Document, Assess,
  * Research, and Code for this function — read the partial prose, checked the
@@ -9,7 +9,8 @@ package sk.ainet.lang.ops
  * confirmed the runtime behaviour matches the documented contract.
  *
  * Picked up by `OperatorDocProcessor` and rendered as a badge on the
- * generated operator page plus a column in the ops coverage matrix.
+ * generated operator page plus a column in the ops coverage matrix. A metric
+ * has no generated page; its validation shows in the *Metrics* table of that matrix.
  *
  * See `contributing/darc-workflow.adoc` for the exact criteria.
  *

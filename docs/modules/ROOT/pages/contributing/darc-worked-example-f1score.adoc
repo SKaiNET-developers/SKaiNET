@@ -283,11 +283,11 @@ After review, the reviewer — not the implementer — annotates:
 override fun compute(): Double { /* … */ }
 ----
 
-One precedent worth flagging rather than solving: `@DarcValidated`
-targets functions and the KSP processor reads it only off `TensorOps`
-today, so the badge is recorded in source but renders on no generated
-page for a `Metric`. That is a follow-up for the doc-pipeline owner,
-noted in #1235, not a blocker.
+When this example was planned, the KSP processor read `@DarcValidated`
+only off `TensorOps` functions, so the badge of a `Metric` was recorded
+in source and rendered on no page. That follow-up is done: metrics are
+a second processed category, and their validation shows in the *Metrics*
+table of xref:reference/ops-status-matrix.adoc[the operator coverage matrix].
 
 == What this example teaches
 

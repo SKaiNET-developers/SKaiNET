@@ -285,6 +285,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].")
             appendLayersTable(module.layers)
+            appendMetricsTable(module.metrics, partialsRoot)
         })
     }
 
@@ -295,6 +296,51 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             "stubbed" -> "❌ stub"
             else -> "❌"
         }
+    }
+
+    /** Whether `partials/ops/metrics/<name>.adoc` holds hand-written prose for the metric. */
+    private fun metricHasPartial(metric: MetricDoc, partialsRoot: File?): Boolean =
+        partialsRoot?.let { File(it, "ops/metrics/${metric.name.lowercase()}.adoc").exists() } ?: false
+
+    /** Same three states as [darcCell], for a metric. */
+    private fun metricDarcCell(metric: MetricDoc, hasPartial: Boolean): String = when {
+        metric.validated -> "✅"
+        hasPartial -> "⚠"
+        else -> "✖"
+    }
+
+    /** Who validated a metric and when; `—` when it is not validated. */
+    private fun metricReviewCell(metric: MetricDoc): String {
+        if (!metric.validated) return "—"
+        val by = metric.validatedBy.ifBlank { "an unspecified reviewer" }
+        val on = metric.validatedOn.ifBlank { "an unspecified date" }
+        val refs = if (metric.referencesChecked) "" else " (references not checked)"
+        return "$by, $on$refs"
+    }
+
+    /**
+     * Metric table: one row per concrete `Metric` implementation. A metric has no backend
+     * matrix; the only signal is the DARC validation of its `compute()` function.
+     */
+    private fun StringBuilder.appendMetricsTable(metrics: List<MetricDoc>, partialsRoot: File?) {
+        if (metrics.isEmpty()) return
+        appendLine("")
+        appendLine("== Metrics")
+        appendLine("")
+        appendLine("Every concrete `Metric` implementation. *Validated* has the same meaning as in the operator table: ✅ `@DarcValidated` on `compute()`, ⚠ prose present but not reviewed, ✖ no prose. The prose is in xref:how-to/metrics-and-perf-testing.adoc[Metrics and performance testing].")
+        appendLine("")
+        appendLine("[cols=\"2,3,1,3\", options=\"header\"]")
+        appendLine("|===")
+        appendLine("| Metric | Package | Validated | Reviewed")
+        appendLine("")
+        metrics.forEach { metric ->
+            val cell = metricDarcCell(metric, metricHasPartial(metric, partialsRoot))
+            appendLine("| `${metric.name}` | `${metric.packageName}` | $cell | ${metricReviewCell(metric)}")
+        }
+        appendLine("")
+        val done = metrics.count { it.validated }
+        appendLine("| *Done* | | *$done / ${metrics.size}* |")
+        appendLine("|===")
     }
 
     /** `nn` layer table: one row per concrete `Module` subclass, ❌ when `@NotImplemented`. */
@@ -579,7 +625,27 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Per-function detail including notes lives in [Operator reference](${outputDir.name}/index.md).")
             appendMarkdownLayersTable(module.layers)
+            appendMarkdownMetricsTable(module.metrics, partialsRoot)
         })
+    }
+
+    /** Markdown metric table, one row per concrete `Metric` implementation. */
+    private fun StringBuilder.appendMarkdownMetricsTable(metrics: List<MetricDoc>, partialsRoot: File?) {
+        if (metrics.isEmpty()) return
+        appendLine("")
+        appendLine("## Metrics")
+        appendLine("")
+        appendLine("Every concrete `Metric` implementation. **Validated** has the same meaning as in the operator table: ✅ `@DarcValidated` on `compute()`, ⚠ prose present but not reviewed, ✖ no prose.")
+        appendLine("")
+        appendLine("| Metric | Package | Validated | Reviewed |")
+        appendLine("| --- | --- | --- | --- |")
+        metrics.forEach { metric ->
+            val cell = metricDarcCell(metric, metricHasPartial(metric, partialsRoot))
+            appendLine("| `${metric.name}` | `${metric.packageName}` | $cell | ${metricReviewCell(metric)} |")
+        }
+        appendLine("")
+        val done = metrics.count { it.validated }
+        appendLine("| **Done** | | **$done / ${metrics.size}** | |")
     }
 
     /** Markdown `nn` layer table, one row per concrete `Module` subclass. */

@@ -1,7 +1,7 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `0.65.0` on 2026-11-22.
+Generated from `operators.json` version `0.65.0` on 2026-11-25.
 
 Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.
 
@@ -131,4 +131,20 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
 
 | *Done* | | *33 / 33* |
+|===
+
+== Metrics
+
+Every concrete `Metric` implementation. *Validated* has the same meaning as in the operator table: ✅ `@DarcValidated` on `compute()`, ⚠ prose present but not reviewed, ✖ no prose. The prose is in xref:how-to/metrics-and-perf-testing.adoc[Metrics and performance testing].
+
+[cols="2,3,1,3", options="header"]
+|===
+| Metric | Package | Validated | Reviewed
+
+| `Accuracy` | `sk.ainet.lang.nn.metrics` | ✖ | —
+| `F1Score` | `sk.ainet.lang.nn.metrics` | ✅ | Michal Harakal, 2026-11-25
+| `Precision` | `sk.ainet.lang.nn.metrics` | ✅ | Michal Harakal, 2026-11-25
+| `Recall` | `sk.ainet.lang.nn.metrics` | ✅ | Michal Harakal, 2026-11-25
+
+| *Done* | | *3 / 4* |
 |===

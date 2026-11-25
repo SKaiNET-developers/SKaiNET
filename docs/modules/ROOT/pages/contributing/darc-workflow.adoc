@@ -220,6 +220,23 @@ annotation backs it. Treat the prose as a stub.
 auto-derived signature, parameters, return type, and backend status.
 |===
 
+A `Metric` implementation is validated the same way, with the
+annotation on its `compute()` override:
+
+[source,kotlin]
+----
+public class F1Score(/* … */) : Metric {
+    @DarcValidated(by = "First Last <user@example.com>", on = "2026-11-25")
+    override fun compute(): Double = /* … */
+}
+----
+
+Metrics have no generated reference page and no backend matrix. Their
+row is in the *Metrics* table at the end of
+xref:reference/ops-status-matrix.adoc[the operator coverage matrix],
+with the same ✅ / ⚠ / ✖ states and the reviewer and date; the partial
+is looked up at `partials/ops/metrics/\{metric}.adoc`.
+
 The same three states appear as `✅ / ⚠ / ✖` in the *Validated* column
 of xref:reference/ops-status-matrix.adoc[the operator coverage matrix].
 

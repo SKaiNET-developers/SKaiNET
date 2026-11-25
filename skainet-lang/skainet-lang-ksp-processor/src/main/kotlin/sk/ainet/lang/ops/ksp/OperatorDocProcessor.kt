@@ -19,6 +19,19 @@ data class OperatorDocModule(
     // nn `Module` subclasses visible in this compilation unit, with their
     // implementation status (`implemented` / `not_implemented`).
     val layers: List<LayerDoc> = emptyList(),
+    // `Metric` implementations visible in this compilation unit, with the DARC
+    // validation read off their `compute()` function.
+    val metrics: List<MetricDoc> = emptyList(),
+)
+
+data class MetricDoc(
+    val name: String,
+    val packageName: String,
+    val validated: Boolean = false,
+    val validatedBy: String = "",
+    val validatedOn: String = "",
+    val validatedCommit: String = "",
+    val referencesChecked: Boolean = true,
 )
 
 data class LayerDoc(
@@ -153,6 +166,7 @@ class OperatorDocProcessor(
             module = options["skainet.module"]?.takeIf { it.isNotBlank() } ?: "skainet-lang-core",
             operators = operatorDocs,
             layers = discoverLayers(resolver),
+            metrics = discoverMetrics(resolver),
         )
 
         // Generate JSON output
@@ -606,6 +620,42 @@ class OperatorDocProcessor(
             .toList()
     }
 
+    /**
+     * Every concrete, public `sk.ainet.lang.nn.metrics.Metric` implementation declared in
+     * this compilation unit. A metric has no backend matrix and no `TensorOps` function, so
+     * its `@DarcValidated` sits on the `compute()` override: that is the function whose
+     * result the reviewed documentation describes.
+     */
+    private fun discoverMetrics(resolver: Resolver): List<MetricDoc> {
+        val metricName = "sk.ainet.lang.nn.metrics.Metric"
+        return resolver.getAllFiles()
+            .flatMap { it.declarations.filterIsInstance<KSClassDeclaration>() }
+            .filter { cls ->
+                cls.classKind == ClassKind.CLASS &&
+                    Modifier.ABSTRACT !in cls.modifiers &&
+                    Modifier.PRIVATE !in cls.modifiers &&
+                    Modifier.INTERNAL !in cls.modifiers &&
+                    cls.getAllSuperTypes().any { it.declaration.qualifiedName?.asString() == metricName }
+            }
+            .map { cls ->
+                val compute = cls.getDeclaredFunctions()
+                    .firstOrNull { it.simpleName.asString() == "compute" && it.parameters.isEmpty() }
+                val darc = compute?.let { extractDarcValidation(it) } ?: DarcValidation(false, "", "", "", true)
+                MetricDoc(
+                    name = cls.simpleName.asString(),
+                    packageName = cls.packageName.asString(),
+                    validated = darc.validated,
+                    validatedBy = darc.by,
+                    validatedOn = darc.on,
+                    validatedCommit = darc.commit,
+                    referencesChecked = darc.referencesChecked,
+                )
+            }
+            .distinctBy { it.packageName + "." + it.name }
+            .sortedWith(compareBy({ it.packageName }, { it.name }))
+            .toList()
+    }
+
     private fun deriveNotes(declaration: KSDeclaration): List<Note> {
         val notes = mutableListOf<Note>()
 
@@ -795,6 +845,24 @@ class OperatorDocProcessor(
                         if (layer.issue.isNotEmpty()) append(", \"issue\": \"${escapeJson(layer.issue)}\"")
                         append("}")
                         if (index < module.layers.size - 1) append(",")
+                        append("\n")
+                    }
+                    append("  ]")
+                }
+                if (module.metrics.isNotEmpty()) {
+                    append(",\n  \"metrics\": [\n")
+                    module.metrics.forEachIndexed { index, metric ->
+                        append("    {\"name\": \"${escapeJson(metric.name)}\", ")
+                        append("\"packageName\": \"${escapeJson(metric.packageName)}\", ")
+                        append("\"validated\": ${metric.validated}")
+                        if (metric.validated) {
+                            append(", \"validatedBy\": \"${escapeJson(metric.validatedBy)}\"")
+                            append(", \"validatedOn\": \"${escapeJson(metric.validatedOn)}\"")
+                            append(", \"validatedCommit\": \"${escapeJson(metric.validatedCommit)}\"")
+                            append(", \"referencesChecked\": ${metric.referencesChecked}")
+                        }
+                        append("}")
+                        if (index < module.metrics.size - 1) append(",")
                         append("\n")
                     }
                     append("  ]")
