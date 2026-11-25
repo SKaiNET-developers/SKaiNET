@@ -111,13 +111,14 @@ If the rules leave a query row without any key (for example `keyLengths[b] = 0`)
 of that row is stem:[-10^{30}]. The softmax of a constant row is uniform, so the forward
 returns the mean of *all* value rows, padded ones included, and the result stays finite.
 
-For such a row the formulas above still describe the derivative of the definition, but not of
+For such a row the formulas above describe the derivative of the definition, but not of
 what the CPU kernel computes. The kernel never evaluates the scores of a masked position, so
-its output does not depend on stem:[Q] or stem:[K] for an empty row; the true gradient is zero.
-The backward recomputes stem:[S = s\,QK^\top + M], gets a uniform stem:[P] and returns a
-non-zero stem:[\bar Q] and stem:[\bar K]. This is tracked as
-https://github.com/SKaiNET-developers/SKaiNET/issues/1572[#1572]. stem:[\bar V] is
-consistent with the forward (uniform over all keys).
+its output does not depend on stem:[Q], stem:[K] or the dense mask for an empty row; the true
+gradient is zero. Evaluated literally, stem:[S = s\,QK^\top + M] gives a uniform stem:[P] and a
+non-zero stem:[\bar Q] and stem:[\bar K]. The backward therefore sets stem:[\bar S] of an empty
+row to zero
+(https://github.com/SKaiNET-developers/SKaiNET/issues/1572[#1572]). stem:[\bar V] keeps the
+uniform weights, consistent with the forward.
 
 == Numerical check
 

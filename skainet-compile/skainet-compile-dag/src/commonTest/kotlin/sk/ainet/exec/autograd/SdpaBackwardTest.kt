@@ -141,6 +141,33 @@ class SdpaBackwardTest {
         }
     }
 
+    /** #1572: a batch row with no attended key outputs the mean of its value rows, constant in q, k and the mask. */
+    @Test
+    fun row_without_attended_key_gives_zero_gradient_to_query_key_and_mask() {
+        val shapes = qkv(b = 2, h = 2, kvHeads = 1, seqQ = 2, seqKV = 3, headDim = 4) + Shape(2, 1, 2, 3)
+        val case = Sdpa(shapes, randn(shapes[0].volume, 95), keyLengths = intArrayOf(3, 0))
+        val vals = values(shapes, 60)
+        assertFiniteDiff(case, vals)
+        val (dQ, dK, dV, dMask) = analytic(case, vals)
+        for (i in dQ.size / 2 until dQ.size) assertEquals(0f, dQ[i], "dQ[$i] of the empty batch row")
+        for (i in dK.size / 2 until dK.size) assertEquals(0f, dK[i], "dK[$i] of the empty batch row")
+        for (i in dMask.size / 2 until dMask.size) assertEquals(0f, dMask[i], "dMask[$i] of the empty batch row")
+        assertTrue((0 until dQ.size / 2).any { dQ[it] != 0f }, "the attended batch row keeps its dQ")
+        assertTrue((dV.size / 2 until dV.size).any { dV[it] != 0f }, "the empty row still averages its values, so dV is not zero")
+    }
+
+    /** #1572: more queries than keys under a sliding window leaves the leading query rows empty, without any keyLengths. */
+    @Test
+    fun window_rows_before_the_first_key_give_zero_gradient_to_query() {
+        val shapes = qkv(b = 1, h = 1, kvHeads = 1, seqQ = 4, seqKV = 2, headDim = 3)
+        val case = Sdpa(shapes, randn(shapes[0].volume, 96), window = 2)
+        val vals = values(shapes, 70)
+        assertFiniteDiff(case, vals)
+        val dQ = analytic(case, vals)[0]
+        for (i in 0 until 2 * 3) assertEquals(0f, dQ[i], "dQ[$i] of a query row before the first key")
+        assertTrue((2 * 3 until dQ.size).any { dQ[it] != 0f }, "rows with attended keys keep their dQ")
+    }
+
     @Test
     fun sliding_window_with_right_context_matches_finite_diff() {
         val shapes = qkv(b = 1, h = 2, kvHeads = 2, seqQ = 5, seqKV = 5, headDim = 3)

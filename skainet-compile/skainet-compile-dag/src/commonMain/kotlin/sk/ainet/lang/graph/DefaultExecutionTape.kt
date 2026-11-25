@@ -1060,6 +1060,11 @@ public class DefaultGradientTape(
      * are rebuilt from [AttentionMask.additive], the definition the forward kernel reads, so a
      * masked score has `P = 0` and therefore exactly zero gradient; the dense mask is added on top,
      * trailing-aligned like the forward. `keyLengths` is integer and gets no gradient.
+     *
+     * A query row whose rules leave no attended key (#1572) is the exception to `P = 0`: every score
+     * of the row is [AttentionMask.MASKED], so `P` is uniform over all keys and the output is the
+     * mean of the value rows. That output does not depend on `Q`, `K` or the dense mask, so `dS` of
+     * such a row is set to zero; `dV` keeps the uniform weights, as the forward uses them.
      */
     override fun scaledDotProductAttentionBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         val layout = ScaledDotProductAttentionOperation.operandLayout(inputs.size, attributes)
@@ -1083,6 +1088,7 @@ public class DefaultGradientTape(
         val v5 = ops.reshape(v, Shape(batch, kvHeads, 1, seqKV, headDim))
         val dO5 = ops.reshape(upstream, Shape(batch, kvHeads, nRep, seqQ, headDim))
 
+        var rowKeep: Tensor<DType, Any>? = null
         // S = s·Q·Kᵀ + structural mask + dense mask, then P = softmax(S)
         var scores = ops.mulScalar(ops.matmul(q5, ops.permute(k5, lastTwo)), scale)
         if (causal || window > 0 || lengths != null) {
@@ -1091,6 +1097,16 @@ public class DefaultGradientTape(
             @Suppress("UNCHECKED_CAST")
             val data = DenseFloatArrayTensorData<DType>(Shape(batch, 1, 1, seqQ, seqKV), additive) as TensorData<DType, Any>
             scores = ops.add(scores, OpsBoundTensor.fromData(data, q.dtype, ops))
+            // A query row with no attended key: 1 keeps the row's dS, 0 drops it (see the KDoc).
+            val keep = FloatArray(batch * seqQ) { i ->
+                val length = lens?.get(i / seqQ) ?: seqKV
+                if (AttentionMask.keyRange(i % seqQ, seqQ, seqKV, causal, window, rightContext, length).isEmpty()) 0f else 1f
+            }
+            if (keep.any { it == 0f }) {
+                @Suppress("UNCHECKED_CAST")
+                val keepData = DenseFloatArrayTensorData<DType>(Shape(batch, 1, 1, seqQ, 1), keep) as TensorData<DType, Any>
+                rowKeep = OpsBoundTensor.fromData(keepData, q.dtype, ops)
+            }
         }
         val mask5 = mask?.let { ops.reshape(it, sdpaMaskShape5(it.shape, heads, kvHeads, nRep)) }
         if (mask5 != null) scores = ops.add(scores, mask5)
@@ -1098,7 +1114,7 @@ public class DefaultGradientTape(
 
         val dV5 = ops.sum(ops.matmul(ops.permute(p, lastTwo), dO5), 2)
         val dP = ops.matmul(dO5, ops.permute(v5, lastTwo))
-        val dS = softmaxGrad(dP, p, 4)
+        val dS = softmaxGrad(dP, p, 4).let { g -> rowKeep?.let { ops.multiply(g, it) } ?: g }
         val dQ5 = ops.mulScalar(ops.matmul(dS, k5), scale)
         val dK5 = ops.mulScalar(ops.sum(ops.matmul(ops.permute(dS, lastTwo), q5), 2), scale)
 
