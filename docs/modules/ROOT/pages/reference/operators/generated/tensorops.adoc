@@ -427,7 +427,7 @@ fun convTranspose1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, paddin
 
 == convTranspose2d
 
-[.darc-none]#✖ Generated facts only (no human prose)#
+[.darc-stub]#⚠ Prose present but not DARC-validated#
 
 === Signature
 
@@ -450,6 +450,22 @@ fun convTranspose2d(input:Tensor, weight:Tensor, bias:Tensor, stride:Pair, paddi
 === Return Type
 
 `Tensor`
+
+=== Definition
+
+include::partial$ops/tensorops/convtranspose2d.adoc[tag=math,optional]
+
+=== Intuition
+
+include::partial$ops/tensorops/convtranspose2d.adoc[tag=intuition,optional]
+
+=== Examples
+
+include::partial$ops/tensorops/convtranspose2d.adoc[tag=examples,optional]
+
+=== References
+
+include::partial$ops/tensorops/convtranspose2d.adoc[tag=references,optional]
 
 == maxPool2d
 
