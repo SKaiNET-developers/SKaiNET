@@ -1,0 +1,75 @@
+name: Apple targets - metric tests
+
+# The metric tests live in skainet-backend-cpu's commonTest. The main build runs them on
+# JVM, Linux native, JS and Wasm, but has no macOS leg, and the macOS leg of
+# native-cpu-multiarch.yml only tests skainet-backend-native-cpu. This workflow runs them
+# on macOS and in the iOS simulator (#1231). macOS runners are expensive, so it runs only
+# when the metrics or their tests change, plus a weekly run that catches toolchain drift
+# (Kotlin/Native, Xcode on the runner image) when nothing here changed.
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/metrics/**"
+      - "skainet-backends/skainet-backend-cpu/src/commonTest/kotlin/sk/ainet/exec/metrics/**"
+      - ".github/workflows/apple-metrics.yml"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/metrics/**"
+      - "skainet-backends/skainet-backend-cpu/src/commonTest/kotlin/sk/ainet/exec/metrics/**"
+      - ".github/workflows/apple-metrics.yml"
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Set default permission for all jobs to none
+permissions: {}
+
+jobs:
+  apple-metrics:
+    name: macos-arm64
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Copy CI gradle.properties
+        run: |
+          mkdir -p ~/.gradle
+          cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: 'zulu'
+          java-version: 25
+
+      # MetricsPlatformParityTest is part of the filter: it requires the exact Double bits
+      # of each metric, so a pass means the values equal the JVM run bit-for-bit.
+      - name: Metric tests on macOS and in the iOS simulator
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            :skainet-backends:skainet-backend-cpu:macosArm64Test --tests "sk.ainet.exec.metrics.*" \
+            :skainet-backends:skainet-backend-cpu:iosSimulatorArm64Test --tests "sk.ainet.exec.metrics.*"
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-metrics-reports
+          path: |
+            skainet-backends/skainet-backend-cpu/build/reports/tests/**
+            skainet-backends/skainet-backend-cpu/build/test-results/**
+          retention-days: 14
