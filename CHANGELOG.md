@@ -30,6 +30,10 @@
 
 ### Fixed
 
+- **Causal attention with more queries than keys no longer throws.** `scaledDotProductAttention(causal = true)` with
+  `seqQ > seqKV` and neither window nor key lengths raised `ArrayIndexOutOfBoundsException` in the Kotlin CPU kernel.
+  The call now uses the key-range path: a query row before the first key attends to nothing and returns the mean of
+  the value rows, as the native kernel and the dense mask already did (#1577).
 - **Attention backward: a query row with no attended key gets zero gradient for query, key and mask.** Such a row
   (for example `keyLengths[b] = 0`) outputs the mean of its value rows, which does not depend on query or key, but
   `scaledDotProductAttentionBackward` returned gradients of ordinary size for them. `dS` of an empty row is now zero;
