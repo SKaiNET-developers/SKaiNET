@@ -1,5 +1,9 @@
 package sk.ainet.compile.hlo
 
+import sk.ainet.lang.types.Bf16Codec
+import sk.ainet.lang.types.Fp16Codec
+import sk.ainet.lang.types.NarrowFloatCodec
+
 /**
  * Serialize a list of numeric values into a little-endian [ByteArray]
  * matching the given SKaiNET dtype string.
@@ -13,6 +17,11 @@ package sk.ainet.compile.hlo
  * Kept in `commonMain` — uses [Float.toRawBits] / [Double.toRawBits]
  * rather than JVM-only streams so the same code runs on all KMP
  * targets the HLO module currently supports.
+ *
+ * FP16 and BF16 values are narrowed from their FP32 value with
+ * [Fp16Codec] / [Bf16Codec] (round to nearest even for FP16, the high
+ * 16 bits for BF16) and written as 2 bytes; I8 keeps the low byte of
+ * the integer value (#1419).
  *
  * Throws for dtypes the converter does not yet externalize. Callers
  * should catch and fall back to inline emission with a diagnostic.
@@ -71,9 +80,12 @@ internal fun numberListToLittleEndianBytes(
             }
             bytes
         }
+        "FP16", "F16", "FLOAT16" -> narrowFloatBytes(count, Fp16Codec) { i -> (values.getOrNull(i) as? Number)?.toFloat() ?: 0.0f }
+        "BF16", "BFLOAT16" -> narrowFloatBytes(count, Bf16Codec) { i -> (values.getOrNull(i) as? Number)?.toFloat() ?: 0.0f }
+        "I8", "INT8" -> ByteArray(count) { i -> ((values.getOrNull(i) as? Number)?.toInt() ?: 0).toByte() }
         else -> throw IllegalArgumentException(
             "External parameter materialization not yet implemented for dtype=$dtype. " +
-                "Supported: FP32, FP64, I32, I64."
+                "Supported: FP32, FP64, FP16, BF16, I32, I64, I8."
         )
     }
 }
@@ -83,8 +95,9 @@ internal fun numberListToLittleEndianBytes(
  * [FloatArray] — the form produced by `TraceToGraphBuilder.finalize`
  * for resolved (dequantized) weights. Avoids the `FloatArray.toList()`
  * boxing that turns a 262153x640 embedding into a ~2.7GB `List<Float>`
- * and OOMs the trace. FP32 / I32 only (the dtypes a float-backed
- * weight resolves to); other dtypes throw so the caller falls back.
+ * and OOMs the trace. FP32 / FP16 / BF16 / I32 / I8 (the dtypes a
+ * float-backed weight resolves to); other dtypes throw so the caller
+ * falls back.
  */
 internal fun floatArrayToLittleEndianBytes(
     values: FloatArray,
@@ -117,8 +130,11 @@ internal fun floatArrayToLittleEndianBytes(
             }
             bytes
         }
+        "FP16", "F16", "FLOAT16" -> narrowFloatBytes(count, Fp16Codec) { i -> if (i < n) values[i] else 0.0f }
+        "BF16", "BFLOAT16" -> narrowFloatBytes(count, Bf16Codec) { i -> if (i < n) values[i] else 0.0f }
+        "I8", "INT8" -> ByteArray(count) { i -> if (i < n) values[i].toInt().toByte() else 0 }
         else -> throw IllegalArgumentException(
-            "Boxing-free external materialization supports FP32 / I32 FloatArray; got dtype=$dtype."
+            "Boxing-free external materialization supports FP32 / FP16 / BF16 / I32 / I8 FloatArray; got dtype=$dtype."
         )
     }
 }
@@ -150,7 +166,20 @@ public class ConstantTooLargeException(message: String) : IllegalStateException(
 
 private fun bytesPerSerializedElement(dtype: String): Long = when (dtype.uppercase()) {
     "FP64", "F64", "FLOAT64", "I64", "INT64" -> 8L
+    "FP16", "F16", "FLOAT16", "BF16", "BFLOAT16" -> 2L
+    "I8", "INT8" -> 1L
     else -> 4L
+}
+
+/** [count] 16-bit patterns of [codec], little-endian. */
+private inline fun narrowFloatBytes(count: Int, codec: NarrowFloatCodec, valueAt: (Int) -> Float): ByteArray {
+    val bytes = ByteArray(count * 2)
+    for (i in 0 until count) {
+        val bits = codec.encode(valueAt(i))
+        bytes[i * 2]     = (bits        and 0xff).toByte()
+        bytes[i * 2 + 1] = (bits ushr 8 and 0xff).toByte()
+    }
+    return bytes
 }
 
 /**

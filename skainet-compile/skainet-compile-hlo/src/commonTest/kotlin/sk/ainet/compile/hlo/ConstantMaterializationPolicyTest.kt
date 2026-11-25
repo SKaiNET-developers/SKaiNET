@@ -160,7 +160,23 @@ class ConstantMaterializationPolicyTest {
         assertTrue(funcIdx > utilIdx, "func.func must follow util.global decls")
     }
 
-    private fun buildTensorConstantGraph(): DefaultComputeGraph {
+    @Test
+    fun testNarrowDtypesAreExternalizedInsteadOfFallingBackToInline() {
+        // #1419: FP16 / BF16 / I8 constants used to hit "not yet implemented" in the byte
+        // serializer and silently stay inline under ExternalAlways.
+        for ((dtype, mlir, bytesPerElement) in listOf(Triple("FP16", "f16", 2L), Triple("BF16", "bf16", 2L), Triple("I8", "i8", 1L))) {
+            val module = StableHloConverterFactory.createBasic(ConstantMaterializationPolicy.ExternalAlways())
+                .convert(buildTensorConstantGraph(dtype), "external_$dtype")
+            assertTrue(
+                module.content.contains("util.global.load @weights : tensor<2x2x$mlir>"),
+                "$dtype: util.global.load missing:\n${module.content}"
+            )
+            assertFalse(module.content.contains("fell back to inline"), "$dtype fell back to inline:\n${module.content}")
+            assertEquals(4 * bytesPerElement, module.externalParameters.single().source.sizeInBytes, dtype)
+        }
+    }
+
+    private fun buildTensorConstantGraph(dtype: String = "FP32"): DefaultComputeGraph {
         val graph = DefaultComputeGraph()
         graph.addNode(
             GraphNode(
@@ -178,7 +194,7 @@ class ConstantMaterializationPolicyTest {
                     mapOf("values" to listOf(1.0f, 2.0f, 3.0f, 4.0f))
                 ),
                 inputs = emptyList(),
-                outputs = listOf(TensorSpec("weights", listOf(2, 2), "FP32"))
+                outputs = listOf(TensorSpec("weights", listOf(2, 2), dtype))
             )
         )
         return graph
