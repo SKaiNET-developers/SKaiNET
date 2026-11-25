@@ -156,6 +156,10 @@
         "referencesChecked": {
           "type": "boolean",
           "description": "Whether the reviewer verified that every citation in the partial still resolves and supports its claim."
+        },
+        "lowering": {
+          "type": "string",
+          "description": "How a compiled target may lower the function, from the @Lowering annotation (for example 'composite · decompose'). Absent or empty when the function has no annotation."
         }
       },
       "required": ["name", "signature", "parameters", "returnType", "statusByBackend", "notes"],
