@@ -30,6 +30,11 @@
 
 ### Tests
 
+- **`convTranspose2d` is DARC-validated.** The review checked the doc partial against the CPU kernel, the three
+  citations against the claims they back, and reran the kernel, backward, StableHLO and ONNX tests.
+  `TensorOps.convTranspose2d` carries `@DarcValidated`; the coverage matrix shows ✅. Three new finite-difference tests
+  cover what the backward tests left out: the input gradient with groups 2 and dilation, the weight gradient and the
+  bias gradient (#1378).
 - **GroupNormalization is checked against PyTorch values.** `GroupNormalizationTest` gains five cases that compare
   the layer with `torch.nn.GroupNorm` outputs (1, 2, 3 and 6 groups with gamma / beta, one case without affine) within
   1e-5. The values come from `scripts/reference/groupnorm_reference.py`, which also asserts that PyTorch uses the

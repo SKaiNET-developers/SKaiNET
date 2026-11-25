@@ -34,7 +34,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.conv2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.conv3d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
 | `TensorOps.convTranspose1d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
-| `TensorOps.convTranspose2d` | ⚠ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.convTranspose2d` | ✅ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.maxPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.avgPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.upsample2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
@@ -83,7 +83,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | ✅ | ✅ | — | ✅ | — 
 | `Similarity.cosineDistance` | ✖ | — | ❌ | — | ✅ | ✅ | ✅ 
 
-| *Done* | *1 / 67* | *3 / 67* | *51 / 67* | *60 / 60* | *1 / 67* | *67 / 67* | *1 / 67* 
+| *Done* | *2 / 67* | *3 / 67* | *51 / 67* | *60 / 60* | *1 / 67* | *67 / 67* | *1 / 67* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].

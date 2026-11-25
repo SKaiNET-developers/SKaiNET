@@ -427,7 +427,7 @@ fun convTranspose1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, paddin
 
 == convTranspose2d
 
-[.darc-stub]#⚠ Prose present but not DARC-validated#
+[.darc-validated]#✅ DARC-validated by Michal Harakal on 2026-11-25#
 
 === Signature
 

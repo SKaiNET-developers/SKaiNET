@@ -166,6 +166,7 @@ public interface TensorOps {
      * spatial size per axis is `(in - 1) * stride - 2 * padding + dilation * (k - 1) + outputPadding + 1`.
      */
     @Diff
+    @DarcValidated(by = "Michal Harakal", on = "2026-11-25", commit = "8e5236f6")
     public fun <T : DType, V> convTranspose2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,

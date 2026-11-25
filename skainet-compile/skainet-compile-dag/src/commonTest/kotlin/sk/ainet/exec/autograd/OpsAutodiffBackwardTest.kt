@@ -244,6 +244,44 @@ class OpsAutodiffBackwardTest {
         }
     }
 
+    // DARC review of convTranspose2d (#1378): the two cases above differentiate the input only,
+    // with groups = 1 and dilation = 1. These cover the rest of the adjoint.
+
+    private val ct2dInput = FloatArray(1 * 4 * 2 * 3) { ((it * 7) % 11 - 5) * 0.1f }
+    private val ct2dWeight = FloatArray(4 * 2 * 2 * 2) { ((it * 5) % 13 - 6) * 0.1f }
+    private val ct2dBias = floatArrayOf(0.3f, -0.1f, 0.2f, -0.4f)
+    private val ct2dMix = FloatArray(4 * 5 * 6) { 1f + (it % 7) * 0.1f } // non-uniform upstream
+
+    /** groups = 2, dilation (2, 1), stride (2, 1), padding (1, 0), bias: output [1, 4, 4, 4], weighted by [ct2dMix]. */
+    private fun ct2dGrouped(c: DefaultGraphExecutionContext, x: Tensor<FP32, Float>, w: Tensor<FP32, Float>, b: Tensor<FP32, Float>): Tensor<FP32, Float> {
+        val y = x.ops.convTranspose2d(
+            x, w, b,
+            stride = 2 to 1, padding = 1 to 0, outputPadding = 1 to 0, dilation = 2 to 1, groups = 2,
+        )
+        return y.ops.multiply(y, floatTensor(c, y.shape, ct2dMix.copyOf(y.shape.volume)))
+    }
+
+    @Test
+    fun convTranspose2d_backward_grouped_dilated_input_gradient_matches_finite_diff() {
+        assertGradMatchesFiniteDiff(Shape(1, 4, 2, 3), ct2dInput, tol = 1e-2f) { c, x ->
+            ct2dGrouped(c, x, floatTensor(c, Shape(4, 2, 2, 2), ct2dWeight), floatTensor(c, Shape(4), ct2dBias))
+        }
+    }
+
+    @Test
+    fun convTranspose2d_backward_grouped_dilated_weight_gradient_matches_finite_diff() {
+        assertGradMatchesFiniteDiff(Shape(4, 2, 2, 2), ct2dWeight, tol = 1e-2f) { c, w ->
+            ct2dGrouped(c, floatTensor(c, Shape(1, 4, 2, 3), ct2dInput), w, floatTensor(c, Shape(4), ct2dBias))
+        }
+    }
+
+    @Test
+    fun convTranspose2d_backward_bias_gradient_matches_finite_diff() {
+        assertGradMatchesFiniteDiff(Shape(4), ct2dBias, tol = 1e-2f) { c, b ->
+            ct2dGrouped(c, floatTensor(c, Shape(1, 4, 2, 3), ct2dInput), floatTensor(c, Shape(4, 2, 2, 2), ct2dWeight), b)
+        }
+    }
+
     // ── regression: softmax/logSoftmax backward with a negative dim on rank>=3 (issue #863) ──
 
     @Test
