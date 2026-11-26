@@ -79,6 +79,21 @@ public object DequantOps {
         return dequantMXFP4FromBytes(bytes, nElems)
     }
 
+    public fun dequantIQ2XXS(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ2_XXS")
+        return dequantIQ2XXSFromBytes(bytes, nElems)
+    }
+
+    public fun dequantIQ2XS(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ2_XS")
+        return dequantIQ2XSFromBytes(bytes, nElems)
+    }
+
+    public fun dequantIQ2S(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ2_S")
+        return dequantIQ2SFromBytes(bytes, nElems)
+    }
+
     public fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q2_K")
         return dequantQ2KFromBytes(bytes, nElems)
@@ -222,6 +237,9 @@ public object DequantOps {
             GGMLQuantizationType.TQ1_0 -> dequantTQ1_0FromBytes(bytes, nElems)
             GGMLQuantizationType.TQ2_0 -> dequantTQ2_0FromBytes(bytes, nElems)
             GGMLQuantizationType.MXFP4 -> dequantMXFP4FromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ2_XXS -> dequantIQ2XXSFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ2_XS -> dequantIQ2XSFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ2_S -> dequantIQ2SFromBytes(bytes, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -250,6 +268,9 @@ public object DequantOps {
             GGMLQuantizationType.TQ1_0 -> dequantTQ1_0(raw, nElems)
             GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, nElems)
             GGMLQuantizationType.MXFP4 -> dequantMXFP4(raw, nElems)
+            GGMLQuantizationType.IQ2_XXS -> dequantIQ2XXS(raw, nElems)
+            GGMLQuantizationType.IQ2_XS -> dequantIQ2XS(raw, nElems)
+            GGMLQuantizationType.IQ2_S -> dequantIQ2S(raw, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -279,6 +300,9 @@ public object DequantOps {
         GGMLQuantizationType.TQ1_0 -> Pair(54, 256)
         GGMLQuantizationType.TQ2_0 -> Pair(66, 256)
         GGMLQuantizationType.MXFP4 -> Pair(17, 32)
+        GGMLQuantizationType.IQ2_XXS -> Pair(2 + QK_K / 4, QK_K)
+        GGMLQuantizationType.IQ2_XS -> Pair(2 + QK_K / 4 + QK_K / 32, QK_K)
+        GGMLQuantizationType.IQ2_S -> Pair(2 + QK_K / 4 + QK_K / 16, QK_K)
         else -> error("Block info for $type not available")
     }
 
@@ -500,6 +524,129 @@ public object DequantOps {
             }
             offset += blockSize / 2
             outOff += blockSize
+        }
+        return out
+    }
+
+    /**
+     * Writes one IQ sub-group of 8 values: `out[outOff + j] = db * grid[gridOff + j]`, negated
+     * where bit `j` of [signs] is set (`kmask_iq2xs[j]` is `1 shl j`). The grid bytes are
+     * unsigned. The product is formed first and the sign applied afterwards, as llama.cpp does.
+     */
+    private fun writeIqSubGroup(out: FloatArray, outOff: Int, db: Float, grid: ByteArray, gridOff: Int, signs: Int) {
+        for (j in 0 until 8) {
+            val v = db * (grid[gridOff + j].toInt() and 0xFF)
+            out[outOff + j] = if ((signs ushr j) and 1 != 0) -v else v
+        }
+    }
+
+    /**
+     * `IQ2_XXS` (#1411): 66 bytes for 256 elements. An fp16 scale `d`, then 8 bytes per group
+     * of 32, read as two little-endian `uint32`: the four bytes of the first are the
+     * `iq2xxs_grid` indices of the four sub-groups; the second holds four 7-bit indices into
+     * `ksigns_iq2xs` and, in its top 4 bits, the group scale. Bit-identical to llama.cpp's
+     * `dequantize_row_iq2_xxs` (see the reference page *GGUF block layouts: IQ and MXFP4*).
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ2XXSFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + QK_K / 4
+        val grid = GgufIqTables.IQ2XXS_GRID
+        val ksigns = GgufIqTables.KSIGNS_IQ2XS
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val qs = offset + 2
+            for (ib in 0 until QK_K / 32) {
+                val g = qs + 8 * ib
+                val a1 = (bytes[g + 4].toInt() and 0xFF) or
+                    (bytes[g + 5].toInt() and 0xFF shl 8) or
+                    (bytes[g + 6].toInt() and 0xFF shl 16) or
+                    (bytes[g + 7].toInt() and 0xFF shl 24)
+                val db = d * (0.5f + (a1 ushr 28)) * 0.25f
+                for (l in 0 until 4) {
+                    val index = bytes[g + l].toInt() and 0xFF
+                    val signs = ksigns[(a1 ushr (7 * l)) and 127].toInt() and 0xFF
+                    writeIqSubGroup(out, outOff, db, grid, 8 * index, signs)
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
+        }
+        return out
+    }
+
+    /**
+     * `IQ2_XS` (#1411): 74 bytes for 256 elements. An fp16 scale `d`, 32 little-endian
+     * `uint16` (one per sub-group: 9 bits of `iq2xs_grid` index, 7 bits of `ksigns_iq2xs`
+     * index), then one scale byte per group of 32 whose low nibble serves sub-groups 0 and 1
+     * and whose high nibble serves 2 and 3. Bit-identical to llama.cpp's `dequantize_row_iq2_xs`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ2XSFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + QK_K / 4 + QK_K / 32
+        val grid = GgufIqTables.IQ2XS_GRID
+        val ksigns = GgufIqTables.KSIGNS_IQ2XS
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val qs = offset + 2
+            val scales = qs + QK_K / 4
+            for (ib in 0 until QK_K / 32) {
+                val scale = bytes[scales + ib].toInt() and 0xFF
+                val dbLo = d * (0.5f + (scale and 0x0F)) * 0.25f
+                val dbHi = d * (0.5f + (scale ushr 4)) * 0.25f
+                for (l in 0 until 4) {
+                    val p = qs + 2 * (4 * ib + l)
+                    val q = (bytes[p].toInt() and 0xFF) or (bytes[p + 1].toInt() and 0xFF shl 8)
+                    val signs = ksigns[q ushr 9].toInt() and 0xFF
+                    writeIqSubGroup(out, outOff, if (l < 2) dbLo else dbHi, grid, 8 * (q and 511), signs)
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
+        }
+        return out
+    }
+
+    /**
+     * `IQ2_S` (#1411): 82 bytes for 256 elements. An fp16 scale `d`, 32 bytes with the low 8
+     * bits of the `iq2s_grid` index of each sub-group, 32 sign bytes (used directly, without
+     * `ksigns_iq2xs`), 8 bytes `qh` with the 2 high index bits of each sub-group, and one scale
+     * byte per group of 32 as in `IQ2_XS`. Bit-identical to llama.cpp's `dequantize_row_iq2_s`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ2SFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + QK_K / 4 + QK_K / 16
+        val grid = GgufIqTables.IQ2S_GRID
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val qs = offset + 2
+            val signBytes = qs + QK_K / 8
+            val qh = qs + QK_K / 4
+            val scales = qh + QK_K / 32
+            for (ib in 0 until QK_K / 32) {
+                val scale = bytes[scales + ib].toInt() and 0xFF
+                val dbLo = d * (0.5f + (scale and 0x0F)) * 0.25f
+                val dbHi = d * (0.5f + (scale ushr 4)) * 0.25f
+                val high = bytes[qh + ib].toInt() and 0xFF
+                for (l in 0 until 4) {
+                    val index = (bytes[qs + 4 * ib + l].toInt() and 0xFF) or (((high ushr (2 * l)) and 3) shl 8)
+                    val signs = bytes[signBytes + 4 * ib + l].toInt() and 0xFF
+                    writeIqSubGroup(out, outOff, if (l < 2) dbLo else dbHi, grid, 8 * index, signs)
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
         }
         return out
     }
