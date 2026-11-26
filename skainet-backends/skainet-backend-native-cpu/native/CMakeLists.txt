@@ -83,6 +83,7 @@ foreach(tgt IN LISTS SKAINET_KERNEL_TARGETS)
         target_compile_options(${tgt} PRIVATE
             -fvisibility=hidden
             -Wall -Wextra
+            -Werror=return-type
             -O3
             -ffast-math
             -funroll-loops

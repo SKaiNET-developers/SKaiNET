@@ -55,6 +55,9 @@
   convTranspose1d". It also validates rank, channel counts, stride, dilation, padding and output padding like
   `convTranspose2d`, accepts a bias of shape `[1, C_out, 1]`, and no longer accepts a weight whose `C_in` differs from
   the input (#1421).
+- **The native row-pool worker returns a value.** `skainet_row_pool_worker` ended without a `return`, which GCC
+  reports as `-Wreturn-type` in `skainet_row_threads.c`. It now ends with `return NULL;`, and the native CPU library
+  is built with `-Werror=return-type` on GCC and Clang so the same mistake fails the build (#1358).
 
 ### Tests
 
