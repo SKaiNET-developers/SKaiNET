@@ -146,7 +146,9 @@ static void* skainet_row_pool_worker(void* arg) {
             pthread_mutex_unlock(&skainet_g_row_pool.m);
         }
     }
-    /* unreachable */
+    /* Unreachable: the loop above has no exit. The return keeps the function
+     * well-formed for -Wreturn-type and defined if an exit path is ever added. */
+    return NULL;
 }
 
 static void skainet_row_pool_init(void) {
