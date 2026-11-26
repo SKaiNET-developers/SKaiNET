@@ -18,9 +18,8 @@ import kotlin.test.fail
  */
 class GgufIqDequantReferenceTest {
 
-    /** Not implemented yet: #1410 (MXFP4), #1411 (IQ2), #1412 (IQ3), #1413 (IQ1). */
+    /** Not implemented yet: #1411 (IQ2), #1412 (IQ3), #1413 (IQ1). */
     private val PENDING: Set<GGMLQuantizationType> = setOf(
-        GGMLQuantizationType.MXFP4,
         GGMLQuantizationType.IQ2_XXS, GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ2_S,
         GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ3_S,
         GGMLQuantizationType.IQ1_S, GGMLQuantizationType.IQ1_M,
@@ -40,9 +39,9 @@ class GgufIqDequantReferenceTest {
     }
 
     @Test
-    fun reference_covers_the_eight_missing_types_and_the_two_iq4_types() {
+    fun reference_covers_the_eight_types_of_1408_and_the_two_iq4_types() {
         assertEquals(
-            PENDING + setOf(GGMLQuantizationType.IQ4_NL, GGMLQuantizationType.IQ4_XS),
+            PENDING + setOf(GGMLQuantizationType.MXFP4, GGMLQuantizationType.IQ4_NL, GGMLQuantizationType.IQ4_XS),
             GgufIqDequantReference.ALL.map { it.type }.toSet(),
         )
     }
@@ -74,6 +73,16 @@ class GgufIqDequantReferenceTest {
                 DequantOps.dequantFromBytes(case.bytes, ref.type, case.expectedBits.size)
             }
             assertTrue(e.message!!.contains("not implemented"), "${ref.type}: ${e.message}")
+        }
+    }
+
+    @Test
+    fun list_entry_point_and_block_info_agree_with_the_byte_path() {
+        for (ref in GgufIqDequantReference.ALL.filter { it.type !in PENDING }) {
+            assertEquals(ref.blockBytes to ref.blockElements, DequantOps.blockInfoFor(ref.type), "blockInfoFor(${ref.type})")
+            val case = ref.cases.first()
+            val fromList = DequantOps.dequantFromList(case.bytes.toList(), ref.type, case.expectedBits.size)
+            assertEquals(case.expectedBits.toList(), fromList.map { it.toRawBits() }, "${ref.type}: dequantFromList")
         }
     }
 
