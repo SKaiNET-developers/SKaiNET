@@ -18,9 +18,8 @@ import kotlin.test.fail
  */
 class GgufIqDequantReferenceTest {
 
-    /** Not implemented yet: #1411 (IQ2), #1412 (IQ3), #1413 (IQ1). */
+    /** Not implemented yet: #1412 (IQ3), #1413 (IQ1). */
     private val PENDING: Set<GGMLQuantizationType> = setOf(
-        GGMLQuantizationType.IQ2_XXS, GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ2_S,
         GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ3_S,
         GGMLQuantizationType.IQ1_S, GGMLQuantizationType.IQ1_M,
     )
@@ -41,7 +40,10 @@ class GgufIqDequantReferenceTest {
     @Test
     fun reference_covers_the_eight_types_of_1408_and_the_two_iq4_types() {
         assertEquals(
-            PENDING + setOf(GGMLQuantizationType.MXFP4, GGMLQuantizationType.IQ4_NL, GGMLQuantizationType.IQ4_XS),
+            PENDING + setOf(
+                GGMLQuantizationType.MXFP4, GGMLQuantizationType.IQ4_NL, GGMLQuantizationType.IQ4_XS,
+                GGMLQuantizationType.IQ2_XXS, GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ2_S,
+            ),
             GgufIqDequantReference.ALL.map { it.type }.toSet(),
         )
     }
