@@ -28,6 +28,13 @@
   example, references) and a *Precision, recall and F1* section in the metrics how-to. The examples are compiled and
   run by `skainet-docs-samples` (`ClassificationMetrics.kt`) (#1234).
 
+### Added
+
+- **FP16, BF16 and I8 constants can be externalized in the StableHLO export.** `ConstantByteSerializer` wrote only
+  FP32, FP64, I32 and I64; a constant of another dtype stayed inline under `ConstantMaterializationPolicy.ExternalAlways`
+  with a "fell back to inline" comment. FP16 and BF16 are now written as 2 little-endian bytes (narrowed with
+  `Fp16Codec` / `Bf16Codec`) and I8 as 1 byte (#1419).
+
 ### Fixed
 
 - **Causal attention with more queries than keys no longer throws.** `scaledDotProductAttention(causal = true)` with
