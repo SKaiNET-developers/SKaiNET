@@ -34,6 +34,7 @@
 ** xref:reference/ops-status-matrix.adoc[Operator coverage matrix]
 ** xref:reference/kernel-support-matrix.adoc[Kernel × platform support]
 ** xref:reference/benchmark-baseline.adoc[Benchmark baseline]
+** xref:reference/gguf-iq-block-layouts.adoc[GGUF block layouts: IQ and MXFP4]
 ** xref:reference/api.adoc[API reference (Dokka)]
 * Explanation
 ** xref:explanation/skainet-for-ai.adoc[SKaiNET for AI/ML]

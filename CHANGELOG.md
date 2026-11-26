@@ -4,6 +4,12 @@
 
 ### Documentation
 
+- **Block layouts and llama.cpp reference data for the GGUF IQ1, IQ2, IQ3 and MXFP4 types.** New reference page
+  *GGUF block layouts: IQ and MXFP4* gives the byte layout and decoding rule of the eight types `DequantOps` does not
+  decode yet. `scripts/reference/gguf_iq_reference` links llama.cpp's own `ggml-quants.c` and generates the grid tables
+  (`GgufIqTables`, not used yet) and a fixture of raw blocks with the floats llama.cpp decodes from them.
+  `GgufIqDequantReferenceTest` holds every implemented type to it bit for bit; the existing `IQ4_NL` and `IQ4_XS`
+  decoders pass (#1409).
 - **`groupNorm` is documented.** New how-to page *Choose a normalization layer*: what `batchNorm`, `groupNorm` and
   `layerNorm` average over, when to prefer GroupNorm (small batches; Wu & He 2018) and its `torch.nn.GroupNorm`
   semantics. The example is compiled and run by `skainet-docs-samples` (`NormalizationLayers.kt`) (#1382).
