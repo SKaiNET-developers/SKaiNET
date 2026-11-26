@@ -36,6 +36,9 @@
 
 ### Added
 
+- **GGUF tensors of type MXFP4 can be loaded.** `DequantOps` decodes the MXFP4 block (17 bytes for 32 elements: a
+  shared exponent byte and 4-bit codes) to FP32, bit-identical to llama.cpp on the reference blocks of #1409,
+  including the subnormal and overflowing exponents (#1410).
 - **FP16, BF16 and I8 constants can be externalized in the StableHLO export.** `ConstantByteSerializer` wrote only
   FP32, FP64, I32 and I64; a constant of another dtype stayed inline under `ConstantMaterializationPolicy.ExternalAlways`
   with a "fell back to inline" comment. FP16 and BF16 are now written as 2 little-endian bytes (narrowed with

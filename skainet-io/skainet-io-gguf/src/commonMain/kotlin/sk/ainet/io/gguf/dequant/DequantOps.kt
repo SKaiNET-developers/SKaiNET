@@ -74,6 +74,11 @@ public object DequantOps {
         return dequantIQ4XSFromBytes(bytes, nElems)
     }
 
+    public fun dequantMXFP4(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "MXFP4")
+        return dequantMXFP4FromBytes(bytes, nElems)
+    }
+
     public fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q2_K")
         return dequantQ2KFromBytes(bytes, nElems)
@@ -216,6 +221,7 @@ public object DequantOps {
             GGMLQuantizationType.IQ4_XS -> dequantIQ4XSFromBytes(bytes, nElems)
             GGMLQuantizationType.TQ1_0 -> dequantTQ1_0FromBytes(bytes, nElems)
             GGMLQuantizationType.TQ2_0 -> dequantTQ2_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.MXFP4 -> dequantMXFP4FromBytes(bytes, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -243,6 +249,7 @@ public object DequantOps {
             GGMLQuantizationType.IQ4_XS -> dequantIQ4XS(raw, nElems)
             GGMLQuantizationType.TQ1_0 -> dequantTQ1_0(raw, nElems)
             GGMLQuantizationType.TQ2_0 -> dequantTQ2_0(raw, nElems)
+            GGMLQuantizationType.MXFP4 -> dequantMXFP4(raw, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -271,6 +278,7 @@ public object DequantOps {
         GGMLQuantizationType.Q8_K -> Pair(292, QK_K)
         GGMLQuantizationType.TQ1_0 -> Pair(54, 256)
         GGMLQuantizationType.TQ2_0 -> Pair(66, 256)
+        GGMLQuantizationType.MXFP4 -> Pair(17, 32)
         else -> error("Block info for $type not available")
     }
 
@@ -457,6 +465,38 @@ public object DequantOps {
                 val hi = code ushr 4
                 out[outOff + j] = d * iq4nlValues[lo]
                 out[outOff + blockSize / 2 + j] = d * iq4nlValues[hi]
+            }
+            offset += blockSize / 2
+            outOff += blockSize
+        }
+        return out
+    }
+
+    /**
+     * `MXFP4` (#1410): 17 bytes for 32 elements. Byte 0 is the shared E8M0 exponent `e`, the
+     * other 16 bytes hold two 4-bit codes each; the low nibbles fill the first half of the block
+     * and the high nibbles the second half. `kvalues_mxfp4` holds twice the E2M1 value, so the
+     * scale is half of `2^(e - 127)`: the float with bits `(e - 1) shl 23`, and the two
+     * subnormals `2^-128` / `2^-127` for `e` = 0 / 1. Bit-identical to llama.cpp's
+     * `dequantize_row_mxfp4` (see the reference page *GGUF block layouts: IQ and MXFP4*).
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantMXFP4FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val blockSize = 32
+        val bytesPerBlock = 17
+        val values = GgufIqTables.KVALUES_MXFP4
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * blockSize)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val e = bytes[offset].toInt() and 0xFF
+            val d = Float.fromBits(if (e < 2) 0x00200000 shl e else (e - 1) shl 23)
+            offset += 1
+            for (j in 0 until blockSize / 2) {
+                val code = bytes[offset + j].toInt() and 0xFF
+                out[outOff + j] = values[code and 0x0F] * d
+                out[outOff + blockSize / 2 + j] = values[code ushr 4] * d
             }
             offset += blockSize / 2
             outOff += blockSize
