@@ -109,3 +109,21 @@ kotlin {
         }
     }
 }
+
+// Regenerates the llama.cpp dequantization reference (GgufIqTables.kt and the two commonTest
+// fixtures) from a llama.cpp checkout. The dequant counterpart of skainet-test-groundtruth's
+// generateGroundTruth; see that module's TESTING.md. Usage:
+//   ./gradlew :skainet-io:skainet-io-gguf:generateDequantReference -PllamaCppDir=/path/to/llama.cpp
+tasks.register<Exec>("generateDequantReference") {
+    group = "verification"
+    description = "Regenerate the llama.cpp dequant reference fixtures (needs -PllamaCppDir and a C compiler)"
+    val llamaCppDir = providers.gradleProperty("llamaCppDir")
+    doFirst {
+        require(llamaCppDir.isPresent) { "Pass the llama.cpp checkout: -PllamaCppDir=/path/to/llama.cpp" }
+    }
+    workingDir = rootProject.projectDir
+    commandLine(
+        "python3", "scripts/reference/gguf_iq_reference/gguf_iq_reference.py",
+        "--llama-cpp", llamaCppDir.getOrElse(""), "--crosscheck",
+    )
+}

@@ -132,7 +132,7 @@ val GGML_QUANT_SIZES: Map<GGMLQuantizationType, Pair<Int, Int>> = mapOf(
     GGMLQuantizationType.Q5_0 to (32 to 2 + 4 + 16),
     GGMLQuantizationType.Q5_1 to (32 to 2 + 2 + 4 + 16),
     GGMLQuantizationType.Q8_0 to (32 to 2 + 32),
-    GGMLQuantizationType.Q8_1 to (32 to 4 + 4 + 32),
+    GGMLQuantizationType.Q8_1 to (32 to 2 + 2 + 32),
     GGMLQuantizationType.Q2_K to (256 to 2 + 2 + QK_K / 16 + QK_K / 4),
     GGMLQuantizationType.Q3_K to (256 to 2 + QK_K / 4 + QK_K / 8 + 12),
     GGMLQuantizationType.Q4_K to (256 to 2 + 2 + QK_K / 2 + 12),
