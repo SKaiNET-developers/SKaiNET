@@ -16,11 +16,19 @@ const val GGUF_VERSION = 3
 const val GGUF_DEFAULT_ALIGNMENT = 32
 
 /**
- * GGML quantization types.
+ * GGML quantization types, in sync with ggml v1.0.0 (tag `v1.0.0`, commit `417a024`,
+ * `GGML_TYPE_COUNT = 44`).
  *
  * When new quantization types are added to llama.cpp, they may not be immediately
  * supported here. Use [fromValueOrUnknown] to gracefully handle unknown types
  * (they'll be treated as raw bytes).
+ *
+ * Ids absent from this enum because upstream removed them (ggml never emits them,
+ * and [fromValue] must never resurrect them):
+ * - 4-5: `Q4_2`/`Q4_3`
+ * - 31-33: `Q4_0_4_4`/`Q4_0_4_8`/`Q4_0_8_8` (Q4_0 repack variants)
+ * - 37-38: `IQ4_NL_4_8`/`IQ4_NL_8_8` (IQ4_NL repack variants)
+ * - 36: `IQ4_NL_4_4` upstream — reused here as BitNet's [I2_S]; see that entry.
  */
 enum class GGMLQuantizationType(val value: Int) {
     F32(0),
@@ -56,8 +64,10 @@ enum class GGMLQuantizationType(val value: Int) {
     TQ2_0(35),
 
     /**
-     * BitNet.cpp's ternary type in the slot llama.cpp vacated (types 31-33 and
-     * 37-38 remain removed there). Not block-regular: the payload is 2-bit
+     * BitNet.cpp's ternary type in the slot llama.cpp vacated (upstream's removed
+     * `IQ4_NL_4_4`; types 31-33 and 37-38 remain removed there, and a ggml-1.0
+     * writer can never emit 36, so the interpretation is unambiguous per file).
+     * Not block-regular: the payload is 2-bit
      * codes, 4 per byte, and the per-*tensor* FP32 scale sits in a trailer
      * after the whole payload (BitNet.cpp) or in a companion `<name>_scale`
      * tensor (NeoGPU's converter) — and the payload's bit order additionally
@@ -67,6 +77,22 @@ enum class GGMLQuantizationType(val value: Int) {
      */
     I2_S(36),
     MXFP4(39),
+
+    /**
+     * NVFP4 microscaling format (ggml): 64 elements per 36-byte block — four
+     * 16-element sub-blocks, each with an unsigned E4M3 scale byte (`d[4]`),
+     * followed by 32 bytes of E2M1 nibbles over the shared MXFP4 value table.
+     */
+    NVFP4(40),
+
+    /** 1-bit sign quantization (ggml): fp16 scale + 128 sign bits per 18-byte block. */
+    Q1_0(41),
+
+    /** 2-bit quantization (ggml): fp16 scale + 64 2-bit codes (−1, 0, +1, +2) per 18-byte block. */
+    Q2_0(42),
+
+    /** Dense 8-bit float, E4M3: 1 byte per element, no block structure. */
+    F8_E4M3(43),
 
     /**
      * Placeholder for unknown/unsupported quantization types.
@@ -136,7 +162,14 @@ val GGML_QUANT_SIZES: Map<GGMLQuantizationType, Pair<Int, Int>> = mapOf(
     // by the loader. See GGMLQuantizationType.I2_S.
     GGMLQuantizationType.I2_S to (4 to 1),
     // MXFP4: Microscaling FP4 format - 32 elements per block, 17 bytes (16 for data + 1 for scale)
-    GGMLQuantizationType.MXFP4 to (32 to 17)
+    GGMLQuantizationType.MXFP4 to (32 to 17),
+    // NVFP4: 4 sub-blocks of 16 elements; 4 UE4M3 scale bytes + 32 nibble bytes
+    GGMLQuantizationType.NVFP4 to (64 to 4 + 32),
+    // Q1_0: fp16 scale + 1 sign bit per element
+    GGMLQuantizationType.Q1_0 to (128 to 2 + 128 / 8),
+    // Q2_0: fp16 scale + 2 bits per element
+    GGMLQuantizationType.Q2_0 to (64 to 2 + 64 / 4),
+    GGMLQuantizationType.F8_E4M3 to (1 to 1)
 )
 
 enum class GGUFValueType(val value: Int) {
