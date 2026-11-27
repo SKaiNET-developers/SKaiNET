@@ -104,6 +104,11 @@ public object DequantOps {
         return dequantIQ3SFromBytes(bytes, nElems)
     }
 
+    public fun dequantNVFP4(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "NVFP4")
+        return dequantNVFP4FromBytes(bytes, nElems)
+    }
+
     public fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q2_K")
         return dequantQ2KFromBytes(bytes, nElems)
@@ -252,6 +257,7 @@ public object DequantOps {
             GGMLQuantizationType.IQ2_S -> dequantIQ2SFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXSFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ3_S -> dequantIQ3SFromBytes(bytes, nElems)
+            GGMLQuantizationType.NVFP4 -> dequantNVFP4FromBytes(bytes, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -285,6 +291,7 @@ public object DequantOps {
             GGMLQuantizationType.IQ2_S -> dequantIQ2S(raw, nElems)
             GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXS(raw, nElems)
             GGMLQuantizationType.IQ3_S -> dequantIQ3S(raw, nElems)
+            GGMLQuantizationType.NVFP4 -> dequantNVFP4(raw, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -319,6 +326,7 @@ public object DequantOps {
         GGMLQuantizationType.IQ2_S -> Pair(2 + QK_K / 4 + QK_K / 16, QK_K)
         GGMLQuantizationType.IQ3_XXS -> Pair(2 + 3 * QK_K / 8, QK_K)
         GGMLQuantizationType.IQ3_S -> Pair(2 + 13 * QK_K / 32 + QK_K / 64, QK_K)
+        GGMLQuantizationType.NVFP4 -> Pair(4 + 32, 64)
         else -> error("Block info for $type not available")
     }
 
@@ -543,6 +551,55 @@ public object DequantOps {
             }
             offset += blockSize / 2
             outOff += blockSize
+        }
+        return out
+    }
+
+    /**
+     * `UE4M3` → FP32: ggml's unsigned 8-bit scale format for NVFP4 (4 exponent bits, bias 7,
+     * 3 mantissa bits; no sign — bit 7 is ignored). `0x00` and `0x7F` (the E4M3 NaN pattern)
+     * decode to 0. The result is halved because `kvalues_mxfp4` holds twice the E2M1 value.
+     * Mirrors `ggml_ue4m3_to_fp32`; every step is exact in FP32.
+     */
+    private fun ue4m3ToFloat(x: Int): Float {
+        if (x == 0 || x == 0x7F) return 0.0f
+        val exp = (x ushr 3) and 0xF
+        val man = x and 0x7
+        val raw = if (exp == 0) {
+            man.toFloat() * Float.fromBits((127 - 9) shl 23) // man * 2^-9
+        } else {
+            (1.0f + man.toFloat() / 8.0f) * Float.fromBits((127 + exp - 7) shl 23) // * 2^(exp-7)
+        }
+        return raw * 0.5f
+    }
+
+    /**
+     * `NVFP4`: 36 bytes for 64 elements — four 16-element sub-blocks, each with one unsigned
+     * E4M3 scale byte (`d[4]`), then 32 bytes of E2M1 nibbles over [GgufIqTables.KVALUES_MXFP4]
+     * (low nibbles fill a sub-block's first half, high nibbles the second). Bit-identical to
+     * llama.cpp's `dequantize_row_nvfp4`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantNVFP4FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 4 + 32
+        val values = GgufIqTables.KVALUES_MXFP4
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * 64)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            for (s in 0 until 4) {
+                val d = ue4m3ToFloat(bytes[offset + s].toInt() and 0xFF)
+                val qs = offset + 4 + s * 8
+                val yb = outOff + s * 16
+                for (j in 0 until 8) {
+                    val code = bytes[qs + j].toInt() and 0xFF
+                    out[yb + j] = values[code and 0x0F] * d
+                    out[yb + 8 + j] = values[code ushr 4] * d
+                }
+            }
+            offset += bytesPerBlock
+            outOff += 64
         }
         return out
     }

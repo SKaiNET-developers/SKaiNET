@@ -36,6 +36,10 @@
 
 ### Added
 
+- **GGUF tensors of type NVFP4 can be loaded.** `DequantOps` decodes the ggml-1.0 microscaling block (36 bytes
+  for 64 elements: four 16-element sub-blocks, each with an unsigned E4M3 scale byte over the shared MXFP4 value
+  table) to FP32, bit-identical to llama.cpp's `dequantize_row_nvfp4` on the reference blocks, and the streaming
+  loader accepts the type (widened to FP32, like the other types without packed storage) (#1588).
 - **GGUF files quantized as Q4_1, Q2_K, Q3_K, IQ4_NL, IQ4_XS, MXFP4, IQ2_XXS, IQ2_XS or IQ2_S now load.** These
   types had bit-exact decoders but were still rejected by `StreamingGgufParametersLoader`'s fail-fast pre-scan.
   They have no packed `TensorData` yet, so they load widened to dense FP32 — right values, no memory saving (up

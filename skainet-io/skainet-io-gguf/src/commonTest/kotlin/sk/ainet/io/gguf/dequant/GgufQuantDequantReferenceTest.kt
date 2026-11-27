@@ -22,10 +22,9 @@ import kotlin.test.fail
  */
 class GgufQuantDequantReferenceTest {
 
-    /** Not implemented yet: the ggml-1.0 types. */
+    /** Not implemented yet: the remaining ggml-1.0 types. */
     private val PENDING: Set<GGMLQuantizationType> = setOf(
-        GGMLQuantizationType.NVFP4, GGMLQuantizationType.Q1_0,
-        GGMLQuantizationType.Q2_0, GGMLQuantizationType.F8_E4M3,
+        GGMLQuantizationType.Q1_0, GGMLQuantizationType.Q2_0, GGMLQuantizationType.F8_E4M3,
     )
 
     private fun hex(bits: Int): String = "0x" + bits.toUInt().toString(16).padStart(8, '0')
@@ -50,6 +49,7 @@ class GgufQuantDequantReferenceTest {
                 GGMLQuantizationType.Q2_K, GGMLQuantizationType.Q3_K, GGMLQuantizationType.Q4_K,
                 GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_K,
                 GGMLQuantizationType.TQ1_0, GGMLQuantizationType.TQ2_0,
+                GGMLQuantizationType.NVFP4,
             ),
             GgufQuantDequantReference.ALL.map { it.type }.toSet(),
         )
