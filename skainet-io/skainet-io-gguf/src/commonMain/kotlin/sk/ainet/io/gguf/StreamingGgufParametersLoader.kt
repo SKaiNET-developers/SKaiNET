@@ -452,7 +452,10 @@ public class StreamingGgufParametersLoader(
                     GGMLQuantizationType.IQ2_XXS,
                     GGMLQuantizationType.IQ2_XS,
                     GGMLQuantizationType.IQ2_S,
-                    GGMLQuantizationType.NVFP4 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes, tensorForm)
+                    GGMLQuantizationType.NVFP4,
+                    GGMLQuantizationType.Q1_0,
+                    GGMLQuantizationType.Q2_0,
+                    GGMLQuantizationType.F8_E4M3 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes, tensorForm)
 
                     GGMLQuantizationType.I2_S -> i2sTensor(
                         ctx, dtype, shape, tensorInfo, rawBytes, tensorForm,
@@ -780,6 +783,9 @@ public class StreamingGgufParametersLoader(
             GGMLQuantizationType.IQ2_XS,
             GGMLQuantizationType.IQ2_S,
             GGMLQuantizationType.NVFP4,
+            GGMLQuantizationType.Q1_0,
+            GGMLQuantizationType.Q2_0,
+            GGMLQuantizationType.F8_E4M3,
             // Deliberately NOT here although DequantOps can decode them: Q8_1 and Q8_K are
             // ggml dot-product intermediates that are never written into GGUF files, so a
             // file claiming them is malformed and keeps failing fast.
