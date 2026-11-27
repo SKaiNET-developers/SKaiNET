@@ -36,6 +36,12 @@
 
 ### Added
 
+- **GGUF files quantized as Q4_1, Q2_K, Q3_K, IQ4_NL, IQ4_XS, MXFP4, IQ2_XXS, IQ2_XS or IQ2_S now load.** These
+  types had bit-exact decoders but were still rejected by `StreamingGgufParametersLoader`'s fail-fast pre-scan.
+  They have no packed `TensorData` yet, so they load widened to dense FP32 — right values, no memory saving (up
+  to ~16× for the 2-bit formats) — and each such tensor emits a `widen-no-packed-storage` trace event, like the
+  ternary types before them (#1033). Q8_1 and Q8_K stay rejected on purpose: ggml never writes these dot-product
+  intermediates into GGUF files, so a file claiming them is malformed (#1588).
 - **The GGUF type enum is in sync with ggml v1.0.0.** `GGMLQuantizationType` gains the four ids ggml defines past
   MXFP4 — `NVFP4` (40, four 16-element sub-blocks with UE4M3 scales), `Q1_0` (41, fp16 scale + sign bits), `Q2_0`
   (42, fp16 scale + 2-bit codes) and the dense 8-bit float `F8_E4M3` (43) — with their block sizes in

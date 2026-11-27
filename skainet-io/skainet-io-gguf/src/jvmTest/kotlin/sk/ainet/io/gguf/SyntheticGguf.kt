@@ -130,8 +130,14 @@ object SyntheticGguf {
                 // d @0
                 GGMLQuantizationType.Q4_0,
                 GGMLQuantizationType.Q5_0,
-                GGMLQuantizationType.Q8_0 -> putHalf(base, 0x3400)
+                GGMLQuantizationType.Q8_0,
+                GGMLQuantizationType.IQ4_NL,
+                GGMLQuantizationType.IQ4_XS,
+                GGMLQuantizationType.IQ2_XXS,
+                GGMLQuantizationType.IQ2_XS,
+                GGMLQuantizationType.IQ2_S -> putHalf(base, 0x3400)
                 // d @0, m/dmin @2
+                GGMLQuantizationType.Q4_1,
                 GGMLQuantizationType.Q5_1,
                 GGMLQuantizationType.Q4_K,
                 GGMLQuantizationType.Q5_K -> {
@@ -140,6 +146,15 @@ object SyntheticGguf {
                 }
                 // Q6_K: d is the *last* two bytes of the 210-byte block
                 GGMLQuantizationType.Q6_K -> putHalf(base + 208, 0x3400)
+                // Q2_K: scales[16], qs[64], then d @80, dmin @82
+                GGMLQuantizationType.Q2_K -> {
+                    putHalf(base + 80, 0x3400)
+                    putHalf(base + 82, 0x2C00)
+                }
+                // Q3_K: hmask[32], qs[64], scales[12], then d @108
+                GGMLQuantizationType.Q3_K -> putHalf(base + 108, 0x3400)
+                // MXFP4: byte 0 is the shared E8M0 exponent; keep it moderate so no value overflows
+                GGMLQuantizationType.MXFP4 -> bytes[base] = (112 + rnd.nextInt(24)).toByte()
                 else -> error("patchScales: unhandled $type")
             }
         }

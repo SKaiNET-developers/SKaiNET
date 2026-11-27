@@ -170,11 +170,13 @@ class StreamingGgufParametersLoaderTest {
     }
 
     @Test
-    fun `load Q4_1 tensor fails fast before any tensor is delivered`() {
+    fun `load Q8_K tensor fails fast before any tensor is delivered`() {
+        // Q8_K is a ggml dot-product intermediate, never written into GGUF files; it stays
+        // outside the gate although DequantOps can decode it.
         val file = createGgufFile(
             listOf(
                 f32Tensor(),
-                quantTensor("blk_0_ffn_down_weight", GGMLQuantizationType.Q4_1),
+                quantTensor("blk_0_ffn_down_weight", GGMLQuantizationType.Q8_K),
             )
         )
         try {
@@ -193,9 +195,44 @@ class StreamingGgufParametersLoaderTest {
             assertTrue(loaded.isEmpty(), "no tensor may be delivered before the fail-fast, got $loaded")
             val msg = e.message ?: ""
             assertTrue("blk_0_ffn_down_weight" in msg, "message should name the tensor: $msg")
-            assertTrue("Q4_1" in msg, "message should name the offending type: $msg")
+            assertTrue("Q8_K" in msg, "message should name the offending type: $msg")
             assertTrue("Supported types" in msg, "message should list the supported set: $msg")
             assertTrue("Q8_0" in msg, "message should include a supported alternative: $msg")
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `types without packed storage load widened to dense FP32`() {
+        // The ggml-1.0 gate widening: Q4_1, the 2/3-bit K-quants, IQ4/IQ2 and MXFP4 have
+        // bit-exact decoders but no packed TensorData, so they arrive as dense FP32.
+        val types = listOf(
+            GGMLQuantizationType.Q4_1,
+            GGMLQuantizationType.Q2_K,
+            GGMLQuantizationType.Q3_K,
+            GGMLQuantizationType.IQ4_NL,
+            GGMLQuantizationType.IQ4_XS,
+            GGMLQuantizationType.MXFP4,
+            GGMLQuantizationType.IQ2_XXS,
+            GGMLQuantizationType.IQ2_XS,
+            GGMLQuantizationType.IQ2_S,
+        )
+        val file = createGgufFile(types.map { quantTensor("w_${it.name}", it) })
+        try {
+            val loaded = loadAll(file)
+            for (type in types) {
+                val name = "w_${type.name}"
+                assertTrue(name in loaded, "$name should load")
+                val t = loaded[name]!!
+                val (blockElems, _) = GGML_QUANT_SIZES.getValue(type)
+                assertEquals(Shape(blockElems), t.shape, name)
+                assertTrue(t.data is FloatArrayTensorData<*>, "$name should widen to dense FP32, got ${t.data::class.simpleName}")
+            }
+            // Spot-check Q4_1: d = 1.0, m = 0, so each value is its low/high nibble.
+            val q41 = (loaded["w_Q4_1"]!!.data as FloatArrayTensorData<*>).buffer
+            assertEquals(1.0f, q41[0])  // code byte 0x01, low nibble
+            assertEquals(0.0f, q41[16]) // code byte 0x01, high nibble
         } finally {
             file.delete()
         }
@@ -205,7 +242,7 @@ class StreamingGgufParametersLoaderTest {
     fun `fail fast lists every unsupported tensor`() {
         val file = createGgufFile(
             listOf(
-                quantTensor("bad_one", GGMLQuantizationType.Q4_1),
+                quantTensor("bad_one", GGMLQuantizationType.Q8_K),
                 quantTensor("bad_two", GGMLQuantizationType.Q8_1),
             )
         )

@@ -50,11 +50,11 @@ import kotlin.reflect.KClass
  * For quantized tensors, data is returned as packed block storage
  * (e.g., [Q4_KBlockTensorData], [Q8_0BlockTensorData]).
  *
- * A file containing tensors outside [SUPPORTED_TENSOR_TYPES] (e.g. Q4_1)
- * fails fast: [load] throws before any tensor is delivered, naming the
- * offending tensors and the supported set, instead of silently skipping
- * them and letting the missing weights crash the forward pass later
- * (#919).
+ * A file containing tensors outside [SUPPORTED_TENSOR_TYPES] (e.g. Q8_K,
+ * or a type this version does not know) fails fast: [load] throws before
+ * any tensor is delivered, naming the offending tensors and the supported
+ * set, instead of silently skipping them and letting the missing weights
+ * crash the forward pass later (#919).
  */
 public class StreamingGgufParametersLoader(
     private val sourceProvider: () -> RandomAccessSource,
@@ -442,7 +442,16 @@ public class StreamingGgufParametersLoader(
                     GGMLQuantizationType.Q5_0,
                     GGMLQuantizationType.Q5_1,
                     GGMLQuantizationType.TQ1_0,
-                    GGMLQuantizationType.TQ2_0 -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes, tensorForm)
+                    GGMLQuantizationType.TQ2_0,
+                    GGMLQuantizationType.Q4_1,
+                    GGMLQuantizationType.Q2_K,
+                    GGMLQuantizationType.Q3_K,
+                    GGMLQuantizationType.IQ4_NL,
+                    GGMLQuantizationType.IQ4_XS,
+                    GGMLQuantizationType.MXFP4,
+                    GGMLQuantizationType.IQ2_XXS,
+                    GGMLQuantizationType.IQ2_XS,
+                    GGMLQuantizationType.IQ2_S -> quantizedTensor(ctx, dtype, shape, tensorInfo, rawBytes, tensorForm)
 
                     GGMLQuantizationType.I2_S -> i2sTensor(
                         ctx, dtype, shape, tensorInfo, rawBytes, tensorForm,
@@ -512,19 +521,23 @@ public class StreamingGgufParametersLoader(
             )
             return ctx.wrapFloatArray<T, Float>(shape, dtype, dest) as Tensor<T, V>
         }
-        if (tensorInfo.tensorType == GGMLQuantizationType.TQ1_0 || tensorInfo.tensorType == GGMLQuantizationType.TQ2_0) {
-            // #1033: ternary tensors decode correctly, but there is no packed ternary `TensorData`
-            // with per-block scales yet — it arrives with the ternary kernels (#1040/#1041). Until
-            // then every policy widens them to FP32: right values, no memory saving.
+        if (tensorInfo.tensorType !in PACKED_STORAGE_TYPES) {
+            // Types that decode correctly but have no packed `TensorData` yet. Ternary (#1033)
+            // waits for the ternary kernels (#1040/#1041); Q4_1, Q2_K, Q3_K, IQ4 (#1409), MXFP4
+            // (#1410) and IQ2 (#1411) have had bit-exact decoders but no packed storage either.
+            // Until one exists, every policy widens them to FP32: right values, no memory saving.
             require(dtype == FP32::class || dtype == FP16::class) {
-                "tensor '${tensorInfo.name}' is ${tensorInfo.tensorType}; ternary tensors currently " +
-                    "load as FP32, so the requested dtype $dtype is not supported"
+                "tensor '${tensorInfo.name}' is ${tensorInfo.tensorType}; tensors of this type " +
+                    "currently load as FP32, so the requested dtype $dtype is not supported"
             }
+            val ternary = tensorInfo.tensorType == GGMLQuantizationType.TQ1_0 ||
+                tensorInfo.tensorType == GGMLQuantizationType.TQ2_0
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
-            // Worth seeing precisely because no policy asked for it: a 1.6-bit weight arriving as
-            // FP32 is a ~20× widening that no flag on this loader can currently turn off (#1033).
+            // Worth seeing precisely because no policy asked for it: a 1.6-bit (ternary) or 2-bit
+            // (Q2_K, IQ2) weight arriving as FP32 is a 10-20× widening that no flag on this loader
+            // can currently turn off.
             traceConversion(
-                kind = "widen-ternary-no-packed-storage",
+                kind = if (ternary) "widen-ternary-no-packed-storage" else "widen-no-packed-storage",
                 tensorName = tensorInfo.name,
                 from = ggufFormat(tensorInfo.tensorType, rawBytes.size.toLong()),
                 to = Format.dense(FP32),
@@ -753,6 +766,35 @@ public class StreamingGgufParametersLoader(
             // sequential BITNET_B1_58 layout and kept packed (0.25 B/weight)
             // — the first ternary type that does NOT widen to FP32 (#1033).
             GGMLQuantizationType.I2_S,
+            // Types with a bit-exact decoder (held to the llama.cpp reference of #1409) but no
+            // packed TensorData yet: they load widened to FP32 and emit a
+            // "widen-no-packed-storage" trace event, like the ternary types before them.
+            GGMLQuantizationType.Q4_1,
+            GGMLQuantizationType.Q2_K,
+            GGMLQuantizationType.Q3_K,
+            GGMLQuantizationType.IQ4_NL,
+            GGMLQuantizationType.IQ4_XS,
+            GGMLQuantizationType.MXFP4,
+            GGMLQuantizationType.IQ2_XXS,
+            GGMLQuantizationType.IQ2_XS,
+            GGMLQuantizationType.IQ2_S,
+            // Deliberately NOT here although DequantOps can decode them: Q8_1 and Q8_K are
+            // ggml dot-product intermediates that are never written into GGUF files, so a
+            // file claiming them is malformed and keeps failing fast.
+        )
+
+        /**
+         * The subset of [SUPPORTED_TENSOR_TYPES] with a packed `TensorData` representation;
+         * every other quantized type widens to FP32 in [quantizedTensor].
+         */
+        private val PACKED_STORAGE_TYPES: Set<GGMLQuantizationType> = setOf(
+            GGMLQuantizationType.Q4_K,
+            GGMLQuantizationType.Q5_K,
+            GGMLQuantizationType.Q6_K,
+            GGMLQuantizationType.Q8_0,
+            GGMLQuantizationType.Q4_0,
+            GGMLQuantizationType.Q5_0,
+            GGMLQuantizationType.Q5_1,
         )
 
         private const val MAX_LISTED_TENSORS = 8
