@@ -1,0 +1,204 @@
+= How SKaiNET handles GGUF
+:description: What a GGUF file is to SKaiNET, the layered reading stack, metadata-only inspection, the streaming loader's policies for every quantization type, and how the tokenizer vocabulary travels inside the file.
+
+A GGUF file is the llama.cpp ecosystem's way of shipping a model as *one* self-describing file:
+a small header, a key-value metadata store, and the tensor data as aligned blocks of whatever
+quantization format the exporter chose. SKaiNET reads GGUF versions 2 and 3 on every KMP target,
+and as of ggml 1.0 it loads **every tensor type a ggml writer can put into a file** — from dense
+FP32 down to the 1.5-bit `IQ1_S` codebook format.
+
+This page explains how that works: the layered reading stack, how to look at a file without
+loading it, what the streaming loader does with each quantization type, and how the tokenizer
+vocabulary travels inside the same file. The code on this page is compiled and run by
+`skainet-docs-samples` (`GgufHandling.kt`), against a toy GGUF file the sample writes itself:
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/GgufHandling.kt[tag=write]
+----
+
+For step-by-step reader usage (including ONNX and SafeTensors) see
+xref:how-to/io-readers.adoc[Load models]; this page is about *why* the pieces are shaped the way
+they are.
+
+== The reading stack
+
+GGUF support is layered, and each layer is useful on its own:
+
+[cols="1,2,2",options="header"]
+|===
+| Layer | Type | What it gives you
+
+| Byte access
+| `RandomAccessSource` (`sk.ainet.io`, in `skainet-io-core`)
+| Positioned reads over a file, byte array or blob. Platform actuals exist for JVM
+  (`JvmRandomAccessSource`, `MappedRandomAccessSource`), Android, POSIX native targets
+  (`pread`), JS and wasm (`JsBlobRandomAccessSource`); `openRandomAccessSource(path)` picks
+  the platform one.
+
+| Metadata
+| `StreamingGGUFReader` (`sk.ainet.io.gguf`)
+| Parses the header, the KV store and the tensor directory — and nothing else. Memory use is
+  roughly the metadata size (about a megabyte), not the file size. Tensor bytes are read only
+  when explicitly asked for.
+
+| Weights
+| `StreamingGgufParametersLoader`
+| The production loader: a fail-fast pre-scan, then one pass over the tensors in file order,
+  delivering each tensor through a callback as it streams in.
+
+| Model identity
+| `GgufCheckpointView` via `reader.checkpointView()`
+| Adapts the KV store to the engine's `CheckpointView` contract, so the family registry and the
+  tokenizer resolver treat a GGUF file like any other checkpoint.
+|===
+
+`GGUFReader`, `GGUFModelReader` and `GgufParametersLoader` are the deprecated ancestors of this
+stack: they load the whole file into memory and understand only FP32/I32 tensors. New code never
+needs them.
+
+== Reading just the metadata
+
+A GGUF file answers "what is in you?" without paying for its tensors. `StreamingGGUFReader.open`
+parses the header eagerly, so right after opening you have the format `version`, the
+`tensorCount`, the raw KV store (`fields`) and one `StreamingTensorInfo` per tensor — name,
+shape, quantization type and byte count:
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/GgufHandling.kt[tag=inspect]
+----
+
+Three things are worth knowing about this level:
+
+* **Unknown types do not stop the parse.** A tensor whose type id SKaiNET does not know comes
+  back with `isUnknownType = true` and its raw id preserved, and its byte count is inferred from
+  the next tensor's offset. You can inspect any file, including one newer than your SKaiNET.
+* **Typed views exist when you want them.** `GgufModelMetadata.from(reader)` extracts the common
+  `general.*` and `tokenizer.ggml.*` fields into properties; `reader.ggufGeometry()` reads the
+  per-architecture keys (`<arch>.block_count`, `.embedding_length`, `.attention.head_count`, …)
+  into a `ModelGeometry`.
+* **Memory planning happens here too.** `reader.planInput(...)` builds the input for
+  xref:how-to/plan-model-memory.adoc[the memory planner] from the header alone — per-tensor
+  formats and byte counts, geometry and KV-cache mode, with no tensor bytes read.
+
+== Streamed loading
+
+`StreamingGgufParametersLoader` is deliberately a *streaming* loader. It never holds the file in
+memory: it opens a fresh `RandomAccessSource`, reads the metadata, and then walks the tensor
+directory in file order, reading each tensor's bytes, converting them, handing the finished
+tensor to your callback and moving on. Peak memory is the largest single tensor plus whatever
+you keep:
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/GgufHandling.kt[tag=load]
+----
+
+Before the first tensor is delivered, the loader runs a **fail-fast pre-scan** over the tensor
+directory. If any tensor has a type outside `StreamingGgufParametersLoader.SUPPORTED_TENSOR_TYPES`,
+it throws immediately — naming up to eight offending tensors, the supported set, and a
+re-quantization suggestion — instead of failing twenty minutes into a large download. A tensor
+over 2 GiB, or a `WeightForm` asking for `WeightResidency.MAPPED`, is memory-mapped from the
+file instead of copied to the heap.
+
+== What happens to each quantization type
+
+The loader's policy is: *keep what has a packed representation, widen the rest, and say so.*
+
+[cols="1,2,2",options="header"]
+|===
+| Group | Types | What the loaded tensor holds
+
+| Dense
+| `F32`, `F16`, `BF16`, `I32`
+| FP32 on the heap by default; `keepF16Native` / `keepBf16Native` keep the half formats packed
+  (2 bytes per weight).
+
+| Packed quantized
+| `Q4_0`, `Q5_0`, `Q5_1`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`
+| The raw GGUF blocks, kept packed as `*BlockTensorData`. Kernels that understand the encoding
+  read it directly; everything else sees dequantized values through the
+  xref:explanation/virtual-tensors.adoc[tensor view].
+
+| Ternary
+| `TQ1_0`, `TQ2_0`, `I2_S`
+| `I2_S` is repacked at load into the sequential BitNet layout and stays at 0.25 bytes per
+  weight; the TQ formats currently widen.
+
+| Widened to FP32
+| `Q4_1`, `Q2_K`, `Q3_K`, `IQ4_NL`, `IQ4_XS`, `MXFP4`, `IQ2_XXS/XS/S`, `IQ3_XXS/S`,
+  `IQ1_S/M`, `NVFP4`, `Q1_0`, `Q2_0`, `F8_E4M3`
+| Correct values, dense FP32 storage — no memory saving yet (up to ~16× expansion for the
+  2-bit formats). Each such tensor emits a `widen-no-packed-storage` trace event, so the
+  expansion is visible, never silent.
+|===
+
+Two types are rejected on purpose: `Q8_1` and `Q8_K` are ggml's dot-product intermediates and
+are never written into GGUF files, so a file claiming them is malformed and keeps failing fast.
+
+Every decoder in this table is held to llama.cpp *bit for bit*: the committed reference fixtures
+(`GgufIqDequantReference`, `GgufQuantDequantReference`) are generated by a C harness compiled
+against llama.cpp's own `ggml-quants.c` at a pinned commit, cross-checked against gguf-py, and
+asserted with `Float.toRawBits()` equality on every KMP target. The block layouts themselves are
+documented in xref:reference/gguf-iq-block-layouts.adoc[GGUF block layouts].
+
+== The vocabulary travels in the file
+
+A GGUF file does not reference an external tokenizer — the whole vocabulary is part of the KV
+metadata, under `tokenizer.ggml.*`:
+
+[cols="1,2",options="header"]
+|===
+| Key | Meaning
+
+| `tokenizer.ggml.model`
+| Which algorithm the tokens belong to: `gpt2`/`bpe` (byte-level BPE), `llama`/`sentencepiece`/
+  `gemma4` (SentencePiece), `bert`/`wordpiece` (WordPiece).
+
+| `tokenizer.ggml.tokens`
+| The vocabulary itself: one string per token id, in id order.
+
+| `tokenizer.ggml.merges`
+| BPE merge rules as `"first second"` strings, lowest rank first (byte-level BPE only).
+
+| `tokenizer.ggml.scores`
+| Per-token scores (SentencePiece only; pairs merge highest score first).
+
+| `tokenizer.ggml.token_type`
+| Per-token role codes — NORMAL (1), UNKNOWN (2), CONTROL (3), USER_DEFINED (4), BYTE (6).
+  CONTROL and USER_DEFINED tokens are matched atomically before tokenization.
+
+| `tokenizer.ggml.bos_token_id`, `…eos_token_id`, `…unknown_token_id`, `…padding_token_id`,
+  `…add_bos_token`, `…add_eos_token`, `…add_space_prefix`
+| Special token ids and the checkpoint's own encode-time behavior.
+
+| `tokenizer.chat_template`
+| The raw chat template, when the exporter shipped one.
+|===
+
+`TextFrontEnds.fromGguf(reader.fields)` turns those fields directly into a working tokenizer —
+the dispatch on `tokenizer.ggml.model` picks the algorithm, and the token strings are decoded
+exactly the way llama.cpp encodes them (byte-level BPE maps UTF-8 bytes through the `Ġ`/`Ċ`
+alphabet; SentencePiece falls back to `<0xNN>` byte tokens for symbols outside the vocabulary):
+
+[source,kotlin]
+----
+include::example$kotlin-jvm/sk/ainet/docs/samples/GgufHandling.kt[tag=vocab]
+----
+
+For a full model you rarely call `fromGguf` yourself: `reader.checkpointView()` plus
+`TextFrontEnds.resolver()` resolves the tokenizer *and* decorates it with the model family's
+special tokens, stop ids and prompt renderer — the whole resolution pipeline, including the
+dispatch table and the golden tests against Hugging Face `tokenizers`, is documented in
+xref:reference/input-frontends.adoc[Input front ends and tokenizers].
+
+== Where to go next
+
+* xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)] — reader usage per platform.
+* xref:how-to/plan-model-memory.adoc[Plan a model's memory before loading] — the planner that
+  runs on the metadata alone.
+* xref:tutorials/low-bit-weights-getting-started.adoc[Weights at 1.7 bits] — one weight stored
+  six ways in a GGUF file, read back through one view type.
+* xref:reference/gguf-iq-block-layouts.adoc[GGUF block layouts: IQ and MXFP4] — the byte-level
+  layout of every codebook format.

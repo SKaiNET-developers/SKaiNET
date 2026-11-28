@@ -42,6 +42,8 @@ kotlin {
                 implementation(project(":skainet-backends:skainet-backend-api"))
                 implementation(project(":skainet-io:skainet-io-core"))
                 implementation(project(":skainet-io:skainet-io-gguf"))
+                implementation(project(":skainet-frontend:skainet-frontend-core"))
+                implementation(project(":skainet-frontend:skainet-frontend-text"))
             }
         }
         commonTest.dependencies {

@@ -4,6 +4,13 @@
 
 ### Documentation
 
+- **How SKaiNET handles GGUF is explained.** New explanation page *How SKaiNET handles GGUF*: the layered
+  reading stack (`RandomAccessSource` → `StreamingGGUFReader` → `StreamingGgufParametersLoader` → checkpoint
+  view), metadata-only inspection (tensor directory, typed metadata, memory planning from the header alone),
+  the streaming loader's fail-fast pre-scan and its per-type policy (packed, ternary, widened to FP32), and
+  how the tokenizer vocabulary travels in the file's own `tokenizer.ggml.*` metadata. The examples write,
+  inspect, load and tokenize against a toy GGUF file and are compiled and run by `skainet-docs-samples`
+  (`GgufHandling.kt`); the README points at the page from the GGUF quickstart.
 - **Block layouts and llama.cpp reference data for the GGUF IQ1, IQ2, IQ3 and MXFP4 types.** New reference page
   *GGUF block layouts: IQ and MXFP4* gives the byte layout and decoding rule of the eight types `DequantOps` does not
   decode yet. `scripts/reference/gguf_iq_reference` links llama.cpp's own `ggml-quants.c` and generates the grid tables
