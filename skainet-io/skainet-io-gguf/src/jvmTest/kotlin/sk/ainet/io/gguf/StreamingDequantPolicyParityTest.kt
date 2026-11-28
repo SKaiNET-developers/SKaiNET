@@ -39,6 +39,17 @@ class StreamingDequantPolicyParityTest {
             SyntheticGguf.tensor("w_f16", GGMLQuantizationType.F16, elements = 1024),
             SyntheticGguf.tensor("w_bf16", GGMLQuantizationType.BF16, elements = 1024),
             SyntheticGguf.tensor("w_f32", GGMLQuantizationType.F32, elements = 1024),
+            // Widen-to-FP32 types (no packed storage): both paths are dense, parity still
+            // pins that the default and DequantizeTo paths run the same decoder.
+            SyntheticGguf.tensor("w_q41", GGMLQuantizationType.Q4_1, elements = 1024),
+            SyntheticGguf.tensor("w_q2k", GGMLQuantizationType.Q2_K, elements = 1024),
+            SyntheticGguf.tensor("w_q3k", GGMLQuantizationType.Q3_K, elements = 1024),
+            SyntheticGguf.tensor("w_iq4nl", GGMLQuantizationType.IQ4_NL, elements = 1024),
+            SyntheticGguf.tensor("w_iq4xs", GGMLQuantizationType.IQ4_XS, elements = 1024),
+            SyntheticGguf.tensor("w_mxfp4", GGMLQuantizationType.MXFP4, elements = 1024),
+            SyntheticGguf.tensor("w_iq2xxs", GGMLQuantizationType.IQ2_XXS, elements = 1024),
+            SyntheticGguf.tensor("w_iq2xs", GGMLQuantizationType.IQ2_XS, elements = 1024),
+            SyntheticGguf.tensor("w_iq2s", GGMLQuantizationType.IQ2_S, elements = 1024),
         )
         try {
             val packedLoad = load(file, WeightForm())
