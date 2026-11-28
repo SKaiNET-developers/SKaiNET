@@ -94,6 +94,16 @@ public object DequantOps {
         return dequantIQ2SFromBytes(bytes, nElems)
     }
 
+    public fun dequantIQ3XXS(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ3_XXS")
+        return dequantIQ3XXSFromBytes(bytes, nElems)
+    }
+
+    public fun dequantIQ3S(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ3_S")
+        return dequantIQ3SFromBytes(bytes, nElems)
+    }
+
     public fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q2_K")
         return dequantQ2KFromBytes(bytes, nElems)
@@ -240,6 +250,8 @@ public object DequantOps {
             GGMLQuantizationType.IQ2_XXS -> dequantIQ2XXSFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ2_XS -> dequantIQ2XSFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ2_S -> dequantIQ2SFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXSFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ3_S -> dequantIQ3SFromBytes(bytes, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -271,6 +283,8 @@ public object DequantOps {
             GGMLQuantizationType.IQ2_XXS -> dequantIQ2XXS(raw, nElems)
             GGMLQuantizationType.IQ2_XS -> dequantIQ2XS(raw, nElems)
             GGMLQuantizationType.IQ2_S -> dequantIQ2S(raw, nElems)
+            GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXS(raw, nElems)
+            GGMLQuantizationType.IQ3_S -> dequantIQ3S(raw, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -303,6 +317,8 @@ public object DequantOps {
         GGMLQuantizationType.IQ2_XXS -> Pair(2 + QK_K / 4, QK_K)
         GGMLQuantizationType.IQ2_XS -> Pair(2 + QK_K / 4 + QK_K / 32, QK_K)
         GGMLQuantizationType.IQ2_S -> Pair(2 + QK_K / 4 + QK_K / 16, QK_K)
+        GGMLQuantizationType.IQ3_XXS -> Pair(2 + 3 * QK_K / 8, QK_K)
+        GGMLQuantizationType.IQ3_S -> Pair(2 + 13 * QK_K / 32 + QK_K / 64, QK_K)
         else -> error("Block info for $type not available")
     }
 
@@ -643,6 +659,100 @@ public object DequantOps {
                     val index = (bytes[qs + 4 * ib + l].toInt() and 0xFF) or (((high ushr (2 * l)) and 3) shl 8)
                     val signs = bytes[signBytes + 4 * ib + l].toInt() and 0xFF
                     writeIqSubGroup(out, outOff, if (l < 2) dbLo else dbHi, grid, 8 * index, signs)
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
+        }
+        return out
+    }
+
+    /**
+     * Writes one IQ3 sub-group of 8 values from two grid entries of 4 unsigned bytes each:
+     * elements 0..3 from [gridOff1], 4..7 from [gridOff2]; bit `j` of [signs] negates element `j`.
+     */
+    private fun writeIq3SubGroup(
+        out: FloatArray, outOff: Int, db: Float, grid: ByteArray, gridOff1: Int, gridOff2: Int, signs: Int,
+    ) {
+        for (j in 0 until 4) {
+            val v1 = db * (grid[gridOff1 + j].toInt() and 0xFF)
+            val v2 = db * (grid[gridOff2 + j].toInt() and 0xFF)
+            out[outOff + j] = if ((signs ushr j) and 1 != 0) -v1 else v1
+            out[outOff + 4 + j] = if ((signs ushr (j + 4)) and 1 != 0) -v2 else v2
+        }
+    }
+
+    /**
+     * `IQ3_XXS` (#1412): 98 bytes for 256 elements. An fp16 scale `d`, 64 bytes of
+     * `iq3xxs_grid` indices (two per sub-group, each entry gives 4 values), then one
+     * little-endian `uint32` per group of 32 with four 7-bit `ksigns_iq2xs` indices and, in its
+     * top 4 bits, the group scale. The final factor is `0.5f`, not the `0.25f` of the IQ2
+     * formats. Bit-identical to llama.cpp's `dequantize_row_iq3_xxs`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ3XXSFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + 3 * QK_K / 8
+        val grid = GgufIqTables.IQ3XXS_GRID
+        val ksigns = GgufIqTables.KSIGNS_IQ2XS
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val qs = offset + 2
+            val scalesAndSigns = qs + QK_K / 4
+            for (ib in 0 until QK_K / 32) {
+                val p = scalesAndSigns + 4 * ib
+                val a = (bytes[p].toInt() and 0xFF) or
+                    (bytes[p + 1].toInt() and 0xFF shl 8) or
+                    (bytes[p + 2].toInt() and 0xFF shl 16) or
+                    (bytes[p + 3].toInt() and 0xFF shl 24)
+                val db = d * (0.5f + (a ushr 28)) * 0.5f
+                for (l in 0 until 4) {
+                    val signs = ksigns[(a ushr (7 * l)) and 127].toInt() and 0xFF
+                    val i1 = bytes[qs + 8 * ib + 2 * l].toInt() and 0xFF
+                    val i2 = bytes[qs + 8 * ib + 2 * l + 1].toInt() and 0xFF
+                    writeIq3SubGroup(out, outOff, db, grid, 4 * i1, 4 * i2, signs)
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
+        }
+        return out
+    }
+
+    /**
+     * `IQ3_S` (#1412): 110 bytes for 256 elements. An fp16 scale `d`, 64 bytes with the low 8
+     * bits of the `iq3s_grid` indices (two per sub-group), 8 bytes `qh` (one per group of 32,
+     * the 9th bit of its 8 indices), 32 sign bytes (used directly) and 4 scale bytes, one per
+     * pair of groups: low nibble for the even group, high nibble for the odd one. The group
+     * scale is `d * (1 + 2*s)`. Bit-identical to llama.cpp's `dequantize_row_iq3_s`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ3SFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + 13 * QK_K / 32 + QK_K / 64
+        val grid = GgufIqTables.IQ3S_GRID
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val qs = offset + 2
+            val qh = qs + QK_K / 4
+            val signBytes = qh + QK_K / 32
+            val scales = signBytes + QK_K / 8
+            for (ib in 0 until QK_K / 32) {
+                val scale = bytes[scales + ib / 2].toInt() and 0xFF
+                val s = if (ib % 2 == 0) scale and 0x0F else scale ushr 4
+                val db = d * (1 + 2 * s)
+                val high = bytes[qh + ib].toInt() and 0xFF
+                for (l in 0 until 4) {
+                    val i1 = (bytes[qs + 8 * ib + 2 * l].toInt() and 0xFF) or (((high ushr (2 * l)) and 1) shl 8)
+                    val i2 = (bytes[qs + 8 * ib + 2 * l + 1].toInt() and 0xFF) or (((high ushr (2 * l + 1)) and 1) shl 8)
+                    val signs = bytes[signBytes + 4 * ib + l].toInt() and 0xFF
+                    writeIq3SubGroup(out, outOff, db, grid, 4 * i1, 4 * i2, signs)
                     outOff += 8
                 }
             }

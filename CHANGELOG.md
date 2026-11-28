@@ -36,6 +36,9 @@
 
 ### Added
 
+- **GGUF tensors of type IQ3_XXS and IQ3_S can be loaded.** `DequantOps` decodes the two 3-bit codebook formats
+  (98 and 110 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to llama.cpp on
+  the reference blocks of #1409 (#1412).
 - **GGUF tensors of type IQ2_XXS, IQ2_XS and IQ2_S can be loaded.** `DequantOps` decodes the three 2-bit codebook
   formats (66, 74 and 82 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to
   llama.cpp on the reference blocks of #1409 (#1411).

@@ -5,9 +5,9 @@ This page records how llama.cpp stores and decodes the eight GGUF tensor types o
 https://github.com/SKaiNET-developers/SKaiNET/issues/1408[#1408]: `MXFP4`, `IQ2_XXS`,
 `IQ2_XS`, `IQ2_S`, `IQ3_XXS`, `IQ3_S`, `IQ1_S` and `IQ1_M`.
 
-`DequantOps` decodes `MXFP4`, `IQ2_XXS`, `IQ2_XS` and `IQ2_S`. The four IQ1 and IQ3 types are
-not decoded yet; for them this page is the input for the decoders, not a description of code
-that exists.
+`DequantOps` decodes `MXFP4`, `IQ2_XXS`, `IQ2_XS`, `IQ2_S`, `IQ3_XXS` and `IQ3_S`. The two IQ1
+types are not decoded yet; for them this page is the input for the decoders, not a description
+of code that exists.
 
 The source is `ggml/src/ggml-common.h` (block structs and tables) and
 `ggml/src/ggml-quants.c` (`dequantize_row_*`) of llama.cpp at commit
@@ -26,7 +26,7 @@ The source is `ggml/src/ggml-common.h` (block structs and tables) and
 | Builds and runs the harness and writes the two Kotlin files below. `--crosscheck` compares every case with gguf-py, an independent NumPy decoder.
 
 | `GgufIqTables.kt` (`skainet-io-gguf`, commonMain)
-| The grids, the sign table and the value tables, generated. The MXFP4 and IQ2 decoders read their tables from here; the IQ3 and IQ1 grids wait for their decoders.
+| The grids, the sign table and the value tables, generated. The MXFP4, IQ2 and IQ3 decoders read their tables from here; the IQ1 grid waits for its decoder.
 
 | `GgufIqDequantReference.kt` (`skainet-io-gguf`, commonTest)
 | Raw blocks and the floats llama.cpp decodes from them, generated.
