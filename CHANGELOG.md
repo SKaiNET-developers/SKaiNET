@@ -36,6 +36,12 @@
 
 ### Added
 
+- **The GGUF type enum is in sync with ggml v1.0.0.** `GGMLQuantizationType` gains the four ids ggml defines past
+  MXFP4 — `NVFP4` (40, four 16-element sub-blocks with UE4M3 scales), `Q1_0` (41, fp16 scale + sign bits), `Q2_0`
+  (42, fp16 scale + 2-bit codes) and the dense 8-bit float `F8_E4M3` (43) — with their block sizes in
+  `GGML_QUANT_SIZES`, and documents the id ranges upstream removed (4-5, 31-33, 36-38, with `I2_S`'s reuse of 36).
+  A file holding these types is now named precisely in the loader's fail-fast report instead of appearing as an
+  unknown id; decoding them is separate work (#1588).
 - **GGUF tensors of type IQ3_XXS and IQ3_S can be loaded.** `DequantOps` decodes the two 3-bit codebook formats
   (98 and 110 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to llama.cpp on
   the reference blocks of #1409 (#1412).
