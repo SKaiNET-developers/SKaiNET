@@ -50,6 +50,8 @@ class StreamingDequantPolicyParityTest {
             SyntheticGguf.tensor("w_iq2xxs", GGMLQuantizationType.IQ2_XXS, elements = 1024),
             SyntheticGguf.tensor("w_iq2xs", GGMLQuantizationType.IQ2_XS, elements = 1024),
             SyntheticGguf.tensor("w_iq2s", GGMLQuantizationType.IQ2_S, elements = 1024),
+            SyntheticGguf.tensor("w_iq3xxs", GGMLQuantizationType.IQ3_XXS, elements = 1024),
+            SyntheticGguf.tensor("w_iq3s", GGMLQuantizationType.IQ3_S, elements = 1024),
         )
         try {
             val packedLoad = load(file, WeightForm())

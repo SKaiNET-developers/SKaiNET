@@ -135,7 +135,9 @@ object SyntheticGguf {
                 GGMLQuantizationType.IQ4_XS,
                 GGMLQuantizationType.IQ2_XXS,
                 GGMLQuantizationType.IQ2_XS,
-                GGMLQuantizationType.IQ2_S -> putHalf(base, 0x3400)
+                GGMLQuantizationType.IQ2_S,
+                GGMLQuantizationType.IQ3_XXS,
+                GGMLQuantizationType.IQ3_S -> putHalf(base, 0x3400)
                 // d @0, m/dmin @2
                 GGMLQuantizationType.Q4_1,
                 GGMLQuantizationType.Q5_1,

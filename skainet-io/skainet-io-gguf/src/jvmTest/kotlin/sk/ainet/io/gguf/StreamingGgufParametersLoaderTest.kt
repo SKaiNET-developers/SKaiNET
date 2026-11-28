@@ -205,7 +205,7 @@ class StreamingGgufParametersLoaderTest {
 
     @Test
     fun `types without packed storage load widened to dense FP32`() {
-        // The ggml-1.0 gate widening: Q4_1, the 2/3-bit K-quants, IQ4/IQ2 and MXFP4 have
+        // The ggml-1.0 gate widening: Q4_1, the 2/3-bit K-quants, IQ4/IQ2/IQ3 and MXFP4 have
         // bit-exact decoders but no packed TensorData, so they arrive as dense FP32.
         val types = listOf(
             GGMLQuantizationType.Q4_1,
@@ -217,6 +217,8 @@ class StreamingGgufParametersLoaderTest {
             GGMLQuantizationType.IQ2_XXS,
             GGMLQuantizationType.IQ2_XS,
             GGMLQuantizationType.IQ2_S,
+            GGMLQuantizationType.IQ3_XXS,
+            GGMLQuantizationType.IQ3_S,
         )
         val file = createGgufFile(types.map { quantTensor("w_${it.name}", it) })
         try {
