@@ -36,6 +36,12 @@
 
 ### Added
 
+- **GGUF tensors of type Q1_0, Q2_0 and F8_E4M3 can be loaded — full ggml 1.0 type coverage except IQ3/IQ1.**
+  `DequantOps` decodes the three remaining ggml-1.0 formats (Q1_0: fp16 scale + sign bits, 18 bytes/128 elements;
+  Q2_0: fp16 scale + 2-bit codes, 18 bytes/64 elements; F8_E4M3: dense OCP FP8, held to the reference on all 256
+  byte values including both NaN encodings) bit-identical to llama.cpp, and the streaming loader accepts them
+  widened to FP32. With this, every type a ggml-1.0 writer can put into a GGUF file loads, except IQ3_XXS/IQ3_S
+  (#1412) and IQ1_S/IQ1_M (#1413), which keep failing fast until their decoders land (#1588).
 - **GGUF tensors of type NVFP4 can be loaded.** `DequantOps` decodes the ggml-1.0 microscaling block (36 bytes
   for 64 elements: four 16-element sub-blocks, each with an unsigned E4M3 scale byte over the shared MXFP4 value
   table) to FP32, bit-identical to llama.cpp's `dequantize_row_nvfp4` on the reference blocks, and the streaming

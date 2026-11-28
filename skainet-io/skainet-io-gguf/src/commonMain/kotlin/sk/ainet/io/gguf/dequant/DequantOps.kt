@@ -109,6 +109,21 @@ public object DequantOps {
         return dequantNVFP4FromBytes(bytes, nElems)
     }
 
+    public fun dequantQ1_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q1_0")
+        return dequantQ1_0FromBytes(bytes, nElems)
+    }
+
+    public fun dequantQ2_0(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "Q2_0")
+        return dequantQ2_0FromBytes(bytes, nElems)
+    }
+
+    public fun dequantF8E4M3(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "F8_E4M3")
+        return dequantF8E4M3FromBytes(bytes)
+    }
+
     public fun dequantQ2K(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "Q2_K")
         return dequantQ2KFromBytes(bytes, nElems)
@@ -258,6 +273,9 @@ public object DequantOps {
             GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXSFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ3_S -> dequantIQ3SFromBytes(bytes, nElems)
             GGMLQuantizationType.NVFP4 -> dequantNVFP4FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q1_0 -> dequantQ1_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.Q2_0 -> dequantQ2_0FromBytes(bytes, nElems)
+            GGMLQuantizationType.F8_E4M3 -> dequantF8E4M3FromBytes(bytes)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -292,6 +310,9 @@ public object DequantOps {
             GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXS(raw, nElems)
             GGMLQuantizationType.IQ3_S -> dequantIQ3S(raw, nElems)
             GGMLQuantizationType.NVFP4 -> dequantNVFP4(raw, nElems)
+            GGMLQuantizationType.Q1_0 -> dequantQ1_0(raw, nElems)
+            GGMLQuantizationType.Q2_0 -> dequantQ2_0(raw, nElems)
+            GGMLQuantizationType.F8_E4M3 -> dequantF8E4M3(raw, nElems)
             else -> error("Dequantization for $tensorType not implemented")
         }
     }
@@ -327,6 +348,9 @@ public object DequantOps {
         GGMLQuantizationType.IQ3_XXS -> Pair(2 + 3 * QK_K / 8, QK_K)
         GGMLQuantizationType.IQ3_S -> Pair(2 + 13 * QK_K / 32 + QK_K / 64, QK_K)
         GGMLQuantizationType.NVFP4 -> Pair(4 + 32, 64)
+        GGMLQuantizationType.Q1_0 -> Pair(2 + 16, 128)
+        GGMLQuantizationType.Q2_0 -> Pair(2 + 16, 64)
+        GGMLQuantizationType.F8_E4M3 -> Pair(1, 1)
         else -> error("Block info for $type not available")
     }
 
@@ -553,6 +577,79 @@ public object DequantOps {
             outOff += blockSize
         }
         return out
+    }
+
+    /**
+     * `Q1_0` (ggml 1.0): 18 bytes for 128 elements — fp16 `d`, then 16 bytes of sign bits
+     * (bit set: `+d`, clear: `-d`). Bit-identical to llama.cpp's `dequantize_row_q1_0`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ1_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + 16
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * 128)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val negD = -d
+            for (j in 0 until 128) {
+                val bit = (bytes[offset + 2 + j / 8].toInt() ushr (j % 8)) and 1
+                out[outOff + j] = if (bit != 0) d else negD
+            }
+            offset += bytesPerBlock
+            outOff += 128
+        }
+        return out
+    }
+
+    /**
+     * `Q2_0` (ggml 1.0): 18 bytes for 64 elements — fp16 `d`, then 16 bytes of 2-bit codes;
+     * value = `(q − 1) * d` (codes map to −1, 0, +1, +2). Bit-identical to llama.cpp's
+     * `dequantize_row_q2_0`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantQ2_0FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + 16
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * 64)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            for (j in 0 until 64) {
+                val q = (bytes[offset + 2 + j / 4].toInt() ushr ((j % 4) * 2)) and 0x03
+                out[outOff + j] = (q - 1) * d
+            }
+            offset += bytesPerBlock
+            outOff += 64
+        }
+        return out
+    }
+
+    /**
+     * `F8_E4M3` (ggml 1.0): dense OCP FP8, one byte per element — sign bit, 4 exponent bits
+     * (bias 7), 3 mantissa bits; `0x7f`/`0xff` are NaN (decoded as the quiet NaN, sign
+     * dropped, as ggml does). Bit-identical to llama.cpp's `dequantize_row_f8_e4m3` /
+     * `ggml_f8_e4m3_to_fp32`.
+     */
+    private fun dequantF8E4M3FromBytes(bytes: ByteArray): FloatArray {
+        return FloatArray(bytes.size) { i ->
+            val x = bytes[i].toInt() and 0xFF
+            val ax = x and 0x7F
+            if (ax == 0x7F) {
+                Float.NaN
+            } else {
+                val exp = (ax ushr 3) and 0xF
+                val man = ax and 0x7
+                val value = if (exp == 0) {
+                    man.toFloat() * (1.0f / 512.0f)
+                } else {
+                    Float.fromBits(((exp + 120) shl 23) or (man shl 20))
+                }
+                Float.fromBits(value.toRawBits() or ((x and 0x80) shl 24))
+            }
+        }
     }
 
     /**
