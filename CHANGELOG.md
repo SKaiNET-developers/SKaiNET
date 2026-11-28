@@ -42,6 +42,9 @@
   `GGML_QUANT_SIZES`, and documents the id ranges upstream removed (4-5, 31-33, 36-38, with `I2_S`'s reuse of 36).
   A file holding these types is now named precisely in the loader's fail-fast report instead of appearing as an
   unknown id; decoding them is separate work (#1588).
+- **GGUF tensors of type IQ3_XXS and IQ3_S can be loaded.** `DequantOps` decodes the two 3-bit codebook formats
+  (98 and 110 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to llama.cpp on
+  the reference blocks of #1409 (#1412).
 - **GGUF tensors of type IQ2_XXS, IQ2_XS and IQ2_S can be loaded.** `DequantOps` decodes the three 2-bit codebook
   formats (66, 74 and 82 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to
   llama.cpp on the reference blocks of #1409 (#1411).
