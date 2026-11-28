@@ -96,6 +96,11 @@ StreamingGGUFReader.open(source).use { reader ->
 }
 ```
 
+> **Full ggml 1.0 type coverage:** every quantization type a ggml writer can put into a GGUF file
+> loads — legacy and K-quants kept packed, the IQ/MXFP4/NVFP4/ternary codebook formats decoded
+> bit-identical to llama.cpp — and the tokenizer vocabulary is read from the same file.
+> See [How SKaiNET handles GGUF](https://skainet-developers.github.io/SKaiNET/skainet/explanation/gguf-handling.html).
+
 > **More examples:** [SKaiNET-examples](https://github.com/SKaiNET-developers/SKaiNET-examples) | [SKaiNET-notebook](https://github.com/SKaiNET-developers/SKaiNET-notebook)
 
 ---
@@ -257,6 +262,7 @@ Runnable examples:
 - Raw dataset parsers: CSV, TSV, JSON arrays/objects, JSON Lines (`.jsonl`, `.ndjson`)
 - Type-safe transform DSLs: image/tensor transforms plus suspendable raw data pipelines
 - Formats: GGUF, ONNX, SafeTensors, JSON, Image (JPEG, PNG)
+- GGUF: streaming reads with metadata-only inspection, full ggml 1.0 quantization type coverage (bit-identical to llama.cpp), in-file tokenizer vocabulary
 
 ```kotlin
 val raw = JvmDataSourceResolver().rawDataset {
