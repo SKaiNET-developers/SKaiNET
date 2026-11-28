@@ -36,6 +36,11 @@
 
 ### Added
 
+- **GGUF tensors of type IQ1_S and IQ1_M can be loaded — ggml 1.0 type coverage is complete.** `DequantOps`
+  decodes the two 1.5/1.75-bpw codebook formats (50 and 56 bytes for 256 elements; IQ1_M has no fp16 field of its
+  own — its block scale is reassembled from the high nibbles of the four `scales` words) to FP32 with llama.cpp's
+  `iq1s_grid`, bit-identical to llama.cpp on the reference blocks of #1409, and the streaming loader accepts both
+  types widened to dense FP32. With this, every type a ggml-1.0 writer can put into a GGUF file loads (#1413).
 - **GGUF files quantized as IQ3_XXS or IQ3_S now load — only IQ1 is missing for full ggml 1.0 coverage.** The two
   3-bit decoders of #1412 landed while the loader-gate widening (#1588) was in flight, so they missed their gate
   entry and the streaming loader still rejected both types at the pre-scan. They now load widened to dense FP32

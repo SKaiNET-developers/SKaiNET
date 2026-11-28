@@ -137,7 +137,17 @@ object SyntheticGguf {
                 GGMLQuantizationType.IQ2_XS,
                 GGMLQuantizationType.IQ2_S,
                 GGMLQuantizationType.IQ3_XXS,
-                GGMLQuantizationType.IQ3_S -> putHalf(base, 0x3400)
+                GGMLQuantizationType.IQ3_S,
+                GGMLQuantizationType.IQ1_S -> putHalf(base, 0x3400)
+                // IQ1_M has no d field: the fp16 block scale is scattered over the high
+                // nibbles of the four little-endian uint16 words of scales (bytes 48..55).
+                GGMLQuantizationType.IQ1_M -> {
+                    val bits = 0x3400 + rnd.nextInt(0x100)
+                    for (n in 0 until 4) {
+                        val hi = base + 48 + 2 * n + 1
+                        bytes[hi] = ((bytes[hi].toInt() and 0x0F) or (((bits ushr (4 * n)) and 0xF) shl 4)).toByte()
+                    }
+                }
                 // d @0, m/dmin @2
                 GGMLQuantizationType.Q4_1,
                 GGMLQuantizationType.Q5_1,

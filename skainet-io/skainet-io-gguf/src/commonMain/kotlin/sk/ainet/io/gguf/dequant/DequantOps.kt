@@ -104,6 +104,16 @@ public object DequantOps {
         return dequantIQ3SFromBytes(bytes, nElems)
     }
 
+    public fun dequantIQ1S(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ1_S")
+        return dequantIQ1SFromBytes(bytes, nElems)
+    }
+
+    public fun dequantIQ1M(raw: List<Any>, nElems: Int): FloatArray {
+        val bytes = toByteArray(raw, "IQ1_M")
+        return dequantIQ1MFromBytes(bytes, nElems)
+    }
+
     public fun dequantNVFP4(raw: List<Any>, nElems: Int): FloatArray {
         val bytes = toByteArray(raw, "NVFP4")
         return dequantNVFP4FromBytes(bytes, nElems)
@@ -272,6 +282,8 @@ public object DequantOps {
             GGMLQuantizationType.IQ2_S -> dequantIQ2SFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXSFromBytes(bytes, nElems)
             GGMLQuantizationType.IQ3_S -> dequantIQ3SFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ1_S -> dequantIQ1SFromBytes(bytes, nElems)
+            GGMLQuantizationType.IQ1_M -> dequantIQ1MFromBytes(bytes, nElems)
             GGMLQuantizationType.NVFP4 -> dequantNVFP4FromBytes(bytes, nElems)
             GGMLQuantizationType.Q1_0 -> dequantQ1_0FromBytes(bytes, nElems)
             GGMLQuantizationType.Q2_0 -> dequantQ2_0FromBytes(bytes, nElems)
@@ -309,6 +321,8 @@ public object DequantOps {
             GGMLQuantizationType.IQ2_S -> dequantIQ2S(raw, nElems)
             GGMLQuantizationType.IQ3_XXS -> dequantIQ3XXS(raw, nElems)
             GGMLQuantizationType.IQ3_S -> dequantIQ3S(raw, nElems)
+            GGMLQuantizationType.IQ1_S -> dequantIQ1S(raw, nElems)
+            GGMLQuantizationType.IQ1_M -> dequantIQ1M(raw, nElems)
             GGMLQuantizationType.NVFP4 -> dequantNVFP4(raw, nElems)
             GGMLQuantizationType.Q1_0 -> dequantQ1_0(raw, nElems)
             GGMLQuantizationType.Q2_0 -> dequantQ2_0(raw, nElems)
@@ -347,6 +361,8 @@ public object DequantOps {
         GGMLQuantizationType.IQ2_S -> Pair(2 + QK_K / 4 + QK_K / 16, QK_K)
         GGMLQuantizationType.IQ3_XXS -> Pair(2 + 3 * QK_K / 8, QK_K)
         GGMLQuantizationType.IQ3_S -> Pair(2 + 13 * QK_K / 32 + QK_K / 64, QK_K)
+        GGMLQuantizationType.IQ1_S -> Pair(2 + QK_K / 8 + QK_K / 16, QK_K)
+        GGMLQuantizationType.IQ1_M -> Pair(QK_K / 8 + QK_K / 16 + QK_K / 32, QK_K)
         GGMLQuantizationType.NVFP4 -> Pair(4 + 32, 64)
         GGMLQuantizationType.Q1_0 -> Pair(2 + 16, 128)
         GGMLQuantizationType.Q2_0 -> Pair(2 + 16, 64)
@@ -910,6 +926,95 @@ public object DequantOps {
                     val i2 = (bytes[qs + 8 * ib + 2 * l + 1].toInt() and 0xFF) or (((high ushr (2 * l + 1)) and 1) shl 8)
                     val signs = bytes[signBytes + 4 * ib + l].toInt() and 0xFF
                     writeIq3SubGroup(out, outOff, db, grid, 4 * i1, 4 * i2, signs)
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
+        }
+        return out
+    }
+
+    /**
+     * `IQ1_S` (#1413): 50 bytes for 256 elements. An fp16 scale `d`, 32 bytes `qs` (the low
+     * 8 bits of the `iq1s_grid` indices, four per group of 32) and 16 bytes `qh` read as 8
+     * little-endian uint16 words, one per group: bits 0-11 hold the high 3 bits of the four
+     * grid indices, bits 12-14 the 3-bit group scale (`d * (1 + 2*s)`) and bit 15 the sign of
+     * the `IQ1_DELTA` added to every grid value. Bit-identical to llama.cpp's
+     * `dequantize_row_iq1_s`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ1SFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = 2 + QK_K / 8 + QK_K / 16
+        val grid = GgufIqTables.IQ1S_GRID
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            val qs = offset + 2
+            val qhBase = qs + QK_K / 8
+            for (ib in 0 until QK_K / 32) {
+                val qh = (bytes[qhBase + 2 * ib].toInt() and 0xFF) or
+                    (bytes[qhBase + 2 * ib + 1].toInt() and 0xFF shl 8)
+                val dl = d * (2 * ((qh ushr 12) and 7) + 1)
+                val delta = if (qh and 0x8000 != 0) -GgufIqTables.IQ1_DELTA else GgufIqTables.IQ1_DELTA
+                for (l in 0 until 4) {
+                    val g = 8 * ((bytes[qs + 4 * ib + l].toInt() and 0xFF) or (((qh ushr (3 * l)) and 7) shl 8))
+                    for (j in 0 until 8) {
+                        out[outOff + j] = dl * (grid[g + j] + delta)
+                    }
+                    outOff += 8
+                }
+            }
+            offset += bytesPerBlock
+        }
+        return out
+    }
+
+    /**
+     * `IQ1_M` (#1413): 56 bytes for 256 elements, and no fp16 `d` field of its own — the
+     * block scale is scattered over the high nibbles of the four little-endian uint16 words
+     * of `scales` and reassembled into an fp16. 32 bytes `qs` hold the low 8 bits of the
+     * `iq1s_grid` indices; 16 bytes `qh` carry, per byte, the high 3 bits of two indices in
+     * its nibbles plus the delta sign of each half-group (bits 3 and 7). The words of
+     * `scales` also pack a 3-bit sub-scale per half of each group of 32 (`d * (1 + 2*s)`).
+     * Bit-identical to llama.cpp's `dequantize_row_iq1_m`.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun dequantIQ1MFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
+        val bytesPerBlock = QK_K / 8 + QK_K / 16 + QK_K / 32
+        val grid = GgufIqTables.IQ1S_GRID
+        val blockCount = bytes.size / bytesPerBlock
+        val out = FloatArray(blockCount * QK_K)
+        var offset = 0
+        var outOff = 0
+        repeat(blockCount) {
+            val qs = offset
+            val qhBase = qs + QK_K / 8
+            val scBase = qhBase + QK_K / 16
+            fun sc(i: Int): Int = (bytes[scBase + 2 * i].toInt() and 0xFF) or
+                (bytes[scBase + 2 * i + 1].toInt() and 0xFF shl 8)
+            val d = halfToFloat(
+                (sc(0) ushr 12) or ((sc(1) ushr 8) and 0x00F0) or
+                    ((sc(2) ushr 4) and 0x0F00) or (sc(3) and 0xF000)
+            )
+            for (ib in 0 until QK_K / 32) {
+                val scWord = sc(ib / 2)
+                val dl1 = d * (2 * ((scWord ushr (6 * (ib % 2))) and 0x7) + 1)
+                val dl2 = d * (2 * ((scWord ushr (6 * (ib % 2) + 3)) and 0x7) + 1)
+                val qh0 = bytes[qhBase + 2 * ib].toInt() and 0xFF
+                val qh1 = bytes[qhBase + 2 * ib + 1].toInt() and 0xFF
+                for (l in 0 until 4) {
+                    val qhByte = if (l < 2) qh0 else qh1
+                    val high = if (l % 2 == 0) (qhByte shl 8) and 0x700 else (qhByte shl 4) and 0x700
+                    val g = 8 * ((bytes[qs + 4 * ib + l].toInt() and 0xFF) or high)
+                    val signBit = if (l % 2 == 0) 0x08 else 0x80
+                    val delta = if (qhByte and signBit != 0) -GgufIqTables.IQ1_DELTA else GgufIqTables.IQ1_DELTA
+                    val dl = if (l < 2) dl1 else dl2
+                    for (j in 0 until 8) {
+                        out[outOff + j] = dl * (grid[g + j] + delta)
+                    }
                     outOff += 8
                 }
             }
