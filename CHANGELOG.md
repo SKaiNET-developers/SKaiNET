@@ -36,6 +36,10 @@
 
 ### Added
 
+- **GGUF files quantized as IQ3_XXS or IQ3_S now load — only IQ1 is missing for full ggml 1.0 coverage.** The two
+  3-bit decoders of #1412 landed while the loader-gate widening (#1588) was in flight, so they missed their gate
+  entry and the streaming loader still rejected both types at the pre-scan. They now load widened to dense FP32
+  with a `widen-no-packed-storage` trace event, like the other types without packed storage (#1412).
 - **GGUF tensors of type Q1_0, Q2_0 and F8_E4M3 can be loaded — full ggml 1.0 type coverage except IQ3/IQ1.**
   `DequantOps` decodes the three remaining ggml-1.0 formats (Q1_0: fp16 scale + sign bits, 18 bytes/128 elements;
   Q2_0: fp16 scale + 2-bit codes, 18 bytes/64 elements; F8_E4M3: dense OCP FP8, held to the reference on all 256
