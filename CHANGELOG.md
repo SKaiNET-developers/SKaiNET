@@ -45,6 +45,12 @@
 - **GGUF tensors of type IQ3_XXS and IQ3_S can be loaded.** `DequantOps` decodes the two 3-bit codebook formats
   (98 and 110 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to llama.cpp on
   the reference blocks of #1409 (#1412).
+- **The llama.cpp dequantization reference now covers the legacy, K-quant and ternary types.** The #1409 harness
+  gains Q4_0/Q4_1/Q5_0/Q5_1/Q8_0, Q2_K–Q8_K, TQ1_0/TQ2_0 and the ggml-1.0 types (NVFP4, Q1_0, Q2_0, F8_E4M3,
+  the last four pending decoders), written as a second generated fixture `GgufQuantDequantReference` and held
+  bit for bit by `GgufQuantDequantReferenceTest`; the existing K-quant and ternary decoders pass unchanged. The
+  reference is re-pinned to llama.cpp `8e23278c` (vendoring ggml ≥ 1.0) and can be regenerated with the new
+  `:skainet-io:skainet-io-gguf:generateDequantReference` Gradle task (`-PllamaCppDir=…`) (#1588).
 - **GGUF tensors of type IQ2_XXS, IQ2_XS and IQ2_S can be loaded.** `DequantOps` decodes the three 2-bit codebook
   formats (66, 74 and 82 bytes for 256 elements) to FP32 with llama.cpp's grid and sign tables, bit-identical to
   llama.cpp on the reference blocks of #1409 (#1411).
@@ -58,6 +64,14 @@
 
 ### Fixed
 
+- **Q2_K and Q3_K dequantization now matches llama.cpp — every value was wrong before.** The Q2_K decoder read
+  `d`/`dmin` from the start of the block (they are stored at the end, after `scales[16]` and `qs[64]`), took the
+  scale from the wrong nibble, divided by 15 and walked the quants in the wrong order; Q3_K additionally unpacked
+  its 6-bit scales without ggml's `kmask` scheme, the `-32` offset and the hmask `-4` rule. Both are rewritten to
+  mirror `dequantize_row_q2_K`/`_q3_K` and are now held to the reference bit for bit. Latent until now: the
+  streaming loader rejects both types, so no production load returned the wrong values. The Q8_1 block size is
+  also corrected from a pre-GGUF 40-byte layout (fp32 fields) to ggml's 36 bytes (fp16 `d`+`s`); upstream has no
+  Q8_1 dequantizer to pin it to, since ggml never writes the type into files (#1588).
 - **Causal attention with more queries than keys no longer throws.** `scaledDotProductAttention(causal = true)` with
   `seqQ > seqKV` and neither window nor key lengths raised `ArrayIndexOutOfBoundsException` in the Kotlin CPU kernel.
   The call now uses the key-range path: a query row before the first key attends to nothing and returns the mean of

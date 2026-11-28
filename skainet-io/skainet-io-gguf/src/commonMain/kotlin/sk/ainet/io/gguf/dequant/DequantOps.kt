@@ -302,7 +302,7 @@ public object DequantOps {
         GGMLQuantizationType.Q5_0 -> Pair(22, 32)
         GGMLQuantizationType.Q5_1 -> Pair(24, 32)
         GGMLQuantizationType.Q8_0 -> Pair(34, 32)
-        GGMLQuantizationType.Q8_1 -> Pair(40, 32)
+        GGMLQuantizationType.Q8_1 -> Pair(36, 32)
         GGMLQuantizationType.IQ4_NL -> Pair(18, 32)
         GGMLQuantizationType.IQ4_XS -> Pair(2 + 2 + QK_K / 2 + QK_K / 64, QK_K)
         GGMLQuantizationType.Q2_K -> Pair(2 + 2 + QK_K / 16 + QK_K / 4, QK_K)
@@ -460,21 +460,24 @@ public object DequantOps {
         return out
     }
 
+    /**
+     * `Q8_1`: 36 bytes for 32 elements — fp16 `d`, fp16 `s` (= `d` times the sum of the quants),
+     * then 32 signed quant bytes; `y = d * q`. ggml never writes Q8_1 into GGUF files (it is a
+     * dot-product intermediate) and has no `dequantize_row_q8_1`, so unlike the other types this
+     * decoder has no llama.cpp fixture to be held to; the layout is `block_q8_1` of
+     * `ggml-common.h`. (The previous decoder assumed a pre-2024 40-byte block with fp32 fields.)
+     */
     @Suppress("UNUSED_PARAMETER")
     private fun dequantQ8_1FromBytes(bytes: ByteArray, nElems: Int): FloatArray {
         val blockSize = 32
-        val bytesPerBlock = 40
+        val bytesPerBlock = 2 + 2 + 32
         val blockCount = bytes.size / bytesPerBlock
         val out = FloatArray(blockCount * blockSize)
         var offset = 0
         var outOff = 0
         repeat(blockCount) {
-            val dBits = (bytes[offset].toInt() and 0xFF) or
-                    ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
-                    ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
-                    ((bytes[offset + 3].toInt() and 0xFF) shl 24)
-            val d = Float.fromBits(dBits)
-            offset += 8 // skip d (4 bytes) + s (4 bytes)
+            val d = halfToFloat((bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF))
+            offset += 4 // skip d and s, fp16 each
             for (j in 0 until 32) {
                 out[outOff + j] = d * bytes[offset + j].toFloat()
             }
@@ -795,80 +798,112 @@ public object DequantOps {
         return out
     }
 
+    /**
+     * `Q2_K`: 84 bytes for 256 elements — `scales[16]` (low nibble: scale, high nibble: min),
+     * `qs[64]`, then fp16 `d` and `dmin` at the end. Each 128-element half sweeps a 2-bit
+     * `shift` over the same 32 `qs` bytes, two 16-element runs per shift. Bit-identical to
+     * llama.cpp's `dequantize_row_q2_K`. (The previous decoder read `d`/`dmin` first, used the
+     * high nibble as the scale and divided by 15 — every value came out wrong; caught by
+     * `GgufQuantDequantReferenceTest`.)
+     */
     @Suppress("UNUSED_PARAMETER")
     private fun dequantQ2KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
-        val blockSize = QK_K
-        val bytesPerBlock = 2 + 2 + QK_K / 16 + QK_K / 4
+        val bytesPerBlock = QK_K / 16 + QK_K / 4 + 2 + 2
         val blockCount = bytes.size / bytesPerBlock
-        val out = FloatArray(blockCount * blockSize)
-        var offset = 0
-        var outOff = 0
-        repeat(blockCount) {
-            val d = halfToFloat(
-                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
-            )
-            val dMin = halfToFloat(
-                (bytes[offset + 3].toInt() and 0xFF shl 8) or (bytes[offset + 2].toInt() and 0xFF)
-            )
-            offset += 4
-            val scales = bytes.copyOfRange(offset, offset + 16)
-            offset += 16
-            val qs = bytes.copyOfRange(offset, offset + 64)
-            offset += 64
-            repeat(16) { block ->
-                val scaleIdx = (scales[block].toInt() ushr 4) and 0x0F
-                val minIdx = scales[block].toInt() and 0x0F
-                val scale = d * (scaleIdx / 15.0f)
-                val min = dMin * (minIdx / 15.0f)
-                repeat(16) { j ->
-                    val codeByte = qs[block * 4 + j / 4].toInt() and 0xFF
-                    val q = (codeByte ushr ((j % 4) * 2)) and 0x03
-                    out[outOff + block * 16 + j] = q * scale - min
+        val out = FloatArray(blockCount * QK_K)
+        var o = 0
+        for (i in 0 until blockCount) {
+            val base = i * bytesPerBlock
+            val scales = base
+            val d = halfToFloat((bytes[base + 81].toInt() and 0xFF shl 8) or (bytes[base + 80].toInt() and 0xFF))
+            val min = halfToFloat((bytes[base + 83].toInt() and 0xFF shl 8) or (bytes[base + 82].toInt() and 0xFF))
+            var isIdx = 0
+            var q = base + QK_K / 16
+            for (half in 0 until 2) {
+                var shift = 0
+                for (j in 0 until 4) {
+                    var sc = bytes[scales + isIdx++].toInt() and 0xFF
+                    var dl = d * (sc and 0xF)
+                    var ml = min * (sc ushr 4)
+                    for (l in 0 until 16) {
+                        out[o++] = dl * (((bytes[q + l].toInt() and 0xFF) ushr shift) and 3) - ml
+                    }
+                    sc = bytes[scales + isIdx++].toInt() and 0xFF
+                    dl = d * (sc and 0xF)
+                    ml = min * (sc ushr 4)
+                    for (l in 0 until 16) {
+                        out[o++] = dl * (((bytes[q + l + 16].toInt() and 0xFF) ushr shift) and 3) - ml
+                    }
+                    shift += 2
                 }
+                q += 32
             }
-            outOff += blockSize
         }
         return out
     }
 
+    /**
+     * `Q3_K`: 110 bytes for 256 elements — `hmask[32]`, `qs[64]`, `scales[12]`, then fp16 `d`
+     * at the end. The 12 scale bytes unpack through ggml's `kmask` aux-word scheme into 16
+     * signed 6-bit scales (offset by -32). A quant is `((qs >> shift) & 3) - (hmask bit ? 0 : 4)`,
+     * with the hmask bit `m` advancing across the whole block. Bit-identical to llama.cpp's
+     * `dequantize_row_q3_K`. (The previous decoder read `d` first, unpacked the scales as a flat
+     * bit stream without the -32 offset, divided by 63 and added the high bit instead of
+     * subtracting 4 — every value came out wrong; caught by `GgufQuantDequantReferenceTest`.)
+     */
     @Suppress("UNUSED_PARAMETER")
     private fun dequantQ3KFromBytes(bytes: ByteArray, nElems: Int): FloatArray {
-        val blockSize = QK_K
-        val bytesPerBlock = 2 + QK_K / 4 + QK_K / 8 + 12
+        val bytesPerBlock = QK_K / 8 + QK_K / 4 + 12 + 2
         val blockCount = bytes.size / bytesPerBlock
-        val out = FloatArray(blockCount * blockSize)
-        var offset = 0
-        var outOff = 0
-        repeat(blockCount) {
-            val d = halfToFloat(
-                (bytes[offset + 1].toInt() and 0xFF shl 8) or (bytes[offset].toInt() and 0xFF)
+        val out = FloatArray(blockCount * QK_K)
+        val kmask1 = 0x03030303
+        val kmask2 = 0x0f0f0f0f
+        val aux = IntArray(4)
+        var o = 0
+        for (i in 0 until blockCount) {
+            val base = i * bytesPerBlock
+            val hm = base
+            val scalesBase = base + QK_K / 8 + QK_K / 4
+            val dAll = halfToFloat(
+                (bytes[scalesBase + 13].toInt() and 0xFF shl 8) or (bytes[scalesBase + 12].toInt() and 0xFF)
             )
-            offset += 2
-            val hmask = bytes.copyOfRange(offset, offset + 32)
-            offset += 32
-            val qs = bytes.copyOfRange(offset, offset + 64)
-            offset += 64
-            val scales = bytes.copyOfRange(offset, offset + 12)
-            offset += 12
-            repeat(16) { block ->
-                val bitPos = block * 6
-                val bytePos = bitPos / 8
-                val bitShift = bitPos % 8
-                val packed =
-                    (scales.getOrElse(bytePos) { 0 }.toInt() and 0xFF) or
-                        ((scales.getOrElse(bytePos + 1) { 0 }.toInt() and 0xFF) shl 8) or
-                        ((scales.getOrElse(bytePos + 2) { 0 }.toInt() and 0xFF) shl 16)
-                val scaleIdx = (packed ushr bitShift) and 0x3F
-                val scale = d * (scaleIdx / 63.0f)
-                repeat(16) { j ->
-                    val idx = block * 16 + j
-                    val ql = (qs[idx / 4].toInt() ushr ((idx % 4) * 2)) and 0x03
-                    val qh = (hmask[idx / 8].toInt() ushr (idx % 8)) and 0x01
-                    val q = ql or (qh shl 2)
-                    out[outOff + idx] = q * scale
-                }
+            for (w in 0 until 3) {
+                val p = scalesBase + 4 * w
+                aux[w] = (bytes[p].toInt() and 0xFF) or
+                    ((bytes[p + 1].toInt() and 0xFF) shl 8) or
+                    ((bytes[p + 2].toInt() and 0xFF) shl 16) or
+                    ((bytes[p + 3].toInt() and 0xFF) shl 24)
             }
-            outOff += blockSize
+            val tmp = aux[2]
+            aux[2] = ((aux[0] ushr 4) and kmask2) or (((tmp ushr 4) and kmask1) shl 4)
+            aux[3] = ((aux[1] ushr 4) and kmask2) or (((tmp ushr 6) and kmask1) shl 4)
+            aux[0] = (aux[0] and kmask2) or (((tmp ushr 0) and kmask1) shl 4)
+            aux[1] = (aux[1] and kmask2) or (((tmp ushr 2) and kmask1) shl 4)
+            // The aux words read back as 16 *signed* bytes, exactly as C's `(const int8_t *) aux`.
+            fun scaleAt(idx: Int): Int = ((aux[idx / 4] ushr (8 * (idx % 4))) and 0xFF).toByte().toInt()
+            var isIdx = 0
+            var m = 1
+            var q = base + QK_K / 8
+            for (half in 0 until 2) {
+                var shift = 0
+                for (j in 0 until 4) {
+                    var dl = dAll * (scaleAt(isIdx++) - 32)
+                    for (l in 0 until 16) {
+                        val qv = ((bytes[q + l].toInt() and 0xFF) ushr shift) and 3
+                        val sub = if ((bytes[hm + l].toInt() and m) != 0) 0 else 4
+                        out[o++] = dl * (qv - sub)
+                    }
+                    dl = dAll * (scaleAt(isIdx++) - 32)
+                    for (l in 0 until 16) {
+                        val qv = ((bytes[q + l + 16].toInt() and 0xFF) ushr shift) and 3
+                        val sub = if ((bytes[hm + l + 16].toInt() and m) != 0) 0 else 4
+                        out[o++] = dl * (qv - sub)
+                    }
+                    shift += 2
+                    m = m shl 1
+                }
+                q += 32
+            }
         }
         return out
     }

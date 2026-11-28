@@ -1,9 +1,13 @@
-// Reference data for the GGUF IQ1/IQ2/IQ3/IQ4 and MXFP4 dequantizers (SKaiNET #1409).
+// Reference data for the GGUF dequantizers: IQ1/IQ2/IQ3/IQ4 and MXFP4 (SKaiNET #1409)
+// plus the legacy, K-quant, ternary and ggml-1.0 types (NVFP4, Q1_0, Q2_0, F8_E4M3).
 //
 // Links against llama.cpp's own ggml-quants.c and prints, per type, a few cases of
 // raw block bytes together with what llama.cpp's dequantize_row_* returns for them.
 // It also prints the constant tables the decoders index (grids, sign table, value table).
 // Output: JSON on stdout. Build and run through gguf_iq_reference.py.
+//
+// Q8_1 is deliberately absent: upstream has no dequantize_row_q8_1 (it is a dot-product
+// intermediate, never written into GGUF files), so there is nothing to hold a decoder to.
 #define GGML_COMMON_IMPL_C      // this file gets its own copy of the constant tables, to print them
 #include "ggml.h"
 #include "ggml-common.h"
@@ -17,20 +21,40 @@
 
 // ---- the four ggml.c symbols ggml-quants.c needs --------------------------------------------
 
-typedef struct { enum ggml_type type; const char * name; size_t block_bytes; int block_elems; } type_info;
+typedef struct { enum ggml_type type; const char * name; size_t block_bytes; int block_elems; int emit; } type_info;
 
 static const type_info TYPES[] = {
-    { GGML_TYPE_MXFP4,   "MXFP4",   sizeof(block_mxfp4),   QK_MXFP4 },
-    { GGML_TYPE_IQ2_XXS, "IQ2_XXS", sizeof(block_iq2_xxs), QK_K },
-    { GGML_TYPE_IQ2_XS,  "IQ2_XS",  sizeof(block_iq2_xs),  QK_K },
-    { GGML_TYPE_IQ2_S,   "IQ2_S",   sizeof(block_iq2_s),   QK_K },
-    { GGML_TYPE_IQ3_XXS, "IQ3_XXS", sizeof(block_iq3_xxs), QK_K },
-    { GGML_TYPE_IQ3_S,   "IQ3_S",   sizeof(block_iq3_s),   QK_K },
-    { GGML_TYPE_IQ1_S,   "IQ1_S",   sizeof(block_iq1_s),   QK_K },
-    { GGML_TYPE_IQ1_M,   "IQ1_M",   sizeof(block_iq1_m),   QK_K },
+    { GGML_TYPE_MXFP4,   "MXFP4",   sizeof(block_mxfp4),   QK_MXFP4, 1 },
+    { GGML_TYPE_IQ2_XXS, "IQ2_XXS", sizeof(block_iq2_xxs), QK_K, 1 },
+    { GGML_TYPE_IQ2_XS,  "IQ2_XS",  sizeof(block_iq2_xs),  QK_K, 1 },
+    { GGML_TYPE_IQ2_S,   "IQ2_S",   sizeof(block_iq2_s),   QK_K, 1 },
+    { GGML_TYPE_IQ3_XXS, "IQ3_XXS", sizeof(block_iq3_xxs), QK_K, 1 },
+    { GGML_TYPE_IQ3_S,   "IQ3_S",   sizeof(block_iq3_s),   QK_K, 1 },
+    { GGML_TYPE_IQ1_S,   "IQ1_S",   sizeof(block_iq1_s),   QK_K, 1 },
+    { GGML_TYPE_IQ1_M,   "IQ1_M",   sizeof(block_iq1_m),   QK_K, 1 },
     // Already implemented in SKaiNET; included so the same fixture checks the existing decoders.
-    { GGML_TYPE_IQ4_NL,  "IQ4_NL",  sizeof(block_iq4_nl),  QK4_NL },
-    { GGML_TYPE_IQ4_XS,  "IQ4_XS",  sizeof(block_iq4_xs),  QK_K },
+    { GGML_TYPE_IQ4_NL,  "IQ4_NL",  sizeof(block_iq4_nl),  QK4_NL, 1 },
+    { GGML_TYPE_IQ4_XS,  "IQ4_XS",  sizeof(block_iq4_xs),  QK_K, 1 },
+    // Legacy, K-quant, ternary and ggml-1.0 types (second fixture, GgufQuantDequantReference.kt).
+    { GGML_TYPE_Q4_0,    "Q4_0",    sizeof(block_q4_0),    QK4_0, 1 },
+    { GGML_TYPE_Q4_1,    "Q4_1",    sizeof(block_q4_1),    QK4_1, 1 },
+    { GGML_TYPE_Q5_0,    "Q5_0",    sizeof(block_q5_0),    QK5_0, 1 },
+    { GGML_TYPE_Q5_1,    "Q5_1",    sizeof(block_q5_1),    QK5_1, 1 },
+    { GGML_TYPE_Q8_0,    "Q8_0",    sizeof(block_q8_0),    QK8_0, 1 },
+    { GGML_TYPE_Q2_K,    "Q2_K",    sizeof(block_q2_K),    QK_K, 1 },
+    { GGML_TYPE_Q3_K,    "Q3_K",    sizeof(block_q3_K),    QK_K, 1 },
+    { GGML_TYPE_Q4_K,    "Q4_K",    sizeof(block_q4_K),    QK_K, 1 },
+    { GGML_TYPE_Q5_K,    "Q5_K",    sizeof(block_q5_K),    QK_K, 1 },
+    { GGML_TYPE_Q6_K,    "Q6_K",    sizeof(block_q6_K),    QK_K, 1 },
+    { GGML_TYPE_Q8_K,    "Q8_K",    sizeof(block_q8_K),    QK_K, 1 },
+    { GGML_TYPE_TQ1_0,   "TQ1_0",   sizeof(block_tq1_0),   QK_K, 1 },
+    { GGML_TYPE_TQ2_0,   "TQ2_0",   sizeof(block_tq2_0),   QK_K, 1 },
+    { GGML_TYPE_NVFP4,   "NVFP4",   sizeof(block_nvfp4),   QK_NVFP4, 1 },
+    { GGML_TYPE_Q1_0,    "Q1_0",    sizeof(block_q1_0),    QK1_0, 1 },
+    { GGML_TYPE_Q2_0,    "Q2_0",    sizeof(block_q2_0),    QK2_0, 1 },
+    { GGML_TYPE_F8_E4M3, "F8_E4M3", sizeof(ggml_fp8_e4m3_t), 1, 1 },
+    // Size lookup only, never emitted: no upstream dequantize_row_q8_1 exists.
+    { GGML_TYPE_Q8_1,    "Q8_1",    sizeof(block_q8_1),    QK8_1, 0 },
 };
 #define N_TYPES ((int)(sizeof(TYPES) / sizeof(TYPES[0])))
 
@@ -80,8 +104,17 @@ static uint16_t sane_half(void) {
 }
 
 static void put_u16(uint8_t * p, uint16_t v) { p[0] = (uint8_t) (v & 0xff); p[1] = (uint8_t) (v >> 8); }
+static void put_u32(uint8_t * p, uint32_t v) { p[0] = (uint8_t) v; p[1] = (uint8_t) (v >> 8); p[2] = (uint8_t) (v >> 16); p[3] = (uint8_t) (v >> 24); }
+
+// The fp32 bit pattern of a normal, positive fp16 (all the halves set_scale receives are such).
+static uint32_t f32_bits_of_half(uint16_t half) {
+    return ((uint32_t) (((half >> 10) & 0x1f) - 15 + 127) << 23) | ((uint32_t) (half & 0x3ff) << 13);
+}
 
 // Give block `b` of `type` a finite scale; everything else in the block stays as it is.
+// Types whose block holds a second fp16 factor (min / s) get a sane value there too, so no
+// NaN appears in the expected floats. NVFP4 and F8_E4M3 need nothing: every byte decodes to
+// a finite UE4M3 scale, and E4M3's NaN (0x7f/0xff) is a defined, bit-stable expected value.
 static void set_scale(enum ggml_type type, uint8_t * b, uint16_t half) {
     switch (type) {
         case GGML_TYPE_MXFP4:
@@ -96,6 +129,32 @@ static void set_scale(enum ggml_type type, uint8_t * b, uint16_t half) {
             }
             break;
         }
+        case GGML_TYPE_Q4_1: case GGML_TYPE_Q5_1:        // ggml_half d, m
+        case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K:        // ggml_half d, dmin
+            put_u16(b, half);
+            put_u16(b + 2, sane_half());
+            break;
+        case GGML_TYPE_Q2_K:                             // scales, qs, then d, dmin
+            put_u16(b + QK_K/16 + QK_K/4, half);
+            put_u16(b + QK_K/16 + QK_K/4 + 2, sane_half());
+            break;
+        case GGML_TYPE_Q3_K:                             // hmask, qs, scales, then d
+            put_u16(b + QK_K/8 + QK_K/4 + 12, half);
+            break;
+        case GGML_TYPE_Q6_K:                             // ql, qh, scales, then d
+            put_u16(b + QK_K/2 + QK_K/4 + QK_K/16, half);
+            break;
+        case GGML_TYPE_Q8_K:                             // float d, first field
+            put_u32(b, f32_bits_of_half(half));
+            break;
+        case GGML_TYPE_TQ1_0:                            // qs, qh, then d
+            put_u16(b + (QK_K - 4*QK_K/64)/5 + QK_K/64, half);
+            break;
+        case GGML_TYPE_TQ2_0:                            // qs, then d
+            put_u16(b + QK_K/4, half);
+            break;
+        case GGML_TYPE_NVFP4: case GGML_TYPE_F8_E4M3:
+            break;
         default:
             put_u16(b, half);                             // ggml_half d, first field, little-endian
             break;
@@ -120,6 +179,23 @@ static void dequantize(enum ggml_type type, const uint8_t * blocks, float * y, i
         case GGML_TYPE_IQ1_M:   dequantize_row_iq1_m  ((const block_iq1_m *)   blocks, y, n); break;
         case GGML_TYPE_IQ4_NL:  dequantize_row_iq4_nl ((const block_iq4_nl *)  blocks, y, n); break;
         case GGML_TYPE_IQ4_XS:  dequantize_row_iq4_xs ((const block_iq4_xs *)  blocks, y, n); break;
+        case GGML_TYPE_Q4_0:    dequantize_row_q4_0   ((const block_q4_0 *)    blocks, y, n); break;
+        case GGML_TYPE_Q4_1:    dequantize_row_q4_1   ((const block_q4_1 *)    blocks, y, n); break;
+        case GGML_TYPE_Q5_0:    dequantize_row_q5_0   ((const block_q5_0 *)    blocks, y, n); break;
+        case GGML_TYPE_Q5_1:    dequantize_row_q5_1   ((const block_q5_1 *)    blocks, y, n); break;
+        case GGML_TYPE_Q8_0:    dequantize_row_q8_0   ((const block_q8_0 *)    blocks, y, n); break;
+        case GGML_TYPE_Q2_K:    dequantize_row_q2_K   ((const block_q2_K *)    blocks, y, n); break;
+        case GGML_TYPE_Q3_K:    dequantize_row_q3_K   ((const block_q3_K *)    blocks, y, n); break;
+        case GGML_TYPE_Q4_K:    dequantize_row_q4_K   ((const block_q4_K *)    blocks, y, n); break;
+        case GGML_TYPE_Q5_K:    dequantize_row_q5_K   ((const block_q5_K *)    blocks, y, n); break;
+        case GGML_TYPE_Q6_K:    dequantize_row_q6_K   ((const block_q6_K *)    blocks, y, n); break;
+        case GGML_TYPE_Q8_K:    dequantize_row_q8_K   ((const block_q8_K *)    blocks, y, n); break;
+        case GGML_TYPE_TQ1_0:   dequantize_row_tq1_0  ((const block_tq1_0 *)   blocks, y, n); break;
+        case GGML_TYPE_TQ2_0:   dequantize_row_tq2_0  ((const block_tq2_0 *)   blocks, y, n); break;
+        case GGML_TYPE_NVFP4:   dequantize_row_nvfp4  ((const block_nvfp4 *)   blocks, y, n); break;
+        case GGML_TYPE_Q1_0:    dequantize_row_q1_0   ((const block_q1_0 *)    blocks, y, n); break;
+        case GGML_TYPE_Q2_0:    dequantize_row_q2_0   ((const block_q2_0 *)    blocks, y, n); break;
+        case GGML_TYPE_F8_E4M3: dequantize_row_f8_e4m3((const ggml_fp8_e4m3_t *) blocks, y, n); break;
         default: exit(2);
     }
 }
@@ -136,6 +212,24 @@ static size_t quantize(enum ggml_type type, const float * src, uint8_t * dst, in
         case GGML_TYPE_IQ1_M:   return quantize_iq1_m  (src, dst, 1, n, imatrix);
         case GGML_TYPE_IQ4_NL:  return quantize_iq4_nl (src, dst, 1, n, imatrix);
         case GGML_TYPE_IQ4_XS:  return quantize_iq4_xs (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q4_0:    return quantize_q4_0   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q4_1:    return quantize_q4_1   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q5_0:    return quantize_q5_0   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q5_1:    return quantize_q5_1   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q8_0:    return quantize_q8_0   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q2_K:    return quantize_q2_K   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q3_K:    return quantize_q3_K   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q4_K:    return quantize_q4_K   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q5_K:    return quantize_q5_K   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q6_K:    return quantize_q6_K   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_TQ1_0:   return quantize_tq1_0  (src, dst, 1, n, imatrix);
+        case GGML_TYPE_TQ2_0:   return quantize_tq2_0  (src, dst, 1, n, imatrix);
+        case GGML_TYPE_NVFP4:   return quantize_nvfp4  (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q1_0:    return quantize_q1_0   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_Q2_0:    return quantize_q2_0   (src, dst, 1, n, imatrix);
+        case GGML_TYPE_F8_E4M3: return quantize_f8_e4m3(src, dst, 1, n, imatrix);
+        // Q8_K has no quantize_* with an imatrix; its row reference is the ggml-internal form.
+        case GGML_TYPE_Q8_K:    quantize_row_q8_K_ref(src, (block_q8_K *) dst, n); return ggml_row_size(GGML_TYPE_Q8_K, n);
         default: exit(2);
     }
 }
@@ -175,13 +269,15 @@ int main(void) {
     EMIT_TABLE(0, kvalues_mxfp4, "int8");
     EMIT_TABLE(0, kvalues_iq4nl, "int8");
     printf("\n  ],\n  \"iq1_delta\": %.9g,\n  \"types\": [", (double) IQ1S_DELTA);
+    int emitted = 0;
     for (int ti = 0; ti < N_TYPES; ++ti) {
         const type_info * t = &TYPES[ti];
+        if (!t->emit) continue;
         const size_t bb = t->block_bytes;
         rng_state = 0x9E3779B97F4A7C15ULL ^ ((uint64_t) t->type * 0x100000001B3ULL);
 
         printf("%s\n    {\"name\": \"%s\", \"ggml_type\": %d, \"block_bytes\": %zu, \"block_elements\": %d, \"cases\": [",
-               ti ? "," : "", t->name, (int) t->type, bb, t->block_elems);
+               emitted++ ? "," : "", t->name, (int) t->type, bb, t->block_elems);
         first_case = 1;
 
         // 1. Random bytes: every index, sign and sub-scale field takes arbitrary values. Only the
@@ -225,7 +321,15 @@ int main(void) {
             free(blocks);
         }
 
-        // 4. MXFP4 only: the exponent byte at its limits.
+        // 4. F8_E4M3 only: every byte value once, so the whole code table is pinned
+        //    (including the two NaN encodings 0x7f and 0xff).
+        if (t->type == GGML_TYPE_F8_E4M3) {
+            uint8_t blocks[256];
+            for (int i = 0; i < 256; ++i) blocks[i] = (uint8_t) i;
+            emit_case(t, "all_bytes", "all 256 byte values in order (0x7f and 0xff are NaN)", blocks, 256);
+        }
+
+        // 5. MXFP4 only: the exponent byte at its limits.
         if (t->type == GGML_TYPE_MXFP4) {
             static const uint8_t exps[] = { 0, 1, 2, 126, 127, 128, 254, 255 };
             enum { NE = sizeof(exps) };

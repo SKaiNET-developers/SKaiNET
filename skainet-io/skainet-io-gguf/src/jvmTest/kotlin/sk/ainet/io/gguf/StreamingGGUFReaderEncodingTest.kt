@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
  */
 class StreamingGGUFReaderEncodingTest {
 
-    /** One 32-element block per tensor: Q4_0 = 18 bytes, Q8_1 = 40 bytes. */
+    /** One 32-element block per tensor: Q4_0 = 18 bytes, Q8_1 = 36 bytes. */
     private fun createGgufFile(): File {
         val file = File.createTempFile("encoding_test_", ".gguf")
         RandomAccessFile(file, "rw").use { raf ->
@@ -64,8 +64,8 @@ class StreamingGGUFReaderEncodingTest {
             // Q4_0 data: 18 bytes + pad to 32 for the second tensor's alignment
             repeat(18) { buf.put(1) }
             repeat(14) { buf.put(0) }
-            // Q8_1 data: 40 bytes
-            repeat(40) { buf.put(2) }
+            // Q8_1 data: 36 bytes
+            repeat(36) { buf.put(2) }
 
             buf.flip()
             val bytes = ByteArray(buf.remaining())
@@ -99,12 +99,12 @@ class StreamingGGUFReaderEncodingTest {
                 val encoding = reader.formatOf(tensor).encoding
                 assertTrue(encoding is TensorEncoding.Opaque, "Q8_1 should map to Opaque, got $encoding")
                 assertEquals("Q8_1", encoding.name)
-                assertEquals(40L, encoding.rawBytes) // 32 elems: 4+4+32 bytes per block
+                assertEquals(36L, encoding.rawBytes) // 32 elems: 2+2+32 bytes per block
                 // The point of #928: physicalBytes must not report 0.
-                assertEquals(40L, reader.formatOf(tensor).physicalBytes(32))
+                assertEquals(36L, reader.formatOf(tensor).physicalBytes(32))
                 // No decoder reads Q8_1, so it has a format and raw bytes but no view.
                 assertFailsWith<UnsupportedOperationException> { reader.loadTensorView(tensor) }
-                assertEquals(40, reader.loadTensorData(tensor).size)
+                assertEquals(36, reader.loadTensorData(tensor).size)
             }
         } finally {
             file.delete()

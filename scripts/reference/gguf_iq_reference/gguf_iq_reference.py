@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Reference data for the GGUF IQ1/IQ2/IQ3/IQ4 and MXFP4 dequantizers (#1409).
+"""Reference data for the GGUF dequantizers (#1409): IQ1/IQ2/IQ3/IQ4 and MXFP4, plus the
+legacy, K-quant, ternary and ggml-1.0 types (NVFP4, Q1_0, Q2_0, F8_E4M3).
 
 Builds `harness.c` against the `ggml-quants.c` of a llama.cpp checkout, runs it, and writes
 
   * the constant tables the decoders index (grids, sign table, value tables) as
-    `GgufIqTables.kt` in `skainet-io-gguf` commonMain, and
-  * raw blocks with the floats llama.cpp decodes from them as
-    `GgufIqDequantReference.kt` in `skainet-io-gguf` commonTest.
+    `GgufIqTables.kt` in `skainet-io-gguf` commonMain,
+  * raw IQ/MXFP4 blocks with the floats llama.cpp decodes from them as
+    `GgufIqDequantReference.kt` in `skainet-io-gguf` commonTest, and
+  * the same for the other quantized types as `GgufQuantDequantReference.kt` there.
 
 Nothing is transcribed by hand: tables and expected values are printed by a C program
 that includes llama.cpp's own headers and calls its own `dequantize_row_*`.
@@ -37,6 +39,13 @@ REPO = HERE.parents[2]
 GGUF_SRC = REPO / "skainet-io" / "skainet-io-gguf" / "src"
 TABLES_KT = GGUF_SRC / "commonMain/kotlin/sk/ainet/io/gguf/dequant/GgufIqTables.kt"
 REFERENCE_KT = GGUF_SRC / "commonTest/kotlin/sk/ainet/io/gguf/dequant/GgufIqDequantReference.kt"
+QUANT_REFERENCE_KT = GGUF_SRC / "commonTest/kotlin/sk/ainet/io/gguf/dequant/GgufQuantDequantReference.kt"
+
+# The types that belong to the IQ fixture (the original #1409 scope); every other type the
+# harness emits goes into GgufQuantDequantReference.kt.
+IQ_FILE_TYPES = {
+    "MXFP4", "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ3_XXS", "IQ3_S", "IQ1_S", "IQ1_M", "IQ4_NL", "IQ4_XS",
+}
 
 # C table name -> (Kotlin name, what an entry is)
 TABLES = {
@@ -91,8 +100,12 @@ def crosscheck(data: dict, llama_cpp: pathlib.Path) -> None:
     import gguf
     from gguf import quants
 
+    skipped = []
     for t in data["types"]:
         qtype = getattr(gguf.GGMLQuantizationType, t["name"])
+        if not any(getattr(q, "qtype", None) == qtype for q in vars(quants).values() if isinstance(q, type)):
+            skipped.append(t["name"])      # gguf-py has no NumPy implementation (e.g. Q8_K)
+            continue
         for c in t["cases"]:
             raw = np.frombuffer(bytes.fromhex(c["bytes"]), dtype=np.uint8)
             want = np.frombuffer(bytes.fromhex(c["f32le"]), dtype="<u4")
@@ -101,7 +114,8 @@ def crosscheck(data: dict, llama_cpp: pathlib.Path) -> None:
             if not np.array_equal(got, want):
                 sys.exit(f"gguf-py disagrees with ggml-quants.c on {t['name']} / {c['name']}: "
                          f"{int((got != want).sum())} of {len(want)} values differ")
-    print("gguf-py agrees bit for bit on every case")
+    note = f" (no gguf-py implementation, skipped: {', '.join(skipped)})" if skipped else ""
+    print(f"gguf-py agrees bit for bit on every case{note}")
 
 
 def kotlin_hex(hexstr: str, indent: str, width: int = 96) -> str:
@@ -159,6 +173,7 @@ def write_tables(data: dict, commit: str) -> None:
 
 
 def write_reference(data: dict, commit: str) -> None:
+    types = [t for t in data["types"] if t["name"] in IQ_FILE_TYPES]
     lines = [
         "package sk.ainet.io.gguf.dequant",
         "",
@@ -212,7 +227,7 @@ def write_reference(data: dict, commit: str) -> None:
         "",
         "    class TypeReference(val type: GGMLQuantizationType, val blockBytes: Int, val blockElements: Int, val cases: List<Case>)",
         "",
-        "    val ALL: List<TypeReference> by lazy { listOf(" + ", ".join(t["name"].lower() for t in data["types"]) + ") }",
+        "    val ALL: List<TypeReference> by lazy { listOf(" + ", ".join(t["name"].lower() for t in types) + ") }",
         "",
         "    private fun unhex(hex: String): ByteArray =",
         "        ByteArray(hex.length / 2) { i -> ((digit(hex[2 * i]) shl 4) or digit(hex[2 * i + 1])).toByte() }",
@@ -220,14 +235,22 @@ def write_reference(data: dict, commit: str) -> None:
         "    private fun digit(c: Char): Int = if (c <= '9') c - '0' else c - 'a' + 10",
         "",
     ]
-    for t in data["types"]:
+    lines += type_blocks(types, "TypeReference", "Case")
+    lines += ["}", ""]
+    REFERENCE_KT.parent.mkdir(parents=True, exist_ok=True)
+    REFERENCE_KT.write_text("\n".join(lines))
+
+
+def type_blocks(types: list, type_ref: str, case: str) -> list:
+    lines = []
+    for t in types:
         lines += [
-            f"    private val {t['name'].lower()}: TypeReference",
-            f"        get() = TypeReference(GGMLQuantizationType.{t['name']}, blockBytes = {t['block_bytes']}, blockElements = {t['block_elements']}, cases = listOf(",
+            f"    private val {t['name'].lower()}: {type_ref}",
+            f"        get() = {type_ref}(GGMLQuantizationType.{t['name']}, blockBytes = {t['block_bytes']}, blockElements = {t['block_elements']}, cases = listOf(",
         ]
         for c in t["cases"]:
             lines += [
-                "            Case(",
+                f"            {case}(",
                 f'                "{c["name"]}", "{c["description"]}", blocks = {c["blocks"]},',
                 "                bytesHex =",
                 "                    " + kotlin_hex(c["bytes"], "                    ") + ",",
@@ -236,9 +259,45 @@ def write_reference(data: dict, commit: str) -> None:
                 "            ),",
             ]
         lines += ["        ))", ""]
+    return lines
+
+
+def write_quant_reference(data: dict, commit: str) -> None:
+    types = [t for t in data["types"] if t["name"] not in IQ_FILE_TYPES]
+    ref = "GgufIqDequantReference.TypeReference"
+    case = "GgufIqDequantReference.Case"
+    lines = [
+        "package sk.ainet.io.gguf.dequant",
+        "",
+        "import sk.ainet.io.gguf.GGMLQuantizationType",
+        "",
+        "/**",
+        " * Raw GGUF blocks and the floats llama.cpp decodes from them, for the legacy, K-quant,",
+        " * ternary and ggml-1.0 types (NVFP4, Q1_0, Q2_0, F8_E4M3). The IQ/MXFP4 types are in",
+        " * [GgufIqDequantReference], whose [GgufIqDequantReference.Case] this file reuses.",
+        " *",
+        " * GENERATED by `scripts/reference/gguf_iq_reference/gguf_iq_reference.py`: a C harness linked",
+        f" * against `ggml/src/ggml-quants.c` of llama.cpp, commit `{commit}`.",
+        " * Do not edit by hand.",
+        " *",
+        " * Q8_1 is deliberately absent: upstream has no `dequantize_row_q8_1` (a dot-product",
+        " * intermediate, never written into GGUF files), so there is nothing to hold a decoder to.",
+        " *",
+        " * Cases per type: `random` (arbitrary bytes, finite scale fields), `extremes` (a block of",
+        " * 0x00 and a block of 0xff), `quantized` (what llama.cpp's quantizer writes for a fixed",
+        " * signal) and, for F8_E4M3, `all_bytes` (every byte value once, incl. both NaN encodings).",
+        " */",
+        "internal object GgufQuantDequantReference {",
+        "",
+        f'    const val LLAMA_CPP_COMMIT: String = "{commit}"',
+        "",
+        f"    val ALL: List<{ref}> by lazy {{ listOf(" + ", ".join(t["name"].lower() for t in types) + ") }",
+        "",
+    ]
+    lines += type_blocks(types, ref, case)
     lines += ["}", ""]
-    REFERENCE_KT.parent.mkdir(parents=True, exist_ok=True)
-    REFERENCE_KT.write_text("\n".join(lines))
+    QUANT_REFERENCE_KT.parent.mkdir(parents=True, exist_ok=True)
+    QUANT_REFERENCE_KT.write_text("\n".join(lines))
 
 
 def main() -> None:
@@ -257,11 +316,12 @@ def main() -> None:
     commit = commit_of(args.llama_cpp)
     write_tables(data, commit)
     write_reference(data, commit)
+    write_quant_reference(data, commit)
     print(f"llama.cpp {commit}")
     for t in data["types"]:
         print(f"  {t['name']:8s} {t['block_bytes']:4d} bytes / {t['block_elements']:3d} elements, "
               f"{len(t['cases'])} cases, {sum(c['blocks'] for c in t['cases'])} blocks")
-    print(f"wrote {TABLES_KT.relative_to(REPO)}\nwrote {REFERENCE_KT.relative_to(REPO)}")
+    print(f"wrote {TABLES_KT.relative_to(REPO)}\nwrote {REFERENCE_KT.relative_to(REPO)}\nwrote {QUANT_REFERENCE_KT.relative_to(REPO)}")
 
 
 if __name__ == "__main__":

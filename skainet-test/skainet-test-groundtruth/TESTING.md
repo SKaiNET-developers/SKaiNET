@@ -2,6 +2,20 @@
 
 This document describes the testing infrastructure for validating SKaiNET tensor operations against PyTorch ground truth.
 
+> **Related: the GGUF dequantization reference.** SKaiNET has a second, separate ground-truth
+> pipeline for the GGUF *dequantizers*, with llama.cpp (not PyTorch) as the oracle. It lives in
+> `skainet-io/skainet-io-gguf` rather than here for two reasons: this module loads its PyTorch
+> fixtures *through* the GGUF reader, so holding the reader's own decoders to fixtures delivered
+> as GGUF files would validate the reader with itself (and create a module cycle); and the
+> contract differs — the dequant reference is **bit-exact** (`Float.toRawBits()` equality, no
+> tolerance) and its fixtures are generated Kotlin committed to git, so the tests run on every
+> KMP target with no Docker or Python at test time.
+> Generator: `scripts/reference/gguf_iq_reference/` (a C harness linked against llama.cpp's own
+> `ggml-quants.c`, cross-checked against gguf-py). Fixtures: `GgufIqDequantReference.kt` and
+> `GgufQuantDequantReference.kt` in that module's `commonTest`, pinned to a llama.cpp commit.
+> Regenerate with
+> `./gradlew :skainet-io:skainet-io-gguf:generateDequantReference -PllamaCppDir=/path/to/llama.cpp`.
+
 ## Overview
 
 The ground truth testing system ensures that SKaiNET operations produce identical results to PyTorch. It consists of three projects working together:
