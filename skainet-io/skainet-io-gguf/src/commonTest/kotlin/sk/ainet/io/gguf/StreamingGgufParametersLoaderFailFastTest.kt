@@ -99,6 +99,8 @@ class StreamingGgufParametersLoaderFailFastTest {
             GGMLQuantizationType.IQ2_S,
             GGMLQuantizationType.IQ3_XXS,
             GGMLQuantizationType.IQ3_S,
+            GGMLQuantizationType.IQ1_S,
+            GGMLQuantizationType.IQ1_M,
         )) {
             assertTrue(
                 type in StreamingGgufParametersLoader.SUPPORTED_TENSOR_TYPES,

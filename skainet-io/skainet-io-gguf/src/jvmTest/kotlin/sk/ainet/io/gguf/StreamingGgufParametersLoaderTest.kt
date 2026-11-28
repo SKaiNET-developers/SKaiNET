@@ -219,6 +219,8 @@ class StreamingGgufParametersLoaderTest {
             GGMLQuantizationType.IQ2_S,
             GGMLQuantizationType.IQ3_XXS,
             GGMLQuantizationType.IQ3_S,
+            GGMLQuantizationType.IQ1_S,
+            GGMLQuantizationType.IQ1_M,
         )
         val file = createGgufFile(types.map { quantTensor("w_${it.name}", it) })
         try {

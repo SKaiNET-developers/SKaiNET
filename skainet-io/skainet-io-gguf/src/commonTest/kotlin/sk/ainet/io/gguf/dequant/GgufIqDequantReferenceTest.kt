@@ -18,10 +18,8 @@ import kotlin.test.fail
  */
 class GgufIqDequantReferenceTest {
 
-    /** Not implemented yet: #1413 (IQ1). */
-    private val PENDING: Set<GGMLQuantizationType> = setOf(
-        GGMLQuantizationType.IQ1_S, GGMLQuantizationType.IQ1_M,
-    )
+    /** Every type in the fixture decodes; new fixture types start here until their decoder lands. */
+    private val PENDING: Set<GGMLQuantizationType> = emptySet()
 
     private fun hex(bits: Int): String = "0x" + bits.toUInt().toString(16).padStart(8, '0')
 
@@ -43,6 +41,7 @@ class GgufIqDequantReferenceTest {
                 GGMLQuantizationType.MXFP4, GGMLQuantizationType.IQ4_NL, GGMLQuantizationType.IQ4_XS,
                 GGMLQuantizationType.IQ2_XXS, GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ2_S,
                 GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ3_S,
+                GGMLQuantizationType.IQ1_S, GGMLQuantizationType.IQ1_M,
             ),
             GgufIqDequantReference.ALL.map { it.type }.toSet(),
         )
